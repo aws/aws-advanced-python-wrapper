@@ -6,7 +6,7 @@ authors = ["Alex Rehnby-Martin <Alex.Rehnby-Martin@improving.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.7"
 psycopg = "^3.1.9"
 psycopg-binary = "^3.1.9"
 
