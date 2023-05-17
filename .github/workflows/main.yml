@@ -1,0 +1,42 @@
+name: Python Check and Unit Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - '*'
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.jpg'
+      - '**/README.txt'
+      - '**/LICENSE.txt'
+      - 'docs/**'
+      - 'ISSUE_TEMPLATE/**'
+      - '**/remove-old-artifacts.yml'
+      
+      
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        poetry-version: ["1.1.15"]
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: ${{ matrix.poetry-version }}
+      - name: View poetry --help
+        run: poetry --help
+      - name: Install dependencies
+        run: poetry install
