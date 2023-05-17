@@ -3,13 +3,8 @@ import psycopg
 import aws_wrapper
 
 def test(numOfPlugins: int, functionCache: bool, loop: int):
-    #conn = psycopg.Connection.connect(conninfo="host=atlas-postgres-2.cluster-czygpppufgy4.us-east-2.rds.amazonaws.com dbname=postgres user=pgadmin password=my_password_2020")
     conn = psycopg.Connection.connect(conninfo="host=localhost dbname=postgres user=postgres password=qwerty")
 
-    #awsconn = aws_wrapper.AwsWrapperConnection.connect(
-    #    "host=atlas-postgres-2.cluster-czygpppufgy4.us-east-2.rds.amazonaws.com dbname=postgres user=pgadmin password=my_password_2020",
-    #    psycopg.Connection.connect,
-    #    numOfPlugins=numOfPlugins, functionCache=functionCache)
     awsconn = aws_wrapper.AwsWrapperConnection.connect(
         "host=localhost dbname=postgres user=postgres password=qwerty",
         psycopg.Connection.connect,
