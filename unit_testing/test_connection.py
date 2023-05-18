@@ -12,9 +12,6 @@ def test_connection_basic(mocker):
 
     connection_mock.connect.assert_called_with(conninfo)
 
-def test_failing_test():
-    assert(False)
-
 
 # test_connection_kwargs
 # test_connection_function_cache
