@@ -129,17 +129,19 @@ class AwsWrapperConnection(Connection):
 
         numOfPlugins = kwargs.get("numOfPlugins")
         if numOfPlugins == None:
-            numOfPlugins = 10;
+            numOfPlugins = 10
+        else:
+            kwargs.pop("numOfPlugins")
         functionCache = kwargs.get("functionCache")
         if functionCache == None:
             functionCache = True
+        else:
+            kwargs.pop("functionCache")
 
         props: Properties = Properties()
         pluginManager: PluginManager = PluginManager(props=props, numOfPlugins=numOfPlugins, functionCache=functionCache)
         hostInfo: HostInfo = HostInfo()
 
-        kwargs.pop("numOfPlugins")
-        kwargs.pop("functionCache")
 
         # Target driver is a connect function
         if pluginManager.numOfPlugins == 0:
