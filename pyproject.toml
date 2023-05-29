@@ -6,12 +6,14 @@ authors = ["Alex Rehnby-Martin <Alex.Rehnby-Martin@improving.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.8.1"
 psycopg = "^3.1.9"
 psycopg-binary = "^3.1.9"
 pytest = "^7.3.1"
 pytest-mock = "^3.10.0"
-
+mypy = "^1.3.0"
+flake8 = "^6.0.0"
+isort = "^5.12.0"
 
 [build-system]
 requires = ["poetry-core"]

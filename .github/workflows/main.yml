@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
         poetry-version: ["1.4.2"]
 
     steps:
@@ -38,5 +38,11 @@ jobs:
           poetry-version: ${{ matrix.poetry-version }}
       - name: Install dependencies
         run: poetry install
+      - name: Run mypy - static type checking
+        run: poetry run mypy .
+      - name: Run flake8 - linting
+        run: poetry run flake8 .
+      - name: Run isort - dependeny import sorting check
+        run: poetry run isort --check-only .
       - name: Run unit tests
         run: poetry run python -m pytest

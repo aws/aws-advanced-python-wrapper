@@ -1,6 +1,9 @@
 import timeit
+
 import psycopg
+
 import aws_wrapper
+
 
 def test(numOfPlugins: int, functionCache: bool, loop: int):
     conn = psycopg.Connection.connect(conninfo="host=localhost dbname=postgres user=postgres password=qwerty")
@@ -13,20 +16,20 @@ def test(numOfPlugins: int, functionCache: bool, loop: int):
     cursor = conn.cursor()
     awscursor = awsconn.cursor()
 
-    total_duration_pg = 0
-    total_duration_aws = 0
+    total_duration_pg = 0.0
+    total_duration_aws = 0.0
 
     for i in range(loop):
         start_time = timeit.default_timer()
         cursor.execute("SELECT clock_timestamp()")
         duration = timeit.default_timer() - start_time
-        records = cursor.fetchall()
+        # records = cursor.fetchall()
         total_duration_pg += duration
 
         start_time = timeit.default_timer()
         awscursor.execute("SELECT clock_timestamp()")
         duration = timeit.default_timer() - start_time
-        records = awscursor.fetchall()
+        # records = awscursor.fetchall()
         total_duration_aws += duration
 
     conn.close()

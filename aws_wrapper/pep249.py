@@ -14,8 +14,10 @@ pawswrapper -- PEP249 base classes
           |__NotSupportedError
 
 """
+# mypy: ignore-errors
 
-from typing import Any, List, Iterator, Sequence
+from typing import Any, Iterator, List, Optional, Sequence
+
 
 class Warning(Exception):
     __module__ = "pawswrapper"
@@ -68,8 +70,10 @@ class NotSupportedError(DatabaseError):
 class ConnectionTimeout(OperationalError):
     ...
 
+
 class PipelineAborted(OperationalError):
     ...
+
 
 class Connection:
 
@@ -77,7 +81,6 @@ class Connection:
 
     @staticmethod
     def connect(
-        cls,
         conninfo: str = "",
         **kwargs
     ) -> Any:
@@ -168,5 +171,5 @@ class Cursor:
     def setinputsizes(self, sizes: Any) -> None:
         ...
 
-    def setoutputsize(self, size: Any, column: int = None) -> None:
+    def setoutputsize(self, size: Any, column: Optional[int] = None) -> None:
         ...
