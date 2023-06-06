@@ -20,13 +20,13 @@ import psycopg
 import aws_wrapper
 
 
-def test(numOfPlugins: int, functionCache: bool, loop: int):
+def test(num_of_plugins: int, function_cache: bool, loop: int):
     conn = psycopg.Connection.connect(conninfo="host=localhost dbname=postgres user=postgres password=qwerty")
 
     awsconn = aws_wrapper.AwsWrapperConnection.connect(
         "host=localhost dbname=postgres user=postgres password=qwerty",
         psycopg.Connection.connect,
-        numOfPlugins=numOfPlugins, functionCache=functionCache)
+        num_of_plugins=num_of_plugins, function_cache=function_cache)
 
     cursor = conn.cursor()
     awscursor = awsconn.cursor()

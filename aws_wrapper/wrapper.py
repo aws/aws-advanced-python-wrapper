@@ -32,96 +32,96 @@ class Plugin:
     def __init__(self, num: int):
         self._num = num
 
-    def connect(self, hostInfo: HostInfo, props: Properties,
-                initial: bool, executeFunc: Callable) -> Any:
+    def connect(self, host_info: HostInfo, props: Properties,
+                initial: bool, execute_func: Callable) -> Any:
         # print("Plugin {}: connect before".format(self._num))
-        result = executeFunc()
+        result = execute_func()
         # print("Plugin {}: connect after".format(self._num))
         return result
 
-    def execute(self, executeFunc: Callable) -> Any:
+    def execute(self, execute_func: Callable) -> Any:
         # print("Plugin {}: execute before".format(self._num))
-        result = executeFunc()
+        result = execute_func()
         # print("Plugin {}: execute after".format(self._num))
         return result
 
-    def subscribed(self, methodName: str) -> bool:
+    def subscribed(self, method_name: str) -> bool:
         return True
 
 
 class PluginManager:
     _plugins: List[Plugin] = []
-    _executeFunc: Optional[Callable] = None
-    _connectFunc: Optional[Callable] = None
+    _execute_func: Optional[Callable] = None
+    _connect_func: Optional[Callable] = None
 
     def __init__(self, props: Properties = Properties(),
-                 numOfPlugins: int = 10, functionCache: bool = True):
+                 num_of_plugins: int = 10, function_cache: bool = True):
 
-        self._numOfPlugins = numOfPlugins
-        self._functionCache = functionCache
+        self._num_of_plugins = num_of_plugins
+        self._function_cache = function_cache
 
-        print("plugins: {}, cache: {}".format(numOfPlugins, functionCache))
+        print("plugins: {}, cache: {}".format(num_of_plugins, function_cache))
 
         # Init dummy plugins
-        for i in range(self._numOfPlugins):
+        for i in range(self._num_of_plugins):
             self._plugins.append(Plugin(i))
 
     @property
-    def numOfPlugins(self) -> int:
-        return self._numOfPlugins
+    def num_of_plugins(self) -> int:
+        return self._num_of_plugins
 
     @property
-    def executeFunc(self) -> Callable:
-        if self._functionCache and self._executeFunc:
-            return self._executeFunc
+    def execute_func(self) -> Callable:
+        if self._function_cache and self._execute_func:
+            return self._execute_func
 
         # TODO: add support Plugin.subscribed("execute")
 
         code = "x()"
-        numOfPlugins = len(self._plugins)
-        if numOfPlugins > 0:
-            code = "plugins[{}].execute(x)".format(numOfPlugins - 1)
+        num_of_plugins = len(self._plugins)
+        if num_of_plugins > 0:
+            code = "plugins[{}].execute(x)".format(num_of_plugins - 1)
 
-        for i in range(numOfPlugins - 1, 0, -1):
+        for i in range(num_of_plugins - 1, 0, -1):
             code = "plugins[{}].execute(lambda : {})".format(i - 1, code)
 
         code = "lambda x : {}".format(code)
         # print(code)
 
-        self._executeFunc = eval(code, {"plugins": self._plugins})
+        self._execute_func = eval(code, {"plugins": self._plugins})
 
-        assert (self._executeFunc is not None)
-        return self._executeFunc
+        assert (self._execute_func is not None)
+        return self._execute_func
 
     @property
-    def connectFunc(self) -> Callable:
-        if self._functionCache and self._connectFunc:
-            return self._connectFunc
+    def connect_func(self) -> Callable:
+        if self._function_cache and self._connect_func:
+            return self._connect_func
 
         # TODO: add support Plugin.subscribed("connect")
 
         code = "x()"
-        numOfPlugins = len(self._plugins)
-        if numOfPlugins > 0:
-            code = "plugins[{}].connect(hostInfo, props, initial, x)".format(numOfPlugins - 1)
+        num_of_plugins = len(self._plugins)
+        if num_of_plugins > 0:
+            code = "plugins[{}].connect(hostInfo, props, initial, x)".format(num_of_plugins - 1)
 
-        for i in range(numOfPlugins - 1, 0, -1):
+        for i in range(num_of_plugins - 1, 0, -1):
             code = "plugins[{}].connect(hostInfo, props, initial, lambda : {})".format(i - 1, code)
 
         code = "lambda hostInfo, props, initial, x : {}".format(code)
         # print(code)
-        self._connectFunc = eval(code, {"plugins": self._plugins})
+        self._connect_func = eval(code, {"plugins": self._plugins})
 
-        assert (self._connectFunc is not None)
-        return self._connectFunc
+        assert (self._connect_func is not None)
+        return self._connect_func
 
 
 class AwsWrapperConnection(Connection):
     __module__ = "pawswrapper"
 
-    def __init__(self, pluginManager: PluginManager, targetConn: Connection):
-        self._targetConn = targetConn
-        self._pluginManager = pluginManager
+    def __init__(self, plugin_manager: PluginManager, target_conn: Connection):
+        self._target_conn = target_conn
+        self._plugin_manager = plugin_manager
 
     @staticmethod
     def connect(
@@ -139,80 +139,80 @@ class AwsWrapperConnection(Connection):
         if not callable(target):
             raise Error("Target driver should be a target driver's connect() method/function")
 
-        numOfPlugins = kwargs.get("numOfPlugins")
-        if numOfPlugins is not None:
+        num_of_plugins = kwargs.get("numOfPlugins")
+        if num_of_plugins is not None:
             kwargs.pop("numOfPlugins")
-        if type(numOfPlugins) != int:
-            numOfPlugins = 10
+        if type(num_of_plugins) != int:
+            num_of_plugins = 10
 
-        functionCache = kwargs.get("functionCache")
-        if functionCache is None:
-            functionCache = True
+        function_cache = kwargs.get("functionCache")
+        if function_cache is None:
+            function_cache = True
         else:
             kwargs.pop("functionCache")
-            functionCache = bool(functionCache)
+            function_cache = bool(function_cache)
 
         props: Properties = Properties()
-        pluginManager: PluginManager = PluginManager(props=props, numOfPlugins=numOfPlugins,
-                                                     functionCache=functionCache)
-        hostInfo: HostInfo = HostInfo()
+        plugin_manager: PluginManager = PluginManager(props=props, num_of_plugins=num_of_plugins,
+                                                      function_cache=function_cache)
+        host_info: HostInfo = HostInfo()
 
         # Target driver is a connect function
-        if pluginManager.numOfPlugins == 0:
+        if plugin_manager.num_of_plugins == 0:
             conn = target(conninfo, **kwargs)
         else:
-            conn = pluginManager.connectFunc(hostInfo, props, True, lambda: target(conninfo, **kwargs))
+            conn = plugin_manager.connect_func(host_info, props, True, lambda: target(conninfo, **kwargs))
 
-        return AwsWrapperConnection(pluginManager, conn)
+        return AwsWrapperConnection(plugin_manager, conn)
 
     def close(self) -> None:
-        if self._targetConn:
-            self._targetConn.close()
+        if self._target_conn:
+            self._target_conn.close()
 
     def cursor(self, **kwargs) -> "AwsWrapperCursor":
-        _cursor = self._targetConn.cursor(**kwargs)
-        return AwsWrapperCursor(self, self._pluginManager, _cursor)
+        _cursor = self._target_conn.cursor(**kwargs)
+        return AwsWrapperCursor(self, self._plugin_manager, _cursor)
 
     def commit(self) -> None:
-        self._targetConn.commit()
+        self._target_conn.commit()
 
     def rollback(self) -> None:
-        self._targetConn.rollback()
+        self._target_conn.rollback()
 
     def tpc_begin(self, xid: Any) -> None:
-        self._targetConn.tpc_begin(xid)
+        self._target_conn.tpc_begin(xid)
 
     def tpc_prepare(self) -> None:
-        self._targetConn.tpc_prepare()
+        self._target_conn.tpc_prepare()
 
     def tpc_commit(self, xid: Any = None) -> None:
-        self._targetConn.tpc_commit(xid)
+        self._target_conn.tpc_commit(xid)
 
     def tpc_rollback(self, xid: Any = None) -> None:
-        self._targetConn.tpc_rollback(xid)
+        self._target_conn.tpc_rollback(xid)
 
     def tpc_recover(self) -> Any:
-        return self._targetConn.tpc_recover()
+        return self._target_conn.tpc_recover()
 
     def __enter__(self: "AwsWrapperConnection") -> "AwsWrapperConnection":
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self._targetConn:
-            self._targetConn.close()
+        if self._target_conn:
+            self._target_conn.close()
 
 
 class AwsWrapperCursor(Cursor):
     __module__ = "pawswrapper"
 
-    _targetCursor: Cursor
+    _target_cursor: Cursor
     _conn: AwsWrapperConnection
-    _pluginManager: PluginManager
+    _plugin_manager: PluginManager
 
-    def __init__(self, conn: AwsWrapperConnection, pluginManager: PluginManager, targetCursor: Cursor):
+    def __init__(self, conn: AwsWrapperConnection, plugin_manager: PluginManager, target_cursor: Cursor):
         self._conn = conn
-        self._targetCursor = targetCursor
-        self._pluginManager = pluginManager
+        self._target_cursor = target_cursor
+        self._plugin_manager = plugin_manager
 
     # It's not part of PEP249
     @property
@@ -221,32 +221,32 @@ class AwsWrapperCursor(Cursor):
 
     @property
     def description(self):
-        return self._targetCursor.description
+        return self._target_cursor.description
 
     @property
     def rowcount(self) -> int:
-        return self._targetCursor.rowcount
+        return self._target_cursor.rowcount
 
     @property
     def arraysize(self) -> int:
-        return self._targetCursor.arraysize
+        return self._target_cursor.arraysize
 
     def close(self) -> None:
-        self._targetCursor.close
+        self._target_cursor.close
 
     def callproc(self, **kwargs):
-        return self._targetCursor.callproc(**kwargs)
+        return self._target_cursor.callproc(**kwargs)
 
     def execute(
             self,
             query: str,
             **kwargs
     ) -> "AwsWrapperCursor":
-        if self._pluginManager.numOfPlugins == 0:
-            self._targetCursor = self._targetCursor.execute(query, **kwargs)
+        if self._plugin_manager.num_of_plugins == 0:
+            self._target_cursor = self._target_cursor.execute(query, **kwargs)
             return self
 
-        result = self._pluginManager.executeFunc(lambda: self._targetCursor.execute(query, **kwargs))
+        result = self._plugin_manager.execute_func(lambda: self._target_cursor.execute(query, **kwargs))
         return result
 
     def executemany(
@@ -254,28 +254,28 @@ class AwsWrapperCursor(Cursor):
             query: str,
             **kwargs
     ) -> None:
-        self._targetCursor.executemany(query, **kwargs)
+        self._target_cursor.executemany(query, **kwargs)
 
     def nextset(self) -> bool:
-        return self._targetCursor.nextset()
+        return self._target_cursor.nextset()
 
     def fetchone(self) -> Any:
-        return self._targetCursor.fetchone()
+        return self._target_cursor.fetchone()
 
     def fetchmany(self, size: int = 0) -> List[Any]:
-        return self._targetCursor.fetchmany(size)
+        return self._target_cursor.fetchmany(size)
 
     def fetchall(self) -> List[Any]:
-        return self._targetCursor.fetchall()
+        return self._target_cursor.fetchall()
 
     def __iter__(self) -> Iterator[Any]:
-        return self._targetCursor.__iter__()
+        return self._target_cursor.__iter__()
 
     def setinputsizes(self, sizes: Any) -> None:
-        return self._targetCursor.setinputsizes(sizes)
+        return self._target_cursor.setinputsizes(sizes)
 
     def setoutputsize(self, size: Any, column: Optional[int] = None) -> None:
-        return self._targetCursor.setoutputsize(size, column)
+        return self._target_cursor.setoutputsize(size, column)
 
     def __enter__(self: "AwsWrapperCursor") -> "AwsWrapperCursor":
         return self
