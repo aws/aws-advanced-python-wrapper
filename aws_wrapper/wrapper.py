@@ -103,12 +103,12 @@ class PluginManager:
         code = "x()"
         num_of_plugins = len(self._plugins)
         if num_of_plugins > 0:
-            code = "plugins[{}].connect(hostInfo, props, initial, x)".format(num_of_plugins - 1)
+            code = "plugins[{}].connect(host_info, props, initial, x)".format(num_of_plugins - 1)
 
         for i in range(num_of_plugins - 1, 0, -1):
-            code = "plugins[{}].connect(hostInfo, props, initial, lambda : {})".format(i - 1, code)
+            code = "plugins[{}].connect(host_info, props, initial, lambda : {})".format(i - 1, code)
 
-        code = "lambda hostInfo, props, initial, x : {}".format(code)
+        code = "lambda host_info, props, initial, x : {}".format(code)
         # print(code)
         self._connect_func = eval(code, {"plugins": self._plugins})
 
@@ -139,17 +139,17 @@ class AwsWrapperConnection(Connection):
         if not callable(target):
             raise Error("Target driver should be a target driver's connect() method/function")
 
-        num_of_plugins = kwargs.get("numOfPlugins")
+        num_of_plugins = kwargs.get("num_of_plugins")
         if num_of_plugins is not None:
-            kwargs.pop("numOfPlugins")
+            kwargs.pop("num_of_plugins")
         if type(num_of_plugins) != int:
             num_of_plugins = 10
 
-        function_cache = kwargs.get("functionCache")
+        function_cache = kwargs.get("function_cache")
         if function_cache is None:
             function_cache = True
         else:
-            kwargs.pop("functionCache")
+            kwargs.pop("function_cache")
             function_cache = bool(function_cache)
 
         props: Properties = Properties()
