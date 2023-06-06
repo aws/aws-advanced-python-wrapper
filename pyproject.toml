@@ -1,9 +1,10 @@
 [tool.poetry]
-name = "wrapper"
+name = "aws_wrapper"
 version = "0.1.0"
-description = ""
-authors = ["Alex Rehnby-Martin <Alex.Rehnby-Martin@improving.com>"]
+description = "Amazon Web Services (AWS) Advanced Python Wrapper"
+authors = ["Amazon Web Services"]
 readme = "README.md"
+license = "Apache-2.0"
 
 [tool.poetry.dependencies]
 python = "^3.8.1"

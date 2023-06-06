@@ -42,7 +42,7 @@ jobs:
         run: poetry run mypy .
       - name: Run flake8 - linting
         run: poetry run flake8 .
-      - name: Run isort - dependeny import sorting check
+      - name: Run isort - dependency import sorting check
         run: poetry run isort --check-only .
       - name: Run unit tests
         run: poetry run python -m pytest

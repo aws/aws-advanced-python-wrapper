@@ -1,21 +1,16 @@
-"""
-*    Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-* 
-*    Licensed under the Apache License, Version 2.0 (the "License").
-*    You may not use this file except in compliance with the License.
-*    You may obtain a copy of the License at
-* 
-*    http://www.apache.org/licenses/LICENSE-2.0
-* 
-*    Unless required by applicable law or agreed to in writing, software
-*    distributed under the License is distributed on an "AS IS" BASIS,
-*    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*    See the License for the specific language governing permissions and
-*    limitations under the License.
-
-pawswrapper - AWS Wrapper Driver for Python
-
-"""
+#  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License").
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
 
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
@@ -32,7 +27,6 @@ class Properties(Dict[str, str]):
 
 
 class Plugin:
-
     _num: int = 0
 
     def __init__(self, num: int):
@@ -56,7 +50,6 @@ class Plugin:
 
 
 class PluginManager:
-
     _plugins: List[Plugin] = []
     _executeFunc: Optional[Callable] = None
     _connectFunc: Optional[Callable] = None
@@ -124,7 +117,6 @@ class PluginManager:
 
 
 class AwsWrapperConnection(Connection):
-
     __module__ = "pawswrapper"
 
     def __init__(self, pluginManager: PluginManager, targetConn: Connection):
@@ -133,9 +125,9 @@ class AwsWrapperConnection(Connection):
 
     @staticmethod
     def connect(
-        conninfo: str = "",
-        target: Union[None, str, Callable] = None,
-        **kwargs: Union[None, int, str]
+            conninfo: str = "",
+            target: Union[None, str, Callable] = None,
+            **kwargs: Union[None, int, str]
     ) -> "AwsWrapperConnection":
         # Check if target provided
         if not target:
@@ -161,7 +153,8 @@ class AwsWrapperConnection(Connection):
             functionCache = bool(functionCache)
 
         props: Properties = Properties()
-        pluginManager: PluginManager = PluginManager(props=props, numOfPlugins=numOfPlugins, functionCache=functionCache)
+        pluginManager: PluginManager = PluginManager(props=props, numOfPlugins=numOfPlugins,
+                                                     functionCache=functionCache)
         hostInfo: HostInfo = HostInfo()
 
         # Target driver is a connect function
@@ -210,7 +203,6 @@ class AwsWrapperConnection(Connection):
 
 
 class AwsWrapperCursor(Cursor):
-
     __module__ = "pawswrapper"
 
     _targetCursor: Cursor
@@ -246,9 +238,9 @@ class AwsWrapperCursor(Cursor):
         return self._targetCursor.callproc(**kwargs)
 
     def execute(
-        self,
-        query: str,
-        **kwargs
+            self,
+            query: str,
+            **kwargs
     ) -> "AwsWrapperCursor":
         if self._pluginManager.numOfPlugins == 0:
             self._targetCursor = self._targetCursor.execute(query, **kwargs)
@@ -258,9 +250,9 @@ class AwsWrapperCursor(Cursor):
         return result
 
     def executemany(
-        self,
-        query: str,
-        **kwargs
+            self,
+            query: str,
+            **kwargs
     ) -> None:
         self._targetCursor.executemany(query, **kwargs)
 
