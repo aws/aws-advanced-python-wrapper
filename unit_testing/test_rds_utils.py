@@ -85,7 +85,7 @@ class TestRdsUtils(TestCase):
     ])
     def test_get_rds_instance_host_pattern(self, expected, test_value):
         target = RdsUtils()
-        self.assertEquals(expected, target.get_rds_instance_host_pattern(test_value))
+        self.assertEqual(expected, target.get_rds_instance_host_pattern(test_value))
 
     @parameterized.expand([
         ("us-east-2", us_east_region_cluster),
@@ -101,7 +101,7 @@ class TestRdsUtils(TestCase):
     ])
     def test_get_rds_region(self, expected, test_value):
         target = RdsUtils()
-        self.assertEquals(expected, target.get_rds_region(test_value))
+        self.assertEqual(expected, target.get_rds_region(test_value))
 
     @parameterized.expand([
         us_east_region_cluster,
