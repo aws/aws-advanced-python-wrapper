@@ -1,4 +1,3 @@
-
 #  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License").
@@ -21,6 +20,8 @@ import aws_wrapper
 
 
 def test(num_of_plugins: int, function_cache: bool, loop: int):
+    aws_wrapper.set_logger()
+
     conn = psycopg.Connection.connect(conninfo="host=localhost dbname=postgres user=postgres password=qwerty")
 
     awsconn = aws_wrapper.AwsWrapperConnection.connect(
@@ -55,8 +56,4 @@ def test(num_of_plugins: int, function_cache: bool, loop: int):
 
 
 loops = 100000
-test(0, False, loops)
 test(1, False, loops)
-test(1, True, loops)
-test(50, False, loops)
-test(50, True, loops)

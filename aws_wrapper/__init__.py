@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from logging import DEBUG, Formatter, Handler, StreamHandler, getLogger
+
 from .wrapper import AwsWrapperConnection
 
 # PEP249 compliance
@@ -19,3 +21,24 @@ connect = AwsWrapperConnection.connect
 apilevel = "2.0"
 threadsafety = 2
 paramstyle = "pyformat"
+
+
+def set_logger(name='aws_wrapper', level=DEBUG, format_string=None):
+    if format_string is None:
+        format_string = "%(asctime)s.%(msecs)03d %(name)-12s [%(levelname)-8s] -- %(process)s -- %(message)s"
+
+    handler = StreamHandler()
+    handler.setFormatter(Formatter(format_string))
+    handler.setLevel(level)
+
+    logger = getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+
+class NullHandler(Handler):
+    def emit(self, record):
+        pass
+
+
+getLogger("aws_wrapper").addHandler(NullHandler())

@@ -12,18 +12,28 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from logging import getLogger
+from typing import Any, Callable, Iterator, List, Optional, Union
 
+from aws_wrapper.utils.properties import Properties, PropertiesUtils
 from .pep249 import Connection, Cursor, Error
+
+logger = getLogger(__name__)
 
 
 class HostInfo:
     url: str
     port: int
 
+    def __init__(self, url: str, port: int):
+        self._url = url
+        self._port = port
 
-class Properties(Dict[str, str]):
-    ...
+    def __str__(self):
+        return f"HostInfo[host={self._url}, port={self._port}]"
+
+    def __repr__(self):
+        return str(self)
 
 
 class Plugin:
@@ -34,15 +44,15 @@ class Plugin:
 
     def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, execute_func: Callable) -> Any:
-        # print("Plugin {}: connect before".format(self._num))
+        # logger.debug("Plugin {}: connect before".format(self._num))
         result = execute_func()
-        # print("Plugin {}: connect after".format(self._num))
+        # logger.debug("Plugin {}: connect after".format(self._num))
         return result
 
     def execute(self, execute_func: Callable) -> Any:
-        # print("Plugin {}: execute before".format(self._num))
+        # logger.debug("Plugin {}: execute before".format(self._num))
         result = execute_func()
-        # print("Plugin {}: execute after".format(self._num))
+        # logger.debug("Plugin {}: execute after".format(self._num))
         return result
 
     def subscribed(self, method_name: str) -> bool:
@@ -57,10 +67,12 @@ class PluginManager:
     def __init__(self, props: Properties = Properties(),
                  num_of_plugins: int = 10, function_cache: bool = True):
 
+        self._props = props
         self._num_of_plugins = num_of_plugins
         self._function_cache = function_cache
 
-        print("plugins: {}, cache: {}".format(num_of_plugins, function_cache))
+        logger.warning("plugins: {}, cache: {}".format(num_of_plugins, function_cache))
+        print(logger)
 
         # Init dummy plugins
         for i in range(self._num_of_plugins):
@@ -86,7 +98,7 @@ class PluginManager:
             code = "plugins[{}].execute(lambda : {})".format(i - 1, code)
 
         code = "lambda x : {}".format(code)
-        # print(code)
+        # logger.debug(code)
 
         self._execute_func = eval(code, {"plugins": self._plugins})
 
@@ -109,7 +121,7 @@ class PluginManager:
             code = "plugins[{}].connect(host_info, props, initial, lambda : {})".format(i - 1, code)
 
         code = "lambda host_info, props, initial, x : {}".format(code)
-        # print(code)
+        # logger.debug(code)
         self._connect_func = eval(code, {"plugins": self._plugins})
 
         assert (self._connect_func is not None)
@@ -152,10 +164,12 @@ class AwsWrapperConnection(Connection):
             kwargs.pop("function_cache")
             function_cache = bool(function_cache)
 
-        props: Properties = Properties()
+        props: Properties = PropertiesUtils.parse_properties_from_conn_info(conn_info=conninfo)
+        logger.debug(PropertiesUtils.log_properties(props, "Connection Properties: "))
+
         plugin_manager: PluginManager = PluginManager(props=props, num_of_plugins=num_of_plugins,
                                                       function_cache=function_cache)
-        host_info: HostInfo = HostInfo()
+        host_info: HostInfo = HostInfo("foo", 123)
 
         # Target driver is a connect function
         if plugin_manager.num_of_plugins == 0:
