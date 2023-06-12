@@ -15,7 +15,7 @@
 # mypy: ignore-errors
 
 """
-pawswrapper -- PEP249 base classes
+aws_wrapper -- PEP249 base classes
 
     Exceptions
     |__Warning
@@ -35,51 +35,51 @@ from typing import Any, Iterator, List, Optional, Sequence
 
 
 class Warning(Exception):
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
 
 class Error(Exception):
-    __module__ = "pawswrapper"
-
-    sqlstate: str = None
+    __module__ = "aws_wrapper"
 
     def __init__(
             self,
+            sqlstate: str = None,
             *args: Sequence[Any]
     ):
         super().__init__(*args)
+        self._sqlstate: str = sqlstate
 
 
 class InterfaceError(Error):
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
 
 class DatabaseError(Error):
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
 
 class DataError(DatabaseError):
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
 
 class OperationalError(DatabaseError):
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
 
 class IntegrityError(DatabaseError):
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
 
 class InternalError(DatabaseError):
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
 
 class ProgrammingError(DatabaseError):
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
 
 class NotSupportedError(DatabaseError):
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
 
 class ConnectionTimeout(OperationalError):
@@ -90,8 +90,12 @@ class PipelineAborted(OperationalError):
     ...
 
 
+class AwsWrapperError(Error):
+    __module__ = "aws_wrapper"
+
+
 class Connection:
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
     @staticmethod
     def connect(
@@ -130,7 +134,7 @@ class Connection:
 
 
 class Cursor:
-    __module__ = "pawswrapper"
+    __module__ = "aws_wrapper"
 
     @property
     def description(self):

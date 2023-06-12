@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Dict
+from typing import Dict, List, Set, Union
 
 
 class Properties(Dict[str, str]):
@@ -21,10 +21,35 @@ class Properties(Dict[str, str]):
 
 class PropertiesUtils:
 
+    WRAPPER_PROPERTIES: Set[str] = {
+        "plugins"
+    }
+
     @staticmethod
-    def parse_properties_from_conn_info(conn_info: str) -> Properties:
-        props = Properties(dict(x.split("=") for x in conn_info.split(" ")))
+    def parse_properties(conn_info: str, **kwargs: Union[None, int, str]) -> Properties:
+        props: Properties
+        if conn_info == "":
+            props = Properties()
+        else:
+            props = Properties(dict(x.split("=") for x in conn_info.split(" ")))
+        for key, value in kwargs.items():
+            props[key] = str(value)
         return props
+
+    @staticmethod
+    def remove_wrapper_conninfo(old_info: str) -> str:
+        new_info: List[str] = []
+        props: List[str] = old_info.split(" ")
+        for prop in props:
+            if prop.split("=")[0] not in PropertiesUtils.WRAPPER_PROPERTIES:
+                new_info.append(prop)
+        return " ".join(new_info)
+
+    @staticmethod
+    def remove_wrapper_kwargs(kwargs_dict: Dict[str, Union[None, int, str]]):
+        for prop in PropertiesUtils.WRAPPER_PROPERTIES:
+            kwargs_dict.pop(prop, None)
+        return kwargs_dict
 
     @staticmethod
     def log_properties(props: Properties, caption: str):

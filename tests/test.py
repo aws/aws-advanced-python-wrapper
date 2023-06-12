@@ -19,17 +19,22 @@ import psycopg
 import aws_wrapper
 
 
-def test(num_of_plugins: int, function_cache: bool, loop: int):
+def test(num_plugins: int, loop: int):
     aws_wrapper.set_logger()
 
-    conn = psycopg.Connection.connect(conninfo="host=localhost dbname=postgres user=postgres password=qwerty")
+    connstring = "host=localhost dbname=postgres user=postgres password=qwerty"
+    plugins = ""
+    for i in range(num_plugins):
+        plugins += "dummy,"
+    plugins = plugins.rstrip(",")
 
+    pscycopg_conn = psycopg.Connection.connect(conninfo=connstring)
     awsconn = aws_wrapper.AwsWrapperConnection.connect(
-        "host=localhost dbname=postgres user=postgres password=qwerty",
+        connstring,
         psycopg.Connection.connect,
-        num_of_plugins=num_of_plugins, function_cache=function_cache)
+        plugins=plugins)
 
-    cursor = conn.cursor()
+    cursor = pscycopg_conn.cursor()
     awscursor = awsconn.cursor()
 
     total_duration_pg = 0.0
@@ -48,7 +53,7 @@ def test(num_of_plugins: int, function_cache: bool, loop: int):
         # records = awscursor.fetchall()
         total_duration_aws += duration
 
-    conn.close()
+    pscycopg_conn.close()
     awsconn.close()
 
     print("Duration: {}".format(total_duration_pg))
@@ -56,4 +61,4 @@ def test(num_of_plugins: int, function_cache: bool, loop: int):
 
 
 loops = 100000
-test(1, False, loops)
+test(1, loops)

@@ -12,25 +12,14 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from enum import Enum
+class HostInfo:
 
+    def __init__(self, url: str, port: int):
+        self._url: str = url
+        self._port: int = port
 
-class RdsUrlType(Enum):
+    def __str__(self):
+        return f"HostInfo[host={self._url}, port={self._port}]"
 
-    def __new__(cls, *args, **kwargs):
-        value = len(cls.__members__) + 1
-        obj = object.__new__(cls)
-        obj._value_ = value
-        return obj
-
-    def __init__(self, is_rds: bool, is_rds_cluster: bool):
-        self.is_rds: bool = is_rds
-        self.is_rds_cluster: bool = is_rds_cluster
-
-    IP_ADDRESS = False, False,
-    RDS_WRITER_CLUSTER = True, True,
-    RDS_READER_CLUSTER = True, True,
-    RDS_CUSTOM_CLUSTER = True, True,
-    RDS_PROXY = True, False,
-    RDS_INSTANCE = True, False,
-    OTHER = False, False
+    def __repr__(self):
+        return str(self)
