@@ -12,14 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-class HostInfo:
+from .pep249 import Error
 
-    def __init__(self, url: str, port: int):
-        self._url: str = url
-        self._port: int = port
 
-    def __str__(self):
-        return f"HostInfo[host={self._url}, port={self._port}]"
-
-    def __repr__(self):
-        return str(self)
+class AwsWrapperError(Error):
+    __module__ = "aws_wrapper"

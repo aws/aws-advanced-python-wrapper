@@ -25,7 +25,7 @@ def test_connection_basic(mocker):
         conninfo,
         connection_mock.connect)
 
-    connection_mock.connect.assert_called_with(conninfo)
+    connection_mock.connect.assert_called_with(host="localhost", dbname="postgres", user="postgres", password="qwerty")
 
 
 # test_connection_kwargs

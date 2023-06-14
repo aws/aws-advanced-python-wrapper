@@ -14,9 +14,10 @@
 
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
-from aws_wrapper.pep249 import AwsWrapperError, Connection
+from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.hostspec import HostSpec
+from aws_wrapper.pep249 import Connection
 from aws_wrapper.utils.properties import Properties
-from aws_wrapper.wrapper import HostInfo
 
 
 class PluginService:
@@ -29,7 +30,7 @@ class Plugin(Protocol):
     def subscribed_methods(self) -> Set[str]:
         return {""}
 
-    def connect(self, host_info: HostInfo, props: Properties,
+    def connect(self, host_info: HostSpec, props: Properties,
                 initial: bool, connect_func: Callable) -> Connection:
         ...
 
@@ -54,7 +55,7 @@ class DefaultPlugin(Plugin):
         self._plugin_service: PluginService = plugin_service
         self._props: Properties = props
 
-    def connect(self, host_info: HostInfo, props: Properties,
+    def connect(self, host_info: HostSpec, props: Properties,
                 initial: bool, connect_func: Callable) -> Any:
         # logger.debug("Default plugin: connect before")
         result = connect_func()
@@ -80,7 +81,7 @@ class DummyPlugin(Plugin):
         self._id: int = DummyPlugin._NEXT_ID
         DummyPlugin._NEXT_ID += 1
 
-    def connect(self, host_info: HostInfo, props: Properties,
+    def connect(self, host_info: HostSpec, props: Properties,
                 initial: bool, connect_func: Callable) -> Any:
         # logger.debug("Plugin {}: connect before".format(self._id))
         result = connect_func()
@@ -185,7 +186,7 @@ class PluginManager:
         return lambda plugin_func, target_driver_func: \
             plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func))
 
-    def connect(self, host_info: HostInfo, props: Properties, is_initial: bool, target_driver_func: Callable) \
+    def connect(self, host_info: HostSpec, props: Properties, is_initial: bool, target_driver_func: Callable) \
             -> Connection:
         return self.execute_with_subscribed_plugins(PluginManager._CONNECT_METHOD,
                                                     lambda plugin, func: plugin.connect(host_info, props, is_initial,
