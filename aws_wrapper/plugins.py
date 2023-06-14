@@ -120,6 +120,10 @@ class PluginManager:
         else:
             requested_plugins = PluginManager._DEFAULT_PLUGINS
 
+        if requested_plugins == "":
+            self._plugins.append(DefaultPlugin(plugin_service, props))
+            return
+
         plugin_list: List[str] = requested_plugins.split(",")
         for plugin_code in plugin_list:
             plugin_code = plugin_code.strip()
@@ -136,13 +140,13 @@ class PluginManager:
         return len(self._plugins)
 
     def execute(self, target: object, method_name: str, target_driver_func: Callable, *args) -> Any:
-        return self.execute_with_subscribed_plugins(method_name,
-                                                    # next_plugin_func is defined later in make_pipeline
-                                                    lambda plugin, next_plugin_func:
-                                                        plugin.execute(target, method_name, next_plugin_func, *args),
-                                                    target_driver_func)
+        return self._execute_with_subscribed_plugins(method_name,
+                                                     # next_plugin_func is defined later in make_pipeline
+                                                     lambda plugin, next_plugin_func:
+                                                         plugin.execute(target, method_name, next_plugin_func, *args),
+                                                     target_driver_func)
 
-    def execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):
+    def _execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):
         pipeline_func: Optional[Callable] = self._function_cache.get(method_name)
         if pipeline_func is None:
             pipeline_func = self.make_pipeline(method_name)
@@ -188,7 +192,7 @@ class PluginManager:
 
     def connect(self, host_info: HostSpec, props: Properties, is_initial: bool, target_driver_func: Callable) \
             -> Connection:
-        return self.execute_with_subscribed_plugins(PluginManager._CONNECT_METHOD,
-                                                    lambda plugin, func: plugin.connect(host_info, props, is_initial,
-                                                                                        func),
-                                                    target_driver_func)
+        return self._execute_with_subscribed_plugins(PluginManager._CONNECT_METHOD,
+                                                     lambda plugin, func: plugin.connect(host_info, props, is_initial,
+                                                                                         func),
+                                                     target_driver_func)

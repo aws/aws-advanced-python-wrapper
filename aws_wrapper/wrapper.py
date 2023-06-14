@@ -39,10 +39,12 @@ class AwsWrapperConnection(Connection):
             target: Union[None, str, Callable] = None,
             **kwargs: Union[None, int, str]
     ) -> "AwsWrapperConnection":
+
         # Check if target provided
         if not target:
             raise Error("Target driver is required")
 
+        # TODO: fix target str parsing functionality
         if type(target) == str:
             target = eval(target)
 

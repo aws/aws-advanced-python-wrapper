@@ -18,24 +18,29 @@ from aws_wrapper.wrapper import AwsWrapperConnection
 
 conninfo: str = "host=localhost dbname=postgres user=postgres password=qwerty"
 connection_mock = MagicMock()
-connection_mock.connect.return_value = "Test"
+connection_mock.connect.return_value = connection_mock
 
 
-def test_connection_basic():
+def test_cursor_execute_no_plugins():
 
-    AwsWrapperConnection.connect(
-        conninfo,
-        connection_mock.connect)
+    cursor_mock = MagicMock()
+    cursor_mock.execute.return_value = cursor_mock
 
-    connection_mock.connect.assert_called_with(host="localhost", dbname="postgres", user="postgres", password="qwerty")
+    cursor_mock.fetchone.return_value = 1
 
+    connection_mock.cursor.return_value = cursor_mock
 
-def test_connection_no_plugins():
-
-    AwsWrapperConnection.connect(
+    awsconn = AwsWrapperConnection.connect(
         conninfo,
         connection_mock.connect, plugins="")
 
-    connection_mock.connect.assert_called_with(host="localhost", dbname="postgres", user="postgres", password="qwerty")
+    new_cursor = awsconn.cursor()
 
-# def test_connection_str_callable():
+    new_cursor.execute(
+        "SELECT 1")
+
+    result = new_cursor.fetchone()
+
+    cursor_mock.fetchone.assert_called()
+
+    assert result == 1

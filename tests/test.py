@@ -14,9 +14,10 @@
 
 import timeit
 
-import psycopg
+from psycopg import Connection
 
 import aws_wrapper
+from aws_wrapper.wrapper import AwsWrapperConnection
 
 
 def test(num_plugins: int, loop: int):
@@ -28,10 +29,10 @@ def test(num_plugins: int, loop: int):
         plugins += "dummy,"
     plugins = plugins.rstrip(",")
 
-    pscycopg_conn = psycopg.Connection.connect(conninfo=connstring)
-    awsconn = aws_wrapper.AwsWrapperConnection.connect(
+    pscycopg_conn = Connection.connect(conninfo=connstring)
+    awsconn = AwsWrapperConnection.connect(
         connstring,
-        psycopg.Connection.connect,
+        Connection.connect,
         plugins=plugins)
 
     cursor = pscycopg_conn.cursor()
