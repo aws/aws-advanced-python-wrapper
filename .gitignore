@@ -153,3 +153,7 @@ dmypy.json
 cython_debug/
 
 .idea/
+.vs/
+.pytest_cache/
+
+
