@@ -505,6 +505,17 @@ socks = ["PySocks (>=1.5.6,!=1.5.7)"]
 use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
 
 [[package]]
+name = "resourcebundle"
+version = "2.1.0"
+description = "ResourceBundle is a module that manages internationalization of string resources"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "ResourceBundle-2.1.0-py3-none-any.whl", hash = "sha256:024411e031f18411a4539888dfe5f9f9b0be3a31c8c9b83cf1f367e1c801cfbc"},
+    {file = "ResourceBundle-2.1.0.tar.gz", hash = "sha256:32bcbfd8af9c0331c19e6851db58774bf84c54433c1d2378fc9a4cc4cbb3b00c"},
+]
+
+[[package]]
 name = "tomli"
 version = "2.0.1"
 description = "A lil' TOML parser"
@@ -572,4 +583,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "c68167c54a8ed89c786d5965dbcb6b3b4ab6494eb8eb111e9736c225b1d15dcb"
+content-hash = "231749e826108d27c502c431af1761bf66c22b21070649d333dd8cfd6a787d8a"

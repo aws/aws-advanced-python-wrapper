@@ -12,27 +12,22 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Callable, Optional
+import ResourceBundle  # type: ignore
 
-import psycopg
-
-from aws_wrapper.utils.messages import Messages
-from .test_driver import TestDriver
-from .test_environment import TestEnvironment
+MessageBundle = ResourceBundle.get_bundle("messages", None, "../aws_wrapper/resources/")
 
 
-class DriverHelper:
+class Messages:
+    @staticmethod
+    def get(key: str):
+        return MessageBundle.get(key)
 
     @staticmethod
-    def get_connect_func(test_driver: TestDriver) -> Callable:
-        d: Optional[TestDriver] = test_driver
-        if d is None:
-            d = TestEnvironment.get_current().get_current_driver()
+    def get_formatted(key: str, *args):
+        msg = MessageBundle.get(key)
+        return msg.format(*args)
 
-        if d is None:
-            raise Exception(Messages.get("Testing.RequiredTestDriver"))
-
-        if d == TestDriver.PG:
-            return psycopg.Connection.connect
-        else:
-            raise NotImplementedError(d)
+    @staticmethod
+    def get_joined(key: str, *args):
+        msg = MessageBundle.get(key)
+        return msg.join(*args)

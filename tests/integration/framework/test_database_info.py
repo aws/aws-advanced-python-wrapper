@@ -15,6 +15,7 @@
 import typing
 from typing import Any, Dict, Iterable, List
 
+from aws_wrapper.utils.messages import Messages
 from .test_instance_info import TestInstanceInfo
 
 
@@ -92,7 +93,7 @@ class TestDatabaseInfo:
         for i in self._instances:
             if i.get_instance_id() == instance_name:
                 return i
-        raise Exception("Instance {0} not found.".format(instance_name))
+        raise Exception(Messages.get_formatted("Testing.InstanceNotFound", instance_name))
 
     def move_instance_first(self, instance_name: str):
         if instance_name is None:
@@ -104,4 +105,4 @@ class TestDatabaseInfo:
                 self._instances.remove(instance)
                 self._instances.insert(0, instance)
                 return
-        raise Exception("Instance {0} not found.".format(instance_name))
+        raise Exception(Messages.get_formatted("Testing.InstanceNotFound", instance_name))

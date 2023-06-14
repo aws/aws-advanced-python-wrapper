@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from toxiproxy import Toxiproxy  # type: ignore
 
+from aws_wrapper.utils.messages import Messages
 from .database_engine import DatabaseEngine
 from .proxy_info import ProxyInfo
 from .test_driver import TestDriver
@@ -52,12 +53,12 @@ class TestEnvironment():
         info_json: Optional[str] = os.getenv("TEST_ENV_INFO_JSON")
         if info_json is None:
             raise Exception(
-                "Environment variable TEST_ENV_INFO_JSON is required.")
+                Messages.get_formatted("Testing.EnvVarRequired", "TEST_ENV_INFO_JSON"))
 
         dict: Dict[str, Any] = typing.cast(Dict[str, Any],
                                            json.loads(str(info_json)))
         if not bool(dict):
-            raise Exception("Can't parse TEST_ENV_INFO_JSON.")
+            raise Exception(Messages.get_formatted("Testing.CantParse", "TEST_ENV_INFO_JSON"))
         else:
             env = TestEnvironment(dict)
 
@@ -76,8 +77,7 @@ class TestEnvironment():
             client.update_api_consumer(instance.get_host(), proxy_control_port)
             proxies = client.proxies()
             if not bool(proxies):
-                raise Exception("Proxy for {0} is not found.".format(
-                    instance.get_instance_id()))
+                raise Exception(Messages.get_formatted("Testing.ProxyNotFound", instance.get_instance_id()))
 
             proxy_info = ProxyInfo(
                 list(proxies.values())[0], instance.get_host(), proxy_control_port)
@@ -121,10 +121,10 @@ class TestEnvironment():
 
     def get_proxy_info(self, instance_name: str) -> ProxyInfo:
         if self._proxies is None:
-            raise Exception("Proxy for {0} not found.".format(instance_name))
+            raise Exception(Messages.get_formatted("Testing.ProxyNotFound", instance_name))
         p: ProxyInfo = self._proxies.get(instance_name)  # type: ignore
         if p is None:
-            raise Exception("Proxy for {0} not found.".format(instance_name))
+            raise Exception(Messages.get_formatted("Testing.ProxyNotFound", instance_name))
         return p
 
     def get_proxy_infos(self) -> List[ProxyInfo]:

@@ -20,6 +20,7 @@ from aws_wrapper.errors import AwsWrapperError
 from .hostinfo import HostInfo, HostRole
 from .hostselector import HostSelector, RandomHostSelector
 from .pep249 import Connection
+from .utils.messages import Messages
 from .utils.properties import Properties
 
 
@@ -106,7 +107,8 @@ class DriverConnectionProvider(ConnectionProvider):
     def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
         host_selector: Optional[HostSelector] = self._accepted_strategies.get(strategy)
         if host_selector is None:
-            raise AwsWrapperError("DriverConnectionProvider does not support strategy: " + strategy)
+            raise AwsWrapperError(
+                Messages.get_formatted("DriverConnectionProvider.UnsupportedStrategy", strategy))
         else:
             return host_selector.get_host(hosts, role)
 

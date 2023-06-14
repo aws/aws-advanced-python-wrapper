@@ -17,6 +17,7 @@ from typing import List, Protocol
 
 from .hostinfo import HostInfo, HostRole
 from .pep249 import Error
+from .utils.messages import Messages
 
 
 # Interface for a strategy defining how to pick a host from a list of hosts
@@ -33,6 +34,6 @@ class RandomHostSelector(HostSelector):
         eligible_hosts = [host for host in hosts if host.role == role]
 
         if eligible_hosts.__len__() == 0:
-            raise Error("No Eligible Hosts Found")
+            raise Error(Messages.get("HostSelector.NoEligibleHost"))
 
         return random.choice(eligible_hosts)

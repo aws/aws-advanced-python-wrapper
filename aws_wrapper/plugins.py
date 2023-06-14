@@ -22,6 +22,7 @@ from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import HostListProvider
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection
+from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
@@ -194,7 +195,7 @@ class PluginManager:
         for plugin_code in plugin_list:
             plugin_code = plugin_code.strip()
             if plugin_code not in PluginManager._PLUGIN_FACTORIES:
-                raise AwsWrapperError("Invalid plugin requested: ".join(plugin_code))
+                raise AwsWrapperError(Messages.get_joined("Plugins.InvalidPlugin", plugin_code))
             factory: PluginFactory = object.__new__(PluginManager._PLUGIN_FACTORIES[plugin_code])
             plugin: Plugin = factory.get_instance(plugin_service, props)
             self._plugins.append(plugin)
@@ -241,7 +242,7 @@ class PluginManager:
                     pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
 
         if pipeline_func is None:
-            raise AwsWrapperError("A pipeline was requested but the created pipeline evaluated to None")
+            raise AwsWrapperError(Messages.get("Plugins.NonePipeline"))
         else:
             return pipeline_func
 
