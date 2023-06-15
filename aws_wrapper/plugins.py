@@ -89,7 +89,7 @@ class Plugin(Protocol):
         return execute_func()
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        pass
+        return
 
     # TODO: Should we pass in the old/new Connection, and/or the old/new HostInfo?
     #  Would this be useful info for the plugins?
