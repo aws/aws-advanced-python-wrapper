@@ -34,7 +34,7 @@ class HostRole(Enum):
 
 
 @dataclass
-class HostSpec:
+class HostInfo:
     host: str
     port: int = NO_PORT
     availability: HostAvailability = HostAvailability.AVAILABLE

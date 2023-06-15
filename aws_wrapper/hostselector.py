@@ -15,20 +15,20 @@
 import random
 from typing import List, Protocol
 
-from .hostspec import HostRole, HostSpec
+from .hostinfo import HostRole, HostInfo
 from .pep249 import Error
 
 
 # Interface for a strategy defining how to pick a host from a list of hosts
 class HostSelector(Protocol):
 
-    def get_host(self, hosts: List[HostSpec], role: HostRole) -> HostSpec:
+    def get_host(self, hosts: List[HostInfo], role: HostRole) -> HostInfo:
         ...
 
 
 class RandomHostSelector(HostSelector):
 
-    def get_host(self, hosts: List[HostSpec], role: HostRole) -> HostSpec:
+    def get_host(self, hosts: List[HostInfo], role: HostRole) -> HostInfo:
 
         eligible_hosts = [host for host in hosts if host.role == role]
 

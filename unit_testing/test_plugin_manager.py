@@ -17,7 +17,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from aws_wrapper.connection_provider import ConnectionProvider
-from aws_wrapper.hostspec import HostSpec
+from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.pep249 import AwsWrapperError, Connection
 from aws_wrapper.plugins import (DefaultPlugin, DummyPlugin, Plugin,
                                  PluginManager, PluginService)
@@ -121,7 +121,7 @@ class TestDriverConnectionProvider(TestCase):
             manager._plugins = plugins
             manager._function_cache = {}
 
-        result = manager.connect(HostSpec("localhost"), Properties(), True)
+        result = manager.connect(HostInfo("localhost"), Properties(), True)
 
         assert result == mock_connection
         assert len(calls) == 4
@@ -141,7 +141,7 @@ class TestDriverConnectionProvider(TestCase):
             manager._function_cache = {}
 
         with self.assertRaises(AwsWrapperError):
-            result = manager.connect(HostSpec("localhost"), Properties(), True)
+            result = manager.connect(HostInfo("localhost"), Properties(), True)
             assert result is None
 
         assert len(calls) == 2
@@ -159,7 +159,7 @@ class TestDriverConnectionProvider(TestCase):
             manager._function_cache = {}
 
         with self.assertRaises(AwsWrapperError):
-            result = manager.connect(HostSpec("localhost"), Properties(), True)
+            result = manager.connect(HostInfo("localhost"), Properties(), True)
             assert result is None
 
         assert len(calls) == 5
@@ -243,7 +243,7 @@ class TestPlugin(Plugin):
     def subscribed_methods(self) -> Set[str]:
         return {"*"}
 
-    def connect(self, host_spec: HostSpec, props: Properties,
+    def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, connect_func: Callable) -> Connection:
         self._calls.append(type(self).__name__ + ":before connect")
         if self._connection is not None:
@@ -296,7 +296,7 @@ class TestPluginRaisesError(TestPlugin):
         super().__init__(calls)
         self._throw_before_call = throw_before_call
 
-    def connect(self, host_spec: HostSpec, props: Properties,
+    def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, connect_func: Callable) -> Connection:
         self._calls.append(type(self).__name__ + ":before connect")
         if self._throw_before_call:

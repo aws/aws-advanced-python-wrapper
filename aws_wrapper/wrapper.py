@@ -16,7 +16,7 @@ from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
 from aws_wrapper.connection_provider import DriverConnectionProvider
-from aws_wrapper.hostspec import NO_PORT, HostSpec
+from aws_wrapper.hostinfo import NO_PORT, HostInfo
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugins import PluginManager, PluginService
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
@@ -55,9 +55,9 @@ class AwsWrapperConnection(Connection):
 
         plugin_service: PluginService = PluginService()
         plugin_manager: PluginManager = PluginManager(props, plugin_service, DriverConnectionProvider(target_func))
-        host_spec = HostSpec(props["host"], int(props["port"]) if "port" in props else NO_PORT)
+        host_info = HostInfo(props["host"], int(props["port"]) if "port" in props else NO_PORT)
 
-        conn = plugin_manager.connect(host_spec, props, True)
+        conn = plugin_manager.connect(host_info, props, True)
 
         return AwsWrapperConnection(plugin_manager, conn)
 

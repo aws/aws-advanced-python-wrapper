@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostspec import HostRole, HostSpec
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
@@ -80,7 +80,7 @@ class Plugin(ABC):
     def subscribed_methods(self) -> Set[str]:
         ...
 
-    def connect(self, host_spec: HostSpec, props: Properties,
+    def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, connect_func: Callable) -> Connection:
         return connect_func()
 
@@ -114,14 +114,14 @@ class DefaultPlugin(Plugin):
         self._plugin_service: PluginService = plugin_service
         self._conn_provider_manager = ConnectionProviderManager(default_conn_provider)
 
-    def connect(self, host_spec: HostSpec, props: Properties,
+    def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, connect_func: Callable) -> Any:
         # logger.debug("Default plugin: connect before")
         target_driver_props = copy.copy(props)
         PropertiesUtils.remove_wrapper_props(target_driver_props)
         connection_provider: ConnectionProvider = \
-            self._conn_provider_manager.get_connection_provider(host_spec, target_driver_props)
-        result = connection_provider.connect(host_spec, target_driver_props)
+            self._conn_provider_manager.get_connection_provider(host_info, target_driver_props)
+        result = connection_provider.connect(host_info, target_driver_props)
         # logger.debug("Default plugin: connect after")
         return result
 
@@ -144,7 +144,7 @@ class DummyPlugin(Plugin):
         self._id: int = DummyPlugin._NEXT_ID
         DummyPlugin._NEXT_ID += 1
 
-    def connect(self, host_spec: HostSpec, props: Properties,
+    def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, connect_func: Callable) -> Any:
         # logger.debug("Plugin {}: connect before".format(self._id))
         result = connect_func()
@@ -255,11 +255,11 @@ class PluginManager:
         return lambda plugin_func, target_driver_func: \
             plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func))
 
-    def connect(self, host_spec: HostSpec, props: Properties, is_initial: bool) \
+    def connect(self, host_info: HostInfo, props: Properties, is_initial: bool) \
             -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._CONNECT_METHOD,
-            lambda plugin, func: plugin.connect(host_spec, props, is_initial, func),
+            lambda plugin, func: plugin.connect(host_info, props, is_initial, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
             lambda: None)
 
