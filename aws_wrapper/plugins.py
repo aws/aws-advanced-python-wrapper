@@ -15,13 +15,56 @@
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostspec import HostSpec
+from aws_wrapper.hostspec import HostRole, HostSpec
 from aws_wrapper.pep249 import Connection
 from aws_wrapper.utils.properties import Properties
 
 
 class PluginService:
-    ...
+    @property
+    def current_connection(self):
+        return self.current_connection
+
+    @property
+    def current_host_spec(self):
+        return self.current_host_spec
+
+    @property
+    def hosts(self):
+        return []
+
+    @property
+    def host_list_provider(self):
+        return self.host_list_provider
+
+    @property
+    def initial_connection_host_spec(self):
+        return self.initial_connection_host_spec
+
+    @initial_connection_host_spec.setter
+    def initial_connection_host_spec(self, value: HostSpec):
+        self.initial_connection_host_spec = value
+
+    def accepts_strategy(self, role: HostRole, strategy: str):
+        ...
+
+    def get_host_spec_by_strategy(self, role: HostRole, strategy: str):
+        ...
+
+    def get_host_role(self):
+        ...
+
+    def refresh_host_list(self):
+        ...
+
+    def force_refresh_host_list(self):
+        ...
+
+    def connect(self, host_info: HostSpec, props: Properties):
+        ...
+
+    def force_connect(self, host_info: HostSpec, props: Properties):
+        ...
 
 
 class Plugin(Protocol):
@@ -143,7 +186,7 @@ class PluginManager:
         return self._execute_with_subscribed_plugins(method_name,
                                                      # next_plugin_func is defined later in make_pipeline
                                                      lambda plugin, next_plugin_func:
-                                                         plugin.execute(target, method_name, next_plugin_func, *args),
+                                                     plugin.execute(target, method_name, next_plugin_func, *args),
                                                      target_driver_func)
 
     def _execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):
