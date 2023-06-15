@@ -18,35 +18,35 @@ from unittest import TestCase
 import pytest
 
 from aws_wrapper import pep249
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.hostselector import RandomHostSelector
-from aws_wrapper.hostspec import HostRole, HostSpec
 
 
 class TestHostSelector(TestCase):
     def test_random_host_selection_strategy(self):
         random_host_selector: RandomHostSelector = RandomHostSelector()
         host_role = HostRole.WRITER
-        host_spec_list = [HostSpec("testhost1"), HostSpec("testhost2"), HostSpec("testhost3")]
+        host_info_list = [HostInfo("testhost1"), HostInfo("testhost2"), HostInfo("testhost3")]
 
-        host: HostSpec = random_host_selector.get_host(host_spec_list, host_role)
+        host: HostInfo = random_host_selector.get_host(host_info_list, host_role)
 
-        assert host_spec_list.__contains__(host)
+        assert host_info_list.__contains__(host)
 
     def test_random_host_selector_selects_roles(self):
         random_host_selector: RandomHostSelector = RandomHostSelector()
         host_role = HostRole.READER
-        host_spec_list = [HostSpec("testhost1", role=HostRole.WRITER), HostSpec("testhost2", role=HostRole.READER)]
+        host_info_list = [HostInfo("testhost1", role=HostRole.WRITER), HostInfo("testhost2", role=HostRole.READER)]
 
-        host: HostSpec = random_host_selector.get_host(host_spec_list, host_role)
+        host: HostInfo = random_host_selector.get_host(host_info_list, host_role)
 
         assert host.host == "testhost2"
 
     def test_random_host_no_eligible_hosts(self):
         random_host_selector: RandomHostSelector = RandomHostSelector()
         host_role = HostRole.READER
-        host_spec_list = [HostSpec("testhost1"), HostSpec("testhost2"), HostSpec("testhost3")]
+        host_info_list = [HostInfo("testhost1"), HostInfo("testhost2"), HostInfo("testhost3")]
 
         with pytest.raises(Exception) as e_info:
-            random_host_selector.get_host(host_spec_list, host_role)
+            random_host_selector.get_host(host_info_list, host_role)
 
         assert isinstance(e_info.value, pep249.Error)

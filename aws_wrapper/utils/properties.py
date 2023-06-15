@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Dict, List, Set, Union
+from typing import Dict, Set, Union
 
 
 class Properties(Dict[str, str]):
@@ -37,19 +37,9 @@ class PropertiesUtils:
         return props
 
     @staticmethod
-    def remove_wrapper_conninfo(old_info: str) -> str:
-        new_info: List[str] = []
-        props: List[str] = old_info.split(" ")
-        for prop in props:
-            if prop.split("=")[0] not in PropertiesUtils.WRAPPER_PROPERTIES:
-                new_info.append(prop)
-        return " ".join(new_info)
-
-    @staticmethod
-    def remove_wrapper_kwargs(kwargs_dict: Dict[str, Union[None, int, str]]):
-        for prop in PropertiesUtils.WRAPPER_PROPERTIES:
-            kwargs_dict.pop(prop, None)
-        return kwargs_dict
+    def remove_wrapper_props(props: Properties):
+        for prop_key in PropertiesUtils.WRAPPER_PROPERTIES:
+            props.pop(prop_key, None)
 
     @staticmethod
     def log_properties(props: Properties, caption: str):
