@@ -38,7 +38,7 @@ class ConnectionProvider(Protocol):
         ...
 
 
-class ConnectionProviderManager():
+class ConnectionProviderManager:
     def __init__(self, default_provider: ConnectionProvider, connection_provider: Optional[ConnectionProvider] = None):
         self._default_provider: ConnectionProvider = default_provider
         self._connection_provider: Optional[ConnectionProvider] = connection_provider

@@ -31,10 +31,10 @@ class TestDriverConnectionProvider(TestCase):
 
         host_spec = HostSpec("localhost")
         properties = Properties()
-        connection_provider.accepts_host_spec(host_spec, properties)
+        assert connection_provider.accepts_host_spec(host_spec, properties) is True
 
         host_spec2 = HostSpec("abc123")
-        connection_provider.accepts_host_spec(host_spec2, properties)
+        assert connection_provider.accepts_host_spec(host_spec2, properties) is True
 
     def test_provider_accepts_random_strategy(self):
         connection_mock = MagicMock()

@@ -15,9 +15,7 @@
 from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
-from aws_wrapper.connection_provider import (ConnectionProvider,
-                                             ConnectionProviderManager,
-                                             DriverConnectionProvider)
+from aws_wrapper.connection_provider import DriverConnectionProvider
 from aws_wrapper.hostspec import NO_PORT, HostSpec
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugins import PluginManager, PluginService
@@ -55,28 +53,11 @@ class AwsWrapperConnection(Connection):
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
         logger.debug(PropertiesUtils.log_properties(props, "Connection Properties: "))
 
-        # The target driver will throw an exception if it receives properties that it does not recognize
-        conninfo = PropertiesUtils.remove_wrapper_conninfo(conninfo)
-        PropertiesUtils.remove_wrapper_kwargs(kwargs)
-
-        target_driver_props = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
-
-        logger.debug(kwargs)
-
         plugin_service: PluginService = PluginService()
-        plugin_manager: PluginManager = PluginManager(props, plugin_service)
-
-        # TODO: This behavior to go in connection plugin
-        connection_provider_manager = ConnectionProviderManager(DriverConnectionProvider(target_func))
+        plugin_manager: PluginManager = PluginManager(props, plugin_service, DriverConnectionProvider(target_func))
         host_spec = HostSpec(props["host"], int(props["port"]) if "port" in props else NO_PORT)
 
-        connection_provider: ConnectionProvider = connection_provider_manager.get_connection_provider(host_spec, target_driver_props)
-
-        # Target driver is a connect function
-        if plugin_manager.num_plugins == 0:
-            conn = connection_provider.connect(host_spec, target_driver_props)
-        else:
-            conn = plugin_manager.connect(host_spec, props, True, lambda: connection_provider.connect(host_spec, target_driver_props))
+        conn = plugin_manager.connect(host_spec, props, True)
 
         return AwsWrapperConnection(plugin_manager, conn)
 

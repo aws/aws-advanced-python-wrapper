@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import Enum, auto
 from typing import Set
 
 NO_PORT: int = -1
@@ -22,15 +22,15 @@ DEFAULT_WEIGHT: int = 100
 
 
 class HostAvailability(Enum):
-    UNCERTAIN = 1,
-    AVAILABLE = 2,
-    NOT_AVAILABLE = 3
+    UNCERTAIN = auto()
+    AVAILABLE = auto()
+    NOT_AVAILABLE = auto()
 
 
 class HostRole(Enum):
-    UNKNOWN = 1,
-    READER = 2,
-    WRITER = 3
+    UNKNOWN = auto()
+    READER = auto()
+    WRITER = auto()
 
 
 @dataclass

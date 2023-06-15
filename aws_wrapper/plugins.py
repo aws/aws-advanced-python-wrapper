@@ -12,12 +12,18 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import copy
+from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
+from aws_wrapper.connection_provider import (ConnectionProvider,
+                                             ConnectionProviderManager)
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostspec import HostRole, HostSpec
 from aws_wrapper.pep249 import Connection
-from aws_wrapper.utils.properties import Properties
+from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
+                                             OldConnectionSuggestedAction)
+from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 
 class PluginService:
@@ -67,18 +73,28 @@ class PluginService:
         ...
 
 
-class Plugin(Protocol):
+class Plugin(ABC):
 
     @property
+    @abstractmethod
     def subscribed_methods(self) -> Set[str]:
-        return {""}
-
-    def connect(self, host_info: HostSpec, props: Properties,
-                initial: bool, connect_func: Callable) -> Connection:
         ...
+
+    def connect(self, host_spec: HostSpec, props: Properties,
+                initial: bool, connect_func: Callable) -> Connection:
+        return connect_func()
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
-        ...
+        return execute_func()
+
+    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
+        pass
+
+    # TODO: Should we pass in the old/new Connection, and/or the old/new HostInfo?
+    #  Would this be useful info for the plugins?
+    def notify_connection_changed(self, changes: Set[ConnectionEvent]) \
+            -> OldConnectionSuggestedAction:
+        return OldConnectionSuggestedAction.NO_OPINION
 
 
 class PluginFactory(Protocol):
@@ -94,14 +110,18 @@ class DummyPluginFactory(PluginFactory):
 class DefaultPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
 
-    def __init__(self, plugin_service: PluginService, props: Properties):
+    def __init__(self, plugin_service: PluginService, default_conn_provider: ConnectionProvider):
         self._plugin_service: PluginService = plugin_service
-        self._props: Properties = props
+        self._conn_provider_manager = ConnectionProviderManager(default_conn_provider)
 
-    def connect(self, host_info: HostSpec, props: Properties,
+    def connect(self, host_spec: HostSpec, props: Properties,
                 initial: bool, connect_func: Callable) -> Any:
         # logger.debug("Default plugin: connect before")
-        result = connect_func()
+        target_driver_props = copy.copy(props)
+        PropertiesUtils.remove_wrapper_props(target_driver_props)
+        connection_provider: ConnectionProvider = \
+            self._conn_provider_manager.get_connection_provider(host_spec, target_driver_props)
+        result = connection_provider.connect(host_spec, target_driver_props)
         # logger.debug("Default plugin: connect after")
         return result
 
@@ -124,7 +144,7 @@ class DummyPlugin(Plugin):
         self._id: int = DummyPlugin._NEXT_ID
         DummyPlugin._NEXT_ID += 1
 
-    def connect(self, host_info: HostSpec, props: Properties,
+    def connect(self, host_spec: HostSpec, props: Properties,
                 initial: bool, connect_func: Callable) -> Any:
         # logger.debug("Plugin {}: connect before".format(self._id))
         result = connect_func()
@@ -145,16 +165,18 @@ class DummyPlugin(Plugin):
 class PluginManager:
     _ALL_METHODS: str = "*"
     _CONNECT_METHOD: str = "connect"
-    _DEFAULT_PLUGINS: str = "dummy,dummy"
+    _NOTIFY_CONNECTION_CHANGED_METHOD: str = "notify_connection_changed"
+    _NOTIFY_HOST_LIST_CHANGED_METHOD: str = "notify_host_list_changed"
+
+    _DEFAULT_PLUGINS: str = "dummy"
     _PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
         "dummy": DummyPluginFactory
     }
 
-    def __init__(self, props: Properties, plugin_service: PluginService):
+    def __init__(self, props: Properties, plugin_service: PluginService, default_conn_provider: ConnectionProvider):
         self._props: Properties = props
+        self._plugin_service = plugin_service
         self._plugins: List[Plugin] = []
-        self._execute_func: Optional[Callable] = None
-        self._connect_func: Optional[Callable] = None
         self._function_cache: Dict[str, Callable] = {}
 
         requested_plugins: str
@@ -164,7 +186,7 @@ class PluginManager:
             requested_plugins = PluginManager._DEFAULT_PLUGINS
 
         if requested_plugins == "":
-            self._plugins.append(DefaultPlugin(plugin_service, props))
+            self._plugins.append(DefaultPlugin(plugin_service, default_conn_provider))
             return
 
         plugin_list: List[str] = requested_plugins.split(",")
@@ -176,23 +198,23 @@ class PluginManager:
             plugin: Plugin = factory.get_instance(plugin_service, props)
             self._plugins.append(plugin)
 
-        self._plugins.append(DefaultPlugin(plugin_service, props))
+        self._plugins.append(DefaultPlugin(plugin_service, default_conn_provider))
 
     @property
     def num_plugins(self) -> int:
         return len(self._plugins)
 
     def execute(self, target: object, method_name: str, target_driver_func: Callable, *args) -> Any:
-        return self._execute_with_subscribed_plugins(method_name,
-                                                     # next_plugin_func is defined later in make_pipeline
-                                                     lambda plugin, next_plugin_func:
-                                                     plugin.execute(target, method_name, next_plugin_func, *args),
-                                                     target_driver_func)
+        return self._execute_with_subscribed_plugins(
+            method_name,
+            # next_plugin_func is defined later in make_pipeline
+            lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args),
+            target_driver_func)
 
     def _execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):
         pipeline_func: Optional[Callable] = self._function_cache.get(method_name)
         if pipeline_func is None:
-            pipeline_func = self.make_pipeline(method_name)
+            pipeline_func = self._make_pipeline(method_name)
             self._function_cache[method_name] = pipeline_func
 
         assert (pipeline_func is not None)
@@ -200,7 +222,7 @@ class PluginManager:
 
     # Builds the plugin pipeline function chain. The pipeline is built in a way that allows plugins to perform logic
     # both before and after the target driver function call.
-    def make_pipeline(self, method_name: str) -> Callable:
+    def _make_pipeline(self, method_name: str) -> Callable:
         pipeline_func: Optional[Callable] = None
         num_plugins: int = len(self._plugins)
 
@@ -213,29 +235,62 @@ class PluginManager:
             if is_subscribed:
                 if pipeline_func is None:
                     # Defines the call to DefaultPlugin, which is the last plugin in the pipeline
-                    pipeline_func = self.create_base_pipeline_func(plugin)
+                    pipeline_func = self._create_base_pipeline_func(plugin)
                 else:
-                    pipeline_func = self.extend_pipeline_func(plugin, pipeline_func)
+                    pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
 
         if pipeline_func is None:
             raise AwsWrapperError("A pipeline was requested but the created pipeline evaluated to None")
         else:
             return pipeline_func
 
-    def create_base_pipeline_func(self, plugin):
+    def _create_base_pipeline_func(self, plugin):
         # The plugin passed here will be the DefaultPlugin, which is the last plugin in the pipeline
         # The second arg to plugin_func is the next call in the pipeline. Here, it is the target driver function
         return lambda plugin_func, target_driver_func: plugin_func(plugin, target_driver_func)
 
-    def extend_pipeline_func(self, plugin, pipeline_so_far):
+    def _extend_pipeline_func(self, plugin, pipeline_so_far):
         # Defines the call to a plugin that precedes the DefaultPlugin in the pipeline
         # The second arg to plugin_func effectively appends the tail end of the pipeline to the current plugin's call
         return lambda plugin_func, target_driver_func: \
             plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func))
 
-    def connect(self, host_info: HostSpec, props: Properties, is_initial: bool, target_driver_func: Callable) \
+    def connect(self, host_spec: HostSpec, props: Properties, is_initial: bool) \
             -> Connection:
-        return self._execute_with_subscribed_plugins(PluginManager._CONNECT_METHOD,
-                                                     lambda plugin, func: plugin.connect(host_info, props, is_initial,
-                                                                                         func),
-                                                     target_driver_func)
+        return self._execute_with_subscribed_plugins(
+            PluginManager._CONNECT_METHOD,
+            lambda plugin, func: plugin.connect(host_spec, props, is_initial, func),
+            # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
+            lambda: None)
+
+    def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
+        old_conn_suggestions: Set[OldConnectionSuggestedAction] = set()
+        self._notify_subscribed_plugins(
+            PluginManager._NOTIFY_CONNECTION_CHANGED_METHOD,
+            lambda plugin: self._notify_plugin_conn_changed(plugin, changes, old_conn_suggestions))
+
+        if OldConnectionSuggestedAction.PRESERVE in old_conn_suggestions:
+            return OldConnectionSuggestedAction.PRESERVE
+        elif OldConnectionSuggestedAction.DISPOSE in old_conn_suggestions:
+            return OldConnectionSuggestedAction.DISPOSE
+        else:
+            return OldConnectionSuggestedAction.NO_OPINION
+
+    def _notify_subscribed_plugins(self, method_name: str, notify_plugin_func: Callable):
+        for plugin in self._plugins:
+            subscribed_methods = plugin.subscribed_methods
+            is_subscribed = PluginManager._ALL_METHODS in subscribed_methods or method_name in subscribed_methods
+            if is_subscribed:
+                notify_plugin_func(plugin)
+
+    def _notify_plugin_conn_changed(
+            self,
+            plugin: Plugin,
+            changes: Set[ConnectionEvent],
+            old_conn_suggestions: Set[OldConnectionSuggestedAction]):
+        suggestion = plugin.notify_connection_changed(changes)
+        old_conn_suggestions.add(suggestion)
+
+    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
+        self._notify_subscribed_plugins(PluginManager._NOTIFY_HOST_LIST_CHANGED_METHOD,
+                                        lambda plugin: plugin.notify_host_list_changed(changes))

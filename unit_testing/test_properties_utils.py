@@ -12,12 +12,14 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from unittest import TestCase
+
 from parameterized import param, parameterized
 
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 
-class TestPropertiesUtils:
+class TestPropertiesUtils(TestCase):
 
     @parameterized.expand([
         param(Properties({"user": "postgres", "password": "kwargs_password"}),
@@ -33,24 +35,13 @@ class TestPropertiesUtils:
         assert expected == PropertiesUtils.parse_properties(conninfo, **kwargs)
 
     @parameterized.expand([
-        param("user=postgres password=conninfo_password",
-              "user=postgres plugins=pluginCode password=conninfo_password"),
-        param("user=postgres password=conninfo_password",
-              "user=postgres password=conninfo_password"),
-        param("",
-              "")
+        param(Properties({"user": "postgres", "password": "conninfo_password"}),
+              Properties(user="postgres", plugins="pluginCode", password="conninfo_password")),
+        param(Properties({"user": "postgres", "password": "conninfo_password"}),
+              Properties(user="postgres", password="conninfo_password")),
+        param(Properties(), Properties())
     ])
-    def test_remove_wrapper_conninfo(self, expected, conninfo):
-        assert expected == PropertiesUtils.remove_wrapper_conninfo(conninfo)
-
-    @parameterized.expand([
-        param({"user": "postgres", "password": "conninfo_password"},
-              user="postgres", plugins="pluginCode", password="conninfo_password"),
-        param({"user": "postgres", "password": "conninfo_password"},
-              user="postgres", password="conninfo_password"),
-        param({})
-    ])
-    def test_remove_wrapper_kwargs(self, expected, **kwargs):
-        result = PropertiesUtils.remove_wrapper_kwargs(kwargs)
-        assert expected == kwargs
-        assert expected == result
+    def test_remove_wrapper_props(self, expected, props):
+        props_copy = props.copy()
+        PropertiesUtils.remove_wrapper_props(props_copy)
+        assert expected == props_copy
