@@ -13,7 +13,7 @@
 #  limitations under the License.
 
 import copy
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
 from aws_wrapper.connection_provider import (ConnectionProvider,
@@ -74,7 +74,7 @@ class PluginService:
         ...
 
 
-class Plugin(ABC):
+class Plugin(Protocol):
 
     @property
     @abstractmethod
