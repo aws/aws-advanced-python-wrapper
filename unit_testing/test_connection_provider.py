@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager,
                                              DriverConnectionProvider)
-from aws_wrapper.hostinfo import HostRole, HostInfo
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.utils.properties import Properties
 
 

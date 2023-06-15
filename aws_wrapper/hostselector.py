@@ -15,7 +15,7 @@
 import random
 from typing import List, Protocol
 
-from .hostinfo import HostRole, HostInfo
+from .hostinfo import HostInfo, HostRole
 from .pep249 import Error
 
 

@@ -17,8 +17,8 @@ import threading
 from typing import Callable, Dict, List, Optional, Protocol
 
 from aws_wrapper.errors import AwsWrapperError
+from .hostinfo import HostInfo, HostRole
 from .hostselector import HostSelector, RandomHostSelector
-from .hostinfo import HostRole, HostInfo
 from .pep249 import Connection
 from .utils.properties import Properties
 

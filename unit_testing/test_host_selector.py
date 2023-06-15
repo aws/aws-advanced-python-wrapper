@@ -18,8 +18,8 @@ from unittest import TestCase
 import pytest
 
 from aws_wrapper import pep249
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.hostselector import RandomHostSelector
-from aws_wrapper.hostinfo import HostRole, HostInfo
 
 
 class TestHostSelector(TestCase):

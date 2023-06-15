@@ -14,7 +14,7 @@
 
 from unittest import TestCase
 
-from aws_wrapper.hostinfo import HostAvailability, HostRole, HostInfo
+from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 
 
 class TestHostInfo(TestCase):
