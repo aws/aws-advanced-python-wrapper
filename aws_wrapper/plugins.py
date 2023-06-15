@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
 from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.host_list_provider import HostListProvider
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
@@ -28,33 +29,33 @@ from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 class PluginService:
     @property
-    def current_connection(self):
+    def current_connection(self) -> Connection:
         return self.current_connection
 
     @property
-    def current_host_spec(self):
-        return self.current_host_spec
+    def current_host_info(self) -> HostInfo:
+        return self.current_host_info
 
     @property
-    def hosts(self):
+    def hosts(self) -> List[HostInfo]:
         return []
 
     @property
-    def host_list_provider(self):
+    def host_list_provider(self) -> HostListProvider:
         return self.host_list_provider
 
     @property
-    def initial_connection_host_spec(self):
-        return self.initial_connection_host_spec
+    def initial_connection_host_info(self) -> HostInfo:
+        return self.initial_connection_host_info
 
-    @initial_connection_host_spec.setter
-    def initial_connection_host_spec(self, value: HostSpec):
-        self.initial_connection_host_spec = value
+    @initial_connection_host_info.setter
+    def initial_connection_host_info(self, value: HostInfo):
+        self.initial_connection_host_info = value
 
     def accepts_strategy(self, role: HostRole, strategy: str):
         ...
 
-    def get_host_spec_by_strategy(self, role: HostRole, strategy: str):
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str):
         ...
 
     def get_host_role(self):
@@ -66,10 +67,10 @@ class PluginService:
     def force_refresh_host_list(self):
         ...
 
-    def connect(self, host_info: HostSpec, props: Properties):
+    def connect(self, host_info: HostInfo, props: Properties):
         ...
 
-    def force_connect(self, host_info: HostSpec, props: Properties):
+    def force_connect(self, host_info: HostInfo, props: Properties):
         ...
 
 
