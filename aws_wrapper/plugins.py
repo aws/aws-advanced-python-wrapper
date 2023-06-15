@@ -29,7 +29,26 @@ from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 
-class PluginService:
+class PluginServiceManagerContainer:
+    @property
+    def plugin_service(self):
+        return self._plugin_service
+
+    @plugin_service.setter
+    def plugin_service(self, value):
+        self._plugin_service = value
+
+    @property
+    def plugin_manager(self):
+        return self._plugin_manager
+
+    @plugin_manager.setter
+    def plugin_manager(self, value):
+        self._plugin_manager = value
+
+
+class PluginService(ABC):
+
     @property
     def current_connection(self) -> Connection:
         return self.current_connection
@@ -54,14 +73,58 @@ class PluginService:
     def initial_connection_host_info(self, value: HostInfo):
         self.initial_connection_host_info = value
 
-    def accepts_strategy(self, role: HostRole, strategy: str):
+    @abstractmethod
+    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         ...
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str):
+    @abstractmethod
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
         ...
 
-    def get_host_role(self):
+    @abstractmethod
+    def get_host_role(self) -> Optional[HostRole]:
         ...
+
+    @abstractmethod
+    def refresh_host_list(self):
+        ...
+
+    @abstractmethod
+    def force_refresh_host_list(self):
+        ...
+
+    @abstractmethod
+    def connect(self, host_info: HostInfo, props: Properties) -> Connection:
+        ...
+
+    # @abstractmethod
+    # def force_connect(self, host_info: HostInfo, props: Properties) -> Connection:
+    #     ...
+
+
+class PluginServiceImpl(PluginService):
+    def __init__(
+            self,
+            container: PluginServiceManagerContainer,
+            props: Properties,
+            original_url: str = "",  # TODO
+            target_driver_protocol: str = ""):  # TODO
+        self._container = container
+        self._container.plugin_service = self
+        self._props = props
+        self._original_url = original_url
+        self._target_driver_protocol = target_driver_protocol
+
+    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
+        plugin_manager: PluginManager = self._container.plugin_manager
+        return plugin_manager.accepts_strategy(role, strategy)
+
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
+        plugin_manager: PluginManager = self._container.plugin_manager
+        return plugin_manager.get_host_info_by_strategy(role, strategy)
+
+    def get_host_role(self) -> Optional[HostRole]:
+        return None
 
     def refresh_host_list(self):
         ...
@@ -69,11 +132,12 @@ class PluginService:
     def force_refresh_host_list(self):
         ...
 
-    def connect(self, host_info: HostInfo, props: Properties):
-        ...
+    def connect(self, host_info: HostInfo, props: Properties) -> Connection:
+        plugin_manager: PluginManager = self._container.plugin_manager
+        return plugin_manager.connect(host_info, props, self.current_connection is None)
 
-    def force_connect(self, host_info: HostInfo, props: Properties):
-        ...
+    # def force_connect(self, host_info: HostInfo, props: Properties) -> Connection:
+    #     ...
 
 
 class Plugin(ABC):
@@ -87,6 +151,10 @@ class Plugin(ABC):
                 initial: bool, connect_func: Callable) -> Connection:
         return connect_func()
 
+    def force_connect(self, host_info: HostInfo, props: Properties,
+                      initial: bool, force_connect_func: Callable) -> Connection:
+        return force_connect_func()
+
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
         return execute_func()
 
@@ -98,6 +166,12 @@ class Plugin(ABC):
     def notify_connection_changed(self, changes: Set[ConnectionEvent]) \
             -> OldConnectionSuggestedAction:
         return OldConnectionSuggestedAction.NO_OPINION
+
+    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
+        return False
+
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
+        raise NotImplementedError(Messages.get_formatted("Plugins.UnsupportedMethod", "get_host_info_by_strategy"))
 
     def init_host_provider(self, initial_url: str, props: Properties,
                            host_list_provider_service: HostListProviderService, init_host_provider_func: Callable):
@@ -119,17 +193,21 @@ class DefaultPlugin(Plugin):
 
     def __init__(self, plugin_service: PluginService, default_conn_provider: ConnectionProvider):
         self._plugin_service: PluginService = plugin_service
-        self._conn_provider_manager = ConnectionProviderManager(default_conn_provider)
+        self._connection_provider_manager = ConnectionProviderManager(default_conn_provider)
 
     def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, connect_func: Callable) -> Any:
-        # logger.debug("Default plugin: connect before")
         target_driver_props = copy.copy(props)
         PropertiesUtils.remove_wrapper_props(target_driver_props)
         connection_provider: ConnectionProvider = \
-            self._conn_provider_manager.get_connection_provider(host_info, target_driver_props)
-        result = connection_provider.connect(host_info, target_driver_props)
+            self._connection_provider_manager.get_connection_provider(host_info, target_driver_props)
+        # logger.debug("Default plugin: connect before")
+        result = self._connect(host_info, target_driver_props, connection_provider)
         # logger.debug("Default plugin: connect after")
+        return result
+
+    def _connect(self, host_info: HostInfo, props: Properties, conn_provider: ConnectionProvider):
+        result = conn_provider.connect(host_info, props)
         return result
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
@@ -137,6 +215,22 @@ class DefaultPlugin(Plugin):
         result = execute_func()
         # logger.debug("Default plugin: execute after")
         return result
+
+    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
+        if HostRole.UNKNOWN == role:
+            return False
+        return self._connection_provider_manager.accepts_strategy(role, strategy)
+
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
+        if HostRole.UNKNOWN == role:
+            raise AwsWrapperError(Messages.get("Plugins.UnknownHosts"))
+
+        hosts = self._plugin_service.hosts
+
+        if len(hosts) < 1:
+            raise AwsWrapperError(Messages.get("Plugins.EmptyHosts"))
+
+        return self._connection_provider_manager.get_host_info_by_strategy(hosts, role, strategy)
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -181,6 +275,7 @@ class PluginManager:
     _CONNECT_METHOD: str = "connect"
     _NOTIFY_CONNECTION_CHANGED_METHOD: str = "notify_connection_changed"
     _NOTIFY_HOST_LIST_CHANGED_METHOD: str = "notify_host_list_changed"
+    _GET_HOST_INFO_BY_STRATEGY_METHOD: str = "get_host_info_by_strategy"
     _INIT_HOST_LIST_PROVIDER_METHOD: str = "init_host_provider"
 
     _DEFAULT_PLUGINS: str = "dummy"
@@ -188,11 +283,16 @@ class PluginManager:
         "dummy": DummyPluginFactory
     }
 
-    def __init__(self, props: Properties, plugin_service: PluginService, default_conn_provider: ConnectionProvider):
+    def __init__(
+            self,
+            container: PluginServiceManagerContainer,
+            props: Properties,
+            default_conn_provider: ConnectionProvider):
         self._props: Properties = props
-        self._plugin_service = plugin_service
         self._plugins: List[Plugin] = []
         self._function_cache: Dict[str, Callable] = {}
+        self._container = container
+        self._container.plugin_manager = self
 
         requested_plugins: str
         if "plugins" in props:
@@ -201,7 +301,7 @@ class PluginManager:
             requested_plugins = PluginManager._DEFAULT_PLUGINS
 
         if requested_plugins == "":
-            self._plugins.append(DefaultPlugin(plugin_service, default_conn_provider))
+            self._plugins.append(DefaultPlugin(self._container.plugin_service, default_conn_provider))
             return
 
         plugin_list: List[str] = requested_plugins.split(",")
@@ -210,10 +310,10 @@ class PluginManager:
             if plugin_code not in PluginManager._PLUGIN_FACTORIES:
                 raise AwsWrapperError(Messages.get_joined("Plugins.InvalidPlugin", plugin_code))
             factory: PluginFactory = object.__new__(PluginManager._PLUGIN_FACTORIES[plugin_code])
-            plugin: Plugin = factory.get_instance(plugin_service, props)
+            plugin: Plugin = factory.get_instance(self._container.plugin_service, props)
             self._plugins.append(plugin)
 
-        self._plugins.append(DefaultPlugin(plugin_service, default_conn_provider))
+        self._plugins.append(DefaultPlugin(self._container.plugin_service, default_conn_provider))
 
     @property
     def num_plugins(self) -> int:
@@ -309,6 +409,31 @@ class PluginManager:
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         self._notify_subscribed_plugins(PluginManager._NOTIFY_HOST_LIST_CHANGED_METHOD,
                                         lambda plugin: plugin.notify_host_list_changed(changes))
+
+    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
+        for plugin in self._plugins:
+            plugin_subscribed_methods = plugin.subscribed_methods
+            is_subscribed = \
+                self._ALL_METHODS in plugin_subscribed_methods \
+                or self._GET_HOST_INFO_BY_STRATEGY_METHOD in plugin_subscribed_methods
+            if is_subscribed:
+                if plugin.accepts_strategy(role, strategy):
+                    return True
+
+        return False
+
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
+        for plugin in self._plugins:
+            plugin_subscribed_methods = plugin.subscribed_methods
+            is_subscribed = \
+                self._ALL_METHODS in plugin_subscribed_methods \
+                or self._GET_HOST_INFO_BY_STRATEGY_METHOD in plugin_subscribed_methods
+
+            if is_subscribed:
+                host: HostInfo = plugin.get_host_info_by_strategy(role, strategy)
+                if host is not None:
+                    return host
+        return None
 
     def init_host_provider(self, initial_url: str, props: Properties,
                            host_list_provider_service: HostListProviderService):
