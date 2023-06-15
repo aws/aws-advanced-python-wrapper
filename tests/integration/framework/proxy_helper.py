@@ -12,12 +12,16 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from logging import getLogger
+
 from toxiproxy import Proxy  # type: ignore
 from toxiproxy.api import APIConsumer  # type: ignore
 from toxiproxy.exceptions import NotFound  # type: ignore
 
 from .proxy_info import ProxyInfo
 from .test_environment import TestEnvironment
+
+logger = getLogger(__name__)
 
 
 class ProxyHelper:
@@ -50,7 +54,7 @@ class ProxyHelper:
                                    stream="upstream",
                                    toxicity=1,
                                    attributes=attributes)
-        # print("Disabled connectivity to " + proxy.name)
+        logger.debug("Disabled connectivity to " + proxy_info.proxy.name)
 
     @staticmethod
     def enable_all_connectivity():
@@ -81,4 +85,4 @@ class ProxyHelper:
         if up_stream is not None:
             proxy_info.proxy.destroy_toxic("UP-STREAM")
 
-        # print("Enabled connectivity to " + proxy.name)
+        logger.debug("Enabled connectivity to " + proxy_info.proxy.name)
