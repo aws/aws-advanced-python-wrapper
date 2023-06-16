@@ -12,14 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from logging import getLogger
-
+from tests import logger
 from .framework.aurora_test_utility import AuroraTestUtility
 from .framework.conditions import failover_support_required
 from .framework.test_driver import TestDriver
 from .framework.test_environment import TestEnvironment
-
-logger = getLogger(__name__)
 
 
 class TestAuroraFailover:

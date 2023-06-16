@@ -17,6 +17,7 @@ import timeit
 from time import sleep
 from typing import List
 
+import aws_wrapper
 from .framework.aurora_test_utility import AuroraTestUtility
 from .framework.database_engine_deployment import DatabaseEngineDeployment
 from .framework.proxy_helper import ProxyHelper
@@ -96,4 +97,5 @@ def pytest_generate_tests(metafunc):
 
 
 def pytest_sessionstart(session):
+    aws_wrapper.set_logger()
     TestEnvironment.get_current()

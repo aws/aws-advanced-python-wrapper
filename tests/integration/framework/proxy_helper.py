@@ -12,16 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from logging import getLogger
-
 from toxiproxy import Proxy  # type: ignore
 from toxiproxy.api import APIConsumer  # type: ignore
 from toxiproxy.exceptions import NotFound  # type: ignore
 
+from tests import logger
 from .proxy_info import ProxyInfo
 from .test_environment import TestEnvironment
-
-logger = getLogger(__name__)
 
 
 class ProxyHelper:

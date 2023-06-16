@@ -11,3 +11,22 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+from logging import DEBUG, Formatter, Logger, StreamHandler, getLogger
+
+
+def set_logger(name='tests', level=DEBUG, format_string=None):
+    if format_string is None:
+        format_string = "%(asctime)s.%(msecs)03d %(name)-12s [%(levelname)-8s] -- %(process)s -- %(message)s"
+
+    handler = StreamHandler()
+    handler.setFormatter(Formatter(format_string))
+    handler.setLevel(level)
+
+    logger = getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+
+set_logger()
+logger: Logger = getLogger("tests")

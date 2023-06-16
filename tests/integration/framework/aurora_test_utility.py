@@ -17,11 +17,11 @@ import timeit
 import typing
 from time import sleep
 from typing import Any, List, Optional
-from logging import getLogger
 
 import boto3  # type: ignore
 from botocore.config import Config  # type: ignore
 
+from tests import logger
 from .database_engine import DatabaseEngine
 from .driver_helper import DriverHelper
 from .test_database_info import TestDatabaseInfo
@@ -29,7 +29,6 @@ from .test_driver import TestDriver
 from .test_environment import TestEnvironment
 from .test_instance_info import TestInstanceInfo
 
-logger = getLogger(__name__)
 
 class AuroraTestUtility:
 
@@ -153,7 +152,7 @@ class AuroraTestUtility:
                 return typing.cast(bool, m.get("IsClusterWriter"))
         raise Exception("Cannot find cluster member whose db instance identifier is " + instance_id)
 
-    def get_cluster_writer_instance_id(self, instance_id: str, cluster_id: Optional[str] = None) -> str:
+    def get_cluster_writer_instance_id(self, cluster_id: Optional[str] = None) -> str:
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_aurora_cluster_name()
         cluster_info = self.get_db_cluster(cluster_id)
