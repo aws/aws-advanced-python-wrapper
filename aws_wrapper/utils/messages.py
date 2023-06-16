@@ -12,9 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import pathlib
 import ResourceBundle  # type: ignore
 
-MessageBundle = ResourceBundle.get_bundle("messages", None, "../aws_wrapper/resources/")
+MessagePath = pathlib.Path(__file__).parent.parent.joinpath("resources/").resolve()
+MessageBundle = ResourceBundle.get_bundle("messages", None, MessagePath)
 
 
 class Messages:
