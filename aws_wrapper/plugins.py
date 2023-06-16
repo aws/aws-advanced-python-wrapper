@@ -109,6 +109,7 @@ class PluginServiceImpl(PluginService):
             original_url: str = "",  # TODO
             target_driver_protocol: str = ""):  # TODO
         self._container = container
+        self._container.plugin_service = self
         self._props = props
         self._original_url = original_url
         self._target_driver_protocol = target_driver_protocol
@@ -165,13 +166,11 @@ class Plugin(ABC):
             -> OldConnectionSuggestedAction:
         return OldConnectionSuggestedAction.NO_OPINION
 
-    @abstractmethod
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        ...
+        return False
 
-    @abstractmethod
     def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
-        ...
+        raise NotImplementedError(Messages.get_formatted("Plugins.UnsupportedMethod", "get_host_info_by_strategy"))
 
 
 class PluginFactory(Protocol):
@@ -219,14 +218,12 @@ class DefaultPlugin(Plugin):
 
     def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
         if HostRole.UNKNOWN == role:
-            raise AwsWrapperError(
-                "A HostInfo with the role of HostRole.UNKNOWN was requested via getHostInfoByStrategy. "
-                "The requested role must be either HostRole.WRITER or HostRole.READER.")
+            raise AwsWrapperError(Messages.get("Plugins.UnknownHosts"))
 
         hosts = self._plugin_service.hosts
 
         if len(hosts) < 1:
-            raise AwsWrapperError("The default connection plugin received an empty host list from the plugin service.")
+            raise AwsWrapperError(Messages.get("Plugins.EmptyHosts"))
 
         return self._connection_provider_manager.get_host_info_by_strategy(hosts, role, strategy)
 
@@ -255,12 +252,6 @@ class DummyPlugin(Plugin):
         result = execute_func()
         # logger.debug("Plugin {}: execute after".format(self._id))
         return result
-
-    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return False
-
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
-        return HostInfo("dummyHost")
 
     @property
     def subscribed_methods(self) -> Set[str]:

@@ -56,10 +56,8 @@ class AwsWrapperConnection(Connection):
         logger.debug(PropertiesUtils.log_properties(props, "Connection Properties: "))
 
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
-
-        container.plugin_service = PluginServiceImpl(container, props)
-
-        logger.debug(f"${container.plugin_service}")
+        plugin_service = PluginServiceImpl(container, props)
+        logger.debug(f"${plugin_service}")
 
         plugin_manager: PluginManager = PluginManager(container, props, DriverConnectionProvider(target_func))
         host_info = HostInfo(props["host"], int(props["port"]) if "port" in props else NO_PORT)
