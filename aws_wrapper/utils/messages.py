@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 import pathlib
+
 import ResourceBundle  # type: ignore
 
 MessagePath = pathlib.Path(__file__).parent.parent.joinpath("resources/").resolve()
