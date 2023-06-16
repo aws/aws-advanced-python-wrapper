@@ -19,6 +19,7 @@ from aws_wrapper.connection_provider import DriverConnectionProvider
 from aws_wrapper.hostinfo import NO_PORT, HostInfo
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugins import PluginManager, PluginService
+from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 logger = getLogger(__name__)
@@ -40,14 +41,14 @@ class AwsWrapperConnection(Connection):
 
         # Check if target provided
         if not target:
-            raise Error("Target driver is required")
+            raise Error(Messages.get("Wrapper.RequiredTargetDriver"))
 
         # TODO: fix target str parsing functionality
         if type(target) == str:
             target = eval(target)
 
         if not callable(target):
-            raise Error("Target driver should be a target driver's connect() method/function")
+            raise Error(Messages.get("Wrapper.ConnectMethod"))
         target_func: Callable = target
 
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
