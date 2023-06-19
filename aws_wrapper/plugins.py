@@ -19,7 +19,8 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.host_list_provider import HostListProvider
+from aws_wrapper.host_list_provider import (HostListProvider,
+                                            HostListProviderService)
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection
 from aws_wrapper.utils.messages import Messages
@@ -98,6 +99,10 @@ class Plugin(ABC):
             -> OldConnectionSuggestedAction:
         return OldConnectionSuggestedAction.NO_OPINION
 
+    def init_host_provider(self, initial_url: str, props: Properties,
+                           host_list_provider_service: HostListProviderService, init_host_provider_func: Callable):
+        return init_host_provider_func()
+
 
 class PluginFactory(Protocol):
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
@@ -137,6 +142,13 @@ class DefaultPlugin(Plugin):
     def subscribed_methods(self) -> Set[str]:
         return DefaultPlugin._SUBSCRIBED_METHODS
 
+    def init_host_provider(self, initial_url: str, props: Properties,
+                           host_list_provider_service: HostListProviderService, init_host_provider_func: Callable):
+        # Do nothing
+        # This is the last plugin in the plugin chain.
+        # So init_host_provider_func will be a no-op and does not need to be called.
+        pass
+
 
 class DummyPlugin(Plugin):
     _NEXT_ID: int = 0
@@ -169,6 +181,7 @@ class PluginManager:
     _CONNECT_METHOD: str = "connect"
     _NOTIFY_CONNECTION_CHANGED_METHOD: str = "notify_connection_changed"
     _NOTIFY_HOST_LIST_CHANGED_METHOD: str = "notify_host_list_changed"
+    _INIT_HOST_LIST_PROVIDER_METHOD: str = "init_host_provider"
 
     _DEFAULT_PLUGINS: str = "dummy"
     _PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
@@ -296,3 +309,10 @@ class PluginManager:
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         self._notify_subscribed_plugins(PluginManager._NOTIFY_HOST_LIST_CHANGED_METHOD,
                                         lambda plugin: plugin.notify_host_list_changed(changes))
+
+    def init_host_provider(self, initial_url: str, props: Properties,
+                           host_list_provider_service: HostListProviderService):
+        return self._execute_with_subscribed_plugins(
+            PluginManager._INIT_HOST_LIST_PROVIDER_METHOD,
+            lambda plugin, func: plugin.init_host_provider(initial_url, props, host_list_provider_service, func),
+            lambda: None)
