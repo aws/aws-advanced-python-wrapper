@@ -12,8 +12,33 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Protocol
+from typing import List, Optional, Protocol
+
+from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.pep249 import Connection
 
 
 class HostListProvider(Protocol):
+    def refresh(self, connection: Optional[Connection] = None) -> List[HostInfo]:
+        ...
+
+    def force_refresh(self, connection: Optional[Connection] = None) -> List[HostInfo]:
+        ...
+
+    def get_host_role(self, connection: Connection) -> HostRole:
+        ...
+
+    def identify_connection(self, connection: Connection) -> HostInfo:
+        ...
+
+
+class DynamicHostListProvider(HostListProvider):
+    ...
+
+
+class StaticHostListProvider(HostListProvider):
+    ...
+
+
+class HostListProviderService:
     ...
