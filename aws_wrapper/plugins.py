@@ -47,7 +47,7 @@ class PluginServiceManagerContainer:
         self._plugin_manager = value
 
 
-class PluginService(ABC):
+class PluginService(Protocol):
 
     @property
     def current_connection(self) -> Connection:
@@ -73,31 +73,24 @@ class PluginService(ABC):
     def initial_connection_host_info(self, value: HostInfo):
         self.initial_connection_host_info = value
 
-    @abstractmethod
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         ...
 
-    @abstractmethod
     def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
         ...
 
-    @abstractmethod
     def get_host_role(self) -> Optional[HostRole]:
         ...
 
-    @abstractmethod
     def refresh_host_list(self):
         ...
 
-    @abstractmethod
     def force_refresh_host_list(self):
         ...
 
-    @abstractmethod
     def connect(self, host_info: HostInfo, props: Properties) -> Connection:
         ...
 
-    @abstractmethod
     def force_connect(self, host_info: HostInfo, props: Properties) -> Connection:
         ...
 
