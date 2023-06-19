@@ -12,21 +12,17 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from logging import DEBUG, Formatter, Logger, StreamHandler, getLogger
+import pytest
 
+from .test_environment import TestEnvironment
+from .test_environment_features import TestEnvironmentFeatures
 
-def set_logger(name='tests', level=DEBUG, format_string=None):
-    if format_string is None:
-        format_string = "%(asctime)s.%(msecs)03d %(name)-12s [%(levelname)-8s] -- %(process)s -- %(message)s"
+failover_support_required = pytest.mark.skipif(
+    TestEnvironmentFeatures.FAILOVER_SUPPORTED not in TestEnvironment.get_current().get_info().get_request().get_features(),
+    reason="FAILOVER_SUPPORTED required"
+)
 
-    handler = StreamHandler()
-    handler.setFormatter(Formatter(format_string))
-    handler.setLevel(level)
-
-    logger = getLogger(name)
-    logger.setLevel(level)
-    logger.addHandler(handler)
-
-
-set_logger()
-logger: Logger = getLogger("tests")
+network_outages_enabled_required = pytest.mark.skipif(
+    TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED not in TestEnvironment.get_current().get_info().get_request().get_features(),
+    reason="NETWORK_OUTAGES_ENABLED required"
+)

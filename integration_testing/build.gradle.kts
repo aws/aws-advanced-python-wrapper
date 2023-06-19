@@ -45,6 +45,11 @@ tasks.test {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+
+    reports.junitXml.required.set(true)
+    reports.html.required.set(false)
+
+    systemProperty("java.util.logging.config.file", "${project.buildDir}/resources/test/logging-test.properties")
 }
 
 tasks.register<Test>("test-all-environments") {
@@ -58,6 +63,8 @@ tasks.register<Test>("test-all-environments") {
         systemProperty("test-no-mysql-engine", "true")
         systemProperty("test-no-mariadb-driver", "true")
         systemProperty("test-no-mariadb-engine", "true")
+
+        systemProperty("test-no-python-38", "true")
     }
 }
 

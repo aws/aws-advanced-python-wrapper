@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 from aws_wrapper.wrapper import AwsWrapperConnection
+from .framework.conditions import network_outages_enabled_required
 from .framework.driver_helper import DriverHelper
 from .framework.proxy_helper import ProxyHelper
 from .framework.test_driver import TestDriver
@@ -61,6 +62,7 @@ class TestBasicConnectivity:
 
         awsconn.close()
 
+    @network_outages_enabled_required
     def test_proxied_direct_connection(self, test_environment: TestEnvironment,
                                        test_driver: TestDriver):
 
@@ -80,6 +82,7 @@ class TestBasicConnectivity:
 
         conn.close()
 
+    @network_outages_enabled_required
     def test_proxied_wrapper_connection(self, test_environment: TestEnvironment,
                                         test_driver: TestDriver):
 
@@ -100,6 +103,7 @@ class TestBasicConnectivity:
 
         awsconn.close()
 
+    @network_outages_enabled_required
     def test_proxied_wrapper_connection_failed(
             self, test_environment: TestEnvironment, test_driver: TestDriver):
 

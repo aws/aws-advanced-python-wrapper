@@ -19,6 +19,7 @@ toxiproxy-python = "^0.1.1"
 parameterized = "^0.9.0"
 pep8-naming = "^0.13.3"
 resourcebundle = "^2.1.0"
+boto3 = "^1.26.153"
 
 [tools.mypy-parameterized]
 ignore_missing_imports = "true"
@@ -33,6 +34,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 filterwarnings = [
-	'ignore:cache could not write path'
+	'ignore:cache could not write path',
+	'ignore:could not create cache path'
 ]
 
