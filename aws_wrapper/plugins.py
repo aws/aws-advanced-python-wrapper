@@ -97,9 +97,9 @@ class PluginService(ABC):
     def connect(self, host_info: HostInfo, props: Properties) -> Connection:
         ...
 
-    # @abstractmethod
-    # def force_connect(self, host_info: HostInfo, props: Properties) -> Connection:
-    #     ...
+    @abstractmethod
+    def force_connect(self, host_info: HostInfo, props: Properties) -> Connection:
+        ...
 
 
 class PluginServiceImpl(PluginService):
@@ -136,8 +136,9 @@ class PluginServiceImpl(PluginService):
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.connect(host_info, props, self.current_connection is None)
 
-    # def force_connect(self, host_info: HostInfo, props: Properties) -> Connection:
-    #     ...
+    def force_connect(self, host_info: HostInfo, props: Properties) -> Connection:
+        plugin_manager: PluginManager = self._container.plugin_manager
+        return plugin_manager.force_connect(host_info, props, self.current_connection is None)
 
 
 class Plugin(ABC):
@@ -210,6 +211,12 @@ class DefaultPlugin(Plugin):
         result = conn_provider.connect(host_info, props)
         return result
 
+    def force_connect(self, host_info: HostInfo, props: Properties,
+                      initial: bool, force_connect_func: Callable) -> Connection:
+        target_driver_props = copy.copy(props)
+        PropertiesUtils.remove_wrapper_props(target_driver_props)
+        return self._connect(host_info, target_driver_props, self._connection_provider_manager.default_provider)
+
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
         # logger.debug("Default plugin: execute before")
         result = execute_func()
@@ -259,6 +266,10 @@ class DummyPlugin(Plugin):
         # logger.debug("Plugin {}: connect after".format(self._id))
         return result
 
+    def force_connect(self, host_info: HostInfo, props: Properties,
+                      initial: bool, force_connect_func: Callable) -> Connection:
+        return force_connect_func()
+
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
         # logger.debug("Plugin {}: execute before".format(self._id))
         result = execute_func()
@@ -273,6 +284,7 @@ class DummyPlugin(Plugin):
 class PluginManager:
     _ALL_METHODS: str = "*"
     _CONNECT_METHOD: str = "connect"
+    _FORCE_CONNECT_METHOD: str = "force_connect"
     _NOTIFY_CONNECTION_CHANGED_METHOD: str = "notify_connection_changed"
     _NOTIFY_HOST_LIST_CHANGED_METHOD: str = "notify_host_list_changed"
     _GET_HOST_INFO_BY_STRATEGY_METHOD: str = "get_host_info_by_strategy"
@@ -375,6 +387,14 @@ class PluginManager:
         return self._execute_with_subscribed_plugins(
             PluginManager._CONNECT_METHOD,
             lambda plugin, func: plugin.connect(host_info, props, is_initial, func),
+            # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
+            lambda: None)
+
+    def force_connect(self, host_info: HostInfo, props: Properties, is_initial: bool) \
+            -> Connection:
+        return self._execute_with_subscribed_plugins(
+            PluginManager._FORCE_CONNECT_METHOD,
+            lambda plugin, func: plugin.force_connect(host_info, props, is_initial, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
             lambda: None)
 
