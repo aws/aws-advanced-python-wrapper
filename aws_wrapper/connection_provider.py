@@ -45,6 +45,10 @@ class ConnectionProviderManager:
         self._connection_provider: Optional[ConnectionProvider] = connection_provider
         self._lock = threading.Lock()
 
+    @property
+    def default_provider(self):
+        return self._default_provider
+
     def set_connection_provider(self, connection_provider: ConnectionProvider):
         self._lock.acquire()
         try:
@@ -54,7 +58,7 @@ class ConnectionProviderManager:
 
     def get_connection_provider(self, host_info: HostInfo, properties: Properties) -> ConnectionProvider:
         if self._connection_provider is None:
-            return self._default_provider
+            return self.default_provider
 
         self._lock.acquire()
         try:

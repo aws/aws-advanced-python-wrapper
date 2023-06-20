@@ -17,10 +17,10 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from aws_wrapper.connection_provider import ConnectionProvider
-from aws_wrapper.hostinfo import HostInfo
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import AwsWrapperError, Connection
 from aws_wrapper.plugins import (DefaultPlugin, DummyPlugin, Plugin,
-                                 PluginManager, PluginService)
+                                 PluginManager, PluginServiceManagerContainer)
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import Properties
@@ -171,19 +171,19 @@ class TestDriverConnectionProvider(TestCase):
 
     def test_no_plugins(self):
         props = Properties(plugins="")
-        plugin_service: PluginService = MagicMock()
+        container: PluginServiceManagerContainer = MagicMock()
         default_conn_provider: ConnectionProvider = MagicMock()
 
-        manager = PluginManager(props, plugin_service, default_conn_provider)
+        manager = PluginManager(container, props, default_conn_provider)
 
         assert 1 == manager.num_plugins
 
     def test_plugin_setting(self):
         props = Properties(plugins="dummy,dummy")
-        plugin_service = MagicMock()
-        default_conn_provider = MagicMock()
+        container: PluginServiceManagerContainer = MagicMock()
+        default_conn_provider: ConnectionProvider = MagicMock()
 
-        manager = PluginManager(props, plugin_service, default_conn_provider)
+        manager = PluginManager(container, props, default_conn_provider)
 
         assert 3 == manager.num_plugins
         assert isinstance(manager._plugins[0], DummyPlugin)
@@ -265,6 +265,12 @@ class TestPlugin(Plugin):
     def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         self._calls.append(type(self).__name__ + ":notify_connection_changed")
         return OldConnectionSuggestedAction.NO_OPINION
+
+    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
+        return False
+
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
+        return HostInfo(type(self).__name__ + ":host_info")
 
 
 class TestPluginOne(TestPlugin):
