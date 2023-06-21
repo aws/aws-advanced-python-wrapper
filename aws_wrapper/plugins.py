@@ -29,7 +29,8 @@ from aws_wrapper.utils.dialect import Dialect
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
-from aws_wrapper.utils.properties import Properties, PropertiesUtils
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
 
 
 class PluginServiceManagerContainer:
@@ -368,7 +369,6 @@ class PluginManager:
     _GET_HOST_INFO_BY_STRATEGY_METHOD: str = "get_host_info_by_strategy"
     _INIT_HOST_LIST_PROVIDER_METHOD: str = "init_host_provider"
 
-    _DEFAULT_PLUGINS: str = "dummy"
     _PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
         "dummy": DummyPluginFactory
     }
@@ -384,12 +384,7 @@ class PluginManager:
         self._container = container
         self._container.plugin_manager = self
 
-        requested_plugins: str
-        if "plugins" in props:
-            requested_plugins = props["plugins"]
-        else:
-            requested_plugins = PluginManager._DEFAULT_PLUGINS
-
+        requested_plugins = WrapperProperties.PLUGINS.get(props)
         if requested_plugins == "":
             self._plugins.append(DefaultPlugin(self._container.plugin_service, default_conn_provider))
             return

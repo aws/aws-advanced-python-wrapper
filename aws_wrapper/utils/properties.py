@@ -12,18 +12,30 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Dict, Set, Union
+from typing import Dict, Union
 
 
 class Properties(Dict[str, str]):
     ...
 
 
-class PropertiesUtils:
+class WrapperProperty:
+    def __init__(self, name: str, default_value: str):
+        self.name = name
+        self.default_value = default_value
 
-    WRAPPER_PROPERTIES: Set[str] = {
-        "plugins"
-    }
+    def get(self, props: Properties) -> str:
+        return props.get(self.name, self.default_value)
+
+    def set(self, props: Properties, value: str):
+        props[self.name] = value
+
+
+class WrapperProperties:
+    PLUGINS = WrapperProperty("plugins", "dummy")
+
+
+class PropertiesUtils:
 
     @staticmethod
     def parse_properties(conn_info: str, **kwargs: Union[None, int, str]) -> Properties:
@@ -38,8 +50,9 @@ class PropertiesUtils:
 
     @staticmethod
     def remove_wrapper_props(props: Properties):
-        for prop_key in PropertiesUtils.WRAPPER_PROPERTIES:
-            props.pop(prop_key, None)
+        for attr_name, attr_val in WrapperProperties.__dict__.items():
+            if isinstance(attr_val, WrapperProperty):
+                props.pop(attr_val.name, None)
 
     @staticmethod
     def log_properties(props: Properties, caption: str):
