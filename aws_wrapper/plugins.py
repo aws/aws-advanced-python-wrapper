@@ -19,10 +19,13 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.host_list_provider import (HostListProvider,
-                                            HostListProviderService)
-from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
+                                            HostListProvider,
+                                            HostListProviderService,
+                                            StaticHostListProvider)
+from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.pep249 import Connection
+from aws_wrapper.utils.dialect import Dialect
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
@@ -48,65 +51,135 @@ class PluginServiceManagerContainer:
 
 
 class PluginService(Protocol):
-
     @property
-    def current_connection(self) -> Connection:
-        return self.current_connection
-
-    @property
-    def current_host_info(self) -> HostInfo:
-        return self.current_host_info
-
-    @property
+    @abstractmethod
     def hosts(self) -> List[HostInfo]:
-        return []
+        ...
 
     @property
+    @abstractmethod
+    def current_connection(self) -> Optional[Connection]:
+        ...
+
+    def set_current_connection(self, connection: Connection, host_info: HostInfo):
+        ...
+
+    @property
+    @abstractmethod
+    def current_host_info(self) -> Optional[HostInfo]:
+        ...
+
+    @property
+    @abstractmethod
+    def initial_connection_host_info(self) -> Optional[HostInfo]:
+        ...
+
+    @property
+    @abstractmethod
     def host_list_provider(self) -> HostListProvider:
-        return self.host_list_provider
+        ...
 
     @property
-    def initial_connection_host_info(self) -> HostInfo:
-        return self.initial_connection_host_info
+    @abstractmethod
+    def is_in_transaction(self) -> bool:
+        ...
 
-    @initial_connection_host_info.setter
-    def initial_connection_host_info(self, value: HostInfo):
-        self.initial_connection_host_info = value
+    @property
+    @abstractmethod
+    def dialect(self) -> Dialect:
+        ...
+
+    def update_dialect(self, connection: Connection):
+        ...
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         ...
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str):
         ...
 
-    def get_host_role(self) -> Optional[HostRole]:
+    def get_host_role(self, connection: Optional[Connection] = None):
         ...
 
-    def refresh_host_list(self):
+    def refresh_host_list(self, connection: Optional[Connection] = None):
         ...
 
-    def force_refresh_host_list(self):
+    def force_refresh_host_list(self, connection: Optional[Connection] = None):
         ...
 
-    def connect(self, host_info: HostInfo, props: Properties) -> Connection:
+    def connect(self, host_info: HostInfo, props: Properties):
         ...
 
-    def force_connect(self, host_info: HostInfo, props: Properties) -> Connection:
+    def force_connect(self, host_info: HostInfo, props: Properties):
+        ...
+
+    def set_availability(self, host_aliases: Set[str], availability: HostAvailability):
+        ...
+
+    def identify_connection(self, connection: Optional[Connection] = None):
+        ...
+
+    def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
         ...
 
 
-class PluginServiceImpl(PluginService):
+class PluginServiceImpl(PluginService, HostListProviderService):
     def __init__(
             self,
             container: PluginServiceManagerContainer,
-            props: Properties,
-            original_url: str = "",  # TODO
-            target_driver_protocol: str = ""):  # TODO
+            props: Properties):
         self._container = container
         self._container.plugin_service = self
         self._props = props
-        self._original_url = original_url
-        self._target_driver_protocol = target_driver_protocol
+        self._host_list_provider: HostListProvider = ConnectionStringHostListProvider()
+
+        self._hosts: List[HostInfo] = []
+        self._current_connection: Optional[Connection] = None
+        self._current_host_info: Optional[HostInfo] = None
+        self._initial_connection_host_info: Optional[HostInfo] = None
+
+    @property
+    def hosts(self) -> List[HostInfo]:
+        return self._hosts
+
+    @property
+    def current_connection(self) -> Optional[Connection]:
+        return self._current_connection
+
+    def set_current_connection(self, connection: Connection, host_info: HostInfo):
+        self._current_connection = connection
+        self._current_host_info = host_info
+
+    @property
+    def current_host_info(self) -> Optional[HostInfo]:
+        return self._current_host_info
+
+    @property
+    def initial_connection_host_info(self) -> Optional[HostInfo]:
+        return self._initial_connection_host_info
+
+    @initial_connection_host_info.setter
+    def initial_connection_host_info(self, value: HostInfo):
+        self._initial_connection_host_info = value
+
+    @property
+    def host_list_provider(self) -> HostListProvider:
+        return self._host_list_provider
+
+    @host_list_provider.setter
+    def host_list_provider(self, value: HostListProvider):
+        self._host_list_provider = value
+
+    @property
+    def is_in_transaction(self) -> bool:
+        return False
+
+    @property
+    def dialect(self) -> Dialect:
+        return Dialect()
+
+    def update_dialect(self, connection: Connection):
+        ...
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -116,13 +189,13 @@ class PluginServiceImpl(PluginService):
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.get_host_info_by_strategy(role, strategy)
 
-    def get_host_role(self) -> Optional[HostRole]:
-        return None
-
-    def refresh_host_list(self):
+    def get_host_role(self, connection: Optional[Connection] = None):
         ...
 
-    def force_refresh_host_list(self):
+    def refresh_host_list(self, connection: Optional[Connection] = None):
+        ...
+
+    def force_refresh_host_list(self, connection: Optional[Connection] = None):
         ...
 
     def connect(self, host_info: HostInfo, props: Properties) -> Connection:
@@ -132,6 +205,18 @@ class PluginServiceImpl(PluginService):
     def force_connect(self, host_info: HostInfo, props: Properties) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.force_connect(host_info, props, self.current_connection is None)
+
+    def set_availability(self, host_aliases: Set[str], availability: HostAvailability):
+        ...
+
+    def identify_connection(self, connection: Optional[Connection] = None):
+        ...
+
+    def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
+        ...
+
+    def is_static_host_list_provider(self) -> bool:
+        return isinstance(self._host_list_provider, StaticHostListProvider)
 
 
 class Plugin(ABC):
