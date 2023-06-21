@@ -12,33 +12,85 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import List, Optional, Protocol
+from abc import abstractmethod
+from typing import Optional, Protocol, runtime_checkable
 
-from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.pep249 import Connection
+from aws_wrapper.utils.dialect import Dialect
 
 
 class HostListProvider(Protocol):
-    def refresh(self, connection: Optional[Connection] = None) -> List[HostInfo]:
+    def refresh(self, connection: Optional[Connection] = None):
         ...
 
-    def force_refresh(self, connection: Optional[Connection] = None) -> List[HostInfo]:
+    def force_refresh(self, connection: Optional[Connection] = None):
         ...
 
-    def get_host_role(self, connection: Connection) -> HostRole:
+    def get_host_role(self, connection: Optional[Connection] = None):
         ...
 
-    def identify_connection(self, connection: Connection) -> HostInfo:
+    def identify_connection(self, connection: Optional[Connection] = None):
         ...
 
 
-class DynamicHostListProvider(HostListProvider):
+@runtime_checkable
+class DynamicHostListProvider(HostListProvider, Protocol):
     ...
 
 
-class StaticHostListProvider(HostListProvider):
+@runtime_checkable
+class StaticHostListProvider(HostListProvider, Protocol):
     ...
 
 
-class HostListProviderService:
-    ...
+class ConnectionStringHostListProvider(StaticHostListProvider):
+    def refresh(self, connection: Optional[Connection] = None):
+        ...
+
+    def force_refresh(self, connection: Optional[Connection] = None):
+        ...
+
+    def get_host_role(self, connection: Optional[Connection] = None):
+        ...
+
+    def identify_connection(self, connection: Optional[Connection] = None):
+        ...
+
+
+class HostListProviderService(Protocol):
+    @property
+    @abstractmethod
+    def current_connection(self) -> Optional[Connection]:
+        ...
+
+    @property
+    @abstractmethod
+    def current_host_info(self) -> Optional[HostInfo]:
+        ...
+
+    @property
+    @abstractmethod
+    def dialect(self) -> Dialect:
+        ...
+
+    @property
+    @abstractmethod
+    def host_list_provider(self) -> HostListProvider:
+        ...
+
+    @host_list_provider.setter
+    def host_list_provider(self, value: HostListProvider):
+        ...
+
+    @property
+    @abstractmethod
+    def initial_connection_host_info(self) -> Optional[HostInfo]:
+        ...
+
+    @initial_connection_host_info.setter
+    def initial_connection_host_info(self, value: HostInfo):
+        ...
+
+    def is_static_host_list_provider(self) -> bool:
+        ...
