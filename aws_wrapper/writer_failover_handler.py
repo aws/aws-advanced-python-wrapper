@@ -19,12 +19,12 @@ from aws_wrapper.failover_result import WriterFailoverResult
 from aws_wrapper.hostinfo import HostInfo
 
 
-class WriterFailoverHandlerInterface:
+class WriterFailoverHandler:
     @abstractmethod
     def failover(self, current_topology: List[HostInfo]) -> WriterFailoverResult:
         pass
 
 
-class WriterFailoverHandler(WriterFailoverHandlerInterface):
+class ClusterAwareWriterFailoverHandler(WriterFailoverHandler):
     def failover(self, current_topology: List[HostInfo]):  # -> WriterFailoverResult:
         ...

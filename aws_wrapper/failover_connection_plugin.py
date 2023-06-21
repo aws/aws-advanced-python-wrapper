@@ -17,33 +17,31 @@ from typing import Callable, Dict, Set
 from aws_wrapper.host_list_provider import HostListProviderService
 from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.pep249 import Connection
-from aws_wrapper.utils.notifications import NodeChangeOptions
+from aws_wrapper.plugins import Plugin
+from aws_wrapper.utils.notifications import ConnectionEvent, HostEvent, OldConnectionSuggestedAction
 from aws_wrapper.utils.properties import Properties
-from aws_wrapper.utils.rds_url_type import RdsUrlType
 
 
-class FailoverConnectionPlugin:
+class FailoverConnectionPlugin(Plugin):
     def init_host_provider(
             self,
-            driver_protocol: str,
             initial_url: str,
             properties: Properties,
             host_list_provider_service: HostListProviderService,
             init_host_provider_func: Callable):
         ...
 
-    def notify_connection_changed(self, changes: Set[NodeChangeOptions]):  # -> OldConnectionSuggestedAction:
+    def subscribed_methods(self):  # -> Set[str]:
         ...
 
-    def notify_node_list_changed(self, changes: Dict[str, Set[NodeChangeOptions]]):
-        ...
+    def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
+        return OldConnectionSuggestedAction.NO_OPINION
 
-    def set_rds_url_type(self, rds_url_type: RdsUrlType):
+    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         ...
 
     def connect(
             self,
-            driver_protocol: str,
             host: HostInfo,
             properties: Properties,
             is_initial_connection: bool,
@@ -52,7 +50,6 @@ class FailoverConnectionPlugin:
 
     def force_connect(
             self,
-            driver_protocol: str,
             host: HostInfo,
             properties: Properties,
             is_initial_connection: bool,

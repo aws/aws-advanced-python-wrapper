@@ -19,7 +19,7 @@ from aws_wrapper.failover_result import ReaderFailoverResult
 from aws_wrapper.hostinfo import HostInfo
 
 
-class ReaderFailoverHandlerInterface:
+class ReaderFailoverHandler:
     @abstractmethod
     def failover(self, current_topology: List[HostInfo], current_host: HostInfo) -> ReaderFailoverResult:
         pass
@@ -29,9 +29,17 @@ class ReaderFailoverHandlerInterface:
         pass
 
 
-class ReaderFailoverHandler(ReaderFailoverHandlerInterface):
-    def set_timeout_ms(self, timeout_ms: int):
-        ...
+class ClusterAwareReaderFailoverHandler(ReaderFailoverHandler):
+    def __init__(self):
+        self._timeout_ms = None
+
+    @property
+    def timeout_ms(self):
+        return self._timeout_ms
+
+    @timeout_ms.setter
+    def timeout_ms(self, value):
+        self._timeout_ms = value
 
     def failover(self, current_topology: List[HostInfo], current_host: HostInfo):  # -> ReaderFailoverResult:
         ...
