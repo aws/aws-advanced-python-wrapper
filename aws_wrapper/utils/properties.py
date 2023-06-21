@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 
 class Properties(Dict[str, str]):
@@ -20,20 +20,32 @@ class Properties(Dict[str, str]):
 
 
 class WrapperProperty:
-    def __init__(self, name: str, default_value: str, description: str):
+    def __init__(self, name: str, description: str, default_value: Optional[str] = None):
         self.name = name
         self.default_value = default_value
         self.description = description
 
-    def get(self, props: Properties) -> str:
-        return props.get(self.name, self.default_value)
+    def get(self, props: Properties) -> Optional[str]:
+        if self.default_value:
+            return props.get(self.name, self.default_value)
+        return props.get(self.name)
+
+    def get_int(self, props: Properties) -> Optional[int]:
+        if self.default_value:
+            return int(props.get(self.name, self.default_value))
+
+        val = props.get(self.name)
+        return int(val) if val else None
 
     def set(self, props: Properties, value: str):
         props[self.name] = value
 
 
 class WrapperProperties:
-    PLUGINS = WrapperProperty("plugins", "dummy", "Comma separated list of connection plugin codes")
+    PLUGINS = WrapperProperty("plugins", "Comma separated list of connection plugin codes", "dummy")
+    USER = WrapperProperty("user", "Driver user name")
+    PASSWORD = WrapperProperty("password", "Driver password")
+    DATABASE = WrapperProperty("database", "Driver database name")
 
 
 class PropertiesUtils:
@@ -51,9 +63,14 @@ class PropertiesUtils:
 
     @staticmethod
     def remove_wrapper_props(props: Properties):
+        persisting_properties = [WrapperProperties.USER.name, WrapperProperties.PASSWORD.name,
+                                 WrapperProperties.DATABASE.name]
+
         for attr_name, attr_val in WrapperProperties.__dict__.items():
             if isinstance(attr_val, WrapperProperty):
-                props.pop(attr_val.name, None)
+                # Don't remove credentials
+                if attr_val.name not in persisting_properties:
+                    props.pop(attr_val.name, None)
 
     @staticmethod
     def log_properties(props: Properties, caption: str):

@@ -18,8 +18,8 @@ import typing
 from time import sleep
 from typing import Any, List, Optional
 
-import boto3  # type: ignore
-from botocore.config import Config  # type: ignore
+import boto3
+from botocore.config import Config
 
 from tests import logger
 from .database_engine import DatabaseEngine
