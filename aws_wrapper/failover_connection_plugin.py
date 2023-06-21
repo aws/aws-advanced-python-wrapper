@@ -18,7 +18,8 @@ from aws_wrapper.host_list_provider import HostListProviderService
 from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.pep249 import Connection
 from aws_wrapper.plugins import Plugin
-from aws_wrapper.utils.notifications import ConnectionEvent, HostEvent, OldConnectionSuggestedAction
+from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
+                                             OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import Properties
 
 
