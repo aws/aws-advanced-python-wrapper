@@ -20,9 +20,10 @@ class Properties(Dict[str, str]):
 
 
 class WrapperProperty:
-    def __init__(self, name: str, default_value: str):
+    def __init__(self, name: str, default_value: str, description: str):
         self.name = name
         self.default_value = default_value
+        self.description = description
 
     def get(self, props: Properties) -> str:
         return props.get(self.name, self.default_value)
@@ -32,7 +33,7 @@ class WrapperProperty:
 
 
 class WrapperProperties:
-    PLUGINS = WrapperProperty("plugins", "dummy")
+    PLUGINS = WrapperProperty("plugins", "dummy", "Comma separated list of connection plugin codes")
 
 
 class PropertiesUtils:
