@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
 from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
 from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
                                             HostListProvider,
                                             HostListProviderService,
@@ -51,7 +52,7 @@ class PluginServiceManagerContainer:
         self._plugin_manager = value
 
 
-class PluginService(Protocol):
+class PluginService(ExceptionHandler, Protocol):
     @property
     @abstractmethod
     def hosts(self) -> List[HostInfo]:
@@ -138,6 +139,7 @@ class PluginServiceImpl(PluginService, HostListProviderService):
         self._current_connection: Optional[Connection] = None
         self._current_host_info: Optional[HostInfo] = None
         self._initial_connection_host_info: Optional[HostInfo] = None
+        self._exception_manager: ExceptionManager = ExceptionManager()
 
     @property
     def hosts(self) -> List[HostInfo]:
@@ -218,6 +220,12 @@ class PluginServiceImpl(PluginService, HostListProviderService):
 
     def is_static_host_list_provider(self) -> bool:
         return isinstance(self._host_list_provider, StaticHostListProvider)
+
+    def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        return self._exception_manager.is_network_exception(dialect=self.dialect, error=error, sql_state=sql_state)
+
+    def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        return self._exception_manager.is_login_exception(dialect=self.dialect, error=error, sql_state=sql_state)
 
 
 class Plugin(ABC):
