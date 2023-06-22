@@ -30,12 +30,12 @@ class WrapperProperty:
             return props.get(self.name, self.default_value)
         return props.get(self.name)
 
-    def get_int(self, props: Properties) -> Optional[int]:
+    def get_int(self, props: Properties) -> int:
         if self.default_value:
             return int(props.get(self.name, self.default_value))
 
         val = props.get(self.name)
-        return int(val) if val else None
+        return int(val) if val else -1
 
     def set(self, props: Properties, value: str):
         props[self.name] = value

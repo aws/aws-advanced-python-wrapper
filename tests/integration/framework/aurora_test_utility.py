@@ -15,13 +15,13 @@
 import socket
 import timeit
 import typing
+from logging import getLogger
 from time import sleep
 from typing import Any, List, Optional
 
 import boto3
 from botocore.config import Config
 
-from tests import logger
 from .database_engine import DatabaseEngine
 from .driver_helper import DriverHelper
 from .test_database_info import TestDatabaseInfo
@@ -31,6 +31,7 @@ from .test_instance_info import TestInstanceInfo
 
 
 class AuroraTestUtility:
+    logger = getLogger(__name__)
 
     _client: Any
 
@@ -79,7 +80,7 @@ class AuroraTestUtility:
             sleep(1)
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
-        logger.debug("Finished failover from " + initial_writer_id)
+        self.logger.debug("Finished failover from " + initial_writer_id)
 
     def failover_cluster(self, cluster_id: Optional[str] = None) -> None:
         if cluster_id is None:

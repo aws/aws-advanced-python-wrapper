@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 from re import search, sub
+from typing import Optional
 
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 
@@ -130,7 +131,7 @@ class RdsUtils:
 
         return "?"
 
-    def get_rds_region(self, host: str):
+    def get_rds_region(self, host: Optional[str]):
         if not host or not host.strip():
             return None
 
