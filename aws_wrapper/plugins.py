@@ -36,7 +36,7 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
-                                          WrapperProperties, WrapperProperty)
+                                          WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
 
 logger = getLogger(__name__)
@@ -397,13 +397,6 @@ class IamAuthConnectionPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
 
-    IAM_HOST = WrapperProperty("iam_host", "Overrides the host that is used to generate the IAM token")
-    IAM_DEFAULT_PORT = WrapperProperty("iam_default_port",
-                                       "Overrides default port that is used to generate the IAM token")
-    IAM_REGION = WrapperProperty("iam_region", "Overrides AWS region that is used to generate the IAM token")
-    IAM_EXPIRATION = WrapperProperty("iam_expiration", "IAM token cache expiration in seconds",
-                                     str(_DEFAULT_TOKEN_EXPIRATION_SEC))
-
     rds_utils: RdsUtils = RdsUtils()
 
     _TOKEN_CACHE: Dict[str, TokenInfo] = {}
@@ -423,10 +416,11 @@ class IamAuthConnectionPlugin(Plugin):
         if not WrapperProperties.USER.get(props):
             raise AwsWrapperError(f"{WrapperProperties.USER.name} is null or empty.")
 
-        host = self.IAM_HOST.get(props) if self.IAM_HOST.get(props) else host_info.host
-        region = self.IAM_REGION.get(props) if self.IAM_REGION.get(props) else self.get_rds_region(host)
+        host = WrapperProperties.IAM_HOST.get(props) if WrapperProperties.IAM_HOST.get(props) else host_info.host
+        region = WrapperProperties.IAM_REGION.get(props) \
+            if WrapperProperties.IAM_REGION.get(props) else self.get_rds_region(host)
         port = self.get_port(props, host_info)
-        token_expiration_sec: int = self.IAM_EXPIRATION.get_int(props)
+        token_expiration_sec: int = WrapperProperties.IAM_EXPIRATION.get_int(props)
 
         cache_key: str = self.get_cache_key(
             WrapperProperties.USER.get(props),
@@ -435,7 +429,7 @@ class IamAuthConnectionPlugin(Plugin):
             region
         )
 
-        token_info = self._TOKEN_CACHE.get(cache_key)
+        token_info = IamAuthConnectionPlugin._TOKEN_CACHE.get(cache_key)
 
         if token_info and not token_info.is_expired():
             logger.debug(Messages.get_formatted("IamAuthConnectionPlugin.useCachedIamToken", token_info.token))
@@ -444,7 +438,8 @@ class IamAuthConnectionPlugin(Plugin):
             token: str = self._generate_authentication_token(props, host, port, region)
             logger.debug(Messages.get_formatted("IamAuthConnectionPlugin.generatedNewIamToken", token))
             WrapperProperties.PASSWORD.set(props, token)
-            self._TOKEN_CACHE[cache_key] = TokenInfo(token, datetime.now() + timedelta(seconds=token_expiration_sec))
+            IamAuthConnectionPlugin._TOKEN_CACHE[cache_key] = TokenInfo(token, datetime.now() + timedelta(
+                seconds=token_expiration_sec))
 
         try:
             return connect_func()
@@ -454,17 +449,21 @@ class IamAuthConnectionPlugin(Plugin):
 
             is_cached_token = (token_info and not token_info.is_expired())
             if not self._plugin_service.is_login_exception(error=e) or not is_cached_token:
-                raise e
+                raise AwsWrapperError(Messages.get_formatted("IamAuthConnectionPlugin.connectException", e)) from e
 
             # Login unsuccessful with cached token
-            # Try to generate a new token and try to connect againa
+            # Try to generate a new token and try to connect again
 
             token = self._generate_authentication_token(props, host, port, region)
             logger.debug(Messages.get_formatted("IamAuthConnectionPlugin.generatedNewIamToken", token))
             WrapperProperties.PASSWORD.set(props, token)
-            self._TOKEN_CACHE[token] = TokenInfo(token, datetime.now() + timedelta(seconds=token_expiration_sec))
+            IamAuthConnectionPlugin._TOKEN_CACHE[token] = TokenInfo(token, datetime.now() + timedelta(
+                seconds=token_expiration_sec))
 
-            return connect_func()
+            try:
+                return connect_func()
+            except Exception as e:
+                raise AwsWrapperError(Messages.get_formatted("IamAuthConnectionPlugin.unhandledException", e)) from e
 
     def force_connect(self, host_info: HostInfo, props: Properties, initial: bool,
                       force_connect_func: Callable) -> Connection:
@@ -497,8 +496,8 @@ class IamAuthConnectionPlugin(Plugin):
         return f"{region}:{hostname}:{port}:{user}"
 
     def get_port(self, props: Properties, host_info: HostInfo) -> int:
-        if self.IAM_DEFAULT_PORT.get(props):
-            default_port: int = self.IAM_DEFAULT_PORT.get_int(props)
+        if WrapperProperties.IAM_DEFAULT_PORT.get(props):
+            default_port: int = WrapperProperties.IAM_DEFAULT_PORT.get_int(props)
             if default_port > 0:
                 return default_port
             else:

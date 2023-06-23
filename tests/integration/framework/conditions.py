@@ -26,3 +26,13 @@ network_outages_enabled_required = pytest.mark.skipif(
     TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED not in TestEnvironment.get_current().get_info().get_request().get_features(),
     reason="NETWORK_OUTAGES_ENABLED required"
 )
+
+iam_required = pytest.mark.skipif(
+    TestEnvironmentFeatures.IAM not in TestEnvironment.get_current().get_info().get_request().get_features(),
+    reason="IAM required"
+)
+
+disable_on_mariadb_driver = pytest.mark.skipif(
+    TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS not in TestEnvironment.get_current().get_info().get_request().get_features(),
+    reason="This test does not support the MariaDB driver"
+)

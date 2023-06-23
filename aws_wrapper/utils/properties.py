@@ -42,10 +42,18 @@ class WrapperProperty:
 
 
 class WrapperProperties:
+    _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
+
     PLUGINS = WrapperProperty("plugins", "Comma separated list of connection plugin codes", "dummy")
     USER = WrapperProperty("user", "Driver user name")
     PASSWORD = WrapperProperty("password", "Driver password")
     DATABASE = WrapperProperty("database", "Driver database name")
+    IAM_HOST = WrapperProperty("iam_host", "Overrides the host that is used to generate the IAM token")
+    IAM_DEFAULT_PORT = WrapperProperty("iam_default_port",
+                                       "Overrides default port that is used to generate the IAM token")
+    IAM_REGION = WrapperProperty("iam_region", "Overrides AWS region that is used to generate the IAM token")
+    IAM_EXPIRATION = WrapperProperty("iam_expiration", "IAM token cache expiration in seconds",
+                                     str(_DEFAULT_TOKEN_EXPIRATION_SEC))
 
 
 class PropertiesUtils:

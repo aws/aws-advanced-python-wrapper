@@ -53,16 +53,24 @@ class TestIamConnectionPlugin(TestCase):
     _PG_HOST_INFO_WITH_PORT = HostInfo("pg.testdb.us-east-2.rds.amazonaws.com", port=1234)
     _PG_HOST_INFO_WITH_REGION = HostInfo("pg.testdb.us-west-1.rds.amazonaws.com")
 
-    _mock_func: Callable = MagicMock()
-    _mock_plugin_service: PluginService = MagicMock()
-    _mock_dialect: Dialect = MagicMock()
     _token_cache: Dict[str, TokenInfo] = {}
-    _mock_session: Session = MagicMock()
-    _mock_client: client = MagicMock()
-    _mock_connection: Connection = MagicMock()
+
+    _mock_func: Callable
+    _mock_plugin_service: PluginService
+    _mock_dialect: Dialect
+    _mock_session: Session
+    _mock_client: client
+    _mock_connection: Connection
     _pg_properties: Properties
 
     def setUp(self):
+        self._mock_func = MagicMock()
+        self._mock_plugin_service = MagicMock()
+        self._mock_dialect = MagicMock()
+        self._mock_session = MagicMock()
+        self._mock_client = MagicMock()
+        self._mock_connection = MagicMock()
+
         self._token_cache.clear()
         self._mock_session.client.return_value = self._mock_client
         self._mock_client.generate_db_auth_token.return_value = self._GENERATED_TOKEN
@@ -71,9 +79,6 @@ class TestIamConnectionPlugin(TestCase):
         self._pg_properties = Properties({
             "user": "postgresqlUser",
         })
-
-    def tearDown(self):
-        self._token_cache.clear()
 
     @patch("aws_wrapper.plugins.IamAuthConnectionPlugin._TOKEN_CACHE", _token_cache)
     def test_pg_connect_valid_token_in_cache(self):
@@ -89,8 +94,8 @@ class TestIamConnectionPlugin(TestCase):
         self._mock_client.generate_db_auth_token.assert_not_called()
 
         actual_token = self._token_cache.get(self._PG_CACHE_KEY)
-        self.assertNotEquals(self._GENERATED_TOKEN, actual_token.token)
-        self.assertEquals(self._TEST_TOKEN, actual_token.token)
+        self.assertNotEqual(self._GENERATED_TOKEN, actual_token.token)
+        self.assertEqual(self._TEST_TOKEN, actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
     @patch("aws_wrapper.plugins.IamAuthConnectionPlugin._TOKEN_CACHE", _token_cache)
@@ -114,11 +119,11 @@ class TestIamConnectionPlugin(TestCase):
         )
 
         actual_token = self._token_cache.get("us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:1234:postgresqlUser")
-        self.assertEquals(self._GENERATED_TOKEN, actual_token.token)
+        self.assertEqual(self._GENERATED_TOKEN, actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
         # Assert password has been updated to the value in token cache
-        self.assertEquals(self._GENERATED_TOKEN, self._pg_properties.get("password"))
+        self.assertEqual(self._GENERATED_TOKEN, self._pg_properties.get("password"))
 
     @patch("aws_wrapper.plugins.IamAuthConnectionPlugin._TOKEN_CACHE", _token_cache)
     def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(self):
@@ -143,11 +148,11 @@ class TestIamConnectionPlugin(TestCase):
 
         actual_token = self._token_cache.get(
             f"us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:{expected_default_pg_port}:postgresqlUser")
-        self.assertEquals(self._GENERATED_TOKEN, actual_token.token)
+        self.assertEqual(self._GENERATED_TOKEN, actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
         # Assert password has been updated to the value in token cache
-        self.assertEquals(self._GENERATED_TOKEN, self._pg_properties.get("password"))
+        self.assertEqual(self._GENERATED_TOKEN, self._pg_properties.get("password"))
 
     @patch("aws_wrapper.plugins.IamAuthConnectionPlugin._TOKEN_CACHE", _token_cache)
     def test_connect_expired_token_in_cache(self):
@@ -169,8 +174,8 @@ class TestIamConnectionPlugin(TestCase):
         )
 
         actual_token = self._token_cache.get(self._PG_CACHE_KEY)
-        self.assertNotEquals(initial_token, actual_token)
-        self.assertEquals(self._GENERATED_TOKEN, actual_token.token)
+        self.assertNotEqual(initial_token, actual_token)
+        self.assertEqual(self._GENERATED_TOKEN, actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
     @patch("aws_wrapper.plugins.IamAuthConnectionPlugin._TOKEN_CACHE", _token_cache)
@@ -187,8 +192,8 @@ class TestIamConnectionPlugin(TestCase):
         )
 
         actual_token = self._token_cache.get(self._PG_CACHE_KEY)
-        self.assertEquals(self._mock_connection, actual_connection)
-        self.assertEquals(self._GENERATED_TOKEN, actual_token.token)
+        self.assertEqual(self._mock_connection, actual_connection)
+        self.assertEqual(self._GENERATED_TOKEN, actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
     @patch("aws_wrapper.plugins.IamAuthConnectionPlugin._TOKEN_CACHE", _token_cache)
@@ -209,12 +214,12 @@ class TestIamConnectionPlugin(TestCase):
 
         actual_token = self._token_cache.get(cache_key_with_new_port)
         self.assertIsNone(self._token_cache.get(self._PG_CACHE_KEY))
-        self.assertNotEquals(self._GENERATED_TOKEN, actual_token.token)
-        self.assertEquals(f"{self._TEST_TOKEN}:1234", actual_token.token)
+        self.assertNotEqual(self._GENERATED_TOKEN, actual_token.token)
+        self.assertEqual(f"{self._TEST_TOKEN}:1234", actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
         # Assert password has been updated to the value in token cache
-        self.assertEquals(f"{self._TEST_TOKEN}:1234", self._pg_properties.get("password"))
+        self.assertEqual(f"{self._TEST_TOKEN}:1234", self._pg_properties.get("password"))
 
     @patch("aws_wrapper.plugins.IamAuthConnectionPlugin._TOKEN_CACHE", _token_cache)
     def test_connect_with_specified_iam_default_port(self):
@@ -236,12 +241,12 @@ class TestIamConnectionPlugin(TestCase):
 
         actual_token = self._token_cache.get(cache_key_with_new_port)
         self.assertIsNone(self._token_cache.get(self._PG_CACHE_KEY))
-        self.assertNotEquals(self._GENERATED_TOKEN, actual_token.token)
-        self.assertEquals(f"{self._TEST_TOKEN}:{iam_default_port}", actual_token.token)
+        self.assertNotEqual(self._GENERATED_TOKEN, actual_token.token)
+        self.assertEqual(f"{self._TEST_TOKEN}:{iam_default_port}", actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
         # Assert password has been updated to the value in token cache
-        self.assertEquals(f"{self._TEST_TOKEN}:{iam_default_port}", self._pg_properties.get("password"))
+        self.assertEqual(f"{self._TEST_TOKEN}:{iam_default_port}", self._pg_properties.get("password"))
 
     @patch("aws_wrapper.plugins.IamAuthConnectionPlugin._TOKEN_CACHE", _token_cache)
     def test_connect_with_specified_region(self):
@@ -274,11 +279,11 @@ class TestIamConnectionPlugin(TestCase):
         )
 
         actual_token = self._token_cache.get("us-east-1:pg.testdb.us-east-2.rds.amazonaws.com:5432:postgresqlUser")
-        self.assertEquals(f"{self._TEST_TOKEN}:{iam_region}", actual_token.token)
+        self.assertEqual(f"{self._TEST_TOKEN}:{iam_region}", actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
         # Assert password has been updated to the value in token cache
-        self.assertEquals(f"{self._TEST_TOKEN}:{iam_region}", self._pg_properties.get("password"))
+        self.assertEqual(f"{self._TEST_TOKEN}:{iam_region}", self._pg_properties.get("password"))
 
     @patch("aws_wrapper.plugins.IamAuthConnectionPlugin._TOKEN_CACHE", _token_cache)
     def test_connect_with_specified_host(self):
@@ -302,14 +307,14 @@ class TestIamConnectionPlugin(TestCase):
         )
 
         actual_token = self._token_cache.get("us-east-2:foo.testdb.us-east-2.rds.amazonaws.com:5432:postgresqlUser")
-        self.assertNotEquals(self._GENERATED_TOKEN, actual_token.token)
-        self.assertEquals(f"{self._TEST_TOKEN}:foo.testdb.us-east-2.rds.amazonaws.com", actual_token.token)
+        self.assertNotEqual(self._GENERATED_TOKEN, actual_token.token)
+        self.assertEqual(f"{self._TEST_TOKEN}:foo.testdb.us-east-2.rds.amazonaws.com", actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
         # Assert password has been updated to the value in token cache
-        self.assertEquals(f"{self._TEST_TOKEN}:foo.testdb.us-east-2.rds.amazonaws.com",
-                          self._pg_properties.get("password"))
+        self.assertEqual(f"{self._TEST_TOKEN}:foo.testdb.us-east-2.rds.amazonaws.com",
+                         self._pg_properties.get("password"))
 
     def test_aws_supported_regions_url_exists(self):
         url = "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RegionsAndAvailabilityZones.html"
-        self.assertEquals(200, urllib.request.urlopen(url).getcode())
+        self.assertEqual(200, urllib.request.urlopen(url).getcode())
