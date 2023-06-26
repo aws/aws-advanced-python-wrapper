@@ -413,7 +413,7 @@ class IamAuthConnectionPlugin(Plugin):
 
     def _connect(self, host_info: HostInfo, props: Properties, connect_func: Callable) -> Connection:
         if not WrapperProperties.USER.get(props):
-            raise AwsWrapperError(f"{WrapperProperties.USER.name} is null or empty.")
+            raise AwsWrapperError(Messages.get_formatted("Plugins.IsNullOrEmpty", WrapperProperties.USER.name))
 
         host = WrapperProperties.IAM_HOST.get(props) if WrapperProperties.IAM_HOST.get(props) else host_info.host
         region = WrapperProperties.IAM_REGION.get(props) \
@@ -557,7 +557,7 @@ class PluginManager:
 
         requested_plugins = WrapperProperties.PLUGINS.get(props)
 
-        if not requested_plugins:
+        if requested_plugins is None:
             requested_plugins = self._DEFAULT_PLUGINS
 
         if requested_plugins == "":
