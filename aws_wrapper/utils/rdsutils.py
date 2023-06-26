@@ -163,10 +163,10 @@ class RdsUtils:
             return None
 
         if search(self.AURORA_CLUSTER_PATTERN, host):
-            return sub(self.AURORA_CLUSTER_PATTERN, "${instance}.cluster-${domain}", host)
+            return sub(self.AURORA_CLUSTER_PATTERN, r"\g<instance>.cluster-\g<domain>", host)
 
         if search(self.AURORA_CHINA_CLUSTER_PATTERN, host):
-            return sub(self.AURORA_CHINA_CLUSTER_PATTERN, "${instance}.cluster-${domain}", host)
+            return sub(self.AURORA_CHINA_CLUSTER_PATTERN, r"\g<instance>.cluster-\g<domain>", host)
 
         return None
 

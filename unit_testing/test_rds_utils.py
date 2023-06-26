@@ -150,3 +150,15 @@ class TestRdsUtils(TestCase):
         target = RdsUtils()
 
         self.assertFalse(target.is_reader_cluster_dns(test_value))
+
+    def test_get_rds_cluster_host_url(self):
+        expected: str = "foo.cluster-xyz.us-west-1.rds.amazonaws.com"
+        expected2: str = "foo-1.cluster-xyz.us-west-1.rds.amazonaws.com.cn"
+
+        ro_endpoint: str = "foo.cluster-ro-xyz.us-west-1.rds.amazonaws.com"
+        china_ro_endpoint: str = "foo-1.cluster-ro-xyz.us-west-1.rds.amazonaws.com.cn"
+
+        target = RdsUtils()
+
+        self.assertEqual(expected, target.get_rds_cluster_host_url(ro_endpoint))
+        self.assertEqual(expected2, target.get_rds_cluster_host_url(china_ro_endpoint))
