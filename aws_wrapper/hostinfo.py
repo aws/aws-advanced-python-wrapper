@@ -15,7 +15,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
-from typing import ClassVar, Optional, Set
+from typing import ClassVar, FrozenSet, Optional, Set
 
 
 class HostAvailability(Enum):
@@ -58,18 +58,18 @@ class HostInfo:
             and self.role == other.role
 
     @property
-    def aliases(self):
+    def aliases(self) -> FrozenSet[str]:
         return frozenset(self._aliases)
 
     @property
-    def all_aliases(self):
+    def all_aliases(self) -> FrozenSet[str]:
         return frozenset(self._all_aliases)
 
     def is_port_specified(self) -> bool:
         return self.port != HostInfo.NO_PORT
 
     def as_alias(self) -> str:
-        return (self.host + ":" + str(self.port)) if self.is_port_specified() else self.host
+        return f"{self.host}:{self.port}" if self.is_port_specified() else self.host
 
     def add_alias(self, *aliases):
         if not aliases:
@@ -85,3 +85,19 @@ class HostInfo:
             return self.host + ":" + str(self.port)
         else:
             return self.host
+
+    def as_aliases(self):
+        return frozenset(self.all_aliases)
+
+    def reset_aliases(self):
+        self._aliases.clear()
+        self._all_aliases.clear()
+        self._all_aliases.add(self.as_alias())
+
+    def remove_alias(self, *kwargs):
+        if not kwargs or len(kwargs) == 0:
+            return
+
+        for x in kwargs:
+            self.aliases.remove(x)
+            self.all_aliases.remove(x)

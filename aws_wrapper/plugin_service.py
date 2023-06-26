@@ -14,10 +14,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from contextlib import closing
+from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
-    from aws_wrapper.dialect import Dialect
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin import Plugin, PluginFactory
     from aws_wrapper.connection_provider import ConnectionProvider
@@ -28,9 +28,14 @@ from abc import abstractmethod
 from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
+from aws_wrapper.aurora_connection_tracker_plugin import (
+    AuroraConnectionTrackerPluginFactory,
+    AuroraHostListConnectionPluginFactory)
 from aws_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
 from aws_wrapper.default_plugin import DefaultPlugin
+from aws_wrapper.dialect import (Dialect, DialectManager,
+                                 TopologyAwareDatabaseDialect)
 from aws_wrapper.dummy_plugin import DummyPluginFactory
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
@@ -38,7 +43,9 @@ from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
                                             HostListProvider,
                                             HostListProviderService,
                                             StaticHostListProvider)
+from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.iam_plugin import IamAuthPluginFactory
+from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
@@ -94,14 +101,14 @@ class PluginService(ExceptionHandler, Protocol):
     def host_list_provider(self) -> HostListProvider:
         ...
 
-    @property
+    @host_list_provider.setter
     @abstractmethod
-    def is_in_transaction(self) -> bool:
+    def host_list_provider(self, provider: HostListProvider):
         ...
 
     @property
     @abstractmethod
-    def dialect(self) -> Dialect:
+    def is_in_transaction(self) -> bool:
         ...
 
     def update_dialect(self, connection: Connection):
@@ -139,6 +146,8 @@ class PluginService(ExceptionHandler, Protocol):
 
 
 class PluginServiceImpl(PluginService, HostListProviderService):
+    _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
+
     def __init__(
             self,
             container: PluginServiceManagerContainer,
@@ -154,15 +163,21 @@ class PluginServiceImpl(PluginService, HostListProviderService):
         self._initial_connection_host_info: Optional[HostInfo] = None
         self._exception_manager: ExceptionManager = ExceptionManager()
 
+        self._dialect = DialectManager().get_dialect(props)
+
     @property
     def hosts(self) -> List[HostInfo]:
         return self._hosts
+
+    @hosts.setter
+    def hosts(self, new_hosts: List[HostInfo]):
+        self._hosts = new_hosts
 
     @property
     def current_connection(self) -> Optional[Connection]:
         return self._current_connection
 
-    def set_current_connection(self, connection: Connection, host_info: HostInfo):
+    def set_current_connection(self, connection: Optional[Connection], host_info: Optional[HostInfo]):
         self._current_connection = connection
         self._current_host_info = host_info
 
@@ -191,8 +206,8 @@ class PluginServiceImpl(PluginService, HostListProviderService):
         return False
 
     @property
-    def dialect(self):
-        ...
+    def dialect(self) -> Optional[Dialect]:
+        return self._dialect
 
     def update_dialect(self, connection: Connection):
         ...
@@ -209,10 +224,16 @@ class PluginServiceImpl(PluginService, HostListProviderService):
         ...
 
     def refresh_host_list(self, connection: Optional[Connection] = None):
-        ...
+        updated_host_list: Tuple[HostInfo, ...] = self.host_list_provider.refresh(connection)
+        if updated_host_list != self.hosts:
+            self._update_host_availability(updated_host_list)
+            self._update_hosts(updated_host_list)
 
     def force_refresh_host_list(self, connection: Optional[Connection] = None):
-        ...
+        updated_host_list: Tuple[HostInfo, ...] = self.host_list_provider.force_refresh(connection)
+        if updated_host_list != self.hosts:
+            self._update_host_availability(updated_host_list)
+            self._update_hosts(updated_host_list)
 
     def connect(self, host_info: HostInfo, props: Properties) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -225,11 +246,38 @@ class PluginServiceImpl(PluginService, HostListProviderService):
     def set_availability(self, host_aliases: Set[str], availability: HostAvailability):
         ...
 
-    def identify_connection(self, connection: Optional[Connection] = None):
-        ...
+    def identify_connection(self, connection: Optional[Connection] = None) -> Optional[HostInfo]:
+        if not isinstance(self.dialect, TopologyAwareDatabaseDialect):
+            return None
+
+        return self.host_list_provider.identify_connection(connection)
 
     def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
-        ...
+        if connection is None:
+            return
+
+        if host_info is None:
+            return
+
+        if len(host_info.aliases) > 0:
+            logger.debug(Messages.get_formatted("PluginServiceImpl.NonEmptyAliases", host_info.aliases))
+            return
+
+        host_info.add_alias(host_info.as_alias())
+
+        try:
+            with closing(connection.cursor()) as cursor:
+                cursor.execute("SELECT CONCAT(inet_server_addr(), ':', inet_server_port())")
+                for row in cursor.fetchall():
+                    host_info.add_alias(row[0])
+
+        except Exception as e:
+            # log and ignore
+            logger.debug(Messages.get_formatted("PluginServiceImpl.FailedToRetrieveHostPort", e))
+
+        host = self.identify_connection(connection)
+        if host:
+            host_info.add_alias(host.as_aliases())
 
     def is_static_host_list_provider(self) -> bool:
         return isinstance(self._host_list_provider, StaticHostListProvider)
@@ -239,6 +287,57 @@ class PluginServiceImpl(PluginService, HostListProviderService):
 
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         return self._exception_manager.is_login_exception(dialect=self.dialect, error=error, sql_state=sql_state)
+
+    def _update_host_availability(self, hosts: Tuple[HostInfo, ...]):
+        for host in hosts:
+            availability: Optional[HostAvailability] = self._host_availability_expiring_cache.get(host.url)
+            if availability:
+                host.availability = availability
+
+    def _update_hosts(self, new_hosts: Tuple[HostInfo, ...]):
+        old_hosts_dict = {x.url: x for x in self.hosts}
+        new_hosts_dict = {x.url: x for x in new_hosts}
+
+        changes: Dict[str, Set[HostEvent]] = {}
+
+        for host in self.hosts:
+            corresponding_new_host = new_hosts_dict.get(host.url)
+            if corresponding_new_host is None:
+                changes[host.url] = {HostEvent.HOST_DELETED}
+            else:
+                host_changes: Set[HostEvent] = self._compare(host, corresponding_new_host)
+                if len(host_changes) > 0:
+                    changes[host.url] = host_changes
+
+        for key, value in new_hosts_dict.items():
+            if key not in old_hosts_dict:
+                changes[key] = {HostEvent.HOST_ADDED}
+
+        if len(changes) > 0:
+            self.hosts = list(new_hosts) if new_hosts is not None else ()
+            self._container.plugin_manager.notify_host_list_changed(changes)
+
+    def _compare(self, host_a: HostInfo, host_b: HostInfo) -> Set[HostEvent]:
+        changes: Set[HostEvent] = set()
+        if host_a.host != host_b.host or host_a.port != host_b.port:
+            changes.add(HostEvent.URL_CHANGED)
+
+        if host_a.role != host_b.role:
+            if host_b.role == HostRole.WRITER:
+                changes.add(HostEvent.CONVERTED_TO_WRITER)
+            elif host_b.role == HostRole.READER:
+                changes.add(HostEvent.CONVERTED_TO_READER)
+
+        if host_a.availability != host_b.availability:
+            if host_b.availability == HostAvailability.AVAILABLE:
+                changes.add(HostEvent.WENT_UP)
+            elif host_b.availability == HostAvailability.NOT_AVAILABLE:
+                changes.add(HostEvent.WENT_DOWN)
+
+        if len(changes) > 0:
+            changes.add(HostEvent.HOST_CHANGED)
+
+        return changes
 
 
 class PluginManager:
@@ -254,7 +353,9 @@ class PluginManager:
     _PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
         "dummy": DummyPluginFactory,
         "iam": IamAuthPluginFactory,
-        "aws_secrets_manager": AwsSecretsManagerPluginFactory
+        "aws_secrets_manager": AwsSecretsManagerPluginFactory,
+        "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
+        "aurora_host_list": AuroraHostListConnectionPluginFactory
     }
 
     def __init__(
@@ -343,7 +444,7 @@ class PluginManager:
         return lambda plugin_func, target_driver_func: \
             plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func))
 
-    def connect(self, host_info: HostInfo, props: Properties, is_initial: bool) \
+    def connect(self, host_info: Optional[HostInfo], props: Properties, is_initial: bool) \
             -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._CONNECT_METHOD,

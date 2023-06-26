@@ -12,30 +12,33 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from unittest.mock import MagicMock
+from __future__ import annotations
 
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    from aws_wrapper.pep249 import Connection
+
+from aws_wrapper.hostinfo import HostInfo
+from aws_wrapper.plugin_service import (PluginServiceImpl,
+                                        PluginServiceManagerContainer)
 from aws_wrapper.wrapper import AwsWrapperConnection
-
-conninfo: str = "host=localhost dbname=postgres user=postgres password=qwerty"
-connection_mock = MagicMock()
-connection_mock.connect.return_value = "Test"
 
 
 def test_connection_basic():
+    conninfo: str = "host=localhost dbname=postgres user=postgres password=qwerty"
+    connection_mock: Connection = MagicMock()
+    container_mock = MagicMock()
+    connection_mock.connect.return_value = "Test"
 
-    AwsWrapperConnection.connect(
-        conninfo,
-        connection_mock.connect)
+    with patch.object(PluginServiceManagerContainer, "__new__", container_mock), \
+            patch.object(PluginServiceImpl, "refresh_host_list"), \
+            patch.object(PluginServiceImpl, "current_connection", None), \
+            patch.object(PluginServiceImpl, "initial_connection_host_info", HostInfo("localhost")):
+        AwsWrapperConnection.connect(
+            conninfo,
+            connection_mock.connect)
 
-    connection_mock.connect.assert_called_with(host="localhost", dbname="postgres", user="postgres", password="qwerty")
-
-
-def test_connection_no_plugins():
-
-    AwsWrapperConnection.connect(
-        conninfo,
-        connection_mock.connect, plugins="")
-
-    connection_mock.connect.assert_called_with(host="localhost", dbname="postgres", user="postgres", password="qwerty")
-
-# def test_connection_str_callable():
+        connection_mock.connect.assert_called_with(host="localhost", dbname="postgres", user="postgres",
+                                                   password="qwerty")

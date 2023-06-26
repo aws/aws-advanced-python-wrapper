@@ -93,16 +93,15 @@ class ExceptionManager:
     def reset_custom_handler():
         ExceptionManager.custom_handler = None
 
-    def is_network_exception(self, dialect: Dialect, error: Optional[Exception] = None,
+    def is_network_exception(self, dialect: Optional[Dialect], error: Optional[Exception] = None,
                              sql_state: Optional[str] = None) -> bool:
         handler = self._get_handler(dialect)
         return handler.is_network_exception(error=error, sql_state=sql_state)
 
-    def is_login_exception(self, dialect: Dialect, error: Optional[Exception] = None,
+    def is_login_exception(self, dialect: Optional[Dialect], error: Optional[Exception] = None,
                            sql_state: Optional[str] = None) -> bool:
         handler = self._get_handler(dialect)
         return handler.is_login_exception(error=error, sql_state=sql_state)
 
-    def _get_handler(self, dialect: Dialect):
-        # TODO: update once Dialect changes have been merged
-        return self.custom_handler if self.custom_handler else PgExceptionHandler()
+    def _get_handler(self, dialect: Optional[Dialect]):
+        return self.custom_handler if self.custom_handler else dialect.exception_handler

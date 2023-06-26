@@ -44,10 +44,10 @@ class HostListProvider(Protocol):
     def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
         ...
 
-    def get_host_role(self, connection: Connection) -> HostRole:
+    def get_host_role(self, connection: Optional[Connection]) -> HostRole:
         ...
 
-    def identify_connection(self, connection: Connection) -> Optional[HostInfo]:
+    def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
         ...
 
 
@@ -88,7 +88,7 @@ class HostListProviderService(Protocol):
 
     @property
     @abstractmethod
-    def dialect(self) -> Dialect:
+    def dialect(self) -> Optional[Dialect]:
         ...
 
     @property
@@ -361,7 +361,10 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._hosts = topology.hosts
         return tuple(self._hosts)
 
-    def get_host_role(self, connection: Connection) -> HostRole:
+    def get_host_role(self, connection: Optional[Connection]) -> HostRole:
+        if connection is None:
+            raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole"))
+
         try:
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
@@ -375,7 +378,10 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole")) from e
         raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole"))
 
-    def identify_connection(self, connection: Connection) -> Optional[HostInfo]:
+    def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
+        if connection is None:
+            raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
+
         try:
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
