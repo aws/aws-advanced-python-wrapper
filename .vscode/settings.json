@@ -1,5 +1,9 @@
 {
     "python.linting.mypyEnabled": false,
     "python.linting.enabled": true,
-    "python.linting.flake8Enabled": true
+    "python.linting.flake8Enabled": true,
+    "python.testing.autoTestDiscoverOnSaveEnabled": true,
+    "python.testing.cwd": "${workspaceFolder}/unit_testing",
+    "python.testing.unittestEnabled": true,
+    "python.testing.pytestEnabled": false,
 }
