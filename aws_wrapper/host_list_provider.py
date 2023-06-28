@@ -11,18 +11,19 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 import uuid
 from abc import abstractmethod
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from logging import getLogger
-from multiprocessing import RLock
-from typing import Optional, Protocol, runtime_checkable, List
-from typing import Tuple
+from threading import RLock
+from typing import List, Optional, Protocol, Tuple, runtime_checkable
 
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostinfo import HostRole, HostAvailability
+from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.dialect import Dialect, TopologyAwareDatabaseDialect
 from aws_wrapper.utils.messages import Messages
@@ -32,8 +33,6 @@ from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.utils import Utils
 
 logger = getLogger(__name__)
-from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pep249 import Connection, ProgrammingError, Cursor, Error
 
 
 class HostListProvider(Protocol):
@@ -118,24 +117,25 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     _primary_cluster_id_cache: CacheMap[str, bool] = CacheMap()
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
-        self._host_list_provider_service = host_list_provider_service
-        self._props = props
+        self._host_list_provider_service: HostListProviderService = host_list_provider_service
+        self._props: Properties = props
 
         self._rds_utils: RdsUtils = RdsUtils()
         self._hosts: List[HostInfo] = []
         self._cluster_id: str = str(uuid.uuid4())
         self._initial_host_info: Optional[HostInfo] = None
         self._initial_hosts: List[HostInfo] = []
-        self._refresh_rate_ns: int = int(WrapperProperties.TOPOLOGY_REFRESH_MS.get(self._props)) * 1000 * 1000
         self._cluster_instance_template: Optional[HostInfo] = None
         self._rds_url_type: Optional[RdsUrlType] = None
         self._topology_aware_dialect: Optional[TopologyAwareDatabaseDialect] = None
         self._is_primary_cluster_id: bool = False
         self._is_initialized: bool = False
-        self._suggested_cluster_id_refresh_ns = 10 * 60 * 1000 * 1000 * 1000  # 10 minutes
+        self._suggested_cluster_id_refresh_ns: int = 10 * 60 * 1000 * 1000 * 1000  # 10 minutes
         self._lock: RLock = RLock()
+        self._refresh_rate_ns: int = WrapperProperties.TOPOLOGY_REFRESH_MS.get_int(self._props) * 1000 * 1000
 
     def _initialize(self):
+
         if self._is_initialized:
             return
         with self._lock:
@@ -210,7 +210,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     return AuroraHostListProvider.ClusterIdSuggestion(key, is_primary_cluster_id)
         return None
 
-    def _get_topology(self, conn: Connection, force_update: bool) -> 'AuroraHostListProvider.FetchTopologyResult':
+    def _get_topology(self, conn: Optional[Connection], force_update: bool) -> 'AuroraHostListProvider.FetchTopologyResult':
         self._initialize()
         suggested_primary_cluster_id = AuroraHostListProvider._suggested_primary_cluster_id_cache.get(self._cluster_id)
 

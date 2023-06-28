@@ -37,8 +37,6 @@ from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
-                                          WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
 
 logger = getLogger(__name__)
