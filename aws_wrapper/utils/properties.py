@@ -54,6 +54,10 @@ class WrapperProperties:
     IAM_REGION = WrapperProperty("iam_region", "Overrides AWS region that is used to generate the IAM token")
     IAM_EXPIRATION = WrapperProperty("iam_expiration", "IAM token cache expiration in seconds",
                                      str(_DEFAULT_TOKEN_EXPIRATION_SEC))
+    SECRETS_MANAGER_SECRET_ID = WrapperProperty("secrets_manager_secret_id",
+                                                "The name or the ARN of the secret to retrieve.")
+    SECRETS_MANAGER_REGION = WrapperProperty("secrets_manager_region", "The region of the secret to retrieve.",
+                                             "us-east-1")
 
 
 class PropertiesUtils:
