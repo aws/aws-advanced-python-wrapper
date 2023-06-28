@@ -540,6 +540,7 @@ class AwsSecretsManagerConnectionPlugin(Plugin):
     _SECRETS_ARN_PATTERN = r"^arn:aws:secretsmanager:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
 
     _secrets_cache: Dict[Tuple, SimpleNamespace] = {}
+    _secret_key: Tuple = ()
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -593,15 +594,15 @@ class AwsSecretsManagerConnectionPlugin(Plugin):
     def _update_secret(self, force_refetch: bool = False) -> bool:
         fetched: bool = False
 
-        self._secret: Optional[SimpleNamespace] = self._secrets_cache.get(self._secret_key)
+        self._secret: Optional[SimpleNamespace] = AwsSecretsManagerConnectionPlugin._secrets_cache.get(self._secret_key)
 
         if not self._secret or force_refetch:
             try:
                 self._secret = self._fetch_latest_credentials()
                 if self._secret:
-                    self._secrets_cache[self._secret_key] = self._secret
+                    AwsSecretsManagerConnectionPlugin._secrets_cache[self._secret_key] = self._secret
                     fetched = True
-            except ClientError as e:
+            except (ClientError, AttributeError) as e:
                 logger.debug(Messages.get_formatted("AwsSecretsManagerConnectionPlugin.FailedToFetchDbCredentials", e))
                 raise AwsWrapperError(
                     Messages.get_formatted("AwsSecretsManagerConnectionPlugin.FailedToFetchDbCredentials", e)) from e
