@@ -21,15 +21,15 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
 class ReaderFailoverResult:
-    connection: Connection
+    connection: Optional[Connection]
     is_connected: bool
-    new_host: HostInfo
-    exception: Exception
+    new_host: Optional[HostInfo]
+    exception: Optional[Exception]
 
 
 @dataclass
