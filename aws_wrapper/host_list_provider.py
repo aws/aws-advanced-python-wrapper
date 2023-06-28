@@ -4,7 +4,7 @@
 #  You may not use this file except in compliance with the License.
 #  You may obtain a copy of the License at
 #
-#  http://www.apache.org/licenses/LICENSE-2.02
+#  http://www.apache.org/licenses/LICENSE-2.0
 #
 #  Unless required by applicable law or agreed to in writing, software
 #  distributed under the License is distributed on an "AS IS" BASIS,
@@ -135,12 +135,12 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._refresh_rate_ns: int = WrapperProperties.TOPOLOGY_REFRESH_MS.get_int(self._props) * 1_000_000
 
     def _initialize(self):
-
         if self._is_initialized:
             return
         with self._lock:
             if self._is_initialized:
                 return
+
             self._initial_host_info: HostInfo = \
                 HostInfo(self._props["host"], int(self._props["port"]) if "port" in self._props else HostInfo.NO_PORT)
             self._initial_hosts: List[HostInfo] = [self._initial_host_info]
@@ -157,7 +157,6 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             self._validate_host_pattern(self._cluster_instance_template.host)
 
             self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._initial_host_info.host)
-
             cluster_id = WrapperProperties.CLUSTER_ID.get(self._props)
             if cluster_id:
                 self._cluster_id = cluster_id
@@ -176,6 +175,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     self._cluster_id = cluster_url
                     self._is_primary_cluster_id = True
                     self._primary_cluster_id_cache.put(self._cluster_id, True, self._suggested_cluster_id_refresh_ns)
+
         self._is_initialized = True
 
     def _validate_host_pattern(self, host: str):
@@ -212,13 +212,13 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def _get_topology(self, conn: Optional[Connection], force_update: bool) -> 'AuroraHostListProvider.FetchTopologyResult':
         self._initialize()
-        suggested_primary_cluster_id = AuroraHostListProvider._suggested_primary_cluster_id_cache.get(self._cluster_id)
 
+        suggested_primary_cluster_id = AuroraHostListProvider._suggested_primary_cluster_id_cache.get(self._cluster_id)
         if suggested_primary_cluster_id and self._cluster_id != suggested_primary_cluster_id:
             self._cluster_id = suggested_primary_cluster_id
             self._is_primary_cluster_id = True
-        cached_hosts = AuroraHostListProvider._topology_cache.get(self._cluster_id)
 
+        cached_hosts = AuroraHostListProvider._topology_cache.get(self._cluster_id)
         # If True, this cluster_id is primary and is about to create a new entry in the cache.
         # When a primary entry is created it needs to be suggested to other (non-primary) entries.
         suggest_hosts = cached_hosts is None and self._is_primary_cluster_id
@@ -257,7 +257,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             for host in hosts:
                 if host.url in primary_cluster_urls:
                     # An instance URL in this cluster matches an instance URL in the primary cluster.
-                    # Suggest the primary cluster_id for this cluster
+                    # Suggest the primary cluster_id for this cluster.
                     AuroraHostListProvider._suggested_primary_cluster_id_cache.put(
                         cluster_id, self._cluster_id, self._suggested_cluster_id_refresh_ns)
                     break
@@ -337,7 +337,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
         self._initialize()
-        connection = connection if connection is not None else self._host_list_provider_service.current_connection
+        connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, False)
         logger.debug(Utils.log_topology(topology.hosts))
         self._hosts = topology.hosts
@@ -345,7 +345,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
         self._initialize()
-        connection = connection if connection is not None else self._host_list_provider_service.current_connection
+        connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, True)
         logger.debug(Utils.log_topology(topology.hosts))
         self._hosts = topology.hosts
@@ -353,7 +353,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def get_host_role(self, connection: Connection) -> HostRole:
         try:
-            with connection.cursor() as cursor:
+            with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForGetHostRole")
                 cursor.execute(topology_aware_dialect.get_is_reader_query())
@@ -367,7 +367,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def identify_connection(self, connection: Connection) -> Optional[HostInfo]:
         try:
-            with connection.cursor() as cursor:
+            with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForIdentifyConnection")
                 cursor.execute(topology_aware_dialect.get_host_id_query())
