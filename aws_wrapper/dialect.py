@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from contextlib import closing
 from enum import Enum, auto
 from logging import getLogger
-from typing import List, Optional, Protocol, Dict
+from typing import Dict, List, Optional, Protocol
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.pep249 import Connection

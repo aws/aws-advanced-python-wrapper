@@ -15,8 +15,8 @@
 from unittest import TestCase
 from unittest.mock import MagicMock
 
-from aws_wrapper.dialect import (MariaDbDialect, MySqlDialect,
-                                 PgDialect, RdsMySqlDialect)
+from aws_wrapper.dialect import (MariaDbDialect, MySqlDialect, PgDialect,
+                                 RdsMySqlDialect)
 
 
 class TestDialect(TestCase):
