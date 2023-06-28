@@ -17,8 +17,9 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from aws_wrapper.connection_provider import ConnectionProvider
+from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo, HostRole
-from aws_wrapper.pep249 import AwsWrapperError, Connection
+from aws_wrapper.pep249 import Connection
 from aws_wrapper.plugins import (DefaultPlugin, DummyPlugin, Plugin,
                                  PluginManager, PluginServiceManagerContainer)
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,

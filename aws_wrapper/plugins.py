@@ -37,6 +37,8 @@ from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
 
 logger = getLogger(__name__)
@@ -269,8 +271,11 @@ class Plugin(ABC):
     def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
         raise NotImplementedError(Messages.get_formatted("Plugins.UnsupportedMethod", "get_host_info_by_strategy"))
 
-    def init_host_provider(self, initial_url: str, props: Properties,
-                           host_list_provider_service: HostListProviderService, init_host_provider_func: Callable):
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: HostListProviderService,
+            init_host_provider_func: Callable):
         return init_host_provider_func()
 
 
@@ -338,8 +343,11 @@ class DefaultPlugin(Plugin):
     def subscribed_methods(self) -> Set[str]:
         return DefaultPlugin._SUBSCRIBED_METHODS
 
-    def init_host_provider(self, initial_url: str, props: Properties,
-                           host_list_provider_service: HostListProviderService, init_host_provider_func: Callable):
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: HostListProviderService,
+            init_host_provider_func: Callable):
         # Do nothing
         # This is the last plugin in the plugin chain.
         # So init_host_provider_func will be a no-op and does not need to be called.
@@ -703,9 +711,8 @@ class PluginManager:
                     return host
         return None
 
-    def init_host_provider(self, initial_url: str, props: Properties,
-                           host_list_provider_service: HostListProviderService):
+    def init_host_provider(self, props: Properties, host_list_provider_service: HostListProviderService):
         return self._execute_with_subscribed_plugins(
             PluginManager._INIT_HOST_LIST_PROVIDER_METHOD,
-            lambda plugin, func: plugin.init_host_provider(initial_url, props, host_list_provider_service, func),
+            lambda plugin, func: plugin.init_host_provider(props, host_list_provider_service, func),
             lambda: None)

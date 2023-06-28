@@ -12,5 +12,20 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from typing import Protocol, runtime_checkable
+
+
 class Dialect:
     ...
+
+
+@runtime_checkable
+class TopologyAwareDatabaseDialect(Protocol):
+    def get_topology_query(self) -> str:
+        pass
+
+    def get_host_id_query(self) -> str:
+        pass
+
+    def get_is_reader_query(self) -> str:
+        pass

@@ -15,10 +15,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
-from typing import Set
-
-NO_PORT: int = -1
-DEFAULT_WEIGHT: int = 100
+from typing import ClassVar, Optional, Set
 
 
 class HostAvailability(Enum):
@@ -33,21 +30,58 @@ class HostRole(Enum):
     WRITER = auto()
 
 
-@dataclass
+@dataclass(eq=False)
 class HostInfo:
+    NO_PORT: ClassVar[int] = -1
+
     host: str
     port: int = NO_PORT
     availability: HostAvailability = HostAvailability.AVAILABLE
     role: HostRole = HostRole.WRITER
-    aliases: Set[str] = field(default_factory=set)
-    all_aliases: Set[str] = field(default_factory=set)
+    _aliases: Set[str] = field(default_factory=set)
+    _all_aliases: Set[str] = field(default_factory=set)
     last_update_time: datetime = datetime.now()
+    host_id: Optional[str] = None
 
     def __post_init__(self):
-        self.all_aliases.add(self.as_alias())
+        self._all_aliases.add(self.as_alias())
+
+    def __eq__(self, other: object):
+        if self is object:
+            return True
+        if not isinstance(other, HostInfo):
+            return False
+
+        return self.host == other.host \
+            and self.port == other.port \
+            and self.availability == other.availability \
+            and self.role == other.role
+
+    @property
+    def aliases(self):
+        return frozenset(self._aliases)
+
+    @property
+    def all_aliases(self):
+        return frozenset(self._all_aliases)
 
     def is_port_specified(self) -> bool:
-        return self.port != NO_PORT
+        return self.port != HostInfo.NO_PORT
 
     def as_alias(self) -> str:
         return (self.host + ":" + str(self.port)) if self.is_port_specified() else self.host
+
+    def add_alias(self, *aliases):
+        if not aliases:
+            return
+
+        for alias in aliases:
+            self._aliases.add(alias)
+            self._all_aliases.add(alias)
+
+    @property
+    def url(self):
+        if self.is_port_specified():
+            return self.host + ":" + str(self.port)
+        else:
+            return self.host
