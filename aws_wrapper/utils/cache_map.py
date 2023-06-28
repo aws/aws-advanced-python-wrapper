@@ -11,6 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 import threading
 import time
 from typing import Dict, Generic, Optional, TypeVar
@@ -22,7 +23,7 @@ V = TypeVar('V')
 class CacheMap(Generic[K, V]):
     def __init__(self):
         self._cache: Dict[K, CacheItem[V]] = {}
-        self._cleanup_interval_ns: int = 10 * 60 * 1000 * 1000 * 1000  # 10 minutes
+        self._cleanup_interval_ns: int = 600_000_000_000  # 10 minutes
         self._cleanup_time_ns: int = time.perf_counter_ns() + self._cleanup_interval_ns
         self._lock = threading.RLock()
 
@@ -82,9 +83,13 @@ class CacheMap(Generic[K, V]):
 
         self._cleanup_time_ns = time.perf_counter_ns() + self._cleanup_interval_ns
         with self._lock:
+            removal_keys = []
             for key, cache_item in self._cache.items():
                 if cache_item is None or cache_item.is_expired():
-                    self._cache.pop(key)
+                    removal_keys.append(key)
+
+            for key in removal_keys:
+                self._cache.pop(key)
 
 
 class CacheItem(Generic[V]):

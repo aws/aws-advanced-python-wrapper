@@ -44,7 +44,7 @@ def defaults():
     defaults.initial_hosts = (HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com"),)
     defaults.cache_hosts = (HostInfo("host1"), HostInfo("host2"))
     defaults.queried_hosts = (HostInfo("new-host-id.xyz.us-east-2.rds.amazonaws.com"),)
-    defaults.refresh_ns = 5 * 1000 * 1000 * 1000  # 5 seconds
+    defaults.refresh_ns = 5_000_000_000  # 5 seconds
 
     mock_topology_query(defaults, [("new-host-id", True)])
     defaults.mock_provider_service.current_connection = defaults.mock_conn

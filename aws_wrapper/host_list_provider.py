@@ -130,9 +130,9 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._topology_aware_dialect: Optional[TopologyAwareDatabaseDialect] = None
         self._is_primary_cluster_id: bool = False
         self._is_initialized: bool = False
-        self._suggested_cluster_id_refresh_ns: int = 10 * 60 * 1000 * 1000 * 1000  # 10 minutes
+        self._suggested_cluster_id_refresh_ns: int = 600_000_000_000  # 10 minutes
         self._lock: RLock = RLock()
-        self._refresh_rate_ns: int = WrapperProperties.TOPOLOGY_REFRESH_MS.get_int(self._props) * 1000 * 1000
+        self._refresh_rate_ns: int = WrapperProperties.TOPOLOGY_REFRESH_MS.get_int(self._props) * 1_000_000
 
     def _initialize(self):
 
