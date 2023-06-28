@@ -107,25 +107,25 @@ class RdsUtils:
     REGION_GROUP = "region"
 
     def is_rds_cluster_dns(self, host: str) -> bool:
-        return self.__contains(host, [self.AURORA_CLUSTER_PATTERN, self.AURORA_CHINA_CLUSTER_PATTERN])
+        return self._contains(host, [self.AURORA_CLUSTER_PATTERN, self.AURORA_CHINA_CLUSTER_PATTERN])
 
     def is_rds_custom_cluster_dns(self, host: str) -> bool:
-        return self.__contains(host, [self.AURORA_CUSTOM_CLUSTER_PATTERN, self.AURORA_CHINA_CUSTOM_CLUSTER_PATTERN])
+        return self._contains(host, [self.AURORA_CUSTOM_CLUSTER_PATTERN, self.AURORA_CHINA_CUSTOM_CLUSTER_PATTERN])
 
     def is_rds_dns(self, host: str) -> bool:
-        return self.__contains(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
+        return self._contains(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
 
     def is_rds_instance(self, host: str) -> bool:
-        return self.__contains(host, [self.AURORA_INSTANCE_PATTERN, self.AURORA_CHINA_INSTANCE_PATTERN])
+        return self._contains(host, [self.AURORA_INSTANCE_PATTERN, self.AURORA_CHINA_INSTANCE_PATTERN])
 
     def is_rds_proxy_dns(self, host: str) -> bool:
-        return self.__contains(host, [self.AURORA_PROXY_DNS_PATTERN, self.AURORA_CHINA_PROXY_DNS_PATTERN])
+        return self._contains(host, [self.AURORA_PROXY_DNS_PATTERN, self.AURORA_CHINA_PROXY_DNS_PATTERN])
 
     def get_rds_instance_host_pattern(self, host: str) -> str:
         if not host or not host.strip():
             return "?"
 
-        match = self.__find(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
+        match = self._find(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
         if match:
             return f"?.{match.group(self.DOMAIN_GROUP)}"
 
@@ -135,7 +135,7 @@ class RdsUtils:
         if not host or not host.strip():
             return None
 
-        match = self.__find(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
+        match = self._find(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
         if match:
             return match.group(self.REGION_GROUP)
 
@@ -145,14 +145,14 @@ class RdsUtils:
         if not host or not host.strip():
             return False
 
-        match = self.__find(host, [self.AURORA_CLUSTER_PATTERN, self.AURORA_CHINA_CLUSTER_PATTERN])
+        match = self._find(host, [self.AURORA_CLUSTER_PATTERN, self.AURORA_CHINA_CLUSTER_PATTERN])
         if match:
             return "cluster-".casefold() == match.group(self.DNS_GROUP).casefold()
 
         return False
 
     def is_reader_cluster_dns(self, host: str) -> bool:
-        match = self.__find(host, [self.AURORA_CLUSTER_PATTERN, self.AURORA_CHINA_CLUSTER_PATTERN])
+        match = self._find(host, [self.AURORA_CLUSTER_PATTERN, self.AURORA_CHINA_CLUSTER_PATTERN])
         if match:
             return "cluster-ro-".casefold() == match.group(self.DNS_GROUP).casefold()
 
@@ -171,10 +171,10 @@ class RdsUtils:
         return None
 
     def is_ipv4(self, host: str) -> bool:
-        return self.__contains(host, [self.IP_V4])
+        return self._contains(host, [self.IP_V4])
 
     def is_ipv6(self, host: str) -> bool:
-        return self.__contains(host, [self.IP_V6, self.IP_V6_COMPRESSED])
+        return self._contains(host, [self.IP_V6, self.IP_V6_COMPRESSED])
 
     def is_dns_pattern_valid(self, host: str) -> bool:
         return "?" in host
@@ -198,13 +198,13 @@ class RdsUtils:
 
         return RdsUrlType.OTHER
 
-    def __contains(self, host: str, patterns: list) -> bool:
+    def _contains(self, host: str, patterns: list) -> bool:
         if not host or not host.strip():
             return False
 
         return len([pattern for pattern in patterns if search(pattern, host)]) > 0
 
-    def __find(self, host: str, patterns: list):
+    def _find(self, host: str, patterns: list):
         if not host or not host.strip():
             return None
 

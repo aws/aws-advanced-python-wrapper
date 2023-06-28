@@ -15,11 +15,16 @@
 import copy
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
+from json import loads
 from logging import getLogger
-from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
+from re import search
+from types import SimpleNamespace
+from typing import (Any, Callable, Dict, List, Optional, Protocol, Set, Tuple,
+                    Type)
 
 import boto3
 from boto3 import Session
+from botocore.exceptions import ClientError
 
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
@@ -529,6 +534,126 @@ class IamAuthConnectionPluginFactory(PluginFactory):
         return IamAuthConnectionPlugin(plugin_service)
 
 
+class AwsSecretsManagerConnectionPlugin(Plugin):
+    _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
+
+    _SECRETS_ARN_PATTERN = r"^arn:aws:secretsmanager:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
+
+    _secrets_cache: Dict[Tuple, SimpleNamespace] = {}
+    _secret_key: Tuple = ()
+
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return self._SUBSCRIBED_METHODS
+
+    def __init__(self, plugin_service: PluginService, props: Properties, session: Optional[Session] = None):
+        self._plugin_service = plugin_service
+        self._session = session
+
+        secret_id = WrapperProperties.SECRETS_MANAGER_SECRET_ID.get(props)
+        if not secret_id:
+            raise AwsWrapperError(
+                Messages.get_formatted("AwsSecretsManagerConnectionPlugin.MissingRequiredConfigParameter",
+                                       WrapperProperties.SECRETS_MANAGER_SECRET_ID.name))
+
+        region: str = self._get_rds_region(secret_id, props)
+
+        self._secret_key: Tuple = (secret_id, region)
+
+    def connect(self, host_info: HostInfo, props: Properties, initial: bool, connect_func: Callable) -> Connection:
+        return self._connect(props, connect_func)
+
+    def force_connect(self, host_info: HostInfo, props: Properties, initial: bool,
+                      force_connect_func: Callable) -> Connection:
+        return self._connect(props, force_connect_func)
+
+    def _connect(self, props: Properties, connect_func: Callable) -> Connection:
+        secret_fetched: bool = self._update_secret()
+
+        try:
+            self._apply_secret_to_properties(props)
+            return connect_func()
+
+        except Exception as e:
+            if not self._plugin_service.is_login_exception(error=e) or secret_fetched:
+                raise AwsWrapperError(
+                    Messages.get_formatted("AwsSecretsManagerConnectionPlugin.ConnectException", e)) from e
+
+            secret_fetched = self._update_secret(True)
+
+            if secret_fetched:
+                try:
+                    self._apply_secret_to_properties(props)
+                    return connect_func()
+                except Exception as unhandled_error:
+                    raise AwsWrapperError(
+                        Messages.get_formatted("AwsSecretsManagerConnectionPlugin.UnhandledException",
+                                               unhandled_error)) from unhandled_error
+            raise AwsWrapperError(Messages.get_formatted("AwsSecretsManagerConnectionPlugin.FailedLogin", e)) from e
+
+    def _update_secret(self, force_refetch: bool = False) -> bool:
+        fetched: bool = False
+
+        self._secret: Optional[SimpleNamespace] = AwsSecretsManagerConnectionPlugin._secrets_cache.get(self._secret_key)
+
+        if not self._secret or force_refetch:
+            try:
+                self._secret = self._fetch_latest_credentials()
+                if self._secret:
+                    AwsSecretsManagerConnectionPlugin._secrets_cache[self._secret_key] = self._secret
+                    fetched = True
+            except (ClientError, AttributeError) as e:
+                logger.debug(Messages.get_formatted("AwsSecretsManagerConnectionPlugin.FailedToFetchDbCredentials", e))
+                raise AwsWrapperError(
+                    Messages.get_formatted("AwsSecretsManagerConnectionPlugin.FailedToFetchDbCredentials", e)) from e
+
+        return fetched
+
+    def _fetch_latest_credentials(self):
+        session = self._session if self._session else boto3.Session()
+        client = session.client(
+            'secretsmanager',
+            region_name=self._secret_key[1],
+        )
+
+        secret = client.get_secret_value(
+            SecretId=self._secret_key[0],
+        )
+
+        client.close()
+
+        return loads(secret.get("SecretString"), object_hook=lambda d: SimpleNamespace(**d))
+
+    def _apply_secret_to_properties(self, properties: Properties):
+        if self._secret:
+            WrapperProperties.USER.set(properties, self._secret.username)
+            WrapperProperties.PASSWORD.set(properties, self._secret.password)
+
+    def _get_rds_region(self, secret_id: str, props: Properties) -> str:
+        region: Optional[str] = props.get(WrapperProperties.SECRETS_MANAGER_REGION.name)
+        if not region:
+            match = search(self._SECRETS_ARN_PATTERN, secret_id)
+            if match:
+                region = match.group("region")
+            else:
+                raise AwsWrapperError(
+                    Messages.get_formatted("AwsSecretsManagerConnectionPlugin.MissingRequiredConfigParameter",
+                                           WrapperProperties.SECRETS_MANAGER_REGION.name))
+
+        session = self._session if self._session else boto3.Session()
+        if region not in session.get_available_regions("rds"):
+            exception_message = Messages.get_formatted("AwsSdk.UnsupportedRegion", region)
+            logger.debug(exception_message)
+            raise AwsWrapperError(exception_message)
+
+        return region
+
+
+class AwsSecretsManagerConnectionPluginFactory(PluginFactory):
+    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+        return AwsSecretsManagerConnectionPlugin(plugin_service, props)
+
+
 class PluginManager:
     _ALL_METHODS: str = "*"
     _CONNECT_METHOD: str = "connect"
@@ -541,7 +666,8 @@ class PluginManager:
 
     _PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
         "dummy": DummyPluginFactory,
-        "iam": IamAuthConnectionPluginFactory
+        "iam": IamAuthConnectionPluginFactory,
+        "aws_secrets_manager": AwsSecretsManagerConnectionPluginFactory
     }
 
     def __init__(
