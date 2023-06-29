@@ -147,7 +147,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 return
 
             self._initial_host_info: HostInfo = \
-                HostInfo(self._props["host"], int(self._props["port"]) if "port" in self._props else HostInfo.NO_PORT)
+                HostInfo(self._props.get("host"), self._props.get("port", HostInfo.NO_PORT))
             self._initial_hosts: List[HostInfo] = [self._initial_host_info]
             self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
 
@@ -169,7 +169,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 self._cluster_id = self._initial_host_info.url
             elif self._rds_url_type.is_rds:
                 cluster_id_suggestion = self._get_suggested_cluster_id(self._initial_host_info.url)
-                if cluster_id_suggestion is not None and cluster_id_suggestion.cluster_id:
+                if cluster_id_suggestion and cluster_id_suggestion.cluster_id:
                     # The initial URL matches an entry in the topology cache for an existing cluster ID.
                     # Update this cluster ID to match the existing one so that topology info can be shared.
                     self._cluster_id = cluster_id_suggestion.cluster_id
@@ -209,7 +209,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     key, False, self._suggested_cluster_id_refresh_ns)
             if key == url:
                 return AuroraHostListProvider.ClusterIdSuggestion(url, is_primary_cluster_id)
-            if hosts is None:
+            if not hosts:
                 continue
             for host in hosts:
                 if host.url == url:
@@ -217,7 +217,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     return AuroraHostListProvider.ClusterIdSuggestion(key, is_primary_cluster_id)
         return None
 
-    def _get_topology(self, conn: Optional[Connection], force_update: bool) \
+    def _get_topology(self, conn: Optional[Connection], force_update: bool = False) \
             -> 'AuroraHostListProvider.FetchTopologyResult':
         self._initialize()
 
@@ -228,7 +228,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
         cached_hosts = AuroraHostListProvider._topology_cache.get(self._cluster_id)
         if not cached_hosts or force_update:
-            if conn is None:
+            if not conn:
                 # Cannot fetch topology without a connection
                 # Return the original hosts passed to the connect method
                 return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
@@ -240,7 +240,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     # This cluster_id is primary and a new entry was just created in the cache. When this happens, we
                     # check for non-primary cluster IDs associated with the same cluster so that the topology info can
                     # be shared.
-                    self._update_cluster_ids(hosts)
+                    self._suggest_cluster_id(hosts)
                 return AuroraHostListProvider.FetchTopologyResult(hosts, False)
 
         if cached_hosts:
@@ -248,7 +248,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         else:
             return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
-    def _update_cluster_ids(self, primary_cluster_id_hosts: List[HostInfo]):
+    def _suggest_cluster_id(self, primary_cluster_id_hosts: List[HostInfo]):
         if not primary_cluster_id_hosts:
             return
 
@@ -271,7 +271,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     break
 
     def _query_for_topology(self, conn: Connection) -> Optional[List[HostInfo]]:
-        if self._topology_aware_dialect is None:
+        if not self._topology_aware_dialect:
             if not isinstance(self._host_list_provider_service.dialect, TopologyAwareDatabaseDialect):
                 logger.warning(Messages.get("AuroraHostListProvider.InvalidDialect"))
                 return None
@@ -315,9 +315,9 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         # According to TopologyAwareDatabaseCluster.getTopologyQuery() the result set
         # should contain 4 columns: instance ID, 1/0 (writer/reader), CPU utilization, host lag in ms.
         # There might be a 5th column specifying the last update time.
-        if self._cluster_instance_template is None:
+        if not self._cluster_instance_template:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.UninitializedClusterInstanceTemplate"))
-        if self._initial_host_info is None:
+        if not self._initial_host_info:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.UninitializedInitialHostInfo"))
 
         host_id: str = record[0]
@@ -391,7 +391,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
 
     def _get_topology_aware_dialect(self, exception_msg_id: str) -> TopologyAwareDatabaseDialect:
-        if self._topology_aware_dialect is None:
+        if not self._topology_aware_dialect:
             dialect = self._host_list_provider_service.dialect
             if not isinstance(dialect, TopologyAwareDatabaseDialect):
                 raise AwsWrapperError(Messages.get_formatted(exception_msg_id, dialect))

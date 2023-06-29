@@ -14,7 +14,6 @@
 
 import types
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -34,12 +33,11 @@ def clear_caches():
 
 
 @pytest.fixture
-def defaults():
+def defaults(mocker):
     defaults = types.SimpleNamespace()
-    defaults.a = 1
-    defaults.mock_conn = MagicMock()
-    defaults.mock_cursor = MagicMock()
-    defaults.mock_provider_service = MagicMock()
+    defaults.mock_conn = mocker.MagicMock()
+    defaults.mock_cursor = mocker.MagicMock()
+    defaults.mock_provider_service = mocker.MagicMock()
     defaults.props = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
     defaults.initial_hosts = (HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com"),)
     defaults.cache_hosts = (HostInfo("host1"), HostInfo("host2"))
@@ -269,13 +267,12 @@ def test_identify_connection_no_match_in_topology(defaults):
     assert provider.identify_connection(defaults.mock_conn) is None
 
 
-def test_identify_connection_empty_topology(defaults):
+def test_identify_connection_empty_topology(mocker, defaults):
     provider = AuroraHostListProvider(defaults.mock_provider_service, defaults.props)
     defaults.mock_cursor.fetchone.return_value = ("instance-1",)
 
-    with patch.object(provider, 'refresh') as mock_refresh:
-        mock_refresh.return_value = []
-        assert provider.identify_connection(defaults.mock_conn) is None
+    provider.refresh = mocker.MagicMock(return_value=[])
+    assert provider.identify_connection(defaults.mock_conn) is None
 
 
 def test_identify_connection_host_in_topology(defaults):
@@ -313,9 +310,9 @@ def test_host_pattern_setting(defaults):
         provider._initialize()
 
 
-def test_get_topology_aware_dialect_invalid_dialect(defaults):
+def test_get_topology_aware_dialect_invalid_dialect(mocker, defaults):
     provider = AuroraHostListProvider(defaults.mock_provider_service, defaults.props)
-    mock_dialect = MagicMock(spec=Dialect)
+    mock_dialect = mocker.MagicMock(spec=Dialect)
     mock_dialect.__class__ = Dialect
     defaults.mock_provider_service.dialect = mock_dialect
 

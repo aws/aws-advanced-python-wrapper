@@ -64,7 +64,7 @@ class WrapperProperties:
     CLUSTER_INSTANCE_HOST_PATTERN = \
         WrapperProperty("cluster_instance_host_pattern",
                         """The cluster instance DNS pattern that will be used to build a complete instance endpoint.
-                        A \"?\" character in this pattern should be used as a placeholder for cluster instance names.
+                        A "?" character in this pattern should be used as a placeholder for cluster instance names.
                         This pattern is required to be specified for IP address or custom domain connections to AWS RDS
                         clusters. Otherwise, if unspecified, the pattern will be automatically created for AWS RDS
                         clusters.""")

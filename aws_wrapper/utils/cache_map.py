@@ -33,7 +33,7 @@ class CacheMap(Generic[K, V]):
     def get(self, key: K) -> Optional[V]:
         with self._lock:
             value = self._cache.get(key)
-            if value is None:
+            if not value:
                 return None
 
             if value.is_expired():
@@ -45,7 +45,7 @@ class CacheMap(Generic[K, V]):
     def get_with_default(self, key: K, value_if_absent: V, item_expiration_ns: int) -> V:
         with self._lock:
             old_value = self._cache.get(key)
-            if old_value is None or old_value.is_expired():
+            if not old_value or old_value.is_expired():
                 new_value = CacheItem(value_if_absent, time.perf_counter_ns() + item_expiration_ns)
             else:
                 new_value = old_value
@@ -71,11 +71,8 @@ class CacheMap(Generic[K, V]):
         self._cache.clear()
 
     def get_dict(self) -> Dict[K, V]:
-        items = {}
         with self._lock:
-            for key, cache_item in self._cache.items():
-                items[key] = cache_item.item
-            return items
+            return {key: self._cache[key].item for key in self._cache.keys()}
 
     def _cleanup(self):
         if self._cleanup_time_ns > time.perf_counter_ns():
@@ -83,11 +80,7 @@ class CacheMap(Generic[K, V]):
 
         self._cleanup_time_ns = time.perf_counter_ns() + self._cleanup_interval_ns
         with self._lock:
-            removal_keys = []
-            for key, cache_item in self._cache.items():
-                if cache_item is None or cache_item.is_expired():
-                    removal_keys.append(key)
-
+            removal_keys = [key for key, cache_item in self._cache.items() if not cache_item or cache_item.is_expired()]
             for key in removal_keys:
                 self._cache.pop(key)
 
@@ -98,8 +91,7 @@ class CacheItem(Generic[V]):
         self._expiration_time = expiration_time
 
     def __str__(self):
-        return "CacheItem [item=" + str(self.item) + ", expiration_time=" + str(
-            self._expiration_time) + "]"
+        return f"CacheItem [item={str(self.item)}, expiration_time={self._expiration_time}]"
 
     def is_expired(self) -> bool:
         return time.perf_counter_ns() > self._expiration_time

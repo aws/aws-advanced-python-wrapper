@@ -54,19 +54,18 @@ class ConnectionProviderManager:
             self._connection_provider = connection_provider
 
     def get_connection_provider(self, host_info: HostInfo, properties: Properties) -> ConnectionProvider:
-        if self._connection_provider is None:
+        if not self._connection_provider:
             return self.default_provider
 
         with self._lock:
-            if self._connection_provider is not None \
-                    and self._connection_provider.accepts_host_info(host_info, properties):
+            if self._connection_provider and self._connection_provider.accepts_host_info(host_info, properties):
                 return self._connection_provider
 
         return self._default_provider
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         accepts_strategy: bool = False
-        if self._connection_provider is not None:
+        if self._connection_provider:
             with self._lock:
                 accepts_strategy = self._connection_provider.accepts_strategy(role, strategy)
 
@@ -76,7 +75,7 @@ class ConnectionProviderManager:
         return accepts_strategy
 
     def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
-        if self._connection_provider is not None:
+        if self._connection_provider:
             with self._lock:
                 if self._connection_provider.accepts_strategy(role, strategy):
                     return self._connection_provider.get_host_info_by_strategy(hosts, role, strategy)
@@ -99,7 +98,7 @@ class DriverConnectionProvider(ConnectionProvider):
 
     def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
         host_selector: Optional[HostSelector] = self._accepted_strategies.get(strategy)
-        if host_selector is None:
+        if not host_selector:
             raise AwsWrapperError(
                 Messages.get_formatted("DriverConnectionProvider.UnsupportedStrategy", strategy))
         else:
