@@ -29,8 +29,8 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 @pytest.fixture(autouse=True)
 def clear_caches():
     AuroraHostListProvider._topology_cache.clear()
-    AuroraHostListProvider._primary_cluster_id_cache.clear()
-    AuroraHostListProvider._suggested_primary_cluster_id_cache.clear()
+    AuroraHostListProvider._is_primary_cluster_id_cache.clear()
+    AuroraHostListProvider._cluster_ids_to_update.clear()
 
 
 @pytest.fixture
@@ -238,7 +238,7 @@ def test_cluster_id_suggestion_for_existing_provider(mocker, defaults):
 
     provider2.refresh()
     assert "my-cluster.cluster-xyz.us-east-2.rds.amazonaws.com" == \
-           AuroraHostListProvider._suggested_primary_cluster_id_cache.get(provider1._cluster_id)
+           AuroraHostListProvider._cluster_ids_to_update.get(provider1._cluster_id)
 
     spy = mocker.spy(provider1, "_query_for_topology")
     actual_hosts = provider1.refresh()

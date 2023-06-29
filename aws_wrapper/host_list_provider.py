@@ -113,8 +113,13 @@ class HostListProviderService(Protocol):
 
 class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     _topology_cache: CacheMap[str, List[HostInfo]] = CacheMap()
-    _suggested_primary_cluster_id_cache: CacheMap[str, str] = CacheMap()
-    _primary_cluster_id_cache: CacheMap[str, bool] = CacheMap()
+    # Maps cluster IDs to a boolean representing whether they are a primary cluster ID or not. A primary cluster ID is a
+    # cluster ID that is equivalent to a cluster URL. Topology info is shared between AuroraHostListProviders that have
+    # the same cluster ID.
+    _is_primary_cluster_id_cache: CacheMap[str, bool] = CacheMap()
+    # Maps existing cluster IDs to suggested cluster IDs. This is used to update non-primary cluster IDs to primary
+    # cluster IDs so that connections to the same clusters can share topology info.
+    _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
@@ -165,6 +170,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             elif self._rds_url_type.is_rds:
                 cluster_id_suggestion = self._get_suggested_cluster_id(self._initial_host_info.url)
                 if cluster_id_suggestion is not None and cluster_id_suggestion.cluster_id:
+                    # The initial URL matches an entry in the topology cache for an existing cluster ID.
+                    # Update this cluster ID to match the existing one so that topology info can be shared.
                     self._cluster_id = cluster_id_suggestion.cluster_id
                     self._is_primary_cluster_id = cluster_id_suggestion.is_primary_cluster_id
                 else:
@@ -174,7 +181,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
                     self._cluster_id = cluster_url
                     self._is_primary_cluster_id = True
-                    self._primary_cluster_id_cache.put(self._cluster_id, True, self._suggested_cluster_id_refresh_ns)
+                    self._is_primary_cluster_id_cache.put(self._cluster_id, True, self._suggested_cluster_id_refresh_ns)
 
         self._is_initialized = True
 
@@ -198,7 +205,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     def _get_suggested_cluster_id(self, url: str) -> 'Optional[AuroraHostListProvider.ClusterIdSuggestion]':
         for key, hosts in AuroraHostListProvider._topology_cache.get_dict().items():
             is_primary_cluster_id = \
-                AuroraHostListProvider._primary_cluster_id_cache.get_with_default(
+                AuroraHostListProvider._is_primary_cluster_id_cache.get_with_default(
                     key, False, self._suggested_cluster_id_refresh_ns)
             if key == url:
                 return AuroraHostListProvider.ClusterIdSuggestion(url, is_primary_cluster_id)
@@ -210,19 +217,16 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     return AuroraHostListProvider.ClusterIdSuggestion(key, is_primary_cluster_id)
         return None
 
-    def _get_topology(self, conn: Optional[Connection], force_update: bool) -> 'AuroraHostListProvider.FetchTopologyResult':
+    def _get_topology(self, conn: Optional[Connection], force_update: bool) \
+            -> 'AuroraHostListProvider.FetchTopologyResult':
         self._initialize()
 
-        suggested_primary_cluster_id = AuroraHostListProvider._suggested_primary_cluster_id_cache.get(self._cluster_id)
+        suggested_primary_cluster_id = AuroraHostListProvider._cluster_ids_to_update.get(self._cluster_id)
         if suggested_primary_cluster_id and self._cluster_id != suggested_primary_cluster_id:
             self._cluster_id = suggested_primary_cluster_id
             self._is_primary_cluster_id = True
 
         cached_hosts = AuroraHostListProvider._topology_cache.get(self._cluster_id)
-        # If True, this cluster_id is primary and is about to create a new entry in the cache.
-        # When a primary entry is created it needs to be suggested to other (non-primary) entries.
-        suggest_hosts = cached_hosts is None and self._is_primary_cluster_id
-
         if not cached_hosts or force_update:
             if conn is None:
                 # Cannot fetch topology without a connection
@@ -232,8 +236,11 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             hosts = self._query_for_topology(conn)
             if hosts:
                 AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
-                if suggest_hosts:
-                    self._suggest_hosts(hosts)
+                if self._is_primary_cluster_id and not cached_hosts:
+                    # This cluster_id is primary and a new entry was just created in the cache. When this happens, we
+                    # check for non-primary cluster IDs associated with the same cluster so that the topology info can
+                    # be shared.
+                    self._update_cluster_ids(hosts)
                 return AuroraHostListProvider.FetchTopologyResult(hosts, False)
 
         if cached_hosts:
@@ -241,24 +248,25 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         else:
             return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
-    def _suggest_hosts(self, primary_cluster_hosts: List[HostInfo]):
-        if not primary_cluster_hosts:
+    def _update_cluster_ids(self, primary_cluster_id_hosts: List[HostInfo]):
+        if not primary_cluster_id_hosts:
             return
 
-        primary_cluster_urls = {host.url for host in primary_cluster_hosts}
+        primary_cluster_id_urls = {host.url for host in primary_cluster_id_hosts}
         for cluster_id, hosts in AuroraHostListProvider._topology_cache.get_dict().items():
-            is_primary_cluster = AuroraHostListProvider._primary_cluster_id_cache.get_with_default(
+            is_primary_cluster = AuroraHostListProvider._is_primary_cluster_id_cache.get_with_default(
                 cluster_id, False, self._suggested_cluster_id_refresh_ns)
-            suggested_primary_cluster_id = AuroraHostListProvider._suggested_primary_cluster_id_cache.get(cluster_id)
+            suggested_primary_cluster_id = AuroraHostListProvider._cluster_ids_to_update.get(cluster_id)
             if is_primary_cluster or suggested_primary_cluster_id or not hosts:
                 continue
 
             # The entry is non-primary
             for host in hosts:
-                if host.url in primary_cluster_urls:
-                    # An instance URL in this cluster matches an instance URL in the primary cluster.
-                    # Suggest the primary cluster_id for this cluster.
-                    AuroraHostListProvider._suggested_primary_cluster_id_cache.put(
+                if host.url in primary_cluster_id_urls:
+                    # An instance URL in this topology cache entry matches an instance URL in the primary cluster entry.
+                    # The associated cluster ID should be updated to match the primary ID so that they can share
+                    # topology info.
+                    AuroraHostListProvider._cluster_ids_to_update.put(
                         cluster_id, self._cluster_id, self._suggested_cluster_id_refresh_ns)
                     break
 
