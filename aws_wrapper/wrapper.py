@@ -16,7 +16,7 @@ from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
 from aws_wrapper.connection_provider import DriverConnectionProvider
-from aws_wrapper.hostinfo import NO_PORT, HostInfo
+from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugins import (PluginManager, PluginServiceImpl,
                                  PluginServiceManagerContainer)
@@ -39,8 +39,6 @@ class AwsWrapperConnection(Connection):
             target: Union[None, str, Callable] = None,
             **kwargs: Union[None, int, str]
     ) -> "AwsWrapperConnection":
-
-        # Check if target provided
         if not target:
             raise Error(Messages.get("Wrapper.RequiredTargetDriver"))
 
@@ -60,7 +58,8 @@ class AwsWrapperConnection(Connection):
         logger.debug(f"${plugin_service}")
 
         plugin_manager: PluginManager = PluginManager(container, props, DriverConnectionProvider(target_func))
-        host_info = HostInfo(props["host"], int(props["port"]) if "port" in props else NO_PORT)
+        plugin_manager.init_host_provider(props, plugin_service)
+        host_info = HostInfo(props["host"], int(props["port"]) if "port" in props else HostInfo.NO_PORT)
 
         conn = plugin_manager.connect(host_info, props, True)
 

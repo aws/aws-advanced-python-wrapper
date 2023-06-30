@@ -12,23 +12,44 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from unittest import TestCase
+from collections.abc import Hashable
+
+import pytest
 
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 
 
-class TestHostInfo(TestCase):
-    def test_host_info_defaults(self):
-        host_info = HostInfo("testhost")
-        assert host_info.host == "testhost"
-        assert host_info.is_port_specified() is False
-        assert host_info.aliases.__len__() == 0
-        assert host_info.all_aliases.__len__() == 1
-        assert host_info.role == HostRole.WRITER
-        assert host_info.availability == HostAvailability.AVAILABLE
-        assert list(host_info.all_aliases)[0] == "testhost"
+def test_host_info_defaults():
+    host_info = HostInfo("testhost")
+    assert host_info.host == "testhost"
+    assert host_info.is_port_specified() is False
+    assert len(host_info.aliases) == 0
+    assert len(host_info._all_aliases) == 1
+    assert host_info.role == HostRole.WRITER
+    assert host_info.availability == HostAvailability.AVAILABLE
+    assert list(host_info._all_aliases)[0] == "testhost"
 
-    def test_host_as_alias(self):
-        host_info = HostInfo("testhost", 1234)
-        assert host_info.all_aliases.__len__() == 1
-        assert list(host_info.all_aliases)[0] == "testhost:1234"
+
+def test_host_as_alias():
+    host_info = HostInfo("testhost", 1234)
+    assert len(host_info._all_aliases) == 1
+    assert list(host_info._all_aliases)[0] == "testhost:1234"
+
+
+def test_host_info_eq():
+    a = HostInfo("testhost", 1234, HostAvailability.AVAILABLE, HostRole.WRITER)
+    b = HostInfo("testhost", 1234, HostAvailability.AVAILABLE, HostRole.WRITER)
+
+    assert a == a
+    assert a == b
+    b.role = HostRole.READER
+    assert a != b
+    assert 3 != a
+
+
+def test_host_info_hash():
+    host_info = HostInfo("testhost")
+
+    assert not isinstance(host_info, Hashable)
+    with pytest.raises(TypeError):
+        hash(host_info)

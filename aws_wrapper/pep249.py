@@ -31,7 +31,8 @@ aws_wrapper -- PEP249 base classes
 
 """
 
-from typing import Any, Iterator, List, Optional, Sequence
+from types import TracebackType
+from typing import Any, Iterator, List, Optional, Sequence, Type, TypeVar
 
 
 class Warning(Exception):
@@ -90,10 +91,6 @@ class PipelineAborted(OperationalError):
     ...
 
 
-class AwsWrapperError(Error):
-    __module__ = "aws_wrapper"
-
-
 class Connection:
     __module__ = "aws_wrapper"
 
@@ -135,6 +132,18 @@ class Connection:
 
 class Cursor:
     __module__ = "aws_wrapper"
+    _Self = TypeVar("_Self", bound="Cursor[Any]")
+
+    def __enter__(self: _Self) -> _Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
+        self.close()
 
     @property
     def description(self):

@@ -33,7 +33,7 @@ class RandomHostSelector(HostSelector):
 
         eligible_hosts = [host for host in hosts if host.role == role]
 
-        if eligible_hosts.__len__() == 0:
+        if len(eligible_hosts) == 0:
             raise Error(Messages.get("HostSelector.NoEligibleHost"))
 
         return random.choice(eligible_hosts)

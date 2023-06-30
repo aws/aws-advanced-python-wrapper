@@ -26,7 +26,6 @@ from aws_wrapper.utils.properties import Properties
 class FailoverConnectionPlugin(Plugin):
     def init_host_provider(
             self,
-            initial_url: str,
             properties: Properties,
             host_list_provider_service: HostListProviderService,
             init_host_provider_func: Callable):
