@@ -41,8 +41,8 @@ class DialectCodes(Enum):
 
     MARIADB: str = "mariadb"
 
-    UNKNOWN: str = "unknown"
     CUSTOM: str = "custom"
+    UNKNOWN: str = "unknown"
 
 
 class DatabaseType(Enum):
@@ -50,7 +50,6 @@ class DatabaseType(Enum):
     POSTGRES = auto()
     MARIADB = auto()
     CUSTOM = auto()
-    UNKNOWN = auto()
 
 
 class TopologyAwareDatabaseCluster(Protocol):
@@ -192,8 +191,9 @@ class MariaDbDialect(Dialect):
         try:
             with closing(conn.cursor()) as aws_cursor:
                 aws_cursor.execute(self.server_version_query)
-                vals = ["mariadb" in value.lower() for column, value in aws_cursor]
-                return True in vals
+                for record in aws_cursor:
+                    if "mariadb" in record[1].lower():
+                        return True
         except Exception:
             pass
 
@@ -209,6 +209,10 @@ class RdsMysqlDialect(MysqlDialect):
         self._dialect_update_candidates = [DialectCodes.AURORA_MYSQL]
 
     def is_dialect(self, conn: Connection) -> bool:
+
+        if not super().is_dialect(conn):
+            return False
+
         try:
             with closing(conn.cursor()) as aws_cursor:
                 aws_cursor.execute(self.server_version_query)
@@ -248,7 +252,7 @@ class RdsPgDialect(PgDialect):
                 with closing(conn.cursor()) as aws_cursor:
                     aws_cursor.execute(self._extensions_sql)
                     row = aws_cursor.fetchone()
-                    if row and bool(row[0]):
+                    if row and row[0]:
                         logger.debug("rds_tools: True")
                         rds_tools = True
                     if row and bool(row[1]):
