@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 from typing import Callable, Dict, Set
 
-from aws_wrapper.plugins import Plugin
+from aws_wrapper.plugin_service import Plugin
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 

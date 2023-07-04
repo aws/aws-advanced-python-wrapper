@@ -18,11 +18,13 @@ from typing import TYPE_CHECKING
 
 import boto3
 
+from aws_wrapper.plugin import Plugin, PluginFactory
+
 if TYPE_CHECKING:
     from boto3 import Session
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
-    from aws_wrapper.plugins import Plugin, PluginFactory, PluginService
+    from aws_wrapper.plugin_service import PluginService
 
 from datetime import datetime, timedelta
 from logging import getLogger

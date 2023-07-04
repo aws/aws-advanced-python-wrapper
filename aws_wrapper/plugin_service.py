@@ -17,37 +17,31 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from boto3 import Session
     from aws_wrapper.pep249 import Connection
+    from aws_wrapper.plugin import Plugin, PluginFactory
+    from aws_wrapper.connection_provider import ConnectionProvider
+    from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 
-import copy
-from abc import ABC, abstractmethod
-from json import loads
+from abc import abstractmethod
 from logging import getLogger
-from re import search
-from types import SimpleNamespace
-from typing import (Any, Callable, Dict, List, Optional, Protocol, Set, Tuple,
-                    Type)
+from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
-import boto3
-from botocore.exceptions import ClientError
-
-from aws_wrapper.connection_provider import (ConnectionProvider,
-                                             ConnectionProviderManager)
+from aws_wrapper.aws_secrets_manager_plugin import \
+    AwsSecretsManagerConnectionPluginFactory
+from aws_wrapper.default_plugin import DefaultPlugin
+from aws_wrapper.dummy_plugin import DummyPluginFactory
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
 from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
                                             HostListProvider,
                                             HostListProviderService,
                                             StaticHostListProvider)
-from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.iam_plugin import IamAuthConnectionPluginFactory
 from aws_wrapper.utils.dialect import Dialect
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
-from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
-                                          WrapperProperties)
+from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 logger = getLogger(__name__)
 
@@ -244,272 +238,6 @@ class PluginServiceImpl(PluginService, HostListProviderService):
 
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         return self._exception_manager.is_login_exception(dialect=self.dialect, error=error, sql_state=sql_state)
-
-
-class Plugin(ABC):
-
-    @property
-    @abstractmethod
-    def subscribed_methods(self) -> Set[str]:
-        ...
-
-    def connect(self, host_info: HostInfo, props: Properties,
-                initial: bool, connect_func: Callable) -> Connection:
-        return connect_func()
-
-    def force_connect(self, host_info: HostInfo, props: Properties,
-                      initial: bool, force_connect_func: Callable) -> Connection:
-        return force_connect_func()
-
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
-        return execute_func()
-
-    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        return
-
-    # TODO: Should we pass in the old/new Connection, and/or the old/new HostInfo?
-    #  Would this be useful info for the plugins?
-    def notify_connection_changed(self, changes: Set[ConnectionEvent]) \
-            -> OldConnectionSuggestedAction:
-        return OldConnectionSuggestedAction.NO_OPINION
-
-    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return False
-
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
-        raise NotImplementedError(Messages.get_formatted("Plugins.UnsupportedMethod", "get_host_info_by_strategy"))
-
-    def init_host_provider(
-            self,
-            props: Properties,
-            host_list_provider_service: HostListProviderService,
-            init_host_provider_func: Callable):
-        return init_host_provider_func()
-
-
-class PluginFactory(Protocol):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        ...
-
-
-class DummyPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return DummyPlugin(plugin_service, props)
-
-
-class DefaultPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"*"}
-
-    def __init__(self, plugin_service: PluginService, default_conn_provider: ConnectionProvider):
-        self._plugin_service: PluginService = plugin_service
-        self._connection_provider_manager = ConnectionProviderManager(default_conn_provider)
-
-    def connect(self, host_info: HostInfo, props: Properties,
-                initial: bool, connect_func: Callable) -> Any:
-        target_driver_props = copy.copy(props)
-        PropertiesUtils.remove_wrapper_props(target_driver_props)
-        connection_provider: ConnectionProvider = \
-            self._connection_provider_manager.get_connection_provider(host_info, target_driver_props)
-        # logger.debug("Default plugin: connect before")
-        result = self._connect(host_info, target_driver_props, connection_provider)
-        # logger.debug("Default plugin: connect after")
-        return result
-
-    def _connect(self, host_info: HostInfo, props: Properties, conn_provider: ConnectionProvider):
-        result = conn_provider.connect(host_info, props)
-        return result
-
-    def force_connect(self, host_info: HostInfo, props: Properties,
-                      initial: bool, force_connect_func: Callable) -> Connection:
-        target_driver_props = copy.copy(props)
-        PropertiesUtils.remove_wrapper_props(target_driver_props)
-        return self._connect(host_info, target_driver_props, self._connection_provider_manager.default_provider)
-
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
-        # logger.debug("Default plugin: execute before")
-        result = execute_func()
-        # logger.debug("Default plugin: execute after")
-        return result
-
-    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        if HostRole.UNKNOWN == role:
-            return False
-        return self._connection_provider_manager.accepts_strategy(role, strategy)
-
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
-        if HostRole.UNKNOWN == role:
-            raise AwsWrapperError(Messages.get("Plugins.UnknownHosts"))
-
-        hosts = self._plugin_service.hosts
-
-        if len(hosts) < 1:
-            raise AwsWrapperError(Messages.get("Plugins.EmptyHosts"))
-
-        return self._connection_provider_manager.get_host_info_by_strategy(hosts, role, strategy)
-
-    @property
-    def subscribed_methods(self) -> Set[str]:
-        return DefaultPlugin._SUBSCRIBED_METHODS
-
-    def init_host_provider(
-            self,
-            props: Properties,
-            host_list_provider_service: HostListProviderService,
-            init_host_provider_func: Callable):
-        # Do nothing
-        # This is the last plugin in the plugin chain.
-        # So init_host_provider_func will be a no-op and does not need to be called.
-        pass
-
-
-class DummyPlugin(Plugin):
-    _NEXT_ID: int = 0
-    _SUBSCRIBED_METHODS: Set[str] = {"*"}
-
-    def __init__(self, plugin_service: PluginService, props: Properties):
-        self._id: int = DummyPlugin._NEXT_ID
-        DummyPlugin._NEXT_ID += 1
-
-    def connect(self, host_info: HostInfo, props: Properties,
-                initial: bool, connect_func: Callable) -> Any:
-        # logger.debug("Plugin {}: connect before".format(self._id))
-        result = connect_func()
-        # logger.debug("Plugin {}: connect after".format(self._id))
-        return result
-
-    def force_connect(self, host_info: HostInfo, props: Properties,
-                      initial: bool, force_connect_func: Callable) -> Connection:
-        return force_connect_func()
-
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
-        # logger.debug("Plugin {}: execute before".format(self._id))
-        result = execute_func()
-        # logger.debug("Plugin {}: execute after".format(self._id))
-        return result
-
-    @property
-    def subscribed_methods(self) -> Set[str]:
-        return DummyPlugin._SUBSCRIBED_METHODS
-
-
-class AwsSecretsManagerConnectionPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
-
-    _SECRETS_ARN_PATTERN = r"^arn:aws:secretsmanager:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
-
-    _secrets_cache: Dict[Tuple, SimpleNamespace] = {}
-    _secret_key: Tuple = ()
-
-    @property
-    def subscribed_methods(self) -> Set[str]:
-        return self._SUBSCRIBED_METHODS
-
-    def __init__(self, plugin_service: PluginService, props: Properties, session: Optional[Session] = None):
-        self._plugin_service = plugin_service
-        self._session = session
-
-        secret_id = WrapperProperties.SECRETS_MANAGER_SECRET_ID.get(props)
-        if not secret_id:
-            raise AwsWrapperError(
-                Messages.get_formatted("AwsSecretsManagerConnectionPlugin.MissingRequiredConfigParameter",
-                                       WrapperProperties.SECRETS_MANAGER_SECRET_ID.name))
-
-        region: str = self._get_rds_region(secret_id, props)
-
-        self._secret_key: Tuple = (secret_id, region)
-
-    def connect(self, host_info: HostInfo, props: Properties, initial: bool, connect_func: Callable) -> Connection:
-        return self._connect(props, connect_func)
-
-    def force_connect(self, host_info: HostInfo, props: Properties, initial: bool,
-                      force_connect_func: Callable) -> Connection:
-        return self._connect(props, force_connect_func)
-
-    def _connect(self, props: Properties, connect_func: Callable) -> Connection:
-        secret_fetched: bool = self._update_secret()
-
-        try:
-            self._apply_secret_to_properties(props)
-            return connect_func()
-
-        except Exception as e:
-            if not self._plugin_service.is_login_exception(error=e) or secret_fetched:
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerConnectionPlugin.ConnectException", e)) from e
-
-            secret_fetched = self._update_secret(True)
-
-            if secret_fetched:
-                try:
-                    self._apply_secret_to_properties(props)
-                    return connect_func()
-                except Exception as unhandled_error:
-                    raise AwsWrapperError(
-                        Messages.get_formatted("AwsSecretsManagerConnectionPlugin.UnhandledException",
-                                               unhandled_error)) from unhandled_error
-            raise AwsWrapperError(Messages.get_formatted("AwsSecretsManagerConnectionPlugin.FailedLogin", e)) from e
-
-    def _update_secret(self, force_refetch: bool = False) -> bool:
-        fetched: bool = False
-
-        self._secret: Optional[SimpleNamespace] = AwsSecretsManagerConnectionPlugin._secrets_cache.get(self._secret_key)
-
-        if not self._secret or force_refetch:
-            try:
-                self._secret = self._fetch_latest_credentials()
-                if self._secret:
-                    AwsSecretsManagerConnectionPlugin._secrets_cache[self._secret_key] = self._secret
-                    fetched = True
-            except (ClientError, AttributeError) as e:
-                logger.debug(Messages.get_formatted("AwsSecretsManagerConnectionPlugin.FailedToFetchDbCredentials", e))
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerConnectionPlugin.FailedToFetchDbCredentials", e)) from e
-
-        return fetched
-
-    def _fetch_latest_credentials(self):
-        session = self._session if self._session else boto3.Session()
-        client = session.client(
-            'secretsmanager',
-            region_name=self._secret_key[1],
-        )
-
-        secret = client.get_secret_value(
-            SecretId=self._secret_key[0],
-        )
-
-        client.close()
-
-        return loads(secret.get("SecretString"), object_hook=lambda d: SimpleNamespace(**d))
-
-    def _apply_secret_to_properties(self, properties: Properties):
-        if self._secret:
-            WrapperProperties.USER.set(properties, self._secret.username)
-            WrapperProperties.PASSWORD.set(properties, self._secret.password)
-
-    def _get_rds_region(self, secret_id: str, props: Properties) -> str:
-        region: Optional[str] = props.get(WrapperProperties.SECRETS_MANAGER_REGION.name)
-        if not region:
-            match = search(self._SECRETS_ARN_PATTERN, secret_id)
-            if match:
-                region = match.group("region")
-            else:
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerConnectionPlugin.MissingRequiredConfigParameter",
-                                           WrapperProperties.SECRETS_MANAGER_REGION.name))
-
-        session = self._session if self._session else boto3.Session()
-        if region not in session.get_available_regions("rds"):
-            exception_message = Messages.get_formatted("AwsSdk.UnsupportedRegion", region)
-            logger.debug(exception_message)
-            raise AwsWrapperError(exception_message)
-
-        return region
-
-
-class AwsSecretsManagerConnectionPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return AwsSecretsManagerConnectionPlugin(plugin_service, props)
 
 
 class PluginManager:

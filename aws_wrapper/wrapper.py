@@ -18,8 +18,8 @@ from typing import Any, Callable, Iterator, List, Optional, Union
 from aws_wrapper.connection_provider import DriverConnectionProvider
 from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.pep249 import Connection, Cursor, Error
-from aws_wrapper.plugins import (PluginManager, PluginServiceImpl,
-                                 PluginServiceManagerContainer)
+from aws_wrapper.plugin_service import (PluginManager, PluginServiceImpl,
+                                        PluginServiceManagerContainer)
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
