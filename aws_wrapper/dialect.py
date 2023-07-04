@@ -19,7 +19,7 @@ from logging import getLogger
 from typing import Dict, List, Optional, Protocol
 
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostinfo import NO_PORT
+from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.pep249 import Connection
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
@@ -359,7 +359,7 @@ class UnknownDialect(Dialect):
 
     @property
     def default_port(self) -> int:
-        return NO_PORT
+        HostInfo.NO_PORT
 
     @property
     def host_alias_query(self) -> str:
