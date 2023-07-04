@@ -359,7 +359,7 @@ class UnknownDialect(Dialect):
 
     @property
     def default_port(self) -> int:
-        HostInfo.NO_PORT
+        return HostInfo.NO_PORT
 
     @property
     def host_alias_query(self) -> str:
