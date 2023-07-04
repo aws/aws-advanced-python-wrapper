@@ -12,6 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .framework.test_driver import TestDriver
+
 import socket
 import timeit
 from time import sleep
@@ -21,7 +28,6 @@ import aws_wrapper
 from .framework.aurora_test_utility import AuroraTestUtility
 from .framework.database_engine_deployment import DatabaseEngineDeployment
 from .framework.proxy_helper import ProxyHelper
-from .framework.test_driver import TestDriver
 from .framework.test_environment import TestEnvironment
 from .framework.test_environment_features import TestEnvironmentFeatures
 

@@ -12,15 +12,21 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aws_wrapper.host_list_provider import HostListProviderService
+    from aws_wrapper.hostinfo import HostInfo
+    from aws_wrapper.pep249 import Connection
+    from aws_wrapper.utils.properties import Properties
+
 from typing import Callable, Dict, Set
 
-from aws_wrapper.host_list_provider import HostListProviderService
-from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pep249 import Connection
 from aws_wrapper.plugins import Plugin
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
-from aws_wrapper.utils.properties import Properties
 
 
 class FailoverConnectionPlugin(Plugin):

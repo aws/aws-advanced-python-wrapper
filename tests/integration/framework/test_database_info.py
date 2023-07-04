@@ -11,7 +11,6 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
 import typing
 from typing import Any, Dict, Iterable, List
 
@@ -37,23 +36,22 @@ class TestDatabaseInfo:
 
     _instances: List[TestInstanceInfo]
 
-    def __init__(self, dict: Dict[str, Any]) -> None:
-        if dict is None:
+    def __init__(self, database_info: Dict[str, Any]) -> None:
+        if database_info is None:
             return
 
-        self._username = typing.cast(str, dict.get("username"))
-        self._password = typing.cast(str, dict.get("password"))
-        self._default_db_name = typing.cast(str, dict.get("defaultDbName"))
-        self._cluster_endpoint = typing.cast(str, dict.get("clusterEndpoint"))
-        self._cluster_endpoint_port = typing.cast(int, dict.get("clusterEndpointPort"))
-        self._cluster_read_only_endpoint = typing.cast(str, dict.get("clusterReadOnlyEndpoint"))
-        self._cluster_read_only_endpoint_port = typing.cast(int, dict.get("clusterReadOnlyEndpointPort"))
-        self._instance_endpoint_suffix = typing.cast(str, dict.get("instanceEndpointSuffix"))
-        self._instance_endpoint_port = typing.cast(int, dict.get("instanceEndpointPort"))
+        self._username = typing.cast('str', database_info.get("username"))
+        self._password = typing.cast('str', database_info.get("password"))
+        self._default_db_name = typing.cast('str', database_info.get("defaultDbName"))
+        self._cluster_endpoint = typing.cast('str', database_info.get("clusterEndpoint"))
+        self._cluster_endpoint_port = typing.cast('int', database_info.get("clusterEndpointPort"))
+        self._cluster_read_only_endpoint = typing.cast('str', database_info.get("clusterReadOnlyEndpoint"))
+        self._cluster_read_only_endpoint_port = typing.cast('int', database_info.get("clusterReadOnlyEndpointPort"))
+        self._instance_endpoint_suffix = typing.cast('str', database_info.get("instanceEndpointSuffix"))
+        self._instance_endpoint_port = typing.cast('int', database_info.get("instanceEndpointPort"))
 
         self._instances = list()
-        instances: Iterable[Any] = typing.cast(Iterable[Any],
-                                               dict.get("instances"))
+        instances: Iterable[Any] = typing.cast('Iterable[Any]', database_info.get("instances"))
         if instances is not None:
             for f in instances:
                 if f is not None:

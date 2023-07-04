@@ -24,19 +24,25 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from aws_wrapper.iam_plugin import IamAuthConnectionPlugin, TokenInfo
+
+if TYPE_CHECKING:
+    from boto3 import Session, client
+    from aws_wrapper.pep249 import Connection
+    from aws_wrapper.utils.dialect import Dialect
+    from aws_wrapper.plugins import PluginService
+
 import urllib.request
 from datetime import datetime, timedelta
 from typing import Callable, Dict
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from boto3 import Session, client
-
 from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pep249 import Connection
-from aws_wrapper.plugins import (IamAuthConnectionPlugin, PluginService,
-                                 TokenInfo)
-from aws_wrapper.utils.dialect import Dialect
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 

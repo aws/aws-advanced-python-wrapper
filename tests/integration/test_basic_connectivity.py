@@ -12,13 +12,19 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .framework.test_driver import TestDriver
+    from .framework.test_environment import TestEnvironment
+    from .framework.test_instance_info import TestInstanceInfo
+
 from aws_wrapper.wrapper import AwsWrapperConnection
 from .framework.conditions import network_outages_enabled_required
 from .framework.driver_helper import DriverHelper
 from .framework.proxy_helper import ProxyHelper
-from .framework.test_driver import TestDriver
-from .framework.test_environment import TestEnvironment
-from .framework.test_instance_info import TestInstanceInfo
 
 
 class TestBasicConnectivity:

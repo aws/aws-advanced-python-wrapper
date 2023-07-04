@@ -12,6 +12,14 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aws_wrapper.pep249 import Connection
+    from aws_wrapper.utils.rds_url_type import RdsUrlType
+
 from abc import ABC, abstractmethod
 from contextlib import closing
 from enum import Enum, auto
@@ -20,9 +28,7 @@ from typing import Dict, List, Optional, Protocol
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pep249 import Connection
 from aws_wrapper.utils.properties import Properties, WrapperProperties
-from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
 from .utils.messages import Messages
 

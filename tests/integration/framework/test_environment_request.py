@@ -32,23 +32,17 @@ class TestEnvironmentRequest:
     _features: Set[TestEnvironmentFeatures]
     _num_of_instances: int = 1
 
-    def __init__(self, dict: Dict[str, Any]) -> None:
-        if dict is None:
+    def __init__(self, request: Dict[str, Any]) -> None:
+        if request is None:
             return
 
-        self._engine = getattr(DatabaseEngine,
-                               typing.cast(str, dict.get("engine")))
-        self._instances = getattr(DatabaseInstances,
-                                  typing.cast(str, dict.get("instances")))
-        self._deployment = getattr(DatabaseEngineDeployment,
-                                   typing.cast(str, dict.get("deployment")))
-        self._target_python_version = getattr(
-            TargetPythonVersion,
-            typing.cast(str, dict.get("targetPythonVersion")))
-        self._num_of_instances = typing.cast(int, dict.get("numOfInstances"))
+        self._engine = getattr(DatabaseEngine, typing.cast('str', request.get("engine")))
+        self._instances = getattr(DatabaseInstances, typing.cast('str', request.get("instances")))
+        self._deployment = getattr(DatabaseEngineDeployment, typing.cast('str', request.get("deployment")))
+        self._target_python_version = getattr(TargetPythonVersion, typing.cast('str', request.get("targetPythonVersion")))
+        self._num_of_instances = typing.cast('int', request.get("numOfInstances"))
         self._features = set()
-        features: Iterable[str] = typing.cast(Iterable[str],
-                                              dict.get("features"))
+        features: Iterable[str] = typing.cast('Iterable[str]', request.get("features"))
         if features is not None:
             for f in features:
                 self._features.add(getattr(TestEnvironmentFeatures, f))

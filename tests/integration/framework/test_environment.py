@@ -27,7 +27,7 @@ from .test_environment_features import TestEnvironmentFeatures
 from .test_environment_info import TestEnvironmentInfo
 
 
-class TestEnvironment():
+class TestEnvironment:
     __test__ = False
 
     _env: "TestEnvironment"  # class variable
@@ -37,8 +37,8 @@ class TestEnvironment():
 
     _current_driver: Optional[TestDriver]
 
-    def __init__(self, dict: Dict[str, Any]) -> None:
-        self._info = TestEnvironmentInfo(dict)
+    def __init__(self, test_info: Dict[str, Any]) -> None:
+        self._info = TestEnvironmentInfo(test_info)
         self._proxies = None
         self._current_driver = None
 
@@ -55,12 +55,11 @@ class TestEnvironment():
             raise Exception(
                 Messages.get_formatted("Testing.EnvVarRequired", "TEST_ENV_INFO_JSON"))
 
-        dict: Dict[str, Any] = typing.cast(Dict[str, Any],
-                                           json.loads(str(info_json)))
+        test_info: Dict[str, Any] = typing.cast('Dict[str, Any]', json.loads(str(info_json)))
         if not bool(dict):
             raise Exception(Messages.get_formatted("Testing.CantParse", "TEST_ENV_INFO_JSON"))
         else:
-            env = TestEnvironment(dict)
+            env = TestEnvironment(test_info)
 
             if TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED in env.get_info().get_request().get_features():
                 TestEnvironment._init_proxies(env)
@@ -150,9 +149,6 @@ class TestEnvironment():
     def is_test_driver_allowed(self, test_driver: TestDriver) -> bool:
         features = self._info.get_request().get_features()
         database_engine = self._info.get_request().get_database_engine()
-
-        driver_compatible_to_database_engine: bool = False
-        disabled_by_feature: bool = False
 
         if test_driver == TestDriver.MYSQL:
             driver_compatible_to_database_engine = (database_engine == DatabaseEngine.MYSQL) \

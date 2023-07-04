@@ -12,11 +12,16 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aws_wrapper.failover_result import WriterFailoverResult
+    from aws_wrapper.hostinfo import HostInfo
+
 from abc import abstractmethod
 from typing import List
-
-from aws_wrapper.failover_result import WriterFailoverResult
-from aws_wrapper.hostinfo import HostInfo
 
 
 class WriterFailoverHandler:

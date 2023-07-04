@@ -24,21 +24,27 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from boto3 import Session, client
+    from aws_wrapper.pep249 import Connection
+    from aws_wrapper.utils.dialect import Dialect
+
 from types import SimpleNamespace
 from typing import Callable, Dict, Tuple
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from boto3 import Session, client
 from botocore.exceptions import ClientError
 from parameterized import param, parameterized
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pep249 import Connection
 from aws_wrapper.plugins import (AwsSecretsManagerConnectionPlugin,
                                  PluginService)
-from aws_wrapper.utils.dialect import Dialect
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties
 

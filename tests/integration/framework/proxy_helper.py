@@ -12,13 +12,19 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .proxy_info import ProxyInfo
+    from toxiproxy import Proxy  # type: ignore
+
 from logging import getLogger
 
-from toxiproxy import Proxy  # type: ignore
 from toxiproxy.api import APIConsumer  # type: ignore
 from toxiproxy.exceptions import NotFound  # type: ignore
 
-from .proxy_info import ProxyInfo
 from .test_environment import TestEnvironment
 
 

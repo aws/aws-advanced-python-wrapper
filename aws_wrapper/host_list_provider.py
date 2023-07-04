@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 import uuid
 from abc import abstractmethod
 from contextlib import closing
@@ -202,7 +204,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             logger.error(message)
             raise AwsWrapperError(message)
 
-    def _get_suggested_cluster_id(self, url: str) -> 'Optional[AuroraHostListProvider.ClusterIdSuggestion]':
+    def _get_suggested_cluster_id(self, url: str) -> Optional[AuroraHostListProvider.ClusterIdSuggestion]:
         for key, hosts in AuroraHostListProvider._topology_cache.get_dict().items():
             is_primary_cluster_id = \
                 AuroraHostListProvider._is_primary_cluster_id_cache.get_with_default(
@@ -218,7 +220,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         return None
 
     def _get_topology(self, conn: Optional[Connection], force_update: bool = False) \
-            -> 'AuroraHostListProvider.FetchTopologyResult':
+            -> AuroraHostListProvider.FetchTopologyResult:
         self._initialize()
 
         suggested_primary_cluster_id = AuroraHostListProvider._cluster_ids_to_update.get(self._cluster_id)
