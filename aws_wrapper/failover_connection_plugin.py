@@ -29,7 +29,7 @@ from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 
 
-class FailoverConnectionPlugin(Plugin):
+class FailoverPlugin(Plugin):
     def init_host_provider(
             self,
             properties: Properties,

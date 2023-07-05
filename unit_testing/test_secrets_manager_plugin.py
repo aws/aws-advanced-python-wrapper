@@ -28,13 +28,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from aws_wrapper.aws_secrets_manager_plugin import \
-    AwsSecretsManagerConnectionPlugin
+from aws_wrapper.aws_secrets_manager_plugin import AwsSecretsManagerPlugin
 
 if TYPE_CHECKING:
     from boto3 import Session, client
     from aws_wrapper.pep249 import Connection
-    from aws_wrapper.utils.dialect import Dialect
+    from aws_wrapper.dialect import Dialect
     from aws_wrapper.plugin_service import PluginService
 
 from types import SimpleNamespace
@@ -108,12 +107,12 @@ class TestAwsSecretsManagerPlugin(TestCase):
             "secrets_manager_secret_id": self._TEST_SECRET_ID,
         })
 
-    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerConnectionPlugin._secrets_cache", _secrets_cache)
+    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_connect_with_cached_secrets(self):
         self._secrets_cache[self._SECRET_CACHE_KEY] = self._TEST_SECRET
-        target_plugin: AwsSecretsManagerConnectionPlugin = AwsSecretsManagerConnectionPlugin(self._mock_plugin_service,
-                                                                                             self._properties,
-                                                                                             self._mock_session)
+        target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(self._mock_plugin_service,
+                                                                         self._properties,
+                                                                         self._mock_session)
 
         target_plugin.connect(self._TEST_HOST_INFO, self._properties, True, self._mock_func)
         self.assertEqual(1, len(self._secrets_cache))
@@ -122,13 +121,13 @@ class TestAwsSecretsManagerPlugin(TestCase):
         self.assertEqual(self._TEST_USERNAME, self._properties.get("user"))
         self.assertEqual(self._TEST_PASSWORD, self._properties.get("password"))
 
-    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerConnectionPlugin._secrets_cache", _secrets_cache)
+    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_connect_with_new_secrets(self):
         self.assertEqual(0, len(self._secrets_cache))
 
-        target_plugin: AwsSecretsManagerConnectionPlugin = AwsSecretsManagerConnectionPlugin(self._mock_plugin_service,
-                                                                                             self._properties,
-                                                                                             self._mock_session)
+        target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(self._mock_plugin_service,
+                                                                         self._properties,
+                                                                         self._mock_session)
 
         target_plugin.connect(self._TEST_HOST_INFO, self._properties, True, self._mock_func)
 
@@ -144,24 +143,24 @@ class TestAwsSecretsManagerPlugin(TestCase):
     ])
     def test_missing_required_params(self, test_value: Properties):
         with self.assertRaises(AwsWrapperError) as e:
-            AwsSecretsManagerConnectionPlugin(self._mock_plugin_service,
-                                              test_value,
-                                              self._mock_session)
-            self.assertTrue(Messages.get("AwsSecretsManagerConnectionPlugin.FailedToFetchDbCredentials") in str(e))
+            AwsSecretsManagerPlugin(self._mock_plugin_service,
+                                    test_value,
+                                    self._mock_session)
+            self.assertTrue(Messages.get("AwsSecretsManagerPlugin.FailedToFetchDbCredentials") in str(e))
 
-    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerConnectionPlugin._secrets_cache", _secrets_cache)
+    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_failed_initial_connection_with_unhandled_error(self):
         ...
 
-    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerConnectionPlugin._secrets_cache", _secrets_cache)
+    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_connect_with_new_secrets_after_trying_with_cached_secrets(self):
         ...
 
-    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerConnectionPlugin._secrets_cache", _secrets_cache)
+    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_failed_to_read_secrets(self):
         self._mock_client.get_secret_value.return_value = "foo"
 
-        target_plugin: AwsSecretsManagerConnectionPlugin = AwsSecretsManagerConnectionPlugin(
+        target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(
             self._mock_plugin_service,
             self._properties,
             self._mock_session)
@@ -173,10 +172,10 @@ class TestAwsSecretsManagerPlugin(TestCase):
                           True,
                           self._mock_func)
 
-    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerConnectionPlugin._secrets_cache", _secrets_cache)
+    @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_failed_to_get_secrets(self):
         self._mock_client.get_secret_value.side_effect = self._GENERIC_CLIENT_ERROR
-        target_plugin: AwsSecretsManagerConnectionPlugin = AwsSecretsManagerConnectionPlugin(
+        target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(
             self._mock_plugin_service,
             self._properties,
             self._mock_session)
@@ -198,7 +197,7 @@ class TestAwsSecretsManagerPlugin(TestCase):
     def test_connect_via_arn(self, arn: str, region: str):
         props: Properties = Properties({"secrets_manager_secret_id": arn})
 
-        target_plugin: AwsSecretsManagerConnectionPlugin = AwsSecretsManagerConnectionPlugin(
+        target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(
             self._mock_plugin_service,
             props,
             self._mock_session)
@@ -220,7 +219,7 @@ class TestAwsSecretsManagerPlugin(TestCase):
             {"secrets_manager_secret_id": arn,
              "secrets_manager_region": expected_region})
 
-        target_plugin: AwsSecretsManagerConnectionPlugin = AwsSecretsManagerConnectionPlugin(
+        target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(
             self._mock_plugin_service,
             props,
             self._mock_session)

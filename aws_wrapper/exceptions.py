@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.utils.dialect import Dialect
+    from aws_wrapper.dialect import Dialect
 
 from typing import List, Optional, Protocol
 

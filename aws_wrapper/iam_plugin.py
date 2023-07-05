@@ -55,7 +55,7 @@ class TokenInfo:
         return datetime.now() > self._expiration
 
 
-class IamAuthConnectionPlugin(Plugin):
+class IamAuthPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
 
@@ -90,41 +90,41 @@ class IamAuthConnectionPlugin(Plugin):
             region
         )
 
-        token_info = IamAuthConnectionPlugin._token_cache.get(cache_key)
+        token_info = IamAuthPlugin._token_cache.get(cache_key)
 
         if token_info and not token_info.is_expired():
-            logger.debug(Messages.get_formatted("IamAuthConnectionPlugin.UseCachedIamToken", token_info.token))
+            logger.debug(Messages.get_formatted("IamAuthPlugin.UseCachedIamToken", token_info.token))
             WrapperProperties.PASSWORD.set(props, token_info.token)
         else:
             token: str = self._generate_authentication_token(props, host, port, region)
-            logger.debug(Messages.get_formatted("IamAuthConnectionPlugin.GeneratedNewIamToken", token))
+            logger.debug(Messages.get_formatted("IamAuthPlugin.GeneratedNewIamToken", token))
             WrapperProperties.PASSWORD.set(props, token)
-            IamAuthConnectionPlugin._token_cache[cache_key] = TokenInfo(token, datetime.now() + timedelta(
+            IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
 
         try:
             return connect_func()
 
         except Exception as e:
-            logger.debug(Messages.get_formatted("IamAuthConnectionPlugin.ConnectException", e))
+            logger.debug(Messages.get_formatted("IamAuthPlugin.ConnectException", e))
 
             is_cached_token = (token_info and not token_info.is_expired())
             if not self._plugin_service.is_login_exception(error=e) or not is_cached_token:
-                raise AwsWrapperError(Messages.get_formatted("IamAuthConnectionPlugin.ConnectException", e)) from e
+                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.ConnectException", e)) from e
 
             # Login unsuccessful with cached token
             # Try to generate a new token and try to connect again
 
             token = self._generate_authentication_token(props, host, port, region)
-            logger.debug(Messages.get_formatted("IamAuthConnectionPlugin.GeneratedNewIamToken", token))
+            logger.debug(Messages.get_formatted("IamAuthPlugin.GeneratedNewIamToken", token))
             WrapperProperties.PASSWORD.set(props, token)
-            IamAuthConnectionPlugin._token_cache[token] = TokenInfo(token, datetime.now() + timedelta(
+            IamAuthPlugin._token_cache[token] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
 
             try:
                 return connect_func()
             except Exception as e:
-                raise AwsWrapperError(Messages.get_formatted("IamAuthConnectionPlugin.UnhandledException", e)) from e
+                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.UnhandledException", e)) from e
 
     def force_connect(self, host_info: HostInfo, props: Properties, initial: bool,
                       force_connect_func: Callable) -> Connection:
@@ -162,7 +162,7 @@ class IamAuthConnectionPlugin(Plugin):
             if default_port > 0:
                 return default_port
             else:
-                logger.debug(Messages.get_formatted("IamAuthConnectionPlugin.InvalidPort", default_port))
+                logger.debug(Messages.get_formatted("IamAuthPlugin.InvalidPort", default_port))
 
         if host_info.is_port_specified():
             return host_info.port
@@ -173,7 +173,7 @@ class IamAuthConnectionPlugin(Plugin):
         rds_region = self._rds_utils.get_rds_region(hostname) if hostname else None
 
         if not rds_region:
-            exception_message = Messages.get_formatted("IamAuthConnectionPlugin.UnsupportedHostname", hostname)
+            exception_message = Messages.get_formatted("IamAuthPlugin.UnsupportedHostname", hostname)
             logger.debug(exception_message)
             raise AwsWrapperError(exception_message)
 
@@ -186,6 +186,6 @@ class IamAuthConnectionPlugin(Plugin):
         return rds_region
 
 
-class IamAuthConnectionPluginFactory(PluginFactory):
+class IamAuthPluginFactory(PluginFactory):
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return IamAuthConnectionPlugin(plugin_service)
+        return IamAuthPlugin(plugin_service)

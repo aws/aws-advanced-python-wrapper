@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from aws_wrapper.dialect import Dialect
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin import Plugin, PluginFactory
     from aws_wrapper.connection_provider import ConnectionProvider
@@ -27,7 +28,7 @@ from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
 from aws_wrapper.aws_secrets_manager_plugin import \
-    AwsSecretsManagerConnectionPluginFactory
+    AwsSecretsManagerPluginFactory
 from aws_wrapper.default_plugin import DefaultPlugin
 from aws_wrapper.dummy_plugin import DummyPluginFactory
 from aws_wrapper.errors import AwsWrapperError
@@ -36,8 +37,7 @@ from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
                                             HostListProvider,
                                             HostListProviderService,
                                             StaticHostListProvider)
-from aws_wrapper.iam_plugin import IamAuthConnectionPluginFactory
-from aws_wrapper.utils.dialect import Dialect
+from aws_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
@@ -190,8 +190,8 @@ class PluginServiceImpl(PluginService, HostListProviderService):
         return False
 
     @property
-    def dialect(self) -> Dialect:
-        return Dialect()
+    def dialect(self):
+        ...
 
     def update_dialect(self, connection: Connection):
         ...
@@ -252,8 +252,8 @@ class PluginManager:
 
     _PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
         "dummy": DummyPluginFactory,
-        "iam": IamAuthConnectionPluginFactory,
-        "aws_secrets_manager": AwsSecretsManagerConnectionPluginFactory
+        "iam": IamAuthPluginFactory,
+        "aws_secrets_manager": AwsSecretsManagerPluginFactory
     }
 
     def __init__(

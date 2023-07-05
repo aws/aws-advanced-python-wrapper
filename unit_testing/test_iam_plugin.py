@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from boto3 import Session, client
     from aws_wrapper.pep249 import Connection
-    from aws_wrapper.utils.dialect import Dialect
+    from aws_wrapper.dialect import Dialect
     from aws_wrapper.plugin_service import PluginService
 
 import urllib.request
@@ -41,11 +41,11 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.iam_plugin import IamAuthConnectionPlugin, TokenInfo
+from aws_wrapper.iam_plugin import IamAuthPlugin, TokenInfo
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 
-class TestIamConnectionPlugin(TestCase):
+class TestIamPlugin(TestCase):
     _GENERATED_TOKEN = "generated_token"
     _TEST_TOKEN = "test_token"
     _DEFAULT_PG_PORT = 5432
@@ -85,13 +85,13 @@ class TestIamConnectionPlugin(TestCase):
             "user": "postgresqlUser",
         })
 
-    @patch("aws_wrapper.iam_plugin.IamAuthConnectionPlugin._token_cache", _token_cache)
+    @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
     def test_pg_connect_valid_token_in_cache(self):
         initial_token = TokenInfo(self._TEST_TOKEN, datetime.now() + timedelta(minutes=5))
         self._token_cache[self._PG_CACHE_KEY] = initial_token
 
-        target_plugin: IamAuthConnectionPlugin = IamAuthConnectionPlugin(self._mock_plugin_service,
-                                                                         self._mock_session)
+        target_plugin: IamAuthPlugin = IamAuthPlugin(self._mock_plugin_service,
+                                                     self._mock_session)
         target_plugin.connect(host_info=self._PG_HOST_INFO, props=self._pg_properties,
                               initial=False,
                               connect_func=self._mock_func)
@@ -103,7 +103,7 @@ class TestIamConnectionPlugin(TestCase):
         self.assertEqual(self._TEST_TOKEN, actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
-    @patch("aws_wrapper.iam_plugin.IamAuthConnectionPlugin._token_cache", _token_cache)
+    @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
     def test_pg_connect_with_invalid_port_fall_backs_to_host_port(self):
         invalid_port = "0"
         self._pg_properties[WrapperProperties.IAM_DEFAULT_PORT.name] = invalid_port
@@ -111,8 +111,8 @@ class TestIamConnectionPlugin(TestCase):
         # Assert no password has been set
         self.assertIsNone(self._pg_properties.get("password"))
 
-        target_plugin: IamAuthConnectionPlugin = IamAuthConnectionPlugin(self._mock_plugin_service,
-                                                                         self._mock_session)
+        target_plugin: IamAuthPlugin = IamAuthPlugin(self._mock_plugin_service,
+                                                     self._mock_session)
         target_plugin.connect(host_info=self._PG_HOST_INFO_WITH_PORT, props=self._pg_properties,
                               initial=False,
                               connect_func=self._mock_func)
@@ -130,7 +130,7 @@ class TestIamConnectionPlugin(TestCase):
         # Assert password has been updated to the value in token cache
         self.assertEqual(self._GENERATED_TOKEN, self._pg_properties.get("password"))
 
-    @patch("aws_wrapper.iam_plugin.IamAuthConnectionPlugin._token_cache", _token_cache)
+    @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
     def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(self):
         expected_default_pg_port = 5432
         invalid_port = "0"
@@ -139,8 +139,8 @@ class TestIamConnectionPlugin(TestCase):
         # Assert no password has been set
         self.assertIsNone(self._pg_properties.get("password"))
 
-        target_plugin: IamAuthConnectionPlugin = IamAuthConnectionPlugin(self._mock_plugin_service,
-                                                                         self._mock_session)
+        target_plugin: IamAuthPlugin = IamAuthPlugin(self._mock_plugin_service,
+                                                     self._mock_session)
         target_plugin.connect(host_info=self._PG_HOST_INFO, props=self._pg_properties,
                               initial=False,
                               connect_func=self._mock_func)
@@ -159,13 +159,13 @@ class TestIamConnectionPlugin(TestCase):
         # Assert password has been updated to the value in token cache
         self.assertEqual(self._GENERATED_TOKEN, self._pg_properties.get("password"))
 
-    @patch("aws_wrapper.iam_plugin.IamAuthConnectionPlugin._token_cache", _token_cache)
+    @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
     def test_connect_expired_token_in_cache(self):
         initial_token = TokenInfo(self._TEST_TOKEN, datetime.now() - timedelta(minutes=5))
         self._token_cache[self._PG_CACHE_KEY] = initial_token
 
         self._mock_func.side_effect = Exception("generic exception")
-        target_plugin: IamAuthConnectionPlugin = IamAuthConnectionPlugin(self._mock_plugin_service, self._mock_session)
+        target_plugin: IamAuthPlugin = IamAuthPlugin(self._mock_plugin_service, self._mock_session)
         self.assertRaises(
             Exception,
             target_plugin.connect,
@@ -183,9 +183,9 @@ class TestIamConnectionPlugin(TestCase):
         self.assertEqual(self._GENERATED_TOKEN, actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
-    @patch("aws_wrapper.iam_plugin.IamAuthConnectionPlugin._token_cache", _token_cache)
+    @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
     def test_connect_empty_cache(self):
-        target_plugin: IamAuthConnectionPlugin = IamAuthConnectionPlugin(self._mock_plugin_service, self._mock_session)
+        target_plugin: IamAuthPlugin = IamAuthPlugin(self._mock_plugin_service, self._mock_session)
         actual_connection = target_plugin.connect(host_info=self._PG_HOST_INFO, props=self._pg_properties,
                                                   initial=False,
                                                   connect_func=self._mock_func)
@@ -201,7 +201,7 @@ class TestIamConnectionPlugin(TestCase):
         self.assertEqual(self._GENERATED_TOKEN, actual_token.token)
         self.assertFalse(actual_token.is_expired())
 
-    @patch("aws_wrapper.iam_plugin.IamAuthConnectionPlugin._token_cache", _token_cache)
+    @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
     def test_connect_with_specified_port(self):
         cache_key_with_new_port: str = "us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:1234:postgresqlUser"
         initial_token = TokenInfo(f"{self._TEST_TOKEN}:1234", datetime.now() + timedelta(minutes=5))
@@ -210,7 +210,7 @@ class TestIamConnectionPlugin(TestCase):
         # Assert no password has been set
         self.assertIsNone(self._pg_properties.get("password"))
 
-        target_plugin: IamAuthConnectionPlugin = IamAuthConnectionPlugin(self._mock_plugin_service, self._mock_session)
+        target_plugin: IamAuthPlugin = IamAuthPlugin(self._mock_plugin_service, self._mock_session)
         target_plugin.connect(host_info=self._PG_HOST_INFO_WITH_PORT, props=self._pg_properties,
                               initial=False,
                               connect_func=self._mock_func)
@@ -226,7 +226,7 @@ class TestIamConnectionPlugin(TestCase):
         # Assert password has been updated to the value in token cache
         self.assertEqual(f"{self._TEST_TOKEN}:1234", self._pg_properties.get("password"))
 
-    @patch("aws_wrapper.iam_plugin.IamAuthConnectionPlugin._token_cache", _token_cache)
+    @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
     def test_connect_with_specified_iam_default_port(self):
         iam_default_port: str = "9999"
         self._pg_properties[WrapperProperties.IAM_DEFAULT_PORT.name] = iam_default_port
@@ -237,7 +237,7 @@ class TestIamConnectionPlugin(TestCase):
         # Assert no password has been set
         self.assertIsNone(self._pg_properties.get("password"))
 
-        target_plugin: IamAuthConnectionPlugin = IamAuthConnectionPlugin(self._mock_plugin_service, self._mock_session)
+        target_plugin: IamAuthPlugin = IamAuthPlugin(self._mock_plugin_service, self._mock_session)
         target_plugin.connect(host_info=self._PG_HOST_INFO_WITH_PORT, props=self._pg_properties,
                               initial=False,
                               connect_func=self._mock_func)
@@ -253,7 +253,7 @@ class TestIamConnectionPlugin(TestCase):
         # Assert password has been updated to the value in token cache
         self.assertEqual(f"{self._TEST_TOKEN}:{iam_default_port}", self._pg_properties.get("password"))
 
-    @patch("aws_wrapper.iam_plugin.IamAuthConnectionPlugin._token_cache", _token_cache)
+    @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
     def test_connect_with_specified_region(self):
         iam_region: str = "us-east-1"
 
@@ -268,7 +268,7 @@ class TestIamConnectionPlugin(TestCase):
         self.assertIsNone(self._pg_properties.get("password"))
 
         self._mock_client.generate_db_auth_token.return_value = f"{self._TEST_TOKEN}:{iam_region}"
-        target_plugin: IamAuthConnectionPlugin = IamAuthConnectionPlugin(self._mock_plugin_service, self._mock_session)
+        target_plugin: IamAuthPlugin = IamAuthPlugin(self._mock_plugin_service, self._mock_session)
         target_plugin.connect(host_info=HostInfo("pg.testdb.us-east-2.rds.amazonaws.com"), props=self._pg_properties,
                               initial=False,
                               connect_func=self._mock_func)
@@ -290,7 +290,7 @@ class TestIamConnectionPlugin(TestCase):
         # Assert password has been updated to the value in token cache
         self.assertEqual(f"{self._TEST_TOKEN}:{iam_region}", self._pg_properties.get("password"))
 
-    @patch("aws_wrapper.iam_plugin.IamAuthConnectionPlugin._token_cache", _token_cache)
+    @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
     def test_connect_with_specified_host(self):
         iam_host: str = "foo.testdb.us-east-2.rds.amazonaws.com"
 
@@ -300,7 +300,7 @@ class TestIamConnectionPlugin(TestCase):
         self.assertIsNone(self._pg_properties.get("password"))
 
         self._mock_client.generate_db_auth_token.return_value = f"{self._TEST_TOKEN}:{iam_host}"
-        target_plugin: IamAuthConnectionPlugin = IamAuthConnectionPlugin(self._mock_plugin_service, self._mock_session)
+        target_plugin: IamAuthPlugin = IamAuthPlugin(self._mock_plugin_service, self._mock_session)
         target_plugin.connect(host_info=HostInfo("pg.testdb.us-east-2.rds.amazonaws.com"), props=self._pg_properties,
                               initial=False,
                               connect_func=self._mock_func)
