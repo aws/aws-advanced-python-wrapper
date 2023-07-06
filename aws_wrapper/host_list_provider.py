@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 import uuid
 from abc import abstractmethod
 from contextlib import closing
@@ -21,11 +23,11 @@ from logging import getLogger
 from threading import RLock
 from typing import List, Optional, Protocol, Tuple, runtime_checkable
 
+from aws_wrapper.dialect import Dialect, TopologyAwareDatabaseDialect
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.utils.cache_map import CacheMap
-from aws_wrapper.utils.dialect import Dialect, TopologyAwareDatabaseDialect
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
@@ -202,7 +204,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             logger.error(message)
             raise AwsWrapperError(message)
 
-    def _get_suggested_cluster_id(self, url: str) -> 'Optional[AuroraHostListProvider.ClusterIdSuggestion]':
+    def _get_suggested_cluster_id(self, url: str) -> Optional[AuroraHostListProvider.ClusterIdSuggestion]:
         for key, hosts in AuroraHostListProvider._topology_cache.get_dict().items():
             is_primary_cluster_id = \
                 AuroraHostListProvider._is_primary_cluster_id_cache.get_with_default(
@@ -218,7 +220,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         return None
 
     def _get_topology(self, conn: Optional[Connection], force_update: bool = False) \
-            -> 'AuroraHostListProvider.FetchTopologyResult':
+            -> AuroraHostListProvider.FetchTopologyResult:
         self._initialize()
 
         suggested_primary_cluster_id = AuroraHostListProvider._cluster_ids_to_update.get(self._cluster_id)
@@ -280,7 +282,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
         try:
             with closing(conn.cursor()) as cursor:
-                cursor.execute(self._topology_aware_dialect.get_topology_query())
+                cursor.execute(self._topology_aware_dialect.topology_query)
                 return self._process_query_results(cursor)
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.InvalidQuery")) from e
@@ -312,7 +314,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         return hosts
 
     def _create_host(self, record: Tuple) -> HostInfo:
-        # According to TopologyAwareDatabaseCluster.getTopologyQuery() the result set
+        # According to TopologyAwareDatabaseDialect.getTopologyQuery() the result set
         # should contain 4 columns: instance ID, 1/0 (writer/reader), CPU utilization, host lag in ms.
         # There might be a 5th column specifying the last update time.
         if not self._cluster_instance_template:
@@ -364,7 +366,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForGetHostRole")
-                cursor.execute(topology_aware_dialect.get_is_reader_query())
+                cursor.execute(topology_aware_dialect.is_reader_query)
                 result = cursor.fetchone()
                 if result:
                     is_reader = result[0]
@@ -378,7 +380,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForIdentifyConnection")
-                cursor.execute(topology_aware_dialect.get_host_id_query())
+                cursor.execute(topology_aware_dialect.host_id_query)
                 result = cursor.fetchone()
                 if result:
                     host_id = result[0]

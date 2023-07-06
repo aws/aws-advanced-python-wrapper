@@ -31,7 +31,13 @@ aws_wrapper -- PEP249 base classes
 
 """
 
-from types import TracebackType
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from types import TracebackType
+
 from typing import Any, Iterator, List, Optional, Sequence, Type, TypeVar
 
 
@@ -105,7 +111,7 @@ class Connection:
         ...
 
     # TODO: check parameters
-    def cursor(self, **kwargs) -> "Cursor":
+    def cursor(self, **kwargs) -> Cursor:
         ...
 
     def commit(self) -> None:
@@ -168,7 +174,7 @@ class Cursor:
             self,
             query: str,
             **kwargs
-    ) -> "Cursor":
+    ) -> Cursor:
         ...
 
     # TODO: check parameters

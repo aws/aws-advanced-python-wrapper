@@ -12,12 +12,17 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aws_wrapper.dialect import Dialect
+
 from typing import List, Optional, Protocol
 
 from psycopg.errors import (InvalidAuthorizationSpecification, InvalidPassword,
                             OperationalError)
-
-from aws_wrapper.utils.dialect import Dialect
 
 
 class ExceptionHandler(Protocol):

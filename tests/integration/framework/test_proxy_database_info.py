@@ -23,12 +23,12 @@ class TestProxyDatabaseInfo(TestDatabaseInfo):
 
     _control_port: int
 
-    def __init__(self, dict: Dict[str, Any]) -> None:
-        super().__init__(dict)
-        if dict is None:
+    def __init__(self, database_info: Dict[str, Any]) -> None:
+        super().__init__(database_info)
+        if database_info is None:
             return
 
-        self._control_port = typing.cast(int, dict.get("controlPort"))
+        self._control_port = typing.cast('int', database_info.get("controlPort"))
 
     def get_control_port(self) -> int:
         return self._control_port

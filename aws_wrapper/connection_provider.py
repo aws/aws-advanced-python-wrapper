@@ -12,16 +12,21 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .hostinfo import HostInfo, HostRole
+    from .pep249 import Connection
+    from .utils.properties import Properties
 
 import threading
 from typing import Callable, Dict, List, Optional, Protocol
 
 from aws_wrapper.errors import AwsWrapperError
-from .hostinfo import HostInfo, HostRole
 from .hostselector import HostSelector, RandomHostSelector
-from .pep249 import Connection
 from .utils.messages import Messages
-from .utils.properties import Properties
 
 
 class ConnectionProvider(Protocol):

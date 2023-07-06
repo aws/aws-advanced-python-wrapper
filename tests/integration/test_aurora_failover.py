@@ -12,12 +12,18 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .framework.test_driver import TestDriver
+    from .framework.test_environment import TestEnvironment
+
 from logging import getLogger
 
 from .framework.aurora_test_utility import AuroraTestUtility
 from .framework.conditions import failover_support_required
-from .framework.test_driver import TestDriver
-from .framework.test_environment import TestEnvironment
 
 
 class TestAuroraFailover:

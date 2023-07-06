@@ -59,7 +59,7 @@ class TestDialect(TestCase):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        records = [("some_value", "some_value"), ("some_value", "mariadb")]
+        records = [("some_value", "some_value"), ("mariadb", "some_value")]
         mock_cursor.__iter__.return_value = records
 
         assert mariadb_dialect.is_dialect(mock_conn)
@@ -124,16 +124,19 @@ class TestDialect(TestCase):
         mock_conn.cursor.return_value = mock_cursor
         mock_super().is_dialect.return_value = True
 
-        records = [("rds_tools", "some_value")]
-        mock_cursor.fetchone.return_value = records
+        mock_cursor.__iter__.return_value = [(False, False), (True, False)]
 
         assert rds_pg_dialect.is_dialect(mock_conn)
 
-        mock_cursor.fetchone.return_value = None
+        mock_cursor.__iter__.return_value = [(False, False), (False, False)]
 
         assert not rds_pg_dialect.is_dialect(mock_conn)
 
-        mock_cursor.fetchone.return_value = records
+        mock_cursor.__iter__.return_value = []
+
+        assert not rds_pg_dialect.is_dialect(mock_conn)
+
+        mock_cursor.fetchone.return_value = [(False, False), (True, False)]
         mock_super().is_dialect.return_value = False
 
         assert not rds_pg_dialect.is_dialect(mock_conn)

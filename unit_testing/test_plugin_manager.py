@@ -12,16 +12,26 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from aws_wrapper.default_plugin import DefaultPlugin
+from aws_wrapper.dummy_plugin import DummyPlugin
+from aws_wrapper.plugin import Plugin
+
+if TYPE_CHECKING:
+    from aws_wrapper.connection_provider import ConnectionProvider
+    from aws_wrapper.pep249 import Connection
+
 from typing import Any, Callable, Dict, List, Optional, Set
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from aws_wrapper.connection_provider import ConnectionProvider
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo, HostRole
-from aws_wrapper.pep249 import Connection
-from aws_wrapper.plugins import (DefaultPlugin, DummyPlugin, Plugin,
-                                 PluginManager, PluginServiceManagerContainer)
+from aws_wrapper.plugin_service import (PluginManager,
+                                        PluginServiceManagerContainer)
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import Properties

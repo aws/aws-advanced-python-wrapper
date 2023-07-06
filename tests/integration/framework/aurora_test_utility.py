@@ -12,9 +12,17 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+import typing
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .test_database_info import TestDatabaseInfo
+    from .test_instance_info import TestInstanceInfo
+
 import socket
 import timeit
-import typing
 from logging import getLogger
 from time import sleep
 from typing import Any, List, Optional
@@ -24,10 +32,8 @@ from botocore.config import Config
 
 from .database_engine import DatabaseEngine
 from .driver_helper import DriverHelper
-from .test_database_info import TestDatabaseInfo
 from .test_driver import TestDriver
 from .test_environment import TestEnvironment
-from .test_instance_info import TestInstanceInfo
 
 
 class AuroraTestUtility:
@@ -150,7 +156,7 @@ class AuroraTestUtility:
         members = cluster_info.get("DBClusterMembers")
         for m in members:
             if m.get("DBInstanceIdentifier") == instance_id:
-                return typing.cast(bool, m.get("IsClusterWriter"))
+                return typing.cast('bool', m.get("IsClusterWriter"))
         raise Exception("Cannot find cluster member whose db instance identifier is " + instance_id)
 
     def get_cluster_writer_instance_id(self, cluster_id: Optional[str] = None) -> str:
@@ -159,8 +165,8 @@ class AuroraTestUtility:
         cluster_info = self.get_db_cluster(cluster_id)
         members = cluster_info.get("DBClusterMembers")
         for m in members:
-            if typing.cast(bool, m.get("IsClusterWriter")):
-                return typing.cast(str, m.get("DBInstanceIdentifier"))
+            if typing.cast('bool', m.get("IsClusterWriter")):
+                return typing.cast('str', m.get("DBInstanceIdentifier"))
         raise Exception("Cannot find writer instance for cluster " + cluster_id)
 
     def get_aurora_instance_ids(self) -> List[str]:

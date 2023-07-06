@@ -16,11 +16,11 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from aws_wrapper.dialect import Dialect
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Error, ProgrammingError
-from aws_wrapper.utils.dialect import Dialect
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 

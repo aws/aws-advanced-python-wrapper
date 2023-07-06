@@ -23,13 +23,13 @@ class TestInstanceInfo:
     _host: str  # "instance-1.ABC.cluster-XYZ.us-west-2.rds.amazonaws.com"
     _port: int
 
-    def __init__(self, dict: Dict[str, Any]) -> None:
-        if dict is None:
+    def __init__(self, instance_info: Dict[str, Any]) -> None:
+        if instance_info is None:
             return
 
-        self._instance_id = typing.cast(str, dict.get("instanceId"))
-        self._host = typing.cast(str, dict.get("host"))
-        self._port = typing.cast(int, dict.get("port"))
+        self._instance_id = typing.cast('str', instance_info.get("instanceId"))
+        self._host = typing.cast('str', instance_info.get("host"))
+        self._port = typing.cast('int', instance_info.get("port"))
 
     def get_instance_id(self) -> str:
         return self._instance_id

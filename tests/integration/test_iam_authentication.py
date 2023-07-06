@@ -12,6 +12,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tests.integration.framework.test_driver import TestDriver
+    from tests.integration.framework.test_environment import TestEnvironment
+    from tests.integration.framework.test_instance_info import TestInstanceInfo
+
 from socket import gethostbyname
 from typing import Callable, Dict
 
@@ -22,9 +31,6 @@ from aws_wrapper.errors import AwsWrapperError
 from tests.integration.framework.conditions import (disable_on_mariadb_driver,
                                                     iam_required)
 from tests.integration.framework.driver_helper import DriverHelper
-from tests.integration.framework.test_driver import TestDriver
-from tests.integration.framework.test_environment import TestEnvironment
-from tests.integration.framework.test_instance_info import TestInstanceInfo
 
 
 class TestAwsIamAuthentication:

@@ -12,17 +12,16 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from contextlib import closing
 from enum import Enum, auto
 from logging import getLogger
-from typing import Dict, List, Optional, Protocol
+from typing import Dict, FrozenSet, Optional, Protocol, runtime_checkable
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pep249 import Connection
+from aws_wrapper.pep249 import Connection, Error
 from aws_wrapper.utils.properties import Properties, WrapperProperties
-from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
 from .utils.messages import Messages
 
@@ -52,9 +51,10 @@ class DatabaseType(Enum):
     CUSTOM = auto()
 
 
-class TopologyAwareDatabaseCluster(Protocol):
+@runtime_checkable
+class TopologyAwareDatabaseDialect(Protocol):
     _topology_query: str
-    _node_id_query: str
+    _host_id_query: str
     _is_reader_query: str
 
     @property
@@ -62,15 +62,15 @@ class TopologyAwareDatabaseCluster(Protocol):
         return self._topology_query
 
     @property
-    def node_id_query(self) -> str:
-        return self._node_id_query
+    def host_id_query(self) -> str:
+        return self._host_id_query
 
     @property
     def is_reader_query(self) -> str:
         return self._is_reader_query
 
 
-class Dialect(ABC):
+class Dialect(Protocol):
 
     @property
     @abstractmethod
@@ -93,7 +93,7 @@ class Dialect(ABC):
 
     @property
     @abstractmethod
-    def dialect_update_candidates(self) -> Optional[List[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         ...
 
 
@@ -104,9 +104,7 @@ class DialectProvider(Protocol):
 
 
 class MysqlDialect(Dialect):
-
-    def __init__(self):
-        self._dialect_update_candidates = [DialectCodes.AURORA_MYSQL, DialectCodes.RDS_MYSQL]
+    _DIALECT_UPDATE_CANDIDATES = frozenset({DialectCodes.AURORA_MYSQL, DialectCodes.RDS_MYSQL})
 
     @property
     def default_port(self) -> int:
@@ -128,20 +126,18 @@ class MysqlDialect(Dialect):
                     for column_value in record:
                         if "mysql" in column_value.lower():
                             return True
-        except Exception:
+        except Error:
             pass
 
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[List[DialectCodes]]:
-        return self._dialect_update_candidates
+    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+        return MysqlDialect._DIALECT_UPDATE_CANDIDATES
 
 
 class PgDialect(Dialect):
-
-    def __init__(self):
-        self._dialect_update_candidates = [DialectCodes.AURORA_PG, DialectCodes.RDS_PG]
+    _DIALECT_UPDATE_CANDIDATES = frozenset({DialectCodes.AURORA_PG, DialectCodes.RDS_PG})
 
     @property
     def default_port(self) -> int:
@@ -161,19 +157,18 @@ class PgDialect(Dialect):
                 aws_cursor.execute('SELECT 1 FROM pg_proc LIMIT 1')
                 if aws_cursor.fetchone() is not None:
                     return True
-        except Exception:
+        except Error:
             pass
 
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[List[DialectCodes]]:
-        return self._dialect_update_candidates
+    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+        return PgDialect._DIALECT_UPDATE_CANDIDATES
 
 
 class MariaDbDialect(Dialect):
-    def __init__(self) -> None:
-        self._dialect_update_candidates = None
+    _DIALECT_UPDATE_CANDIDATES = None
 
     @property
     def default_port(self) -> int:
@@ -192,24 +187,22 @@ class MariaDbDialect(Dialect):
             with closing(conn.cursor()) as aws_cursor:
                 aws_cursor.execute(self.server_version_query)
                 for record in aws_cursor:
-                    if "mariadb" in record[1].lower():
+                    if "mariadb" in record[0].lower():
                         return True
-        except Exception:
+        except Error:
             pass
 
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[List[DialectCodes]]:
-        return self._dialect_update_candidates
+    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+        return MariaDbDialect._DIALECT_UPDATE_CANDIDATES
 
 
 class RdsMysqlDialect(MysqlDialect):
-    def __init__(self) -> None:
-        self._dialect_update_candidates = [DialectCodes.AURORA_MYSQL]
+    _DIALECT_UPDATE_CANDIDATES = frozenset({DialectCodes.AURORA_MYSQL})
 
     def is_dialect(self, conn: Connection) -> bool:
-
         if not super().is_dialect(conn):
             return False
 
@@ -220,66 +213,56 @@ class RdsMysqlDialect(MysqlDialect):
                     for column_value in record:
                         if "source distribution" in column_value.lower():
                             return True
-        except Exception:
+        except Error:
             pass
 
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[List[DialectCodes]]:
-        return self._dialect_update_candidates
+    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+        return RdsMysqlDialect._DIALECT_UPDATE_CANDIDATES
 
 
 class RdsPgDialect(PgDialect):
     _extensions_sql: str = ("SELECT (setting LIKE '%rds_tools%') AS rds_tools, "
-                            + "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
-                            + "FROM pg_settings "
-                            + "WHERE name='rds.extensions'")
+                            "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
+                            "FROM pg_settings "
+                            "WHERE name='rds.extensions'")
 
-    def __init__(self) -> None:
-        self._dialect_update_candidates = [DialectCodes.AURORA_PG]
+    _DIALECT_UPDATE_CANDIDATES = frozenset({DialectCodes.AURORA_PG})
 
     def is_dialect(self, conn: Connection) -> bool:
 
         if not super().is_dialect(conn):
             return False
 
-        aurora_utils: bool = False
-        rds_tools: bool = False
-
         try:
-            try:
-                with closing(conn.cursor()) as aws_cursor:
-                    aws_cursor.execute(self._extensions_sql)
-                    row = aws_cursor.fetchone()
-                    if row and row[0]:
-                        logger.debug("rds_tools: True")
-                        rds_tools = True
-                    if row and bool(row[1]):
-                        logger.debug("aurora_utils: True")
-                        aurora_utils = True
+            with closing(conn.cursor()) as aws_cursor:
+                aws_cursor.execute(self._extensions_sql)
+                for row in aws_cursor:
+                    rds_tools = bool(row[0])
+                    aurora_utils = bool(row[1])
+                    logger.debug(f"rds_tools: {rds_tools}, aurora_utils: {aurora_utils}")
+                    if rds_tools and not aurora_utils:
+                        return True
 
-            except Exception:
-                pass
-            return rds_tools and not aurora_utils
-
-        except Exception:
+        except Error:
             pass
-
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[List[DialectCodes]]:
-        return self._dialect_update_candidates
+    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+        return RdsPgDialect._DIALECT_UPDATE_CANDIDATES
 
 
-class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseCluster):
+class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
     _topology_query: str = ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
-                            + "CPU, REPLICA_LAG_IN_MILLISECONDS, LAST_UPDATE_TIMESTAMP "
-                            + "FROM information_schema.replica_host_status "
-                            + "WHERE time_to_sec(timediff(now(), LAST_UPDATE_TIMESTAMP)) <= 300 OR SESSION_ID = 'MASTER_SESSION_ID' ")
+                            "CPU, REPLICA_LAG_IN_MILLISECONDS, LAST_UPDATE_TIMESTAMP "
+                            "FROM information_schema.replica_host_status "
+                            "WHERE time_to_sec(timediff(now(), LAST_UPDATE_TIMESTAMP)) <= 300 "
+                            "OR SESSION_ID = 'MASTER_SESSION_ID' ")
 
-    _node_id_query: str = "SELECT @@aurora_server_id"
+    _host_id_query: str = "SELECT @@aurora_server_id"
 
     _is_reader_query: str = "SELECT @@innodb_read_only"
 
@@ -290,27 +273,29 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseCluster):
                 # If variable with such name is presented then it means it's an Aurora cluster
                 if aws_cursor.fetchone() is not None:
                     return True
-        except Exception:
+        except Error:
             pass
 
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[List[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         return None
 
 
-class AuroraPgDialect(PgDialect, TopologyAwareDatabaseCluster):
-    _extensions_sql: str = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils FROM pg_settings WHERE name='rds.extensions'"
+class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
+    _extensions_sql: str = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils " \
+                           "FROM pg_settings WHERE name='rds.extensions'"
 
     _has_topology_sql: str = "SELECT 1 FROM aurora_replica_status() LIMIT 1"
 
     _topology_query = ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
-                       + "CPU, COALESCE(REPLICA_LAG_IN_MSEC, 0), LAST_UPDATE_TIMESTAMP "
-                       + "FROM aurora_replica_status() "
-                         "WHERE EXTRACT(EPOCH FROM(NOW() - LAST_UPDATE_TIMESTAMP)) <= 300 OR SESSION_ID = 'MASTER_SESSION_ID' ")
+                       "CPU, COALESCE(REPLICA_LAG_IN_MSEC, 0), LAST_UPDATE_TIMESTAMP "
+                       "FROM aurora_replica_status() "
+                       "WHERE EXTRACT(EPOCH FROM(NOW() - LAST_UPDATE_TIMESTAMP)) <= 300 "
+                       "OR SESSION_ID = 'MASTER_SESSION_ID' ")
 
-    _node_id_query = "SELECT aurora_db_instance_identifier()"
+    _host_id_query = "SELECT aurora_db_instance_identifier()"
     _is_reader_query = "SELECT pg_is_in_recovery()"
 
     def is_dialect(self, conn: Connection) -> bool:
@@ -321,41 +306,35 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseCluster):
         has_topology: bool = False
 
         try:
-            try:
-                with closing(conn.cursor()) as aws_cursor:
-                    aws_cursor.execute(self._extensions_sql)
-                    row = aws_cursor.fetchone()
-                    if row and bool(row[0]):
-                        logger.debug("has_extensions: True")
-                        has_extensions = True
-            except Exception:
-                pass
+            with closing(conn.cursor()) as aws_cursor:
+                aws_cursor.execute(self._extensions_sql)
+                row = aws_cursor.fetchone()
+                if row and bool(row[0]):
+                    logger.debug("has_extensions: True")
+                    has_extensions = True
 
-            try:
-                with closing(conn.cursor()) as aws_cursor:
-                    aws_cursor.execute(self.topology_query)
-                    if aws_cursor.fetchone() is not None:
-                        logger.debug("has_topology: True")
-                        has_topology = True
-            except Exception:
-                pass
+            with closing(conn.cursor()) as aws_cursor:
+                aws_cursor.execute(self._has_topology_sql)
+                if aws_cursor.fetchone() is not None:
+                    logger.debug("has_topology: True")
+                    has_topology = True
 
             return has_extensions and has_topology
-        except Exception:
+        except Error:
             pass
 
         return False
 
 
 class UnknownDialect(Dialect):
-    def __init__(self) -> None:
-        self._dialect_update_candidates: Optional[List[DialectCodes]] = [DialectCodes.MYSQL,
-                                                                         DialectCodes.PG,
-                                                                         DialectCodes.MARIADB,
-                                                                         DialectCodes.RDS_MYSQL,
-                                                                         DialectCodes.RDS_PG,
-                                                                         DialectCodes.AURORA_MYSQL,
-                                                                         DialectCodes.AURORA_PG]
+    _DIALECT_UPDATE_CANDIDATES: Optional[FrozenSet[DialectCodes]] = \
+        frozenset({DialectCodes.MYSQL,
+                   DialectCodes.PG,
+                   DialectCodes.MARIADB,
+                   DialectCodes.RDS_MYSQL,
+                   DialectCodes.RDS_PG,
+                   DialectCodes.AURORA_MYSQL,
+                   DialectCodes.AURORA_PG})
 
     @property
     def default_port(self) -> int:
@@ -373,8 +352,8 @@ class UnknownDialect(Dialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[List[DialectCodes]]:
-        return self._dialect_update_candidates
+    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+        return UnknownDialect._DIALECT_UPDATE_CANDIDATES
 
 
 class DialectManager(DialectProvider):
@@ -438,17 +417,16 @@ class DialectManager(DialectProvider):
 
         host: str = props["host"]
 
-        # temporary database_type variable
+        # TODO: replace with a method that identifies which database type we are using (MYSQL, PG, or MARIADB)
         database_type: DatabaseType = DatabaseType.POSTGRES
 
-        type: Optional[RdsUrlType] = None
         if database_type is DatabaseType.MYSQL:
-            type = self._rds_helper.identify_rds_type(host)
-            if type.is_rds_cluster:
+            rds_type = self._rds_helper.identify_rds_type(host)
+            if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCodes.AURORA_MYSQL
                 self._dialect = self._known_dialects_by_code.get(DialectCodes.AURORA_MYSQL)
                 return self._dialect
-            if type.is_rds:
+            if rds_type.is_rds:
                 self._can_update = True
                 self._dialect_code = DialectCodes.RDS_MYSQL
                 self._dialect = self._known_dialects_by_code.get(DialectCodes.RDS_MYSQL)
@@ -461,12 +439,12 @@ class DialectManager(DialectProvider):
             return self._dialect
 
         if database_type is DatabaseType.POSTGRES:
-            type = self._rds_helper.identify_rds_type(host)
-            if type.is_rds_cluster:
+            rds_type = self._rds_helper.identify_rds_type(host)
+            if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCodes.AURORA_PG
                 self._dialect = self._known_dialects_by_code.get(DialectCodes.AURORA_PG)
                 return self._dialect
-            if type.is_rds:
+            if rds_type.is_rds:
                 self._can_update = True
                 self._dialect_code = DialectCodes.RDS_PG
                 self._dialect = self._known_dialects_by_code.get(DialectCodes.RDS_PG)
@@ -492,8 +470,5 @@ class DialectManager(DialectProvider):
         return self._dialect
 
     def log_current_dialect(self):
-        logger.debug("Current dialect "
-                     + ", "
-                     + "null" if self._dialect is None else str(self._dialect)
-                     + "can_update: "
-                     + str(self._can_update))
+        dialect_class = "<null>" if self._dialect is None else type(self._dialect).__name__
+        logger.debug(f"Current dialect: {self._dialect_code}, {dialect_class}, can_update: {self._can_update}")

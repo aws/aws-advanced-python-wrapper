@@ -33,35 +33,28 @@ class TestEnvironmentInfo:
     _database_info: TestDatabaseInfo
     _proxy_database_info: TestProxyDatabaseInfo
 
-    def __init__(self, dict: Dict[str, Any]) -> None:
-        if dict is None:
+    def __init__(self, test_info: Dict[str, Any]) -> None:
+        if test_info is None:
             return
 
-        request_dict: Dict[str, Any] = typing.cast(Dict[str, Any],
-                                                   dict.get("request"))
+        request_dict: Dict[str, Any] = typing.cast('Dict[str, Any]', test_info.get("request"))
         if request_dict is not None:
             self._request = TestEnvironmentRequest(request_dict)
 
-        self._aws_access_key_id = typing.cast(str, dict.get("awsAccessKeyId"))
-        self._aws_secret_access_key = typing.cast(
-            str, dict.get("awsSecretAccessKey"))
-        self._aws_session_token = typing.cast(str, dict.get("awsSessionToken"))
-        self._aurora_region = typing.cast(str, dict.get("auroraRegion"))
-        self._aurora_cluster_name = typing.cast(str,
-                                                dict.get("auroraClusterName"))
-        self._iam_user_name = typing.cast(str, dict.get("iamUsername"))
+        self._aws_access_key_id = typing.cast('str', test_info.get("awsAccessKeyId"))
+        self._aws_secret_access_key = typing.cast('str', test_info.get("awsSecretAccessKey"))
+        self._aws_session_token = typing.cast('str', test_info.get("awsSessionToken"))
+        self._aurora_region = typing.cast('str', test_info.get("auroraRegion"))
+        self._aurora_cluster_name = typing.cast('str', test_info.get("auroraClusterName"))
+        self._iam_user_name = typing.cast('str', test_info.get("iamUsername"))
 
-        database_info_dict: Dict[str,
-                                 Any] = typing.cast(Dict[str, Any],
-                                                    dict.get("databaseInfo"))
+        database_info_dict: Dict[str, Any] = typing.cast('Dict[str, Any]', test_info.get("databaseInfo"))
         if database_info_dict is not None:
             self._database_info = TestDatabaseInfo(database_info_dict)
 
-        proxy_database_info_dict: Dict[str, Any] = typing.cast(
-            Dict[str, Any], dict.get("proxyDatabaseInfo"))
+        proxy_database_info_dict: Dict[str, Any] = typing.cast('Dict[str, Any]', test_info.get("proxyDatabaseInfo"))
         if proxy_database_info_dict is not None:
-            self._proxy_database_info = TestProxyDatabaseInfo(
-                proxy_database_info_dict)
+            self._proxy_database_info = TestProxyDatabaseInfo(proxy_database_info_dict)
 
     def get_database_info(self) -> TestDatabaseInfo:
         return self._database_info

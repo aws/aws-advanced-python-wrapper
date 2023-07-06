@@ -12,9 +12,14 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from dataclasses import dataclass
+from __future__ import annotations
 
-from toxiproxy import Proxy  # type: ignore
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from toxiproxy import Proxy  # type: ignore
+
+from dataclasses import dataclass
 
 
 @dataclass
