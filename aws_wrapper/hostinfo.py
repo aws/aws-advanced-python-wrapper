@@ -82,7 +82,7 @@ class HostInfo:
     @property
     def url(self):
         if self.is_port_specified():
-            return self.host + ":" + str(self.port)
+            return f"{self.host}:{self.port}"
         else:
             return self.host
 

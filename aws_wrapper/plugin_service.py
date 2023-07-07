@@ -223,12 +223,14 @@ class PluginServiceImpl(PluginService, HostListProviderService):
         ...
 
     def refresh_host_list(self, connection: Optional[Connection] = None):
+        connection = self.current_connection if connection is None else connection
         updated_host_list: Tuple[HostInfo, ...] = self.host_list_provider.refresh(connection)
         if updated_host_list != self.hosts:
             self._update_host_availability(updated_host_list)
             self._update_hosts(updated_host_list)
 
     def force_refresh_host_list(self, connection: Optional[Connection] = None):
+        connection = self.current_connection if connection is None else connection
         updated_host_list: Tuple[HostInfo, ...] = self.host_list_provider.force_refresh(connection)
         if updated_host_list != self.hosts:
             self._update_host_availability(updated_host_list)
@@ -266,7 +268,7 @@ class PluginServiceImpl(PluginService, HostListProviderService):
 
         try:
             with closing(connection.cursor()) as cursor:
-                cursor.execute("SELECT CONCAT(inet_server_addr(), ':', inet_server_port())")
+                cursor.execute(self.dialect.host_alias_query)
                 for row in cursor.fetchall():
                     host_info.add_alias(row[0])
 
