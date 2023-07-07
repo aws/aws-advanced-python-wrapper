@@ -268,9 +268,10 @@ class PluginServiceImpl(PluginService, HostListProviderService):
 
         try:
             with closing(connection.cursor()) as cursor:
-                cursor.execute(self.dialect.host_alias_query)
-                for row in cursor.fetchall():
-                    host_info.add_alias(row[0])
+                if self.dialect is not None:
+                    cursor.execute(self.dialect.host_alias_query)
+                    for row in cursor.fetchall():
+                        host_info.add_alias(row[0])
 
         except Exception as e:
             # log and ignore
