@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-from threading import Event
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
 
 from abc import abstractmethod
 from logging import getLogger
+from threading import Event
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
 from aws_wrapper.aws_secrets_manager_plugin import \

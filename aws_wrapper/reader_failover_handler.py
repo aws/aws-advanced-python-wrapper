@@ -17,8 +17,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.failover_result import ReaderFailoverResult
-    from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+    from aws_wrapper.plugin_service import PluginService
+    from aws_wrapper.utils.properties import Properties
 
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
@@ -29,10 +29,10 @@ from threading import Event
 from time import sleep
 from typing import List, Optional
 
+from aws_wrapper.failover_result import ReaderFailoverResult
+from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Error
-from aws_wrapper.plugin_service import PluginService
 from aws_wrapper.utils.messages import Messages
-from aws_wrapper.utils.properties import Properties
 
 logger = getLogger(__name__)
 

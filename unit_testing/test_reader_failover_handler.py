@@ -12,16 +12,20 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from threading import Event
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from threading import Event
+    from aws_wrapper.failover_result import ReaderFailoverResult
+    from aws_wrapper.pep249 import Connection
+    from aws_wrapper.plugin_service import PluginService
+
 from time import sleep, time
 from typing import Set
 from unittest import TestCase
 from unittest.mock import MagicMock
 
-from aws_wrapper.failover_result import ReaderFailoverResult
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
-from aws_wrapper.pep249 import Connection
-from aws_wrapper.plugin_service import PluginService
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)
 from aws_wrapper.utils.properties import Properties
