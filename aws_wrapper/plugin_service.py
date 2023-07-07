@@ -154,7 +154,7 @@ class PluginServiceImpl(PluginService, HostListProviderService):
         self._container = container
         self._container.plugin_service = self
         self._props = props
-        self._host_list_provider: HostListProvider = ConnectionStringHostListProvider()
+        self._host_list_provider: HostListProvider = ConnectionStringHostListProvider(self, props)
 
         self._hosts: List[HostInfo] = []
         self._current_connection: Optional[Connection] = None

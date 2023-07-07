@@ -66,20 +66,6 @@ class StaticHostListProvider(HostListProvider, Protocol):
     ...
 
 
-class ConnectionStringHostListProvider(StaticHostListProvider):
-    def refresh(self, connection: Optional[Connection] = None):
-        ...
-
-    def force_refresh(self, connection: Optional[Connection] = None):
-        ...
-
-    def get_host_role(self, connection: Optional[Connection] = None):
-        ...
-
-    def identify_connection(self, connection: Optional[Connection] = None):
-        ...
-
-
 class HostListProviderService(Protocol):
     @property
     @abstractmethod
@@ -386,7 +372,6 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
         if connection is None:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
-
         try:
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
@@ -420,6 +405,42 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     class FetchTopologyResult:
         hosts: List[HostInfo]
         is_cached_data: bool
+
+
+class ConnectionStringHostListProvider(StaticHostListProvider):
+
+    def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
+        self._host_list_provider_service: HostListProviderService = host_list_provider_service
+        self._props: Properties = props
+        self._hosts: List[HostInfo] = []
+        self._is_initialized: bool = False
+        self._initial_host_info: Optional[HostInfo] = None
+
+    def _initialize(self):
+        if self._is_initialized:
+            return
+
+        self._initial_host_info = \
+            HostInfo(self._props.get("host"), self._props.get("port", HostInfo.NO_PORT))
+
+        self._hosts.append(self._initial_host_info)
+
+        self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
+        self._is_initialized = True
+
+    def refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+        self._initialize()
+        return tuple(self._hosts)
+
+    def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+        self._initialize()
+        return tuple(self._hosts)
+
+    def get_host_role(self, connection: Optional[Connection]) -> HostRole:
+        raise AwsWrapperError(Messages.get("ConnectionStringHostListProvider.ErrorDoesNotSupportHostRole"))
+
+    def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
+        raise AwsWrapperError(Messages.get("ConnectionStringHostListProvider.ErrorDoesNotSupportIdentifyConnection"))
 
 
 class AuroraHostListPlugin(Plugin):
