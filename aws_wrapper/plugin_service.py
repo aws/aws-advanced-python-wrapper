@@ -15,13 +15,12 @@
 from __future__ import annotations
 
 from contextlib import closing
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, FrozenSet, Tuple
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin import Plugin, PluginFactory
     from aws_wrapper.connection_provider import ConnectionProvider
-    from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
     from threading import Event
 
 from abc import abstractmethod
@@ -135,7 +134,7 @@ class PluginService(ExceptionHandler, Protocol):
     def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Event) -> Connection:
         ...
 
-    def set_availability(self, host_aliases: Set[str], availability: HostAvailability):
+    def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
         ...
 
     def identify_connection(self, connection: Optional[Connection] = None):
@@ -243,7 +242,7 @@ class PluginServiceImpl(PluginService, HostListProviderService):
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.force_connect(host_info, props, self.current_connection is None)
 
-    def set_availability(self, host_aliases: Set[str], availability: HostAvailability):
+    def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
         ...
 
     def identify_connection(self, connection: Optional[Connection] = None) -> Optional[HostInfo]:

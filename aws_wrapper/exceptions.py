@@ -96,12 +96,18 @@ class ExceptionManager:
     def is_network_exception(self, dialect: Optional[Dialect], error: Optional[Exception] = None,
                              sql_state: Optional[str] = None) -> bool:
         handler = self._get_handler(dialect)
-        return handler.is_network_exception(error=error, sql_state=sql_state)
+        if handler is not None:
+            return handler.is_network_exception(error=error, sql_state=sql_state)
+        return False
 
     def is_login_exception(self, dialect: Optional[Dialect], error: Optional[Exception] = None,
                            sql_state: Optional[str] = None) -> bool:
         handler = self._get_handler(dialect)
-        return handler.is_login_exception(error=error, sql_state=sql_state)
+        if handler is not None:
+            return handler.is_login_exception(error=error, sql_state=sql_state)
+        return False
 
-    def _get_handler(self, dialect: Optional[Dialect]):
+    def _get_handler(self, dialect: Optional[Dialect]) -> Optional[ExceptionHandler]:
+        if dialect is None:
+            return None
         return self.custom_handler if self.custom_handler else dialect.exception_handler

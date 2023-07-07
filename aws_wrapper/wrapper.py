@@ -17,7 +17,7 @@ from typing import Any, Callable, Iterator, List, Optional, Union
 
 from aws_wrapper.connection_provider import DriverConnectionProvider
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.host_list_provider import HostListProviderService, AuroraHostListProvider
+from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugin_service import (PluginManager, PluginServiceImpl,
                                         PluginServiceManagerContainer)
