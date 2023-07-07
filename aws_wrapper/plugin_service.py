@@ -22,10 +22,10 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin import Plugin, PluginFactory
     from aws_wrapper.connection_provider import ConnectionProvider
     from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+    from threading import Event
 
 from abc import abstractmethod
 from logging import getLogger
-from threading import Event
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
 from aws_wrapper.aws_secrets_manager_plugin import \
