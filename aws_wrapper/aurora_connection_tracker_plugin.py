@@ -169,12 +169,6 @@ class OpenedConnectionTracker:
         msg = host + f"[{conn}\n]"
         logger.debug(Messages.get_formatted("OpenedConnectionTracker.InvalidatingConnections", msg))
 
-    def prune_null_connections(self):
-        for key, s in self._opened_connections.items():
-            for item in list(s):
-                if item is None:
-                    s.pop()
-
 
 class AuroraConnectionTrackerPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
@@ -240,9 +234,6 @@ class AuroraConnectionTrackerPlugin(Plugin):
             if host.role == HostRole.WRITER:
                 return host
         return None
-
-    def release_resources(self):
-        self._tracker.prune_null_connections()
 
 
 class AuroraConnectionTrackerPluginFactory(PluginFactory):

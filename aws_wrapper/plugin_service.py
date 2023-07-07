@@ -140,7 +140,7 @@ class PluginService(ExceptionHandler, Protocol):
     def identify_connection(self, connection: Optional[Connection] = None):
         ...
 
-    def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
+    def fill_aliases(self, connection: Optional[Connection], host_info: Optional[HostInfo]):
         ...
 
 
@@ -248,12 +248,17 @@ class PluginServiceImpl(PluginService, HostListProviderService):
         ...
 
     def identify_connection(self, connection: Optional[Connection] = None) -> Optional[HostInfo]:
+        connection = self.current_connection if connection is None else connection
+
         if not isinstance(self.dialect, TopologyAwareDatabaseDialect):
             return None
 
         return self.host_list_provider.identify_connection(connection)
 
-    def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
+    def fill_aliases(self, connection: Optional[Connection], host_info: Optional[HostInfo]):
+        connection = self.current_connection if connection is None else connection
+        host_info = self.current_host_info if host_info is None else host_info
+
         if connection is None:
             return
 
