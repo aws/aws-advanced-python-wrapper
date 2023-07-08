@@ -27,9 +27,8 @@ from abc import abstractmethod
 from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
 
-from aws_wrapper.aurora_connection_tracker_plugin import (
-    AuroraConnectionTrackerPluginFactory,
-    AuroraHostListConnectionPluginFactory)
+from aws_wrapper.aurora_connection_tracker_plugin import \
+    AuroraConnectionTrackerPluginFactory
 from aws_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
 from aws_wrapper.default_plugin import DefaultPlugin
@@ -38,7 +37,8 @@ from aws_wrapper.dialect import (Dialect, DialectManager,
 from aws_wrapper.dummy_plugin import DummyPluginFactory
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
-from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
+from aws_wrapper.host_list_provider import (AuroraHostListPluginFactory,
+                                            ConnectionStringHostListProvider,
                                             HostListProvider,
                                             HostListProviderService,
                                             StaticHostListProvider)
@@ -362,7 +362,7 @@ class PluginManager:
         "iam": IamAuthPluginFactory,
         "aws_secrets_manager": AwsSecretsManagerPluginFactory,
         "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
-        "aurora_host_list": AuroraHostListConnectionPluginFactory
+        "aurora_host_list": AuroraHostListPluginFactory
     }
 
     def __init__(

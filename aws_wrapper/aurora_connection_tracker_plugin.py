@@ -22,53 +22,18 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.pep249 import Connection
 
-    from aws_wrapper.host_list_provider import (HostListProvider,
-                                                HostListProviderService)
     from aws_wrapper.utils.rds_url_type import RdsUrlType
     from aws_wrapper.utils.properties import Properties
 
 from _weakrefset import WeakSet
 
-from aws_wrapper.errors import AwsWrapperError, FailoverError
-from aws_wrapper.host_list_provider import AuroraHostListProvider
+from aws_wrapper.errors import FailoverError
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.rdsutils import RdsUtils
 
 logger = getLogger(__name__)
-
-
-class AuroraHostListConnectionPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider"}
-
-    @property
-    def subscribed_methods(self) -> Set[str]:
-        return self._SUBSCRIBED_METHODS
-
-    def init_host_provider(
-            self,
-            props: Properties,
-            host_list_provider_service: HostListProviderService,
-            init_host_provider_func: Callable):
-        provider: HostListProvider = host_list_provider_service.host_list_provider
-        if provider is None:
-            init_host_provider_func()
-            return
-
-        if host_list_provider_service.is_static_host_list_provider():
-            host_list_provider_service.host_list_provider = AuroraHostListProvider(host_list_provider_service, props)
-        elif not isinstance(provider, AuroraHostListProvider):
-            raise AwsWrapperError(Messages.get_formatted(
-                "AuroraHostListConnectionPlugin.ProviderAlreadySet",
-                provider.__class__.__name__))
-
-        init_host_provider_func()
-
-
-class AuroraHostListConnectionPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return AuroraHostListConnectionPlugin()
 
 
 class OpenedConnectionTracker:
@@ -104,6 +69,7 @@ class OpenedConnectionTracker:
         if host_info:
             self.invalidate_all_connections(node=set(host_info.as_alias()))
             self.invalidate_all_connections(node=host_info.as_aliases())
+            return
 
         instance_endpoint: Optional[str] = None
         if node is None:
@@ -182,8 +148,8 @@ class AuroraConnectionTrackerPlugin(Plugin):
     def __init__(self,
                  plugin_service: PluginService,
                  props: Properties,
-                 rds_utils: Optional[RdsUtils] = RdsUtils(),
-                 tracker: Optional[OpenedConnectionTracker] = OpenedConnectionTracker()):
+                 rds_utils: RdsUtils = RdsUtils(),
+                 tracker: OpenedConnectionTracker = OpenedConnectionTracker()):
         self._plugin_service = plugin_service
         self._props = props
         self._rds_utils = rds_utils
@@ -200,13 +166,11 @@ class AuroraConnectionTrackerPlugin(Plugin):
         conn = connect_func()
 
         if conn:
-            assert self._rds_utils is not None
             url_type: RdsUrlType = self._rds_utils.identify_rds_type(host_info.host)
             if url_type.is_rds_cluster:
                 host_info.reset_aliases()
                 self._plugin_service.fill_aliases(conn, host_info)
 
-            assert self._tracker is not None
             self._tracker.populate_opened_connection_set(host_info, conn)
             self._tracker.log_opened_connections()
 
@@ -223,7 +187,6 @@ class AuroraConnectionTrackerPlugin(Plugin):
         except Exception as e:
             if isinstance(e, FailoverError):
                 # TODO: verify behaviour after implementing the failover plugin
-                assert self._tracker is not None
                 self._tracker.invalidate_all_connections(host_info=self._current_writer)
                 self._tracker.log_opened_connections()
                 self._need_update_current_writer = True

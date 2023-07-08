@@ -21,12 +21,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from logging import getLogger
 from threading import RLock
-from typing import List, Optional, Protocol, Tuple, runtime_checkable
+from typing import (TYPE_CHECKING, Callable, List, Optional, Protocol, Set,
+                    Tuple, runtime_checkable)
+
+if TYPE_CHECKING:
+    from aws_wrapper.plugin_service import PluginService
 
 from aws_wrapper.dialect import Dialect, TopologyAwareDatabaseDialect
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
+from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
@@ -415,3 +420,35 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     class FetchTopologyResult:
         hosts: List[HostInfo]
         is_cached_data: bool
+
+
+class AuroraHostListPlugin(Plugin):
+    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider"}
+
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return self._SUBSCRIBED_METHODS
+
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: HostListProviderService,
+            init_host_provider_func: Callable):
+        provider: HostListProvider = host_list_provider_service.host_list_provider
+        if provider is None:
+            init_host_provider_func()
+            return
+
+        if host_list_provider_service.is_static_host_list_provider():
+            host_list_provider_service.host_list_provider = AuroraHostListProvider(host_list_provider_service, props)
+        elif not isinstance(provider, AuroraHostListProvider):
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraHostListConnectionPlugin.ProviderAlreadySet",
+                provider.__class__.__name__))
+
+        init_host_provider_func()
+
+
+class AuroraHostListPluginFactory(PluginFactory):
+    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+        return AuroraHostListPlugin()
