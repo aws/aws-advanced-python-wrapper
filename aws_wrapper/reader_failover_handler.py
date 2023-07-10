@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.utils.properties import Properties
+    from aws_wrapper.pep249 import Connection
 
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
@@ -31,7 +32,6 @@ from typing import List, Optional
 
 from aws_wrapper.failover_result import ReaderFailoverResult
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
-from aws_wrapper.pep249 import Connection, Error
 from aws_wrapper.utils.messages import Messages
 
 logger = getLogger(__name__)
@@ -112,7 +112,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
                         result.connection.close()
 
                 sleep(1)  # Sleep for 1 second
-        except Error as err:
+        except Exception as err:
             return ReaderFailoverResult(None, False, None, err)
 
         return ReaderFailoverHandlerImpl.failed_reader_failover_result
