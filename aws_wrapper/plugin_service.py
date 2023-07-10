@@ -321,7 +321,7 @@ class PluginServiceImpl(PluginService, HostListProviderService):
                 changes[key] = {HostEvent.HOST_ADDED}
 
         if len(changes) > 0:
-            self.hosts = list(new_hosts) if new_hosts is not None else ()
+            self.hosts = list(new_hosts) if new_hosts is not None else []
             self._container.plugin_manager.notify_host_list_changed(changes)
 
     def _compare(self, host_a: HostInfo, host_b: HostInfo) -> Set[HostEvent]:

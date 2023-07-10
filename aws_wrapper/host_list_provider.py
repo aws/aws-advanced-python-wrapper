@@ -443,7 +443,7 @@ class AuroraHostListPlugin(Plugin):
             host_list_provider_service.host_list_provider = AuroraHostListProvider(host_list_provider_service, props)
         elif not isinstance(provider, AuroraHostListProvider):
             raise AwsWrapperError(Messages.get_formatted(
-                "AuroraHostListConnectionPlugin.ProviderAlreadySet",
+                "AuroraHostListPlugin.ProviderAlreadySet",
                 provider.__class__.__name__))
 
         init_host_provider_func()
