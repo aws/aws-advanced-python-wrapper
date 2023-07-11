@@ -26,7 +26,7 @@ paramstyle = "pyformat"
 def set_logger(name='aws_wrapper', level=DEBUG, format_string=None):
     if format_string is None:
         format_string = \
-            "%(asctime)s.%(msecs)03d %(name)-12s [%(levelname)-8s] -- %(funcName)s -- %(process)s -- %(message)s"
+            "%(asctime)s.%(msecs)03d %(name)-12s:%(funcName)s [%(levelname)-8s] - %(threadName)s - %(message)s"
 
     handler = StreamHandler()
     handler.setFormatter(Formatter(format_string))
