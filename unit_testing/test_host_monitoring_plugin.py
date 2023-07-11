@@ -74,7 +74,7 @@ def mock_default_behavior(mock_plugin_service, mock_conn, host_info, mock_contex
     mock_plugin_service.dialect = mock_dialect
     mock_dialect.is_closed.return_value = True
     mock_monitor_service.start_monitoring.return_value = mock_context
-    mock_context.is_host_unavailable = False
+    mock_context.is_host_unavailable.return_value = False
 
 
 def init_plugin(plugin_service, props, mock_monitor_service):
@@ -125,7 +125,7 @@ def test_execute_monitoring_enabled(mocker, plugin, mock_monitor_service, mock_e
 
 def test_execute_cleanup_error_checking_connection_status(
         mocker, plugin, mock_monitor_service, mock_context, mock_conn, mock_dialect):
-    mock_context.is_host_unavailable = True
+    mock_context.is_host_unavailable.return_value = True
     expected_exception = Error("Error checking connection status")
     mock_dialect.is_closed.side_effect = expected_exception
 
@@ -136,7 +136,7 @@ def test_execute_cleanup_error_checking_connection_status(
 
 def test_execute_cleanup_connection_not_closed(
         mocker, plugin, mock_monitor_service, mock_context, mock_conn, mock_dialect):
-    mock_context.is_host_unavailable = True
+    mock_context.is_host_unavailable.return_value = True
     mock_dialect.is_closed.return_value = False
 
     with pytest.raises(AwsWrapperError):

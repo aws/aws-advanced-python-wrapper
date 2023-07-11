@@ -62,7 +62,7 @@ class Plugin(ABC):
         return False
 
     def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
-        raise NotImplementedError(Messages.get_formatted("Plugins.UnsupportedMethod", "get_host_info_by_strategy"))
+        raise NotImplementedError(Messages.get_formatted("Plugin.UnsupportedMethod", "get_host_info_by_strategy"))
 
     def init_host_provider(
             self,

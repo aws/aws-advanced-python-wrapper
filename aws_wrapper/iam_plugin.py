@@ -75,7 +75,7 @@ class IamAuthPlugin(Plugin):
 
     def _connect(self, host_info: HostInfo, props: Properties, connect_func: Callable) -> Connection:
         if not WrapperProperties.USER.get(props):
-            raise AwsWrapperError(Messages.get_formatted("Plugins.IsNullOrEmpty", WrapperProperties.USER.name))
+            raise AwsWrapperError(Messages.get_formatted("IamPlugin.IsNullOrEmpty", WrapperProperties.USER.name))
 
         host = WrapperProperties.IAM_HOST.get(props) if WrapperProperties.IAM_HOST.get(props) else host_info.host
         region = WrapperProperties.IAM_REGION.get(props) \

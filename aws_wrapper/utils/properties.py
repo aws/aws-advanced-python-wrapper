@@ -14,6 +14,9 @@
 
 from typing import Dict, Optional, Union
 
+from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.utils.messages import Messages
+
 
 class Properties(Dict[str, str]):
     ...
@@ -136,6 +139,13 @@ class PropertiesUtils:
                 # Don't remove credentials
                 if attr_val.name not in persisting_properties:
                     props.pop(attr_val.name, None)
+
+    @staticmethod
+    def get_url(props: Properties) -> str:
+        if "host" not in props:
+            raise AwsWrapperError(Messages.get("PropertiesUtils.NoHostDefined"))
+
+        return props["host"] if props.get("port") is None else f"{props['host']}:{props['port']}"
 
     @staticmethod
     def log_properties(props: Properties, caption: str):

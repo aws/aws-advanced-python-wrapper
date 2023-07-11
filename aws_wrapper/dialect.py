@@ -14,22 +14,24 @@
 
 from abc import abstractmethod
 from contextlib import closing
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
 from logging import getLogger
 from typing import Dict, FrozenSet, Optional, Protocol, runtime_checkable
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.pep249 import Connection, Error
-from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
 from .exceptions import ExceptionHandler, PgExceptionHandler
+from .utils.cache_map import CacheMap
 from .utils.messages import Messages
 
 logger = getLogger(__name__)
 
 
-class DialectCodes(Enum):
+class DialectCodes(StrEnum):
     AURORA_MYSQL: str = "aurora-mysql"
     RDS_MYSQL: str = "rds-mysql"
     MYSQL: str = "mysql"
@@ -100,6 +102,9 @@ class Dialect(Protocol):
     def is_closed(self, conn: Connection) -> bool:
         ...
 
+    def abort_connection(self, conn: Connection):
+        ...
+
     @property
     @abstractmethod
     def exception_handler(self) -> Optional[ExceptionHandler]:
@@ -108,7 +113,13 @@ class Dialect(Protocol):
 
 class DialectProvider(Protocol):
 
-    def get_dialect(self, props: Properties):
+    """Returns the dialect identified by analyzing the AwsWrapperProperties.DIALECT property (if set) or the target
+    driver method"""
+    def get_dialect(self, props: Properties) -> Optional[Dialect]:
+        ...
+
+    """Returns the dialect identified by querying the database to identify the engine type"""
+    def query_for_dialect(self, url: str, host_info: HostInfo, conn: Connection) -> Optional[Dialect]:
         ...
 
 
@@ -151,6 +162,10 @@ class MysqlDialect(Dialect):
             raise AwsWrapperError(Messages.get_formatted("Dialect.InvalidTargetAttribute", "MySqlDialect", "is_closed"))
         return not is_connected_func()
 
+    def abort_connection(self, conn: Connection):
+        # TODO: investigate how to abort MySQL connections and add logic here
+        ...
+
     @property
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         return MysqlDialect._DIALECT_UPDATE_CANDIDATES
@@ -187,6 +202,9 @@ class PgDialect(Dialect):
             return conn.closed
         else:
             raise AwsWrapperError(Messages.get_formatted("Dialect.InvalidTargetAttribute", "PgDialect", "is_closed"))
+
+    def abort_connection(self, conn: Connection):
+        conn.cancel()
 
     @property
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
@@ -227,6 +245,10 @@ class MariaDbDialect(Dialect):
     def is_closed(self, conn: Connection) -> bool:
         # TODO: investigate how to check if a connection is closed with MariaDB
         return False
+
+    def abort_connection(self, conn: Connection):
+        # TODO: investigate how to abort MariaDB connections and add logic here
+        ...
 
     @property
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
@@ -306,6 +328,7 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
     _is_reader_query: str = "SELECT @@innodb_read_only"
 
     def is_dialect(self, conn: Connection) -> bool:
+        # TODO: should this have a call to super.is_dialect?
         try:
             with closing(conn.cursor()) as aws_cursor:
                 aws_cursor.execute("SHOW VARIABLES LIKE 'aurora_version'")
@@ -393,6 +416,10 @@ class UnknownDialect(Dialect):
     def is_closed(self, conn: Connection) -> bool:
         return False
 
+    def abort_connection(self, conn: Connection):
+        # TODO: Should this method throw an exception or do nothing?
+        pass
+
     @property
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         return UnknownDialect._DIALECT_UPDATE_CANDIDATES
@@ -403,22 +430,23 @@ class UnknownDialect(Dialect):
 
 
 class DialectManager(DialectProvider):
+    _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
 
     def __init__(self, rds_helper: Optional[RdsUtils] = None, custom_dialect: Optional[Dialect] = None) -> None:
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
         self._can_update: bool = False
         self._dialect: Optional[Dialect] = None
         self._custom_dialect: Optional[Dialect] = custom_dialect if custom_dialect else None
-        self._dialect_code: Optional[DialectCodes] = None
-        self._known_endpoint_dialects: dict = dict()
-        self._known_dialects_by_code: Dict[DialectCodes, Dialect] = {DialectCodes.MYSQL: MysqlDialect(),
-                                                                     DialectCodes.PG: PgDialect(),
-                                                                     DialectCodes.MARIADB: MariaDbDialect(),
-                                                                     DialectCodes.RDS_MYSQL: RdsMysqlDialect(),
-                                                                     DialectCodes.RDS_PG: RdsPgDialect(),
-                                                                     DialectCodes.AURORA_MYSQL: AuroraMysqlDialect(),
-                                                                     DialectCodes.AURORA_PG: AuroraPgDialect(),
-                                                                     DialectCodes.UNKNOWN: UnknownDialect()}
+        self._dialect_code: Optional[str] = None
+        self._known_endpoint_dialects: CacheMap[str, str] = CacheMap()
+        self._known_dialects_by_code: Dict[str, Dialect] = {DialectCodes.MYSQL: MysqlDialect(),
+                                                            DialectCodes.PG: PgDialect(),
+                                                            DialectCodes.MARIADB: MariaDbDialect(),
+                                                            DialectCodes.RDS_MYSQL: RdsMysqlDialect(),
+                                                            DialectCodes.RDS_PG: RdsPgDialect(),
+                                                            DialectCodes.AURORA_MYSQL: AuroraMysqlDialect(),
+                                                            DialectCodes.AURORA_PG: AuroraPgDialect(),
+                                                            DialectCodes.UNKNOWN: UnknownDialect()}
 
     @property
     def custom_dialect(self):
@@ -439,82 +467,117 @@ class DialectManager(DialectProvider):
         self._dialect = None
 
         if self._custom_dialect is not None:
-            self._dialect_code = DialectCodes.CUSTOM
+            self._dialect_code = str(DialectCodes.CUSTOM)
             self._dialect = self._custom_dialect
-            self.log_current_dialect()
+            self._log_current_dialect()
             return self._dialect
 
         user_dialect_setting: Optional[str] = WrapperProperties.DIALECT.get(props)
-        url = props["host"] if props.get("port") is None else props["host"] + ":" + props["port"]
-        dialect_code: Optional[DialectCodes]
-        if user_dialect_setting:
-            dialect_code = DialectCodes[user_dialect_setting]
-        else:
-            dialect_code = self._known_endpoint_dialects.get(url)
+        url = PropertiesUtils.get_url(props)
+        dialect_code = user_dialect_setting if user_dialect_setting is not None \
+            else self._known_endpoint_dialects.get(url)
         if dialect_code:
             user_dialect: Optional[Dialect] = self._known_dialects_by_code.get(dialect_code)
             if user_dialect:
                 self._dialect_code = dialect_code
                 self._dialect = user_dialect
-                self.log_current_dialect()
+                self._log_current_dialect()
                 return user_dialect
             else:
                 raise AwsWrapperError(Messages.get_formatted("Dialect.UnknownDialectCode", str(dialect_code)))
 
         host: str = props["host"]
-
-        # TODO: replace with a method that identifies which database type we are using (MYSQL, PG, or MARIADB)
-        database_type: DatabaseType = DatabaseType.POSTGRES
-
+        database_type: DatabaseType = self._get_database_type()
         if database_type is DatabaseType.MYSQL:
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
-                self._dialect_code = DialectCodes.AURORA_MYSQL
+                self._dialect_code = str(DialectCodes.AURORA_MYSQL)
                 self._dialect = self._known_dialects_by_code.get(DialectCodes.AURORA_MYSQL)
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
-                self._dialect_code = DialectCodes.RDS_MYSQL
+                self._dialect_code = str(DialectCodes.RDS_MYSQL)
                 self._dialect = self._known_dialects_by_code.get(DialectCodes.RDS_MYSQL)
-                self.log_current_dialect()
+                self._log_current_dialect()
                 return self._dialect
             self._can_update = True
-            self._dialect_code = DialectCodes.MYSQL
+            self._dialect_code = str(DialectCodes.MYSQL)
             self._dialect = self._known_dialects_by_code.get(DialectCodes.MYSQL)
-            self.log_current_dialect()
+            self._log_current_dialect()
             return self._dialect
 
         if database_type is DatabaseType.POSTGRES:
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
-                self._dialect_code = DialectCodes.AURORA_PG
+                self._dialect_code = str(DialectCodes.AURORA_PG)
                 self._dialect = self._known_dialects_by_code.get(DialectCodes.AURORA_PG)
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
-                self._dialect_code = DialectCodes.RDS_PG
+                self._dialect_code = str(DialectCodes.RDS_PG)
                 self._dialect = self._known_dialects_by_code.get(DialectCodes.RDS_PG)
-                self.log_current_dialect()
+                self._log_current_dialect()
                 return self._dialect
             self._can_update = True
-            self._dialect_code = DialectCodes.PG
+            self._dialect_code = str(DialectCodes.PG)
             self._dialect = self._known_dialects_by_code.get(DialectCodes.PG)
-            self.log_current_dialect()
+            self._log_current_dialect()
             return self._dialect
 
         if database_type is DatabaseType.MARIADB:
+            # TODO: should can_update be False?
             self._can_update = True
-            self._dialect_code = DialectCodes.MARIADB
+            self._dialect_code = str(DialectCodes.MARIADB)
             self._dialect = self._known_dialects_by_code.get(DialectCodes.MARIADB)
-            self.log_current_dialect()
+            self._log_current_dialect()
             return self._dialect
 
         self._can_update = True
-        self._dialect_code = DialectCodes.UNKNOWN
+        self._dialect_code = str(DialectCodes.UNKNOWN)
         self._dialect = self._known_dialects_by_code.get(DialectCodes.UNKNOWN)
-        self.log_current_dialect()
+        self._log_current_dialect()
         return self._dialect
 
-    def log_current_dialect(self):
+    def _get_database_type(self) -> DatabaseType:
+        return DatabaseType.POSTGRES
+
+    def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection) -> Optional[Dialect]:
+        if not self._can_update:
+            self._log_current_dialect()
+            return self._dialect
+
+        dialect_candidates = self._dialect.dialect_update_candidates if self._dialect is not None else None
+        if dialect_candidates is not None:
+            for dialect_code in dialect_candidates:
+                dialect_candidate = self._known_dialects_by_code.get(dialect_code)
+                if dialect_candidate is None:
+                    raise AwsWrapperError(Messages.get_formatted("DialectManager.UnknownDialectCode", dialect_code))
+                is_dialect = dialect_candidate.is_dialect(conn)
+                if not is_dialect:
+                    continue
+
+                self._can_update = False
+                self._dialect_code = dialect_code
+                self._dialect = dialect_candidate
+                self._known_endpoint_dialects.put(url, dialect_code, DialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+                if host_info is not None:
+                    self._known_endpoint_dialects.put(
+                        host_info.url, dialect_code, DialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+
+                self._log_current_dialect()
+                return self._dialect
+
+        if self._dialect_code is None or self._dialect == DialectCodes.UNKNOWN:
+            raise AwsWrapperError(Messages.get("DialectManager.UnknownDialect"))
+
+        self._can_update = False
+        self._known_endpoint_dialects.put(url, self._dialect_code, DialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+        if host_info is not None:
+            self._known_endpoint_dialects.put(
+                host_info.url, self._dialect_code, DialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+        self._log_current_dialect()
+        return self._dialect
+
+    def _log_current_dialect(self):
         dialect_class = "<null>" if self._dialect is None else type(self._dialect).__name__
         logger.debug(f"Current dialect: {self._dialect_code}, {dialect_class}, can_update: {self._can_update}")
