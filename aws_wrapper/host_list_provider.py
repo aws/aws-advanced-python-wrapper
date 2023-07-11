@@ -33,8 +33,11 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.utils import Utils
+from aws_wrapper.utils.timeout import timeout
 
 logger = getLogger(__name__)
+
+DEFAULT_QUERY_TOPOLOGY_TIMEOUT_SECONDS = 5
 
 
 class HostListProvider(Protocol):
@@ -235,15 +238,20 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 # Return the original hosts passed to the connect method
                 return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
-            hosts = self._query_for_topology(conn)
-            if hosts:
-                AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
-                if self._is_primary_cluster_id and not cached_hosts:
-                    # This cluster_id is primary and a new entry was just created in the cache. When this happens, we
-                    # check for non-primary cluster IDs associated with the same cluster so that the topology info can
-                    # be shared.
-                    self._suggest_cluster_id(hosts)
-                return AuroraHostListProvider.FetchTopologyResult(hosts, False)
+            try:
+                max_timeout = self._props["query_timeout"] if self._props.__contains__("query_timeout") else DEFAULT_QUERY_TOPOLOGY_TIMEOUT_SECONDS
+                query_for_topology_with_timeout = timeout(max_timeout)(self._query_for_topology)
+                hosts = query_for_topology_with_timeout(conn)
+                if hosts:
+                    AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
+                    if self._is_primary_cluster_id and not cached_hosts:
+                        # This cluster_id is primary and a new entry was just created in the cache. When this happens, we
+                        # check for non-primary cluster IDs associated with the same cluster so that the topology info can
+                        # be shared.
+                        self._suggest_cluster_id(hosts)
+                    return AuroraHostListProvider.FetchTopologyResult(hosts, False)
+            except TimeoutError as e:
+                raise AwsWrapperError(Messages.get("AuroraHostListProvider.TopologyTimeout")) from e
 
         if cached_hosts:
             return AuroraHostListProvider.FetchTopologyResult(cached_hosts, True)
