@@ -23,13 +23,13 @@ from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.pep249 import Connection, Error
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
+from .exceptions import ExceptionHandler, PgExceptionHandler
 from .utils.messages import Messages
 
 logger = getLogger(__name__)
 
 
 class DialectCodes(Enum):
-
     AURORA_MYSQL: str = "aurora-mysql"
     RDS_MYSQL: str = "rds-mysql"
     MYSQL: str = "mysql"
@@ -96,6 +96,11 @@ class Dialect(Protocol):
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         ...
 
+    @property
+    @abstractmethod
+    def exception_handler(self) -> Optional[ExceptionHandler]:
+        ...
+
 
 class DialectProvider(Protocol):
 
@@ -117,6 +122,11 @@ class MysqlDialect(Dialect):
     @property
     def server_version_query(self) -> str:
         return "SHOW VARIABLES LIKE 'version_comment'"
+
+    @property
+    def exception_handler(self) -> Optional[ExceptionHandler]:
+        # TODO
+        return None
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
@@ -166,6 +176,10 @@ class PgDialect(Dialect):
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         return PgDialect._DIALECT_UPDATE_CANDIDATES
 
+    @property
+    def exception_handler(self) -> Optional[ExceptionHandler]:
+        return PgExceptionHandler()
+
 
 class MariaDbDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES = None
@@ -197,6 +211,11 @@ class MariaDbDialect(Dialect):
     @property
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         return MariaDbDialect._DIALECT_UPDATE_CANDIDATES
+
+    @property
+    def exception_handler(self) -> Optional[ExceptionHandler]:
+        # TODO
+        return None
 
 
 class RdsMysqlDialect(MysqlDialect):
@@ -355,6 +374,10 @@ class UnknownDialect(Dialect):
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         return UnknownDialect._DIALECT_UPDATE_CANDIDATES
 
+    @property
+    def exception_handler(self) -> Optional[ExceptionHandler]:
+        return None
+
 
 class DialectManager(DialectProvider):
 
@@ -398,7 +421,7 @@ class DialectManager(DialectProvider):
             self.log_current_dialect()
             return self._dialect
 
-        user_dialect_setting: Optional[str] = str(WrapperProperties.DIALECT.get(props))
+        user_dialect_setting: Optional[str] = WrapperProperties.DIALECT.get(props)
         url = props["host"] if props.get("port") is None else props["host"] + ":" + props["port"]
         dialect_code: Optional[DialectCodes]
         if user_dialect_setting:

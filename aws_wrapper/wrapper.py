@@ -16,7 +16,8 @@ from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
 from aws_wrapper.connection_provider import DriverConnectionProvider
-from aws_wrapper.hostinfo import HostInfo
+from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugin_service import (PluginManager, PluginServiceImpl,
                                         PluginServiceManagerContainer)
@@ -55,19 +56,31 @@ class AwsWrapperConnection(Connection):
 
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
         plugin_service = PluginServiceImpl(container, props)
-        logger.debug(f"${plugin_service}")
-
         plugin_manager: PluginManager = PluginManager(container, props, DriverConnectionProvider(target_func))
-        plugin_manager.init_host_provider(props, plugin_service)
-        host_info = HostInfo(props["host"], int(props["port"]) if "port" in props else HostInfo.NO_PORT)
+        plugin_service.host_list_provider = AuroraHostListProvider(plugin_service, props)
 
-        conn = plugin_manager.connect(host_info, props, True)
+        plugin_manager.init_host_provider(props, plugin_service)
+
+        plugin_service.refresh_host_list()
+
+        if plugin_service.current_connection is not None:
+            return AwsWrapperConnection(plugin_manager, plugin_service.current_connection)
+
+        conn = plugin_manager.connect(plugin_service.initial_connection_host_info, props, True)
+
+        if not conn:
+            raise AwsWrapperError(Messages.get("ConnectionWrapper.ConnectionNotOpen"))
+
+        plugin_service.set_current_connection(conn, plugin_service.initial_connection_host_info)
 
         return AwsWrapperConnection(plugin_manager, conn)
 
     def close(self) -> None:
-        if self._target_conn:
+        if self._plugin_manager.num_plugins == 0:
             self._target_conn.close()
+
+        self._plugin_manager.execute(self._target_conn, "Connection.close",
+                                     lambda: self._target_conn.close())
 
     def cursor(self, **kwargs: Union[None, int, str]) -> "AwsWrapperCursor":
         _cursor = self._target_conn.cursor(**kwargs)
@@ -98,8 +111,11 @@ class AwsWrapperConnection(Connection):
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self._target_conn:
+        if self._plugin_manager.num_plugins == 0:
             self._target_conn.close()
+
+        self._plugin_manager.execute(self._target_conn, "Connection.close",
+                                     lambda: self._target_conn.close())
 
 
 class AwsWrapperCursor(Cursor):
@@ -128,7 +144,11 @@ class AwsWrapperCursor(Cursor):
         return self._target_cursor.arraysize
 
     def close(self) -> None:
-        self._target_cursor.close()
+        if self._plugin_manager.num_plugins == 0:
+            self._target_cursor.close()
+
+        self._plugin_manager.execute(self._target_cursor, "Cursor.close",
+                                     lambda: self._target_cursor.close())
 
     def callproc(self, **kwargs: Union[None, int, str]):
         return self._target_cursor.callproc(**kwargs)

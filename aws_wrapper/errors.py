@@ -17,3 +17,7 @@ from .pep249 import Error
 
 class AwsWrapperError(Error):
     __module__ = "aws_wrapper"
+
+
+class FailoverError(AwsWrapperError):
+    __module__ = "aws_wrapper"
