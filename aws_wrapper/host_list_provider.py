@@ -245,8 +245,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
             try:
                 max_timeout = self._props["query_timeout"] if "query_timeout" in self._props else DEFAULT_QUERY_TOPOLOGY_TIMEOUT_SECONDS
-                query_for_topology_with_timeout = timeout(max_timeout)(self._query_for_topology)
-                hosts = query_for_topology_with_timeout(conn)
+                query_for_topology_func_with_timeout = timeout(max_timeout)(self._query_for_topology)
+                hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
                     if self._is_primary_cluster_id and cached_hosts is None:
