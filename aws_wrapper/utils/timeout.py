@@ -12,8 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from concurrent.futures import ThreadPoolExecutor
 import functools
+from concurrent.futures import ThreadPoolExecutor
 
 
 # Timeout decorator, timeout in seconds

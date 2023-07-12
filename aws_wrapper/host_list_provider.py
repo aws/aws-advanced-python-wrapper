@@ -32,8 +32,8 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.utils import Utils
 from aws_wrapper.utils.timeout import timeout
+from aws_wrapper.utils.utils import Utils
 
 logger = getLogger(__name__)
 
@@ -244,7 +244,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 hosts = query_for_topology_with_timeout(conn)
                 if hosts is not None:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
-                    if self._is_primary_cluster_id and cached_hosts is not None:
+                    if self._is_primary_cluster_id and cached_hosts is None:
                         # This cluster_id is primary and a new entry was just created in the cache. When this happens, we
                         # check for non-primary cluster IDs associated with the same cluster so that the topology info can
                         # be shared.

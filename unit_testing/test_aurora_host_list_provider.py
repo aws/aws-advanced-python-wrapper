@@ -12,10 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import time
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import pytest
-import time
 
 from aws_wrapper.dialect import Dialect
 from aws_wrapper.errors import AwsWrapperError
@@ -24,7 +25,6 @@ from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Error, ProgrammingError
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
-from unittest.mock import patch
 
 @pytest.fixture(autouse=True)
 def clear_caches():
