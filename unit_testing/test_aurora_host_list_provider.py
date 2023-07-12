@@ -14,7 +14,6 @@
 
 import time
 from datetime import datetime, timedelta
-from unittest.mock import patch
 
 import pytest
 
@@ -54,6 +53,7 @@ def mock_hanging_behavior(mock_provider_service, mock_conn, mock_cursor):
     mock_conn.cursor.side_effect = mock_hang
     mock_provider_service.current_connection = mock_conn
 
+
 @pytest.fixture
 def mock_conn(mocker):
     return mocker.MagicMock()
@@ -67,6 +67,7 @@ def mock_cursor(mocker):
 @pytest.fixture
 def mock_provider_service(mocker):
     return mocker.MagicMock()
+
 
 @pytest.fixture
 def props():
@@ -404,5 +405,3 @@ def test_initialize_rds_proxy(mock_provider_service):
     provider = AuroraHostListProvider(mock_provider_service, props)
     provider._initialize()
     assert provider._cluster_id == "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com"
-
-
