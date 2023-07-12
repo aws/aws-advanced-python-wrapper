@@ -29,10 +29,11 @@ def test_cursor_execute_no_plugins():
 
     connection_mock.cursor.return_value = cursor_mock
 
+    plugin_service_mock = MagicMock()
     plugin_manager_mock = MagicMock()
     plugin_manager_mock.num_plugins.return_value = 0
 
-    awsconn = AwsWrapperConnection(plugin_manager_mock, connection_mock)
+    awsconn = AwsWrapperConnection(plugin_service_mock, plugin_manager_mock, connection_mock)
 
     new_cursor = awsconn.cursor()
 

@@ -37,6 +37,13 @@ class WrapperProperty:
         val = props.get(self.name)
         return int(val) if val else -1
 
+    def get_bool(self, props: Properties) -> bool:
+        if not self.default_value:
+            value = props.get(self.name)
+        else:
+            value = props.get(self.name, self.default_value)
+        return value is not None and value.lower() == "true"
+
     def set(self, props: Properties, value: str):
         props[self.name] = value
 
@@ -80,6 +87,23 @@ class WrapperProperties:
     SECRETS_MANAGER_REGION = WrapperProperty("secrets_manager_region", "The region of the secret to retrieve.",
                                              "us-east-1")
     DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect")
+
+    # HostMonitoringPlugin
+    FAILURE_DETECTION_ENABLED = WrapperProperty("failure_detection_enabled",
+                                                "Enable failure detection logic in the HostMonitoringPlugin",
+                                                "True")
+    FAILURE_DETECTION_TIME_MS = \
+        WrapperProperty("failure_detection_time_ms",
+                        "Interval in milliseconds between sending SQL to the server and the first connection check.",
+                        "30000")
+    FAILURE_DETECTION_INTERVAL = \
+        WrapperProperty("failure_detection_interval_ms",
+                        "Interval in milliseconds between consecutive connection checks.",
+                        "5000")
+    FAILURE_DETECTION_COUNT = \
+        WrapperProperty("failure_detection_count",
+                        "Number of failed connection checks before considering the database host unavailable.",
+                        "3")
 
 
 class PropertiesUtils:

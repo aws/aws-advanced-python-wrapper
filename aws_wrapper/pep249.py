@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from types import TracebackType
 
-from typing import Any, Iterator, List, Optional, Sequence, Type, TypeVar
+from typing import Any, Iterator, List, Optional, Type, TypeVar
 
 
 class Warning(Exception):
@@ -51,7 +51,7 @@ class Error(Exception):
     def __init__(
             self,
             sqlstate: str = None,
-            *args: Sequence[Any]
+            *args: Any
     ):
         super().__init__(*args)
         self._sqlstate: str = sqlstate

@@ -61,7 +61,7 @@ class DefaultPlugin(Plugin):
         PropertiesUtils.remove_wrapper_props(target_driver_props)
         return self._connect(host_info, target_driver_props, self._connection_provider_manager.default_provider)
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
         # logger.debug("Default plugin: execute before")
         result = execute_func()
         # logger.debug("Default plugin: execute after")

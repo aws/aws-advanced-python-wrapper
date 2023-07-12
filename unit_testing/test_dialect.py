@@ -15,8 +15,11 @@
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from aws_wrapper.dialect import (AuroraPgDialect, MariaDbDialect, MysqlDialect,
                                  PgDialect, RdsMysqlDialect, RdsPgDialect)
+from aws_wrapper.errors import AwsWrapperError
 
 
 class TestDialect(TestCase):
@@ -140,3 +143,23 @@ class TestDialect(TestCase):
         mock_super().is_dialect.return_value = False
 
         assert not rds_pg_dialect.is_dialect(mock_conn)
+
+    def test_is_closed(self):
+        mock_conn = MagicMock()
+        mock_conn.is_connected.return_value = False
+        dialect = MysqlDialect()
+
+        assert dialect.is_closed(mock_conn) is True
+
+        del mock_conn.is_connected
+        with pytest.raises(AwsWrapperError):
+            dialect.is_closed(mock_conn)
+
+        dialect = PgDialect()
+        mock_conn.closed = True
+
+        assert dialect.is_closed(mock_conn) is True
+
+        del mock_conn.closed
+        with pytest.raises(AwsWrapperError):
+            dialect.is_closed(mock_conn)

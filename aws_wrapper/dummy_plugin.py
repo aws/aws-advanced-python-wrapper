@@ -46,7 +46,7 @@ class DummyPlugin(Plugin):
                       initial: bool, force_connect_func: Callable) -> Connection:
         return force_connect_func()
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
         # logger.debug("Plugin {}: execute before".format(self._id))
         result = execute_func()
         # logger.debug("Plugin {}: execute after".format(self._id))

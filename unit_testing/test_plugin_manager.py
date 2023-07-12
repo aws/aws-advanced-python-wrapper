@@ -37,7 +37,7 @@ from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
 from aws_wrapper.utils.properties import Properties
 
 
-class TestDriverConnectionProvider(TestCase):
+class TestPluginManager(TestCase):
     def test_execute_call_a(self):
         calls = []
         args = [10, "arg2", 3.33]
@@ -264,7 +264,7 @@ class TestPlugin(Plugin):
         self._calls.append(type(self).__name__ + ":after connect")
         return result
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
         self._calls.append(type(self).__name__ + ":before execute")
         result = execute_func()
         self._calls.append(type(self).__name__ + ":after execute")
@@ -324,7 +324,7 @@ class TestPluginRaisesError(TestPlugin):
         self._calls.append(type(self).__name__ + ":after connect")
         raise AwsWrapperError()
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
         self._calls.append(type(self).__name__ + ":before execute")
         if self._throw_before_call:
             raise AwsWrapperError()
