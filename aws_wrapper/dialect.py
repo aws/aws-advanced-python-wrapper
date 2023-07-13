@@ -204,7 +204,11 @@ class PgDialect(Dialect):
             raise AwsWrapperError(Messages.get_formatted("Dialect.InvalidTargetAttribute", "PgDialect", "is_closed"))
 
     def abort_connection(self, conn: Connection):
-        conn.cancel()
+        cancel_func = getattr(conn, "cancel", None)
+        if cancel_func is None or not callable(cancel_func):
+            raise AwsWrapperError(
+                Messages.get_formatted("Dialect.InvalidTargetAttribute", "PgDialect", "abort_connection"))
+        cancel_func()
 
     @property
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:

@@ -332,3 +332,14 @@ class TestDialect(TestCase):
         del mock_conn.closed
         with pytest.raises(AwsWrapperError):
             dialect.is_closed(mock_conn)
+
+    def test_abort_connection(self):
+        mock_conn = MagicMock()
+        dialect = PgDialect()
+
+        dialect.abort_connection(mock_conn)
+        mock_conn.cancel.assert_called_once()
+
+        del mock_conn.cancel
+        with pytest.raises(AwsWrapperError):
+            dialect.abort_connection(mock_conn)

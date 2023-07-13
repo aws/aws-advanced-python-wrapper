@@ -60,24 +60,21 @@ class WrapperProperties:
     DATABASE = WrapperProperty("database", "Driver database name")
 
     # AuroraHostListProvider
-    TOPOLOGY_REFRESH_MS = \
-        WrapperProperty("topology_refresh_ms",
-                        """Cluster topology refresh rate in milliseconds. The cached topology for the cluster will be
-                        invalidated after the specified time, after which it will be updated during the next
-                        interaction with the connection.""",
-                        "30000")
-    CLUSTER_ID = \
-        WrapperProperty("cluster_id",
-                        """A unique identifier for the cluster. Connections with the same cluster id share a
-                        cluster topology cache. If unspecified, a cluster id is automatically created for AWS
-                        RDS clusters.""")
-    CLUSTER_INSTANCE_HOST_PATTERN = \
-        WrapperProperty("cluster_instance_host_pattern",
-                        """The cluster instance DNS pattern that will be used to build a complete instance endpoint.
-                        A "?" character in this pattern should be used as a placeholder for cluster instance names.
-                        This pattern is required to be specified for IP address or custom domain connections to AWS RDS
-                        clusters. Otherwise, if unspecified, the pattern will be automatically created for AWS RDS
-                        clusters.""")
+    TOPOLOGY_REFRESH_MS = WrapperProperty(
+        "topology_refresh_ms",
+        """Cluster topology refresh rate in millis. The cached topology for the cluster will be invalidated after the
+        specified time, after which it will be updated during the next interaction with the connection.""",
+        "30000")
+    CLUSTER_ID = WrapperProperty(
+        "cluster_id",
+        """A unique identifier for the cluster. Connections with the same cluster id share a cluster topology cache. If
+        unspecified, a cluster id is automatically created for AWS RDS clusters.""")
+    CLUSTER_INSTANCE_HOST_PATTERN = WrapperProperty(
+        "cluster_instance_host_pattern",
+        """The cluster instance DNS pattern that will be used to build a complete instance endpoint. A "?" character in
+        this pattern should be used as a placeholder for cluster instance names. This pattern is required to be
+        specified for IP address or custom domain connections to AWS RDS clusters. Otherwise, if unspecified, the
+        pattern will be automatically created for AWS RDS clusters.""")
 
     IAM_HOST = WrapperProperty("iam_host", "Overrides the host that is used to generate the IAM token")
     IAM_DEFAULT_PORT = WrapperProperty("iam_default_port",
@@ -99,21 +96,26 @@ class WrapperProperties:
                                                   "5")
 
     # HostMonitoringPlugin
-    FAILURE_DETECTION_ENABLED = WrapperProperty("failure_detection_enabled",
-                                                "Enable failure detection logic in the HostMonitoringPlugin",
-                                                "True")
-    FAILURE_DETECTION_TIME_MS = \
-        WrapperProperty("failure_detection_time_ms",
-                        "Interval in milliseconds between sending SQL to the server and the first connection check.",
-                        "30000")
-    FAILURE_DETECTION_INTERVAL_MS = \
-        WrapperProperty("failure_detection_interval_ms",
-                        "Interval in milliseconds between consecutive connection checks.",
-                        "5000")
-    FAILURE_DETECTION_COUNT = \
-        WrapperProperty("failure_detection_count",
-                        "Number of failed connection checks before considering the database host unavailable.",
-                        "3")
+    FAILURE_DETECTION_ENABLED = WrapperProperty(
+        "failure_detection_enabled",
+        "Enable failure detection logic in the HostMonitoringPlugin",
+        "True")
+    FAILURE_DETECTION_TIME_MS = WrapperProperty(
+        "failure_detection_time_ms",
+        "Interval in milliseconds between sending SQL to the server and the first connection check.",
+        "30000")
+    FAILURE_DETECTION_INTERVAL_MS = WrapperProperty(
+        "failure_detection_interval_ms",
+        "Interval in milliseconds between consecutive connection checks.",
+        "5000")
+    FAILURE_DETECTION_COUNT = WrapperProperty(
+        "failure_detection_count",
+        "Number of failed connection checks before considering the database host unavailable.",
+        "3")
+    MONITOR_DISPOSAL_TIME_MS = WrapperProperty(
+        "monitor_disposal_time_ms",
+        "Interval in milliseconds after which a monitor should be considered inactive and marked for disposal.",
+        "60000")
 
 
 class PropertiesUtils:

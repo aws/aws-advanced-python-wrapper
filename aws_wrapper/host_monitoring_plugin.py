@@ -266,40 +266,107 @@ class MonitoringContext:
 
 
 class Monitor:
-    ...
+    def __init__(
+            self,
+            plugin_service: PluginService,
+            host_info: HostInfo,
+            props: Properties,
+            monitor_service: MonitorService):
+        self._plugin_service: PluginService = plugin_service
+        self._host_info: HostInfo = host_info
+        self._props: Properties = props
+        self._monitor_disposal_time_ms = WrapperProperties.MONITOR_DISPOSAL_TIME_MS.get_int(props)
+        self._monitor_service: MonitorService = monitor_service
+
+    def start_monitoring(self, context: MonitoringContext):
+        ...
+
+    def stop_monitoring(self, context: MonitoringContext):
+        ...
+
+    def clear_contexts(self):
+        ...
+
+
+class MonitorThreadContainer:
+    @staticmethod
+    def release_instance():
+        ...
+
+    def get_or_create_monitor(  # type: ignore
+            self, host_aliases: FrozenSet[str], monitor_supplier: Callable) -> Monitor:
+        ...
+
+    def get_monitor(self, alias: str) -> Optional[Monitor]:  # type: ignore
+        ...
+
+    def reset_resource(self, monitor: Monitor):
+        ...
+
+    def release_resource(self, monitor: Monitor):
+        ...
 
 
 class MonitorService:
+    _LOGGER = getLogger(__name__)
+
     def __init__(self, plugin_service: PluginService):
-        self._plugin_service = plugin_service
+        self._plugin_service: PluginService = plugin_service
+        self._thread_container: MonitorThreadContainer = MonitorThreadContainer()
+        self._cached_monitor_aliases: Optional[FrozenSet[str]] = None
+        self._cached_monitor: Optional[Monitor] = None
 
     def start_monitoring(self,
                          conn: Connection,
-                         host_aliases: FrozenSet,
+                         host_aliases: FrozenSet[str],
                          host_info: HostInfo,
                          props: Properties,
                          failure_detection_time_ms: int,
                          failure_detection_interval_ms: int,
                          failure_detection_count: int) -> MonitoringContext:
-        # TODO: Finish implementing
-        monitor = Monitor()
+        if not host_aliases:
+            raise AwsWrapperError(Messages.get_formatted("MonitorService.EmptyAliasSet", host_info))
+
+        if self._cached_monitor is None \
+                or self._cached_monitor_aliases is None \
+                or self._cached_monitor_aliases != host_aliases:
+            monitor = self._thread_container.get_or_create_monitor(
+                host_aliases, lambda: self._create_monitor(host_info, props))
+            self._cached_monitor = monitor
+            self._cached_monitor_aliases = host_aliases
+        else:
+            monitor = self._cached_monitor
+
         dialect = self._plugin_service.dialect
         if dialect is None:
             self._plugin_service.update_dialect()
             dialect = self._plugin_service.dialect
             if dialect is None:
                 raise AwsWrapperError(Messages.get("MonitorService.NullDialect"))
-        return MonitoringContext(
+
+        context = MonitoringContext(
             monitor, conn, dialect, failure_detection_time_ms, failure_detection_interval_ms, failure_detection_count)
+        monitor.start_monitoring(context)
+        return context
+
+    def _create_monitor(self, host_info: HostInfo, props: Properties):
+        return Monitor(self._plugin_service, host_info, props, self)
 
     def stop_monitoring(self, context: MonitoringContext):
-        ...
+        monitor = context.monitor
+        monitor.stop_monitoring(context)
 
     def stop_monitoring_host_connections(self, host_aliases: FrozenSet):
-        ...
+        for alias in host_aliases:
+            monitor = self._thread_container.get_monitor(alias)
+            if monitor is not None:
+                monitor.clear_contexts()
+                self._thread_container.reset_resource(monitor)
+                return
 
     def release_resources(self):
-        ...
+        self._thread_container = None
+        MonitorThreadContainer.release_instance()
 
     def notify_unused(self, monitor: Monitor):
-        ...
+        self._thread_container.release_resource(monitor)
