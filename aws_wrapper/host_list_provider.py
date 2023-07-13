@@ -135,6 +135,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
         self._props: Properties = props
 
+        self._max_timeout = self._props["query_timeout"] if "query_timeout" in self._props else DEFAULT_QUERY_TOPOLOGY_TIMEOUT_SECONDS
         self._rds_utils: RdsUtils = RdsUtils()
         self._hosts: List[HostInfo] = []
         self._cluster_id: str = str(uuid.uuid4())
@@ -244,10 +245,9 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
             try:
-                max_timeout = self._props["query_timeout"] if "query_timeout" in self._props else DEFAULT_QUERY_TOPOLOGY_TIMEOUT_SECONDS
-                query_for_topology_func_with_timeout = timeout(max_timeout)(self._query_for_topology)
+                query_for_topology_func_with_timeout = timeout(self._max_timeout)(self._query_for_topology)
                 hosts = query_for_topology_func_with_timeout(conn)
-                if hosts is not None:
+                if hosts is not None and len(hosts) > 0:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
                     if self._is_primary_cluster_id and cached_hosts is None:
                         # This cluster_id is primary and a new entry was just created in the cache. When this happens, we
@@ -382,7 +382,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForGetHostRole")
-                cursor.execute(topology_aware_dialect.is_reader_query)
+                cursor.cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
+                cursor.cursor_execute_func_with_timeout(topology_aware_dialect.is_reader_query)
                 result = cursor.fetchone()
                 if result:
                     is_reader = result[0]
@@ -399,7 +400,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForIdentifyConnection")
-                cursor.execute(topology_aware_dialect.host_id_query)
+                cursor.cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
+                cursor.cursor_execute_func_with_timeout(topology_aware_dialect.host_id_query)
                 result = cursor.fetchone()
                 if result:
                     host_id = result[0]
