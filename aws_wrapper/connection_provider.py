@@ -14,19 +14,20 @@
 
 from __future__ import annotations
 
+from threading import Lock
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .hostinfo import HostInfo, HostRole
-    from .pep249 import Connection
-    from .utils.properties import Properties
+    from aws_wrapper.hostinfo import HostInfo, HostRole
+    from aws_wrapper.pep249 import Connection
+    from aws_wrapper.utils.properties import Properties
 
-import threading
 from typing import Callable, Dict, List, Optional, Protocol
 
 from aws_wrapper.errors import AwsWrapperError
-from .hostselector import HostSelector, RandomHostSelector
-from .utils.messages import Messages
+from aws_wrapper.hostselector import HostSelector, RandomHostSelector
+from aws_wrapper.plugin import CanReleaseResources
+from aws_wrapper.utils.messages import Messages
 
 
 class ConnectionProvider(Protocol):
@@ -45,34 +46,37 @@ class ConnectionProvider(Protocol):
 
 
 class ConnectionProviderManager:
-    def __init__(self, default_provider: ConnectionProvider, connection_provider: Optional[ConnectionProvider] = None):
+    _lock: Lock = Lock()
+    _conn_provider: Optional[ConnectionProvider] = None
+
+    def __init__(self, default_provider: ConnectionProvider):
         self._default_provider: ConnectionProvider = default_provider
-        self._connection_provider: Optional[ConnectionProvider] = connection_provider
-        self._lock = threading.Lock()
 
     @property
     def default_provider(self):
         return self._default_provider
 
-    def set_connection_provider(self, connection_provider: ConnectionProvider):
-        with self._lock:
-            self._connection_provider = connection_provider
+    @staticmethod
+    def set_connection_provider(connection_provider: ConnectionProvider):
+        with ConnectionProviderManager._lock:
+            ConnectionProviderManager._conn_provider = connection_provider
 
     def get_connection_provider(self, host_info: HostInfo, properties: Properties) -> ConnectionProvider:
-        if not self._connection_provider:
+        if ConnectionProviderManager._conn_provider is None:
             return self.default_provider
 
-        with self._lock:
-            if self._connection_provider and self._connection_provider.accepts_host_info(host_info, properties):
-                return self._connection_provider
+        with ConnectionProviderManager._lock:
+            if ConnectionProviderManager._conn_provider is not None \
+                    and ConnectionProviderManager._conn_provider.accepts_host_info(host_info, properties):
+                return ConnectionProviderManager._conn_provider
 
         return self._default_provider
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         accepts_strategy: bool = False
-        if self._connection_provider:
-            with self._lock:
-                accepts_strategy = self._connection_provider.accepts_strategy(role, strategy)
+        if ConnectionProviderManager._conn_provider is not None:
+            with ConnectionProviderManager._lock:
+                accepts_strategy = ConnectionProviderManager._conn_provider.accepts_strategy(role, strategy)
 
         if not accepts_strategy:
             accepts_strategy = self._default_provider.accepts_strategy(role, strategy)
@@ -80,12 +84,20 @@ class ConnectionProviderManager:
         return accepts_strategy
 
     def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
-        if self._connection_provider:
-            with self._lock:
-                if self._connection_provider.accepts_strategy(role, strategy):
-                    return self._connection_provider.get_host_info_by_strategy(hosts, role, strategy)
+        if ConnectionProviderManager._conn_provider is not None:
+            with ConnectionProviderManager._lock:
+                if ConnectionProviderManager._conn_provider is not None \
+                        and ConnectionProviderManager._conn_provider.accepts_strategy(role, strategy):
+                    return ConnectionProviderManager._conn_provider.get_host_info_by_strategy(hosts, role, strategy)
 
         return self._default_provider.get_host_info_by_strategy(hosts, role, strategy)
+
+    @staticmethod
+    def release_resources():
+        if ConnectionProviderManager._conn_provider is not None:
+            with ConnectionProviderManager._lock:
+                if isinstance(ConnectionProviderManager._conn_provider, CanReleaseResources):
+                    ConnectionProviderManager._conn_provider.release_resources()
 
 
 class DriverConnectionProvider(ConnectionProvider):

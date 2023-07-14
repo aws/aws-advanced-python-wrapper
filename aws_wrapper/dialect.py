@@ -96,6 +96,10 @@ class Dialect(Protocol):
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         ...
 
+    @abstractmethod
+    def is_closed(self, conn: Connection) -> bool:
+        ...
+
     @property
     @abstractmethod
     def exception_handler(self) -> Optional[ExceptionHandler]:
@@ -141,6 +145,12 @@ class MysqlDialect(Dialect):
 
         return False
 
+    def is_closed(self, conn: Connection) -> bool:
+        is_connected_func = getattr(conn, "is_connected", None)
+        if is_connected_func is None or not callable(is_connected_func):
+            raise AwsWrapperError(Messages.get_formatted("Dialect.InvalidTargetAttribute", "MySqlDialect", "is_closed"))
+        return not is_connected_func()
+
     @property
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
         return MysqlDialect._DIALECT_UPDATE_CANDIDATES
@@ -171,6 +181,12 @@ class PgDialect(Dialect):
             pass
 
         return False
+
+    def is_closed(self, conn: Connection) -> bool:
+        if hasattr(conn, "closed"):
+            return conn.closed
+        else:
+            raise AwsWrapperError(Messages.get_formatted("Dialect.InvalidTargetAttribute", "PgDialect", "is_closed"))
 
     @property
     def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
@@ -206,6 +222,10 @@ class MariaDbDialect(Dialect):
         except Error:
             pass
 
+        return False
+
+    def is_closed(self, conn: Connection) -> bool:
+        # TODO: investigate how to check if a connection is closed with MariaDB
         return False
 
     @property
@@ -368,6 +388,9 @@ class UnknownDialect(Dialect):
         return ""
 
     def is_dialect(self, conn: Connection) -> bool:
+        return False
+
+    def is_closed(self, conn: Connection) -> bool:
         return False
 
     @property

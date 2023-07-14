@@ -19,7 +19,9 @@ from aws_wrapper.connection_provider import DriverConnectionProvider
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.pep249 import Connection, Cursor, Error
-from aws_wrapper.plugin_service import (PluginManager, PluginServiceImpl,
+from aws_wrapper.plugin import CanReleaseResources
+from aws_wrapper.plugin_service import (PluginManager, PluginService,
+                                        PluginServiceImpl,
                                         PluginServiceManagerContainer)
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
@@ -27,12 +29,13 @@ from aws_wrapper.utils.properties import Properties, PropertiesUtils
 logger = getLogger(__name__)
 
 
-class AwsWrapperConnection(Connection):
+class AwsWrapperConnection(Connection, CanReleaseResources):
     __module__ = "aws_wrapper"
 
-    def __init__(self, plugin_manager: PluginManager, target_conn: Connection):
-        self._target_conn: Connection = target_conn
+    def __init__(self, plugin_service: PluginService, plugin_manager: PluginManager, target_conn: Connection):
+        self._plugin_service = plugin_service
         self._plugin_manager: PluginManager = plugin_manager
+        self._target_conn: Connection = target_conn
 
     @staticmethod
     def connect(
@@ -64,7 +67,7 @@ class AwsWrapperConnection(Connection):
         plugin_service.refresh_host_list()
 
         if plugin_service.current_connection is not None:
-            return AwsWrapperConnection(plugin_manager, plugin_service.current_connection)
+            return AwsWrapperConnection(plugin_service, plugin_manager, plugin_service.current_connection)
 
         conn = plugin_manager.connect(plugin_service.initial_connection_host_info, props, True)
 
@@ -73,7 +76,7 @@ class AwsWrapperConnection(Connection):
 
         plugin_service.set_current_connection(conn, plugin_service.initial_connection_host_info)
 
-        return AwsWrapperConnection(plugin_manager, conn)
+        return AwsWrapperConnection(plugin_service, plugin_manager, conn)
 
     def close(self) -> None:
         if self._plugin_manager.num_plugins == 0:
@@ -106,6 +109,14 @@ class AwsWrapperConnection(Connection):
 
     def tpc_recover(self) -> Any:
         return self._target_conn.tpc_recover()
+
+    def release_resources(self):
+        self._plugin_manager.release_resources()
+        if isinstance(self._plugin_service, CanReleaseResources):
+            self._plugin_service.release_resources()
+
+    def __del__(self):
+        self.release_resources()
 
     def __enter__(self: "AwsWrapperConnection") -> "AwsWrapperConnection":
         return self

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from contextlib import closing
-from typing import TYPE_CHECKING, FrozenSet, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
@@ -25,7 +25,8 @@ if TYPE_CHECKING:
 
 from abc import abstractmethod
 from logging import getLogger
-from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Type
+from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
+                    Set, Tuple, Type)
 
 from aws_wrapper.aurora_connection_tracker_plugin import \
     AuroraConnectionTrackerPluginFactory
@@ -42,8 +43,10 @@ from aws_wrapper.host_list_provider import (AuroraHostListPluginFactory,
                                             HostListProvider,
                                             HostListProviderService,
                                             StaticHostListProvider)
+from aws_wrapper.host_monitoring_plugin import HostMonitoringPluginFactory
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.iam_plugin import IamAuthPluginFactory
+from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
@@ -110,6 +113,11 @@ class PluginService(ExceptionHandler, Protocol):
     def is_in_transaction(self) -> bool:
         ...
 
+    @property
+    @abstractmethod
+    def dialect(self) -> Optional[Dialect]:
+        ...
+
     def update_dialect(self, connection: Connection):
         ...
 
@@ -144,7 +152,7 @@ class PluginService(ExceptionHandler, Protocol):
         ...
 
 
-class PluginServiceImpl(PluginService, HostListProviderService):
+class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
 
     def __init__(
@@ -346,8 +354,22 @@ class PluginServiceImpl(PluginService, HostListProviderService):
 
         return changes
 
+    def release_resources(self):
+        logger.debug(Messages.get("PluginServiceImpl.ReleaseResources"))
+        dialect = self.dialect
+        try:
+            if self.current_connection is not None and not dialect.is_closed(self.current_connection):
+                self.current_connection.close()
+        except Exception:
+            # ignore
+            pass
 
-class PluginManager:
+        host_list_provider = self.host_list_provider
+        if host_list_provider is not None and isinstance(host_list_provider, CanReleaseResources):
+            host_list_provider.release_resources()
+
+
+class PluginManager(CanReleaseResources):
     _ALL_METHODS: str = "*"
     _CONNECT_METHOD: str = "connect"
     _FORCE_CONNECT_METHOD: str = "force_connect"
@@ -362,7 +384,8 @@ class PluginManager:
         "iam": IamAuthPluginFactory,
         "aws_secrets_manager": AwsSecretsManagerPluginFactory,
         "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
-        "aurora_host_list": AuroraHostListPluginFactory
+        "aurora_host_list": AuroraHostListPluginFactory,
+        "host_monitoring": HostMonitoringPluginFactory
     }
 
     def __init__(
@@ -529,3 +552,14 @@ class PluginManager:
             PluginManager._INIT_HOST_LIST_PROVIDER_METHOD,
             lambda plugin, func: plugin.init_host_provider(props, host_list_provider_service, func),
             lambda: None)
+
+    def release_resources(self):
+        """
+        Allows all connection plugins a chance to clean up any dangling resources
+        or perform any last tasks before shutting down.
+        """
+        logger.debug(Messages.get("PluginManager.ReleaseResources"))
+
+        for plugin in self._plugins:
+            if isinstance(plugin, CanReleaseResources):
+                plugin.release_resources()

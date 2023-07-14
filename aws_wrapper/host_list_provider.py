@@ -305,7 +305,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         return hosts
 
     def _create_host(self, record: Tuple) -> HostInfo:
-        # According to TopologyAwareDatabaseDialect.getTopologyQuery() the result set
+        # According to TopologyAwareDatabaseDialect.topology_query the result set
         # should contain 4 columns: instance ID, 1/0 (writer/reader), CPU utilization, host lag in ms.
         # There might be a 5th column specifying the last update time.
         if not self._cluster_instance_template:
