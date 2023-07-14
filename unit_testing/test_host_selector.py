@@ -13,8 +13,6 @@
 #  limitations under the License.
 
 
-from unittest import TestCase
-
 import pytest
 
 from aws_wrapper import pep249
@@ -22,31 +20,32 @@ from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.hostselector import RandomHostSelector
 
 
-class TestHostSelector(TestCase):
-    def test_random_host_selection_strategy(self):
-        random_host_selector: RandomHostSelector = RandomHostSelector()
-        host_role = HostRole.WRITER
-        host_info_list = [HostInfo("testhost1"), HostInfo("testhost2"), HostInfo("testhost3")]
+def test_random_host_selection_strategy():
+    random_host_selector: RandomHostSelector = RandomHostSelector()
+    host_role = HostRole.WRITER
+    host_info_list = [HostInfo("testhost1"), HostInfo("testhost2"), HostInfo("testhost3")]
 
-        host: HostInfo = random_host_selector.get_host(host_info_list, host_role)
+    host: HostInfo = random_host_selector.get_host(host_info_list, host_role)
 
-        assert host_info_list.__contains__(host)
+    assert host_info_list.__contains__(host)
 
-    def test_random_host_selector_selects_roles(self):
-        random_host_selector: RandomHostSelector = RandomHostSelector()
-        host_role = HostRole.READER
-        host_info_list = [HostInfo("testhost1", role=HostRole.WRITER), HostInfo("testhost2", role=HostRole.READER)]
 
-        host: HostInfo = random_host_selector.get_host(host_info_list, host_role)
+def test_random_host_selector_selects_roles():
+    random_host_selector: RandomHostSelector = RandomHostSelector()
+    host_role = HostRole.READER
+    host_info_list = [HostInfo("testhost1", role=HostRole.WRITER), HostInfo("testhost2", role=HostRole.READER)]
 
-        assert host.host == "testhost2"
+    host: HostInfo = random_host_selector.get_host(host_info_list, host_role)
 
-    def test_random_host_no_eligible_hosts(self):
-        random_host_selector: RandomHostSelector = RandomHostSelector()
-        host_role = HostRole.READER
-        host_info_list = [HostInfo("testhost1"), HostInfo("testhost2"), HostInfo("testhost3")]
+    assert host.host == "testhost2"
 
-        with pytest.raises(Exception) as e_info:
-            random_host_selector.get_host(host_info_list, host_role)
 
-        assert isinstance(e_info.value, pep249.Error)
+def test_random_host_no_eligible_hosts():
+    random_host_selector: RandomHostSelector = RandomHostSelector()
+    host_role = HostRole.READER
+    host_info_list = [HostInfo("testhost1"), HostInfo("testhost2"), HostInfo("testhost3")]
+
+    with pytest.raises(Exception) as e_info:
+        random_host_selector.get_host(host_info_list, host_role)
+
+    assert isinstance(e_info.value, pep249.Error)

@@ -12,153 +12,159 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from unittest import TestCase
-
-from parameterized import parameterized
+import pytest
 
 from aws_wrapper.utils.rdsutils import RdsUtils
 
+us_east_region_cluster = "database-test-name.cluster-XYZ.us-east-2.rds.amazonaws.com"
+us_east_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.us-east-2.rds.amazonaws.com"
+us_east_region_instance = "instance-test-name.XYZ.us-east-2.rds.amazonaws.com"
+us_east_region_proxy = "proxy-test-name.proxy-XYZ.us-east-2.rds.amazonaws.com"
+us_east_region_custom_domain = "custom-test-name.cluster-custom-XYZ.us-east-2.rds.amazonaws.com"
+china_region_cluster = "database-test-name.cluster-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
+china_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
+china_region_instance = "instance-test-name.XYZ.rds.cn-northwest-1.amazonaws.com.cn"
+china_region_proxy = "proxy-test-name.proxy-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
+china_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
 
-class TestRdsUtils(TestCase):
-    us_east_region_cluster = "database-test-name.cluster-XYZ.us-east-2.rds.amazonaws.com"
-    us_east_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.us-east-2.rds.amazonaws.com"
-    us_east_region_instance = "instance-test-name.XYZ.us-east-2.rds.amazonaws.com"
-    us_east_region_proxy = "proxy-test-name.proxy-XYZ.us-east-2.rds.amazonaws.com"
-    us_east_region_custom_domain = "custom-test-name.cluster-custom-XYZ.us-east-2.rds.amazonaws.com"
-    china_region_cluster = "database-test-name.cluster-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
-    china_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
-    china_region_instance = "instance-test-name.XYZ.rds.cn-northwest-1.amazonaws.com.cn"
-    china_region_proxy = "proxy-test-name.proxy-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
-    china_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
 
-    @parameterized.expand([
-        us_east_region_cluster,
-        us_east_region_cluster_read_only,
-        china_region_cluster,
-        china_region_cluster_read_only,
-    ])
-    def test_is_rds_cluster_dns(self, test_value):
-        target = RdsUtils()
+@pytest.mark.parametrize("test_value", [
+    us_east_region_cluster,
+    us_east_region_cluster_read_only,
+    china_region_cluster,
+    china_region_cluster_read_only,
+])
+def test_is_rds_cluster_dns(test_value):
+    target = RdsUtils()
 
-        self.assertTrue(target.is_rds_cluster_dns(test_value))
+    assert target.is_rds_cluster_dns(test_value) is True
 
-    @parameterized.expand([
-        us_east_region_instance,
-        us_east_region_proxy,
-        us_east_region_custom_domain,
-        china_region_instance,
-        china_region_proxy,
-        china_region_custom_domain
-    ])
-    def test_is_not_rds_cluster_dns(self, test_value):
-        target = RdsUtils()
 
-        self.assertFalse(target.is_rds_cluster_dns(test_value))
+@pytest.mark.parametrize("test_value", [
+    us_east_region_instance,
+    us_east_region_proxy,
+    us_east_region_custom_domain,
+    china_region_instance,
+    china_region_proxy,
+    china_region_custom_domain
+])
+def test_is_not_rds_cluster_dns(test_value):
+    target = RdsUtils()
 
-    @parameterized.expand([
-        us_east_region_cluster,
-        us_east_region_cluster_read_only,
-        us_east_region_instance,
-        us_east_region_proxy,
-        us_east_region_custom_domain,
-        china_region_cluster,
-        china_region_cluster_read_only,
-        china_region_instance,
-        china_region_proxy,
-        china_region_custom_domain
-    ])
-    def test_is_rds_dns(self, test_value):
-        target = RdsUtils()
-        self.assertTrue(target.is_rds_dns(test_value))
+    assert target.is_rds_cluster_dns(test_value) is False
 
-    @parameterized.expand([
-        ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_cluster),
-        ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_cluster_read_only),
-        ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_instance),
-        ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_proxy),
-        ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_custom_domain),
-        ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_cluster),
-        ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_cluster_read_only),
-        ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_instance),
-        ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_proxy),
-        ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_custom_domain)
-    ])
-    def test_get_rds_instance_host_pattern(self, expected, test_value):
-        target = RdsUtils()
-        self.assertEqual(expected, target.get_rds_instance_host_pattern(test_value))
 
-    @parameterized.expand([
-        ("us-east-2", us_east_region_cluster),
-        ("us-east-2", us_east_region_cluster_read_only),
-        ("us-east-2", us_east_region_instance),
-        ("us-east-2", us_east_region_proxy),
-        ("us-east-2", us_east_region_custom_domain),
-        ("cn-northwest-1", china_region_cluster),
-        ("cn-northwest-1", china_region_cluster_read_only),
-        ("cn-northwest-1", china_region_instance),
-        ("cn-northwest-1", china_region_proxy),
-        ("cn-northwest-1", china_region_custom_domain)
-    ])
-    def test_get_rds_region(self, expected, test_value):
-        target = RdsUtils()
-        self.assertEqual(expected, target.get_rds_region(test_value))
+@pytest.mark.parametrize("test_value", [
+    us_east_region_cluster,
+    us_east_region_cluster_read_only,
+    us_east_region_instance,
+    us_east_region_proxy,
+    us_east_region_custom_domain,
+    china_region_cluster,
+    china_region_cluster_read_only,
+    china_region_instance,
+    china_region_proxy,
+    china_region_custom_domain
+])
+def test_is_rds_dns(test_value):
+    target = RdsUtils()
+    assert target.is_rds_dns(test_value) is True
 
-    @parameterized.expand([
-        us_east_region_cluster,
-        china_region_cluster,
-    ])
-    def test_is_writer_cluster_dns(self, test_value):
-        target = RdsUtils()
 
-        self.assertTrue(target.is_writer_cluster_dns(test_value))
+@pytest.mark.parametrize("expected, test_value", [
+    ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_cluster),
+    ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_cluster_read_only),
+    ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_instance),
+    ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_proxy),
+    ("?.XYZ.us-east-2.rds.amazonaws.com", us_east_region_custom_domain),
+    ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_cluster),
+    ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_cluster_read_only),
+    ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_instance),
+    ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_proxy),
+    ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_region_custom_domain)
+])
+def test_get_rds_instance_host_pattern(expected, test_value):
+    target = RdsUtils()
+    assert expected == target.get_rds_instance_host_pattern(test_value)
 
-    @parameterized.expand([
-        us_east_region_cluster_read_only,
-        us_east_region_instance,
-        us_east_region_proxy,
-        us_east_region_custom_domain,
-        china_region_cluster_read_only,
-        china_region_instance,
-        china_region_proxy,
-        china_region_custom_domain
-    ])
-    def test_is_not_writer_cluster_dns(self, test_value):
-        target = RdsUtils()
 
-        self.assertFalse(target.is_writer_cluster_dns(test_value))
+@pytest.mark.parametrize("expected, test_value", [
+    ("us-east-2", us_east_region_cluster),
+    ("us-east-2", us_east_region_cluster_read_only),
+    ("us-east-2", us_east_region_instance),
+    ("us-east-2", us_east_region_proxy),
+    ("us-east-2", us_east_region_custom_domain),
+    ("cn-northwest-1", china_region_cluster),
+    ("cn-northwest-1", china_region_cluster_read_only),
+    ("cn-northwest-1", china_region_instance),
+    ("cn-northwest-1", china_region_proxy),
+    ("cn-northwest-1", china_region_custom_domain)
+])
+def test_get_rds_region(expected, test_value):
+    target = RdsUtils()
+    assert expected == target.get_rds_region(test_value)
 
-    @parameterized.expand([
-        us_east_region_cluster_read_only,
-        china_region_cluster_read_only,
-    ])
-    def test_is_reader_cluster_dns(self, test_value):
-        target = RdsUtils()
 
-        self.assertTrue(target.is_reader_cluster_dns(test_value))
+@pytest.mark.parametrize("test_value", [
+    us_east_region_cluster,
+    china_region_cluster,
+])
+def test_is_writer_cluster_dns(test_value):
+    target = RdsUtils()
 
-    @parameterized.expand([
-        us_east_region_cluster,
-        us_east_region_instance,
-        us_east_region_proxy,
-        us_east_region_custom_domain,
-        china_region_cluster,
-        china_region_instance,
-        china_region_proxy,
-        china_region_custom_domain
-    ])
-    def test_is_not_reader_cluster_dns(self, test_value):
-        target = RdsUtils()
+    assert target.is_writer_cluster_dns(test_value) is True
 
-        self.assertFalse(target.is_reader_cluster_dns(test_value))
 
-    def test_get_rds_cluster_host_url(self):
-        expected: str = "foo.cluster-xyz.us-west-1.rds.amazonaws.com"
-        expected2: str = "foo-1.cluster-xyz.us-west-1.rds.amazonaws.com.cn"
+@pytest.mark.parametrize("test_value", [
+    us_east_region_cluster_read_only,
+    us_east_region_instance,
+    us_east_region_proxy,
+    us_east_region_custom_domain,
+    china_region_cluster_read_only,
+    china_region_instance,
+    china_region_proxy,
+    china_region_custom_domain
+])
+def test_is_not_writer_cluster_dns(test_value):
+    target = RdsUtils()
 
-        ro_endpoint: str = "foo.cluster-ro-xyz.us-west-1.rds.amazonaws.com"
-        china_ro_endpoint: str = "foo-1.cluster-ro-xyz.us-west-1.rds.amazonaws.com.cn"
+    assert target.is_writer_cluster_dns(test_value) is False
 
-        target = RdsUtils()
 
-        self.assertEqual(expected, target.get_rds_cluster_host_url(ro_endpoint))
-        self.assertEqual(expected2, target.get_rds_cluster_host_url(china_ro_endpoint))
+@pytest.mark.parametrize("test_value", [
+    us_east_region_cluster_read_only,
+    china_region_cluster_read_only,
+])
+def test_is_reader_cluster_dns(test_value):
+    target = RdsUtils()
+
+    assert target.is_reader_cluster_dns(test_value) is True
+
+
+@pytest.mark.parametrize("test_value", [
+    us_east_region_cluster,
+    us_east_region_instance,
+    us_east_region_proxy,
+    us_east_region_custom_domain,
+    china_region_cluster,
+    china_region_instance,
+    china_region_proxy,
+    china_region_custom_domain
+])
+def test_is_not_reader_cluster_dns(test_value):
+    target = RdsUtils()
+
+    assert target.is_reader_cluster_dns(test_value) is False
+
+
+def test_get_rds_cluster_host_url():
+    expected: str = "foo.cluster-xyz.us-west-1.rds.amazonaws.com"
+    expected2: str = "foo-1.cluster-xyz.us-west-1.rds.amazonaws.com.cn"
+
+    ro_endpoint: str = "foo.cluster-ro-xyz.us-west-1.rds.amazonaws.com"
+    china_ro_endpoint: str = "foo-1.cluster-ro-xyz.us-west-1.rds.amazonaws.com.cn"
+
+    target = RdsUtils()
+
+    assert expected == target.get_rds_cluster_host_url(ro_endpoint)
+    assert expected2 == target.get_rds_cluster_host_url(china_ro_endpoint)
