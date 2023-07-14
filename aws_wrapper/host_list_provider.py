@@ -382,8 +382,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForGetHostRole")
-                cursor.cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
-                cursor.cursor_execute_func_with_timeout(topology_aware_dialect.is_reader_query)
+                cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
+                cursor_execute_func_with_timeout(topology_aware_dialect.is_reader_query)
                 result = cursor.fetchone()
                 if result:
                     is_reader = result[0]
@@ -400,8 +400,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForIdentifyConnection")
-                cursor.cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
-                cursor.cursor_execute_func_with_timeout(topology_aware_dialect.host_id_query)
+                cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
+                cursor_execute_func_with_timeout(topology_aware_dialect.host_id_query)
                 result = cursor.fetchone()
                 if result:
                     host_id = result[0]
