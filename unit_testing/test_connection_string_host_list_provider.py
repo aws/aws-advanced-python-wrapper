@@ -16,6 +16,7 @@ import pytest
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import ConnectionStringHostListProvider
+from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.utils.properties import Properties
 
 
@@ -46,3 +47,17 @@ def test_identify_connection_no_dialect(mock_provider_service, props):
 
     with pytest.raises(AwsWrapperError):
         provider.identify_connection("ConnectionStringHostListProvider.ErrorDoesNotSupportIdentifyConnection")
+
+
+def test_refresh(mock_provider_service, props):
+    provider = ConnectionStringHostListProvider(mock_provider_service, props)
+    expected_host = HostInfo(props.get("host"))
+    hosts = provider.refresh()
+
+    assert 1 == len(hosts)
+    assert expected_host == hosts[0]
+    assert expected_host == mock_provider_service.initial_connection_host_info
+    assert provider._is_initialized is True
+
+    hosts = provider.refresh()
+    assert 1 == len(hosts)
