@@ -255,7 +255,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                         # be shared.
                         self._suggest_cluster_id(hosts)
                     return AuroraHostListProvider.FetchTopologyResult(hosts, False)
-            except TimeoutError as e:
+            except Exception as e:
                 raise AwsWrapperError(Messages.get("AuroraHostListProvider.TopologyTimeout")) from e
 
         if cached_hosts:
