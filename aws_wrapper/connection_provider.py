@@ -62,18 +62,19 @@ class ConnectionProviderManager:
             ConnectionProviderManager._conn_provider = connection_provider
 
     def get_connection_provider(self, host_info: HostInfo, properties: Properties) -> ConnectionProvider:
-        if not ConnectionProviderManager._conn_provider:
+        if ConnectionProviderManager._conn_provider is None:
             return self.default_provider
 
         with ConnectionProviderManager._lock:
-            if ConnectionProviderManager._conn_provider and ConnectionProviderManager._conn_provider.accepts_host_info(host_info, properties):
+            if ConnectionProviderManager._conn_provider is not None \
+                    and ConnectionProviderManager._conn_provider.accepts_host_info(host_info, properties):
                 return ConnectionProviderManager._conn_provider
 
         return self._default_provider
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         accepts_strategy: bool = False
-        if ConnectionProviderManager._conn_provider:
+        if ConnectionProviderManager._conn_provider is not None:
             with ConnectionProviderManager._lock:
                 accepts_strategy = ConnectionProviderManager._conn_provider.accepts_strategy(role, strategy)
 
@@ -83,9 +84,10 @@ class ConnectionProviderManager:
         return accepts_strategy
 
     def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
-        if ConnectionProviderManager._conn_provider:
+        if ConnectionProviderManager._conn_provider is not None:
             with ConnectionProviderManager._lock:
-                if ConnectionProviderManager._conn_provider.accepts_strategy(role, strategy):
+                if ConnectionProviderManager._conn_provider is not None \
+                        and ConnectionProviderManager._conn_provider.accepts_strategy(role, strategy):
                     return ConnectionProviderManager._conn_provider.get_host_info_by_strategy(hosts, role, strategy)
 
         return self._default_provider.get_host_info_by_strategy(hosts, role, strategy)

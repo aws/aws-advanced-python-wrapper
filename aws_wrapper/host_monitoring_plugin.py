@@ -88,7 +88,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
             return execute_func()
 
         failure_detection_time_ms = WrapperProperties.FAILURE_DETECTION_TIME_MS.get_int(self._props)
-        failure_detection_interval = WrapperProperties.FAILURE_DETECTION_INTERVAL.get_int(self._props)
+        failure_detection_interval = WrapperProperties.FAILURE_DETECTION_INTERVAL_MS.get_int(self._props)
         failure_detection_count = WrapperProperties.FAILURE_DETECTION_COUNT.get_int(self._props)
 
         monitor_context = None

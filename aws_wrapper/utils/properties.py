@@ -59,7 +59,7 @@ class WrapperProperties:
     # AuroraHostListProvider
     TOPOLOGY_REFRESH_MS = \
         WrapperProperty("topology_refresh_ms",
-                        """Cluster topology refresh rate in millis. The cached topology for the cluster will be
+                        """Cluster topology refresh rate in milliseconds. The cached topology for the cluster will be
                         invalidated after the specified time, after which it will be updated during the next
                         interaction with the connection.""",
                         "30000")
@@ -96,7 +96,7 @@ class WrapperProperties:
         WrapperProperty("failure_detection_time_ms",
                         "Interval in milliseconds between sending SQL to the server and the first connection check.",
                         "30000")
-    FAILURE_DETECTION_INTERVAL = \
+    FAILURE_DETECTION_INTERVAL_MS = \
         WrapperProperty("failure_detection_interval_ms",
                         "Interval in milliseconds between consecutive connection checks.",
                         "5000")
