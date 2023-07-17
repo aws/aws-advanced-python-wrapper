@@ -124,7 +124,7 @@ class DialectProvider(Protocol):
 
 
 class MysqlDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES = tuple({DialectCodes.AURORA_MYSQL, DialectCodes.RDS_MYSQL})
+    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCodes, ...] = (DialectCodes.AURORA_MYSQL, DialectCodes.RDS_MYSQL)
 
     @property
     def default_port(self) -> int:
@@ -172,7 +172,7 @@ class MysqlDialect(Dialect):
 
 
 class PgDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES = tuple({DialectCodes.AURORA_PG, DialectCodes.RDS_PG})
+    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCodes, ...] = (DialectCodes.AURORA_PG, DialectCodes.RDS_PG)
 
     @property
     def default_port(self) -> int:
@@ -265,7 +265,7 @@ class MariaDbDialect(Dialect):
 
 
 class RdsMysqlDialect(MysqlDialect):
-    _DIALECT_UPDATE_CANDIDATES = tuple({DialectCodes.AURORA_MYSQL})
+    _DIALECT_UPDATE_CANDIDATES = (DialectCodes.AURORA_MYSQL,)
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
@@ -290,7 +290,7 @@ class RdsPgDialect(PgDialect):
                               "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
                               "FROM pg_settings "
                               "WHERE name='rds.extensions'")
-    _DIALECT_UPDATE_CANDIDATES = tuple({DialectCodes.AURORA_PG})
+    _DIALECT_UPDATE_CANDIDATES = (DialectCodes.AURORA_PG,)
 
     def is_dialect(self, conn: Connection) -> bool:
 
@@ -331,7 +331,7 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
         try:
             with closing(conn.cursor()) as aws_cursor:
                 aws_cursor.execute("SHOW VARIABLES LIKE 'aurora_version'")
-                # If variable with such name is presented then it means it's an Aurora cluster
+                # If variable with such a name is presented then it means it's an Aurora cluster
                 if aws_cursor.fetchone() is not None:
                     return True
         except Error:
@@ -389,13 +389,13 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
 class UnknownDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCodes, ...]] = \
-        tuple({DialectCodes.MYSQL,
-               DialectCodes.PG,
-               DialectCodes.MARIADB,
-               DialectCodes.RDS_MYSQL,
-               DialectCodes.RDS_PG,
-               DialectCodes.AURORA_MYSQL,
-               DialectCodes.AURORA_PG})
+        (DialectCodes.MYSQL,
+         DialectCodes.PG,
+         DialectCodes.MARIADB,
+         DialectCodes.RDS_MYSQL,
+         DialectCodes.RDS_PG,
+         DialectCodes.AURORA_MYSQL,
+         DialectCodes.AURORA_PG)
 
     @property
     def default_port(self) -> int:
