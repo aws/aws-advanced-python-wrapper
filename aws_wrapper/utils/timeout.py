@@ -16,8 +16,10 @@ import functools
 from concurrent.futures import ThreadPoolExecutor
 
 
-# Timeout decorator, timeout in seconds
-def timeout(timeout):
+def timeout(timeout_sec):
+    """
+    Timeout decorator, timeout in seconds
+    """
     def timeout_decorator(func):
         @functools.wraps(func)
         def func_wrapper(*args, **kwargs):
@@ -25,6 +27,6 @@ def timeout(timeout):
                 future = executor.submit(func, *args, **kwargs)
 
                 # raises TimeoutError on timeout
-                return future.result(timeout=timeout)
+                return future.result(timeout=timeout_sec)
         return func_wrapper
     return timeout_decorator

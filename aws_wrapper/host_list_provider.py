@@ -42,8 +42,6 @@ from aws_wrapper.utils.utils import Utils
 
 logger = getLogger(__name__)
 
-DEFAULT_QUERY_TOPOLOGY_TIMEOUT_SECONDS = 5
-
 
 class HostListProvider(Protocol):
     def refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
@@ -135,7 +133,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
         self._props: Properties = props
 
-        self._max_timeout = self._props["query_timeout"] if "query_timeout" in self._props else DEFAULT_QUERY_TOPOLOGY_TIMEOUT_SECONDS
+        self._max_timeout = WrapperProperties.QUERY_TIMEOUT.get_int(self._props)
         self._rds_utils: RdsUtils = RdsUtils()
         self._hosts: List[HostInfo] = []
         self._cluster_id: str = str(uuid.uuid4())

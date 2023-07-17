@@ -79,7 +79,8 @@ class WrapperProperties:
                                                 "The name or the ARN of the secret to retrieve.")
     SECRETS_MANAGER_REGION = WrapperProperty("secrets_manager_region", "The region of the secret to retrieve.",
                                              "us-east-1")
-    DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect")
+    DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect.")
+    QUERY_TIMEOUT = WrapperProperty("query_timeout", "Network timeout used for queries to the database.", "5")
 
 
 class PropertiesUtils:
