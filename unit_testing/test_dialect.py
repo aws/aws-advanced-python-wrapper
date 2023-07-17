@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from aws_wrapper.dialect import (AuroraMysqlDialect, AuroraPgDialect,
-                                 DatabaseType, DialectCodes, DialectManager,
+                                 DatabaseType, DialectCode, DialectManager,
                                  MariaDbDialect, MysqlDialect, PgDialect,
                                  RdsMysqlDialect, RdsPgDialect, UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError
@@ -174,10 +174,14 @@ class TestDialect(TestCase):
         with pytest.raises(AwsWrapperError):
             manager.get_dialect(props)
 
-        props = Properties({"host": "localhost", WrapperProperties.DIALECT.name: "aurora-pg"})
+        props[WrapperProperties.DIALECT.name] = "invalid_dialect"
+        with pytest.raises(AwsWrapperError):
+            manager.get_dialect(props)
+
+        props[WrapperProperties.DIALECT.name] = "aurora-pg"
         assert isinstance(manager.get_dialect(props), AuroraPgDialect)
         assert isinstance(manager._dialect, AuroraPgDialect)
-        assert manager._dialect_code == DialectCodes.AURORA_PG
+        assert manager._dialect_code == DialectCode.AURORA_PG
 
     def test_get_dialect_aurora_mysql(self):
         manager = DialectManager()
@@ -186,7 +190,7 @@ class TestDialect(TestCase):
         with patch.object(manager, '_get_database_type', return_value=DatabaseType.MYSQL):
             assert isinstance(manager.get_dialect(props), AuroraMysqlDialect)
             assert isinstance(manager._dialect, AuroraMysqlDialect)
-            assert DialectCodes.AURORA_MYSQL == manager._dialect_code
+            assert DialectCode.AURORA_MYSQL == manager._dialect_code
             assert manager._can_update is False
 
     def test_get_dialect_rds_mysql(self):
@@ -196,7 +200,7 @@ class TestDialect(TestCase):
         with patch.object(manager, '_get_database_type', return_value=DatabaseType.MYSQL):
             assert isinstance(manager.get_dialect(props), RdsMysqlDialect)
             assert isinstance(manager._dialect, RdsMysqlDialect)
-            assert DialectCodes.RDS_MYSQL == manager._dialect_code
+            assert DialectCode.RDS_MYSQL == manager._dialect_code
             assert manager._can_update is True
 
     def test_get_dialect_mysql(self):
@@ -206,7 +210,7 @@ class TestDialect(TestCase):
         with patch.object(manager, '_get_database_type', return_value=DatabaseType.MYSQL):
             assert isinstance(manager.get_dialect(props), MysqlDialect)
             assert isinstance(manager._dialect, MysqlDialect)
-            assert DialectCodes.MYSQL == manager._dialect_code
+            assert DialectCode.MYSQL == manager._dialect_code
             assert manager._can_update is True
 
     def test_get_dialect_aurora_pg(self):
@@ -216,7 +220,7 @@ class TestDialect(TestCase):
         with patch.object(manager, '_get_database_type', return_value=DatabaseType.POSTGRES):
             assert isinstance(manager.get_dialect(props), AuroraPgDialect)
             assert isinstance(manager._dialect, AuroraPgDialect)
-            assert DialectCodes.AURORA_PG == manager._dialect_code
+            assert DialectCode.AURORA_PG == manager._dialect_code
             assert manager._can_update is False
 
     def test_get_dialect_mysql_pg(self):
@@ -226,7 +230,7 @@ class TestDialect(TestCase):
         with patch.object(manager, '_get_database_type', return_value=DatabaseType.POSTGRES):
             assert isinstance(manager.get_dialect(props), RdsPgDialect)
             assert isinstance(manager._dialect, RdsPgDialect)
-            assert DialectCodes.RDS_PG == manager._dialect_code
+            assert DialectCode.RDS_PG == manager._dialect_code
             assert manager._can_update is True
 
     def test_get_dialect_pg(self):
@@ -236,7 +240,7 @@ class TestDialect(TestCase):
         with patch.object(manager, '_get_database_type', return_value=DatabaseType.POSTGRES):
             assert isinstance(manager.get_dialect(props), PgDialect)
             assert isinstance(manager._dialect, PgDialect)
-            assert DialectCodes.PG == manager._dialect_code
+            assert DialectCode.PG == manager._dialect_code
             assert manager._can_update is True
 
     def test_get_dialect_mariadb(self):
@@ -246,7 +250,7 @@ class TestDialect(TestCase):
         with patch.object(manager, '_get_database_type', return_value=DatabaseType.MARIADB):
             assert isinstance(manager.get_dialect(props), MariaDbDialect)
             assert isinstance(manager._dialect, MariaDbDialect)
-            assert DialectCodes.MARIADB == manager._dialect_code
+            assert DialectCode.MARIADB == manager._dialect_code
             assert manager._can_update is True
 
     def test_get_dialect_unknown_dialect(self):
@@ -256,7 +260,7 @@ class TestDialect(TestCase):
         with patch.object(manager, '_get_database_type', return_value=None):
             assert isinstance(manager.get_dialect(props), UnknownDialect)
             assert isinstance(manager._dialect, UnknownDialect)
-            assert DialectCodes.UNKNOWN == manager._dialect_code
+            assert DialectCode.UNKNOWN == manager._dialect_code
             assert manager._can_update is True
 
     def test_query_for_dialect_cannot_update(self):
@@ -271,7 +275,7 @@ class TestDialect(TestCase):
         manager = DialectManager()
         manager._can_update = True
         mock_dialect = MagicMock()
-        mock_candidate = MagicMock(spec=DialectCodes)
+        mock_candidate = MagicMock(spec=DialectCode)
         mock_dialect.dialect_update_candidates = frozenset({mock_candidate})
         manager._dialect = mock_dialect
 
@@ -287,12 +291,12 @@ class TestDialect(TestCase):
         mock_dialect = MagicMock()
         mock_dialect.dialect_update_candidates = None
         manager._can_update = True
-        manager._dialect_code = DialectCodes.MARIADB
+        manager._dialect_code = DialectCode.MARIADB
         manager._dialect = mock_dialect
 
         assert mock_dialect == manager.query_for_dialect("url", HostInfo("host"), MagicMock())
-        assert DialectCodes.MARIADB == manager._known_endpoint_dialects.get("url")
-        assert DialectCodes.MARIADB == manager._known_endpoint_dialects.get("host")
+        assert DialectCode.MARIADB == manager._known_endpoint_dialects.get("url")
+        assert DialectCode.MARIADB == manager._known_endpoint_dialects.get("host")
 
     def test_query_for_dialect_pg(self):
         manager = DialectManager()
@@ -306,8 +310,8 @@ class TestDialect(TestCase):
 
         result = manager.query_for_dialect("url", HostInfo("host"), mock_conn)
         assert isinstance(result, AuroraPgDialect)
-        assert DialectCodes.AURORA_PG == manager._known_endpoint_dialects.get("url")
-        assert DialectCodes.AURORA_PG == manager._known_endpoint_dialects.get("host")
+        assert DialectCode.AURORA_PG == manager._known_endpoint_dialects.get("url")
+        assert DialectCode.AURORA_PG == manager._known_endpoint_dialects.get("host")
 
     def test_query_for_dialect_mysql(self):
         manager = DialectManager()
@@ -321,8 +325,8 @@ class TestDialect(TestCase):
 
         result = manager.query_for_dialect("url", HostInfo("host"), mock_conn)
         assert isinstance(result, AuroraMysqlDialect)
-        assert DialectCodes.AURORA_MYSQL == manager._known_endpoint_dialects.get("url")
-        assert DialectCodes.AURORA_MYSQL == manager._known_endpoint_dialects.get("host")
+        assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("url")
+        assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("host")
 
     def test_is_closed(self):
         mock_conn = MagicMock()

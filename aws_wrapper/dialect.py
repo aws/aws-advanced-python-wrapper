@@ -12,9 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 from abc import abstractmethod
 from contextlib import closing
-from enum import Enum, StrEnum, auto
+from enum import Enum, auto
 from logging import getLogger
 from typing import Dict, Optional, Protocol, Tuple, runtime_checkable
 
@@ -31,7 +33,7 @@ from .utils.messages import Messages
 logger = getLogger(__name__)
 
 
-class DialectCodes(StrEnum):
+class DialectCode(Enum):
     AURORA_MYSQL: str = "aurora-mysql"
     RDS_MYSQL: str = "rds-mysql"
     MYSQL: str = "mysql"
@@ -44,6 +46,13 @@ class DialectCodes(StrEnum):
 
     CUSTOM: str = "custom"
     UNKNOWN: str = "unknown"
+
+    @staticmethod
+    def from_string(value: str) -> DialectCode:
+        try:
+            return DialectCode(value)
+        except ValueError:
+            raise AwsWrapperError(Messages.get_formatted("DialectCode.InvalidStringValue", value))
 
 
 class DatabaseType(Enum):
@@ -95,7 +104,7 @@ class Dialect(Protocol):
 
     @property
     @abstractmethod
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         ...
 
     @abstractmethod
@@ -124,7 +133,7 @@ class DialectProvider(Protocol):
 
 
 class MysqlDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCodes, ...] = (DialectCodes.AURORA_MYSQL, DialectCodes.RDS_MYSQL)
+    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_MYSQL, DialectCode.RDS_MYSQL)
 
     @property
     def default_port(self) -> int:
@@ -167,12 +176,12 @@ class MysqlDialect(Dialect):
         ...
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return MysqlDialect._DIALECT_UPDATE_CANDIDATES
 
 
 class PgDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCodes, ...] = (DialectCodes.AURORA_PG, DialectCodes.RDS_PG)
+    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_PG, DialectCode.RDS_PG)
 
     @property
     def default_port(self) -> int:
@@ -211,7 +220,7 @@ class PgDialect(Dialect):
         cancel_func()
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return PgDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
@@ -255,7 +264,7 @@ class MariaDbDialect(Dialect):
         ...
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode]]:
         return MariaDbDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
@@ -265,7 +274,7 @@ class MariaDbDialect(Dialect):
 
 
 class RdsMysqlDialect(MysqlDialect):
-    _DIALECT_UPDATE_CANDIDATES = (DialectCodes.AURORA_MYSQL,)
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL,)
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
@@ -281,7 +290,7 @@ class RdsMysqlDialect(MysqlDialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return RdsMysqlDialect._DIALECT_UPDATE_CANDIDATES
 
 
@@ -290,7 +299,7 @@ class RdsPgDialect(PgDialect):
                               "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
                               "FROM pg_settings "
                               "WHERE name='rds.extensions'")
-    _DIALECT_UPDATE_CANDIDATES = (DialectCodes.AURORA_PG,)
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG,)
 
     def is_dialect(self, conn: Connection) -> bool:
 
@@ -312,7 +321,7 @@ class RdsPgDialect(PgDialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return RdsPgDialect._DIALECT_UPDATE_CANDIDATES
 
 
@@ -340,7 +349,7 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return None
 
 
@@ -388,14 +397,14 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
 
 class UnknownDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCodes, ...]] = \
-        (DialectCodes.MYSQL,
-         DialectCodes.PG,
-         DialectCodes.MARIADB,
-         DialectCodes.RDS_MYSQL,
-         DialectCodes.RDS_PG,
-         DialectCodes.AURORA_MYSQL,
-         DialectCodes.AURORA_PG)
+    _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCode, ...]] = \
+        (DialectCode.MYSQL,
+         DialectCode.PG,
+         DialectCode.MARIADB,
+         DialectCode.RDS_MYSQL,
+         DialectCode.RDS_PG,
+         DialectCode.AURORA_MYSQL,
+         DialectCode.AURORA_PG)
 
     @property
     def default_port(self) -> int:
@@ -420,7 +429,7 @@ class UnknownDialect(Dialect):
         pass
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return UnknownDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
@@ -436,16 +445,16 @@ class DialectManager(DialectProvider):
         self._can_update: bool = False
         self._dialect: Optional[Dialect] = None
         self._custom_dialect: Optional[Dialect] = custom_dialect if custom_dialect else None
-        self._dialect_code: Optional[str] = None
-        self._known_endpoint_dialects: CacheMap[str, str] = CacheMap()
-        self._known_dialects_by_code: Dict[str, Dialect] = {DialectCodes.MYSQL: MysqlDialect(),
-                                                            DialectCodes.PG: PgDialect(),
-                                                            DialectCodes.MARIADB: MariaDbDialect(),
-                                                            DialectCodes.RDS_MYSQL: RdsMysqlDialect(),
-                                                            DialectCodes.RDS_PG: RdsPgDialect(),
-                                                            DialectCodes.AURORA_MYSQL: AuroraMysqlDialect(),
-                                                            DialectCodes.AURORA_PG: AuroraPgDialect(),
-                                                            DialectCodes.UNKNOWN: UnknownDialect()}
+        self._dialect_code: Optional[DialectCode] = None
+        self._known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
+        self._known_dialects_by_code: Dict[DialectCode, Dialect] = {DialectCode.MYSQL: MysqlDialect(),
+                                                                    DialectCode.PG: PgDialect(),
+                                                                    DialectCode.MARIADB: MariaDbDialect(),
+                                                                    DialectCode.RDS_MYSQL: RdsMysqlDialect(),
+                                                                    DialectCode.RDS_PG: RdsPgDialect(),
+                                                                    DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
+                                                                    DialectCode.AURORA_PG: AuroraPgDialect(),
+                                                                    DialectCode.UNKNOWN: UnknownDialect()}
 
     @property
     def custom_dialect(self):
@@ -466,22 +475,26 @@ class DialectManager(DialectProvider):
         self._dialect = None
 
         if self._custom_dialect is not None:
-            self._dialect_code = str(DialectCodes.CUSTOM)
+            self._dialect_code = DialectCode.CUSTOM
             self._dialect = self._custom_dialect
             self._log_current_dialect()
             return self._dialect
 
         user_dialect_setting: Optional[str] = WrapperProperties.DIALECT.get(props)
         url = PropertiesUtils.get_url(props)
-        dialect_code = user_dialect_setting if user_dialect_setting is not None \
-            else self._known_endpoint_dialects.get(url)
-        if dialect_code:
-            user_dialect: Optional[Dialect] = self._known_dialects_by_code.get(dialect_code)
-            if user_dialect:
+
+        if user_dialect_setting is None:
+            dialect_code = self._known_endpoint_dialects.get(url)
+        else:
+            dialect_code = DialectCode.from_string(user_dialect_setting)
+
+        if dialect_code is not None:
+            dialect: Optional[Dialect] = self._known_dialects_by_code.get(dialect_code)
+            if dialect:
                 self._dialect_code = dialect_code
-                self._dialect = user_dialect
+                self._dialect = dialect
                 self._log_current_dialect()
-                return user_dialect
+                return dialect
             else:
                 raise AwsWrapperError(Messages.get_formatted("Dialect.UnknownDialectCode", str(dialect_code)))
 
@@ -490,50 +503,50 @@ class DialectManager(DialectProvider):
         if database_type is DatabaseType.MYSQL:
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
-                self._dialect_code = str(DialectCodes.AURORA_MYSQL)
-                self._dialect = self._known_dialects_by_code.get(DialectCodes.AURORA_MYSQL)
+                self._dialect_code = DialectCode.AURORA_MYSQL
+                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_MYSQL)
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
-                self._dialect_code = str(DialectCodes.RDS_MYSQL)
-                self._dialect = self._known_dialects_by_code.get(DialectCodes.RDS_MYSQL)
+                self._dialect_code = DialectCode.RDS_MYSQL
+                self._dialect = self._known_dialects_by_code.get(DialectCode.RDS_MYSQL)
                 self._log_current_dialect()
                 return self._dialect
             self._can_update = True
-            self._dialect_code = str(DialectCodes.MYSQL)
-            self._dialect = self._known_dialects_by_code.get(DialectCodes.MYSQL)
+            self._dialect_code = DialectCode.MYSQL
+            self._dialect = self._known_dialects_by_code.get(DialectCode.MYSQL)
             self._log_current_dialect()
             return self._dialect
 
         if database_type is DatabaseType.POSTGRES:
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
-                self._dialect_code = str(DialectCodes.AURORA_PG)
-                self._dialect = self._known_dialects_by_code.get(DialectCodes.AURORA_PG)
+                self._dialect_code = DialectCode.AURORA_PG
+                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_PG)
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
-                self._dialect_code = str(DialectCodes.RDS_PG)
-                self._dialect = self._known_dialects_by_code.get(DialectCodes.RDS_PG)
+                self._dialect_code = DialectCode.RDS_PG
+                self._dialect = self._known_dialects_by_code.get(DialectCode.RDS_PG)
                 self._log_current_dialect()
                 return self._dialect
             self._can_update = True
-            self._dialect_code = str(DialectCodes.PG)
-            self._dialect = self._known_dialects_by_code.get(DialectCodes.PG)
+            self._dialect_code = DialectCode.PG
+            self._dialect = self._known_dialects_by_code.get(DialectCode.PG)
             self._log_current_dialect()
             return self._dialect
 
         if database_type is DatabaseType.MARIADB:
             # TODO: should can_update be False?
             self._can_update = True
-            self._dialect_code = str(DialectCodes.MARIADB)
-            self._dialect = self._known_dialects_by_code.get(DialectCodes.MARIADB)
+            self._dialect_code = DialectCode.MARIADB
+            self._dialect = self._known_dialects_by_code.get(DialectCode.MARIADB)
             self._log_current_dialect()
             return self._dialect
 
         self._can_update = True
-        self._dialect_code = str(DialectCodes.UNKNOWN)
-        self._dialect = self._known_dialects_by_code.get(DialectCodes.UNKNOWN)
+        self._dialect_code = DialectCode.UNKNOWN
+        self._dialect = self._known_dialects_by_code.get(DialectCode.UNKNOWN)
         self._log_current_dialect()
         return self._dialect
 
@@ -567,7 +580,7 @@ class DialectManager(DialectProvider):
                 self._log_current_dialect()
                 return self._dialect
 
-        if self._dialect_code is None or self._dialect == DialectCodes.UNKNOWN:
+        if self._dialect_code is None or self._dialect == DialectCode.UNKNOWN:
             raise AwsWrapperError(Messages.get("DialectManager.UnknownDialect"))
 
         self._can_update = False
