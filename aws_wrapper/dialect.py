@@ -16,7 +16,7 @@ from abc import abstractmethod
 from contextlib import closing
 from enum import Enum, StrEnum, auto
 from logging import getLogger
-from typing import Dict, FrozenSet, Optional, Protocol, runtime_checkable
+from typing import Dict, Optional, Protocol, runtime_checkable, Tuple
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
@@ -95,7 +95,7 @@ class Dialect(Protocol):
 
     @property
     @abstractmethod
-    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
         ...
 
     @abstractmethod
@@ -124,7 +124,7 @@ class DialectProvider(Protocol):
 
 
 class MysqlDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES = frozenset({DialectCodes.AURORA_MYSQL, DialectCodes.RDS_MYSQL})
+    _DIALECT_UPDATE_CANDIDATES = tuple({DialectCodes.AURORA_MYSQL, DialectCodes.RDS_MYSQL})
 
     @property
     def default_port(self) -> int:
@@ -167,12 +167,12 @@ class MysqlDialect(Dialect):
         ...
 
     @property
-    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
         return MysqlDialect._DIALECT_UPDATE_CANDIDATES
 
 
 class PgDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES = frozenset({DialectCodes.AURORA_PG, DialectCodes.RDS_PG})
+    _DIALECT_UPDATE_CANDIDATES = tuple({DialectCodes.AURORA_PG, DialectCodes.RDS_PG})
 
     @property
     def default_port(self) -> int:
@@ -211,7 +211,7 @@ class PgDialect(Dialect):
         cancel_func()
 
     @property
-    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
         return PgDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
@@ -255,7 +255,7 @@ class MariaDbDialect(Dialect):
         ...
 
     @property
-    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
         return MariaDbDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
@@ -265,12 +265,9 @@ class MariaDbDialect(Dialect):
 
 
 class RdsMysqlDialect(MysqlDialect):
-    _DIALECT_UPDATE_CANDIDATES = frozenset({DialectCodes.AURORA_MYSQL})
+    _DIALECT_UPDATE_CANDIDATES = tuple({DialectCodes.AURORA_MYSQL})
 
     def is_dialect(self, conn: Connection) -> bool:
-        if not super().is_dialect(conn):
-            return False
-
         try:
             with closing(conn.cursor()) as aws_cursor:
                 aws_cursor.execute(self.server_version_query)
@@ -284,17 +281,16 @@ class RdsMysqlDialect(MysqlDialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
         return RdsMysqlDialect._DIALECT_UPDATE_CANDIDATES
 
 
 class RdsPgDialect(PgDialect):
-    _extensions_sql: str = ("SELECT (setting LIKE '%rds_tools%') AS rds_tools, "
-                            "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
-                            "FROM pg_settings "
-                            "WHERE name='rds.extensions'")
-
-    _DIALECT_UPDATE_CANDIDATES = frozenset({DialectCodes.AURORA_PG})
+    _EXTENSIONS_QUERY: str = ("SELECT (setting LIKE '%rds_tools%') AS rds_tools, "
+                              "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
+                              "FROM pg_settings "
+                              "WHERE name='rds.extensions'")
+    _DIALECT_UPDATE_CANDIDATES = tuple({DialectCodes.AURORA_PG})
 
     def is_dialect(self, conn: Connection) -> bool:
 
@@ -303,7 +299,7 @@ class RdsPgDialect(PgDialect):
 
         try:
             with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self._extensions_sql)
+                aws_cursor.execute(RdsPgDialect._EXTENSIONS_QUERY)
                 for row in aws_cursor:
                     rds_tools = bool(row[0])
                     aurora_utils = bool(row[1])
@@ -316,7 +312,7 @@ class RdsPgDialect(PgDialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
         return RdsPgDialect._DIALECT_UPDATE_CANDIDATES
 
 
@@ -332,7 +328,6 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
     _is_reader_query: str = "SELECT @@innodb_read_only"
 
     def is_dialect(self, conn: Connection) -> bool:
-        # TODO: should this have a call to super.is_dialect?
         try:
             with closing(conn.cursor()) as aws_cursor:
                 aws_cursor.execute("SHOW VARIABLES LIKE 'aurora_version'")
@@ -345,7 +340,7 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
         return None
 
 
@@ -393,14 +388,14 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
 
 class UnknownDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES: Optional[FrozenSet[DialectCodes]] = \
-        frozenset({DialectCodes.MYSQL,
-                   DialectCodes.PG,
-                   DialectCodes.MARIADB,
-                   DialectCodes.RDS_MYSQL,
-                   DialectCodes.RDS_PG,
-                   DialectCodes.AURORA_MYSQL,
-                   DialectCodes.AURORA_PG})
+    _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCodes]] = \
+        tuple({DialectCodes.MYSQL,
+               DialectCodes.PG,
+               DialectCodes.MARIADB,
+               DialectCodes.RDS_MYSQL,
+               DialectCodes.RDS_PG,
+               DialectCodes.AURORA_MYSQL,
+               DialectCodes.AURORA_PG})
 
     @property
     def default_port(self) -> int:
@@ -425,7 +420,7 @@ class UnknownDialect(Dialect):
         pass
 
     @property
-    def dialect_update_candidates(self) -> Optional[FrozenSet[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
         return UnknownDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
@@ -543,6 +538,7 @@ class DialectManager(DialectProvider):
         return self._dialect
 
     def _get_database_type(self) -> DatabaseType:
+        # TODO: Add logic to identify database based on target driver connect info
         return DatabaseType.POSTGRES
 
     def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection) -> Optional[Dialect]:

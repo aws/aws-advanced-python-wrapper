@@ -276,9 +276,6 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if connection is None or host_info is None:
             return
 
-        if host_info is None:
-            return
-
         if len(host_info.aliases) > 0:
             logger.debug(Messages.get_formatted("PluginServiceImpl.NonEmptyAliases", host_info.aliases))
             return

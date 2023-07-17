@@ -294,7 +294,7 @@ class TestDialect(TestCase):
         assert DialectCodes.MARIADB == manager._known_endpoint_dialects.get("url")
         assert DialectCodes.MARIADB == manager._known_endpoint_dialects.get("host")
 
-    def test_query_for_dialect(self):
+    def test_query_for_dialect_pg(self):
         manager = DialectManager()
         manager._can_update = True
         mock_dialect = MagicMock()
@@ -305,13 +305,32 @@ class TestDialect(TestCase):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.__iter__.return_value = [(False, False)]
+        mock_cursor.__iter__.return_value = [(True, True)]
         mock_cursor.fetch_one.return_value = (True,)
 
         result = manager.query_for_dialect("url", HostInfo("host"), mock_conn)
         assert isinstance(result, AuroraPgDialect)
         assert DialectCodes.AURORA_PG == manager._known_endpoint_dialects.get("url")
         assert DialectCodes.AURORA_PG == manager._known_endpoint_dialects.get("host")
+
+    def test_query_for_dialect_mysql(self):
+        manager = DialectManager()
+        manager._can_update = True
+        mock_dialect = MagicMock()
+        mock_update_candidates = MagicMock()
+        mock_dialect.dialect_update_candidates = mock_update_candidates
+        mock_update_candidates.__iter__.return_value = [DialectCodes.RDS_MYSQL, DialectCodes.AURORA_MYSQL]
+        manager._dialect = mock_dialect
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.__iter__.return_value = [("version_comment", "Source distribution")]
+        mock_cursor.fetch_one.return_value = ("aurora_version", "3.0.0")
+
+        result = manager.query_for_dialect("url", HostInfo("host"), mock_conn)
+        assert isinstance(result, AuroraMysqlDialect)
+        assert DialectCodes.AURORA_MYSQL == manager._known_endpoint_dialects.get("url")
+        assert DialectCodes.AURORA_MYSQL == manager._known_endpoint_dialects.get("host")
 
     def test_is_closed(self):
         mock_conn = MagicMock()
