@@ -297,11 +297,7 @@ class TestDialect(TestCase):
     def test_query_for_dialect_pg(self):
         manager = DialectManager()
         manager._can_update = True
-        mock_dialect = MagicMock()
-        mock_update_candidates = MagicMock()
-        mock_dialect.dialect_update_candidates = mock_update_candidates
-        mock_update_candidates.__iter__.return_value = [DialectCodes.RDS_PG, DialectCodes.AURORA_PG]
-        manager._dialect = mock_dialect
+        manager._dialect = PgDialect()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
@@ -316,11 +312,7 @@ class TestDialect(TestCase):
     def test_query_for_dialect_mysql(self):
         manager = DialectManager()
         manager._can_update = True
-        mock_dialect = MagicMock()
-        mock_update_candidates = MagicMock()
-        mock_dialect.dialect_update_candidates = mock_update_candidates
-        mock_update_candidates.__iter__.return_value = [DialectCodes.RDS_MYSQL, DialectCodes.AURORA_MYSQL]
-        manager._dialect = mock_dialect
+        manager._dialect = MysqlDialect()
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor

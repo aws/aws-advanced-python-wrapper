@@ -16,7 +16,7 @@ from abc import abstractmethod
 from contextlib import closing
 from enum import Enum, StrEnum, auto
 from logging import getLogger
-from typing import Dict, Optional, Protocol, runtime_checkable, Tuple
+from typing import Dict, Optional, Protocol, Tuple, runtime_checkable
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
@@ -95,7 +95,7 @@ class Dialect(Protocol):
 
     @property
     @abstractmethod
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
         ...
 
     @abstractmethod
@@ -167,7 +167,7 @@ class MysqlDialect(Dialect):
         ...
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
         return MysqlDialect._DIALECT_UPDATE_CANDIDATES
 
 
@@ -211,7 +211,7 @@ class PgDialect(Dialect):
         cancel_func()
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
         return PgDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
@@ -281,7 +281,7 @@ class RdsMysqlDialect(MysqlDialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
         return RdsMysqlDialect._DIALECT_UPDATE_CANDIDATES
 
 
@@ -312,7 +312,7 @@ class RdsPgDialect(PgDialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
         return RdsPgDialect._DIALECT_UPDATE_CANDIDATES
 
 
@@ -340,7 +340,7 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
         return False
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
         return None
 
 
@@ -388,7 +388,7 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
 
 class UnknownDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCodes]] = \
+    _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCodes, ...]] = \
         tuple({DialectCodes.MYSQL,
                DialectCodes.PG,
                DialectCodes.MARIADB,
@@ -420,7 +420,7 @@ class UnknownDialect(Dialect):
         pass
 
     @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes]]:
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCodes, ...]]:
         return UnknownDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
