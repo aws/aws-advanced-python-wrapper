@@ -35,3 +35,16 @@ class OldConnectionSuggestedAction(Enum):
     NO_OPINION = auto()
     DISPOSE = auto()
     PRESERVE = auto()
+
+
+class NodeChangeOptions(Enum):
+    HOSTNAME = auto()
+    PROMOTED_TO_WRITER = auto()
+    PROMOTED_TO_READER = auto()
+    WENT_UP = auto()
+    WENT_DOWN = auto()
+    CONNECTION_OBJECT_CHANGED = auto()
+    INITIAL_CONNECTION = auto()
+    NODE_ADDED = auto()
+    NODE_CHANGED = auto()
+    NODE_DELETED = auto()

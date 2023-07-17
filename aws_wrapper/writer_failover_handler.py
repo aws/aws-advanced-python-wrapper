@@ -30,6 +30,6 @@ class WriterFailoverHandler:
         pass
 
 
-class ClusterAwareWriterFailoverHandler(WriterFailoverHandler):
+class WriterFailoverHandlerImpl(WriterFailoverHandler):
     def failover(self, current_topology: List[HostInfo]):  # -> WriterFailoverResult:
         ...
