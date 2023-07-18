@@ -119,7 +119,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
         self._props: Properties = props
 
-        self._max_timeout = WrapperProperties.QUERY_TIMEOUT.get_int(self._props)
+        self._max_timeout = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(self._props)
         self._rds_utils: RdsUtils = RdsUtils()
         self._hosts: List[HostInfo] = []
         self._cluster_id: str = str(uuid.uuid4())
