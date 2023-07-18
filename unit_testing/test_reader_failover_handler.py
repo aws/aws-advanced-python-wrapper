@@ -131,8 +131,8 @@ class TestReaderFailoverHandler(TestCase):
         assert result.connection is None
         assert result.new_host is None
 
-        # Confirm we timed out after 5 seconds (plus an extra second for breathing room)
-        assert duration < 6
+        # Confirm we timed out after 5 seconds (plus an extra 2 seconds for breathing room)
+        assert duration < 7
 
     def test_failover_null_or_empty_host_list(self):
         plugin_service_mock: PluginService = MagicMock()

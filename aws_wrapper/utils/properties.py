@@ -37,6 +37,13 @@ class WrapperProperty:
         val = props.get(self.name)
         return int(val) if val else -1
 
+    def get_bool(self, props: Properties) -> bool:
+        if not self.default_value:
+            value = props.get(self.name)
+        else:
+            value = props.get(self.name, self.default_value)
+        return value is not None and value.lower() == "true"
+
     def set(self, props: Properties, value: str):
         props[self.name] = value
 
@@ -52,7 +59,7 @@ class WrapperProperties:
     # AuroraHostListProvider
     TOPOLOGY_REFRESH_MS = \
         WrapperProperty("topology_refresh_ms",
-                        """Cluster topology refresh rate in millis. The cached topology for the cluster will be
+                        """Cluster topology refresh rate in milliseconds. The cached topology for the cluster will be
                         invalidated after the specified time, after which it will be updated during the next
                         interaction with the connection.""",
                         "30000")
@@ -81,6 +88,23 @@ class WrapperProperties:
                                              "us-east-1")
     DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect.")
     AUXILIARY_QUERY_TIMEOUT_SEC = WrapperProperty("auxiliary_query_timeout_sec", "Network timeout, in seconds, used for auxiliary queries to the database. This timeout applies to queries executed by the wrapper driver to gain info about the connected database. It does not apply to queries requested by the driver client.", "5")
+
+    # HostMonitoringPlugin
+    FAILURE_DETECTION_ENABLED = WrapperProperty("failure_detection_enabled",
+                                                "Enable failure detection logic in the HostMonitoringPlugin",
+                                                "True")
+    FAILURE_DETECTION_TIME_MS = \
+        WrapperProperty("failure_detection_time_ms",
+                        "Interval in milliseconds between sending SQL to the server and the first connection check.",
+                        "30000")
+    FAILURE_DETECTION_INTERVAL_MS = \
+        WrapperProperty("failure_detection_interval_ms",
+                        "Interval in milliseconds between consecutive connection checks.",
+                        "5000")
+    FAILURE_DETECTION_COUNT = \
+        WrapperProperty("failure_detection_count",
+                        "Number of failed connection checks before considering the database host unavailable.",
+                        "3")
 
 
 class PropertiesUtils:

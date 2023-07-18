@@ -16,14 +16,18 @@
 from unittest import TestCase
 from unittest.mock import MagicMock
 
+import pytest
+
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager,
                                              DriverConnectionProvider)
 from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.utils.properties import Properties
 
 
 class TestDriverConnectionProvider(TestCase):
+
     def test_provider_accepts_all_host_infos(self):
         connection_mock = MagicMock()
         connection_mock.connect.return_value = "Test"
@@ -71,6 +75,12 @@ class TestConnectionProviderManager(TestCase):
     host_info = HostInfo("localhost")
     properties = Properties()
 
+    @pytest.fixture(autouse=True)
+    def reset_provider(self):
+        ConnectionProviderManager._conn_provider = None
+        yield
+        ConnectionProviderManager._conn_provider = None
+
     def test_manager_provides_default_provider(self):
         default_provider_mock: ConnectionProvider = MagicMock()
 
@@ -83,7 +93,8 @@ class TestConnectionProviderManager(TestCase):
         default_provider_mock: ConnectionProvider = MagicMock()
         set_provider_mock: ConnectionProvider = MagicMock()
 
-        connection_provider_manager = ConnectionProviderManager(default_provider_mock, set_provider_mock)
+        connection_provider_manager = ConnectionProviderManager(default_provider_mock)
+        ConnectionProviderManager.set_connection_provider(set_provider_mock)
         provider = connection_provider_manager.get_connection_provider(self.host_info, self.properties)
 
         assert provider == set_provider_mock
@@ -93,7 +104,8 @@ class TestConnectionProviderManager(TestCase):
         set_provider_mock: ConnectionProvider = MagicMock()
         set_provider_mock.accepts_host_info.return_value = False
 
-        connection_provider_manager = ConnectionProviderManager(default_provider_mock, set_provider_mock)
+        connection_provider_manager = ConnectionProviderManager(default_provider_mock)
+        ConnectionProviderManager.set_connection_provider(set_provider_mock)
         provider = connection_provider_manager.get_connection_provider(self.host_info, self.properties)
 
         assert provider == default_provider_mock
@@ -104,7 +116,8 @@ class TestConnectionProviderManager(TestCase):
         set_provider_mock.accepts_strategy.return_value = True
         default_provider_mock.accepts_strategy.return_value = True
 
-        connection_provider_manager = ConnectionProviderManager(default_provider_mock, set_provider_mock)
+        connection_provider_manager = ConnectionProviderManager(default_provider_mock)
+        ConnectionProviderManager.set_connection_provider(set_provider_mock)
         result = connection_provider_manager.accepts_strategy(HostRole.WRITER, "random")
         assert result
 
@@ -126,10 +139,21 @@ class TestConnectionProviderManager(TestCase):
         set_provider_mock.get_host_info_by_strategy.return_value = host_info_list[0]
         default_provider_mock.get_host_info_by_strategy.return_value = host_info_list[1]
 
-        connection_provider_manager = ConnectionProviderManager(default_provider_mock, set_provider_mock)
+        connection_provider_manager = ConnectionProviderManager(default_provider_mock)
+        ConnectionProviderManager.set_connection_provider(set_provider_mock)
         host_info = connection_provider_manager.get_host_info_by_strategy(host_info_list, HostRole.WRITER, "random")
         assert host_info.host == "localhost"
 
         set_provider_mock.accepts_strategy.return_value = False
         host_info = connection_provider_manager.get_host_info_by_strategy(host_info_list, HostRole.WRITER, "random")
         assert host_info.host == "other"
+
+    def test_release_resources(self):
+        default_provider_mock: ConnectionProvider = MagicMock()
+        set_provider_mock: ConnectionProvider = MagicMock(spec=CanReleaseResources)
+
+        connection_provider_manager = ConnectionProviderManager(default_provider_mock)
+        ConnectionProviderManager.set_connection_provider(set_provider_mock)
+        ConnectionProviderManager.release_resources()
+
+        connection_provider_manager._conn_provider.release_resources.assert_called_once()

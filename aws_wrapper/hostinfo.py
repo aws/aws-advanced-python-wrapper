@@ -58,15 +58,19 @@ class HostInfo:
             and self.role == other.role
 
     @property
+    def url(self):
+        if self.is_port_specified():
+            return f"{self.host}:{self.port}"
+        else:
+            return self.host
+
+    @property
     def aliases(self) -> FrozenSet[str]:
         return frozenset(self._aliases)
 
     @property
     def all_aliases(self) -> FrozenSet[str]:
         return frozenset(self._all_aliases)
-
-    def is_port_specified(self) -> bool:
-        return self.port != HostInfo.NO_PORT
 
     def as_alias(self) -> str:
         return f"{self.host}:{self.port}" if self.is_port_specified() else self.host
@@ -79,25 +83,21 @@ class HostInfo:
             self._aliases.add(alias)
             self._all_aliases.add(alias)
 
-    @property
-    def url(self):
-        if self.is_port_specified():
-            return f"{self.host}:{self.port}"
-        else:
-            return self.host
-
     def as_aliases(self):
         return frozenset(self.all_aliases)
-
-    def reset_aliases(self):
-        self._aliases.clear()
-        self._all_aliases.clear()
-        self._all_aliases.add(self.as_alias())
 
     def remove_alias(self, *kwargs):
         if not kwargs or len(kwargs) == 0:
             return
 
         for x in kwargs:
-            self.aliases.remove(x)
-            self.all_aliases.remove(x)
+            self._aliases.remove(x)
+            self._all_aliases.remove(x)
+
+    def reset_aliases(self):
+        self._aliases.clear()
+        self._all_aliases.clear()
+        self._all_aliases.add(self.as_alias())
+
+    def is_port_specified(self) -> bool:
+        return self.port != HostInfo.NO_PORT

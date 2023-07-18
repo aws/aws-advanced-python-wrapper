@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, runtime_checkable
 
 if TYPE_CHECKING:
     from aws_wrapper.host_list_provider import HostListProviderService
@@ -36,7 +36,7 @@ class Plugin(ABC):
     @property
     @abstractmethod
     def subscribed_methods(self) -> Set[str]:
-        ...
+        pass
 
     def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, connect_func: Callable) -> Connection:
@@ -46,7 +46,7 @@ class Plugin(ABC):
                       initial: bool, force_connect_func: Callable) -> Connection:
         return force_connect_func()
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
         return execute_func()
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
@@ -74,4 +74,10 @@ class Plugin(ABC):
 
 class PluginFactory(Protocol):
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        ...
+        pass
+
+
+@runtime_checkable
+class CanReleaseResources(Protocol):
+    def release_resources(self):
+        pass
