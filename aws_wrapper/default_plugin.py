@@ -32,6 +32,7 @@ from aws_wrapper.plugin import Plugin
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
+from aws_wrapper.telemetry import Telemetry
 
 class DefaultPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
@@ -42,6 +43,9 @@ class DefaultPlugin(Plugin):
 
     def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, connect_func: Callable) -> Any:
+        telemetry = Telemetry()
+        telemetry.start_span()
+
         target_driver_props = copy.copy(props)
         PropertiesUtils.remove_wrapper_props(target_driver_props)
         connection_provider: ConnectionProvider = \
