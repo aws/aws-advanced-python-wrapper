@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from aws_wrapper.dialect import Dialect
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.reader_failover_handler import ReaderFailoverHandler
     from aws_wrapper.writer_failover_handler import WriterFailoverHandler
@@ -34,7 +35,7 @@ from aws_wrapper.hostinfo import HostAvailability, HostInfo
 from aws_wrapper.pep249 import (Connection, Error, FailoverSuccessError,
                                 TransactionResolutionUnknownError)
 from aws_wrapper.utils.notifications import NodeChangeOptions
-from aws_wrapper.utils.properties import Properties
+from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 
 class TestFailoverPlugin(TestCase):
@@ -46,7 +47,7 @@ class TestFailoverPlugin(TestCase):
         init_host_provider_func_mock: Callable = MagicMock()
 
         properties = Properties()
-        properties["Enable Failover"] = False
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "False")
         plugin = FailoverPlugin(plugin_service_mock, properties)
 
         with mock.patch.object(HostListProviderService, "is_static_host_list_provider") as method_mock:
@@ -60,7 +61,7 @@ class TestFailoverPlugin(TestCase):
         host_list_provider_mock: HostListProvider = MagicMock()
 
         properties = Properties()
-        properties["Enable Failover"] = True
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
 
         plugin.init_host_provider(properties, host_list_provider_service_mock,
@@ -78,7 +79,7 @@ class TestFailoverPlugin(TestCase):
         host_mock: HostInfo = MagicMock()
 
         properties = Properties()
-        properties["Enable Failover"] = False
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "False")
         plugin = FailoverPlugin(plugin_service_mock, properties)
         changes: Dict[str, Set[NodeChangeOptions]] = {}
 
@@ -92,7 +93,7 @@ class TestFailoverPlugin(TestCase):
         get_current_host_mock.assert_not_called()
         get_aliases_mock.assert_not_called()
 
-        properties["Enable Failover"] = True
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
         plugin.notify_node_list_changed(changes)
 
@@ -107,7 +108,7 @@ class TestFailoverPlugin(TestCase):
         host_mock.aliases = aliases
 
         properties = Properties()
-        properties["Enable Failover"] = True
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
 
         get_current_host_mock = PropertyMock(return_value=host_mock)
@@ -126,7 +127,7 @@ class TestFailoverPlugin(TestCase):
     def test_update_topology(self):
         plugin_service_mock: PluginService = MagicMock()
         properties = Properties()
-        properties["Enable Failover"] = False
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "False")
         plugin = FailoverPlugin(plugin_service_mock, properties)
 
         with mock.patch.object(plugin_service_mock, "force_refresh_host_list") as force_refresh_mock:
@@ -135,20 +136,20 @@ class TestFailoverPlugin(TestCase):
                 refresh_mock.assert_not_called()
             force_refresh_mock.assert_not_called()
 
-        conn_mock: Connection = MagicMock()
-        conn_mock.is_closed.return_value = True
-        type(plugin_service_mock).current_connection = PropertyMock(return_value=conn_mock)
+        dialect_mock: Dialect = MagicMock()
+        dialect_mock.is_closed.return_value = True
+        type(plugin_service_mock).dialect = PropertyMock(return_value=dialect_mock)
 
         with mock.patch.object(plugin_service_mock, "force_refresh_host_list") as force_refresh_mock:
             with mock.patch.object(plugin_service_mock, "refresh_host_list") as refresh_mock:
-                properties["Enable Failover"] = True
+                WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
                 plugin = FailoverPlugin(plugin_service_mock, properties)
                 plugin._update_topology(False)
                 refresh_mock.assert_not_called()
             force_refresh_mock.assert_not_called()
 
         type(plugin_service_mock).hosts = PropertyMock(return_value=[HostInfo("host")])
-        conn_mock.is_closed.return_value = False
+        dialect_mock.is_closed.return_value = False
 
         with mock.patch.object(plugin_service_mock, "force_refresh_host_list") as force_refresh_mock:
             with mock.patch.object(plugin_service_mock, "refresh_host_list") as refresh_mock:
@@ -166,7 +167,7 @@ class TestFailoverPlugin(TestCase):
         plugin_service_mock: PluginService = MagicMock()
         type(plugin_service_mock).is_in_transaction = PropertyMock(return_value=False)
         plugin = FailoverPlugin(plugin_service_mock, Properties())
-        plugin.failover_mode = FailoverMode.READER_OR_WRITER
+        plugin._failover_mode = FailoverMode.READER_OR_WRITER
 
         with mock.patch.object(FailoverPlugin, "_failover_reader") as failover_reader_mock:
             host_mock: HostInfo = MagicMock()
@@ -177,7 +178,7 @@ class TestFailoverPlugin(TestCase):
         plugin_service_mock: PluginService = MagicMock()
         type(plugin_service_mock).is_in_transaction = PropertyMock(return_value=True)
         plugin = FailoverPlugin(plugin_service_mock, Properties())
-        plugin.failover_mode = FailoverMode.STRICT_WRITER
+        plugin._failover_mode = FailoverMode.STRICT_WRITER
 
         with mock.patch.object(FailoverPlugin, "_failover_writer") as failover_writer_mock:
             self.assertRaises(TransactionResolutionUnknownError, plugin._failover, MagicMock())
@@ -194,7 +195,7 @@ class TestFailoverPlugin(TestCase):
         type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
 
         properties = Properties()
-        properties["Enable Failover"] = True
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
         plugin.init_host_provider(properties, MagicMock(), MagicMock(), None, reader_failover_handler_mock)
 
@@ -215,7 +216,7 @@ class TestFailoverPlugin(TestCase):
         type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
 
         properties = Properties()
-        properties["Enable Failover"] = True
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
         plugin.init_host_provider(
             properties, MagicMock(), MagicMock(), reader_failover_handler=reader_failover_handler_mock)
@@ -235,7 +236,7 @@ class TestFailoverPlugin(TestCase):
         type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
 
         properties = Properties()
-        properties["Enable Failover"] = True
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
         plugin.init_host_provider(
             properties, MagicMock(), MagicMock(), writer_failover_handler=writer_failover_handler_mock)
@@ -263,7 +264,7 @@ class TestFailoverPlugin(TestCase):
         type(writer_result_mock).is_connected = PropertyMock(return_value=False)
 
         properties = Properties()
-        properties["Enable Failover"] = True
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
         plugin.init_host_provider(
             properties, MagicMock(), MagicMock(), writer_failover_handler=writer_failover_handler_mock)
@@ -285,7 +286,7 @@ class TestFailoverPlugin(TestCase):
         type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
 
         properties = Properties()
-        properties["Enable Failover"] = True
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
         plugin.init_host_provider(
             properties, MagicMock(), MagicMock(), writer_failover_handler=writer_failover_handler_mock)
@@ -341,15 +342,17 @@ class TestFailoverPlugin(TestCase):
     def test_invalidate_current_connection_with_open_connection(self):
         conn_mock: Connection = MagicMock()
         plugin_service_mock: PluginService = MagicMock()
+        dialect_mock: Dialect = MagicMock()
         is_in_transaction_mock = PropertyMock(return_value=False)
         type(plugin_service_mock).is_in_transaction = is_in_transaction_mock
         type(plugin_service_mock).current_connection = PropertyMock(return_value=conn_mock)
+        type(plugin_service_mock).dialect = PropertyMock(return_value=dialect_mock)
 
         plugin = FailoverPlugin(plugin_service_mock, Properties())
 
         with mock.patch.object(conn_mock, "close") as close_mock:
-            with mock.patch.object(conn_mock, "is_closed") as is_closed_mock:
-                conn_mock.is_closed.return_value = False
+            with mock.patch.object(dialect_mock, "is_closed") as is_closed_mock:
+                dialect_mock.is_closed.return_value = False
 
                 plugin._invalidate_current_connection()
                 close_mock.assert_called_once()
@@ -370,7 +373,7 @@ class TestFailoverPlugin(TestCase):
         plugin_service_mock: PluginService = MagicMock()
 
         properties = Properties()
-        properties["Enable Failover"] = False
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "False")
         plugin = FailoverPlugin(plugin_service_mock, properties)
 
         def mock_sql_method():
@@ -380,7 +383,7 @@ class TestFailoverPlugin(TestCase):
         plugin.execute(None, "Connection.executeQuery", mock_sql_method)
         assert TestFailoverPlugin.mock_method_called
 
-        properties["Enable Failover"] = True
+        WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
 
         TestFailoverPlugin.mock_method_called = False

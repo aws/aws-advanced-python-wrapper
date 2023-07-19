@@ -118,9 +118,6 @@ class Connection:
     def close(self) -> None:
         ...
 
-    def is_closed(self) -> bool:
-        ...
-
     # TODO: check parameters
     def cursor(self, **kwargs) -> Cursor:
         ...

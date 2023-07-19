@@ -117,6 +117,14 @@ class WrapperProperties:
         "Interval in milliseconds after which a monitor should be considered inactive and marked for disposal.",
         "60000")
 
+    # Failover
+    ENABLE_FAILOVER = WrapperProperty("enable_failover",
+                                      "Enable/disable cluster aware failover logic",
+                                      "true")
+    FAILOVER_MODE = WrapperProperty("failover_mode",
+                                    "Set node role to follow during failover",
+                                    None)
+
 
 class PropertiesUtils:
 

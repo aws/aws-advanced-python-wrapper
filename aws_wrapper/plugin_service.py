@@ -86,7 +86,7 @@ class PluginService(ExceptionHandler, Protocol):
     def current_connection(self) -> Optional[Connection]:
         ...
 
-    def set_current_connection(self, connection: Optional[Connection], host_info: Optional[HostInfo]):
+    def set_current_connection(self, connection: Connection, host_info: HostInfo):
         ...
 
     @property
