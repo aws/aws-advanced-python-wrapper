@@ -37,6 +37,7 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
+from aws_wrapper.utils.timeout import timeout
 from aws_wrapper.utils.utils import Utils
 
 logger = getLogger(__name__)
@@ -118,6 +119,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
         self._props: Properties = props
 
+        self._max_timeout = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(self._props)
         self._rds_utils: RdsUtils = RdsUtils()
         self._hosts: List[HostInfo] = []
         self._cluster_id: str = str(uuid.uuid4())
@@ -226,15 +228,19 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 # Return the original hosts passed to the connect method
                 return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
-            hosts = self._query_for_topology(conn)
-            if hosts:
-                AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
-                if self._is_primary_cluster_id and not cached_hosts:
-                    # This cluster_id is primary and a new entry was just created in the cache. When this happens, we
-                    # check for non-primary cluster IDs associated with the same cluster so that the topology info can
-                    # be shared.
-                    self._suggest_cluster_id(hosts)
-                return AuroraHostListProvider.FetchTopologyResult(hosts, False)
+            try:
+                query_for_topology_func_with_timeout = timeout(self._max_timeout)(self._query_for_topology)
+                hosts = query_for_topology_func_with_timeout(conn)
+                if hosts is not None and len(hosts) > 0:
+                    AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
+                    if self._is_primary_cluster_id and cached_hosts is None:
+                        # This cluster_id is primary and a new entry was just created in the cache. When this happens, we
+                        # check for non-primary cluster IDs associated with the same cluster so that the topology info can
+                        # be shared.
+                        self._suggest_cluster_id(hosts)
+                    return AuroraHostListProvider.FetchTopologyResult(hosts, False)
+            except Exception as e:
+                raise AwsWrapperError(Messages.get("AuroraHostListProvider.TopologyTimeout")) from e
 
         if cached_hosts:
             return AuroraHostListProvider.FetchTopologyResult(cached_hosts, True)
@@ -360,7 +366,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForGetHostRole")
-                cursor.execute(topology_aware_dialect.is_reader_query)
+                cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
+                cursor_execute_func_with_timeout(topology_aware_dialect.is_reader_query)
                 result = cursor.fetchone()
                 if result:
                     is_reader = result[0]
@@ -376,7 +383,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForIdentifyConnection")
-                cursor.execute(topology_aware_dialect.host_id_query)
+                cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
+                cursor_execute_func_with_timeout(topology_aware_dialect.host_id_query)
                 result = cursor.fetchone()
                 if result:
                     host_id = result[0]

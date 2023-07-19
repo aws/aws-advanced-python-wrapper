@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import time
 from datetime import datetime, timedelta
 
 import pytest
@@ -31,10 +32,26 @@ def clear_caches():
     AuroraHostListProvider._cluster_ids_to_update.clear()
 
 
+def mock_topology_query(mock_conn, mock_cursor, records):
+    mock_conn.cursor.return_value = mock_cursor
+    mock_cursor.__enter__.return_value = mock_cursor  # Mocks out `with conn.cursor() as cursor:`
+    mock_cursor.__iter__.return_value = records  # Mocks out `for record in cursor:`
+
+
 @pytest.fixture(autouse=True)
 def mock_default_behavior(mock_provider_service, mock_conn, mock_cursor):
     mock_provider_service.current_connection = mock_conn
     mock_topology_query(mock_conn, mock_cursor, [("new-host-id", True)])
+
+
+def mock_hang():
+    time.sleep(1.5)
+
+
+@pytest.fixture
+def mock_hanging_behavior(mock_provider_service, mock_conn, mock_cursor):
+    mock_conn.cursor.side_effect = mock_hang
+    mock_provider_service.current_connection = mock_conn
 
 
 @pytest.fixture
@@ -108,6 +125,17 @@ def test_get_topology_invalid_dialect(mocker, mock_provider_service, initial_hos
     result = provider.refresh()
 
     assert initial_hosts == result
+    spy.assert_called_once()
+
+
+def test_get_topology_timeout(mocker, mock_provider_service, initial_hosts, props, mock_hanging_behavior):
+    props["query_timeout"] = 1
+    provider = AuroraHostListProvider(mock_provider_service, props)
+    spy = mocker.spy(provider, "_query_for_topology")
+
+    with pytest.raises(AwsWrapperError):
+        provider.force_refresh()
+
     spy.assert_called_once()
 
 
@@ -377,9 +405,3 @@ def test_initialize_rds_proxy(mock_provider_service):
     provider = AuroraHostListProvider(mock_provider_service, props)
     provider._initialize()
     assert provider._cluster_id == "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com"
-
-
-def mock_topology_query(mock_conn, mock_cursor, records):
-    mock_conn.cursor.return_value = mock_cursor
-    mock_cursor.__enter__.return_value = mock_cursor  # Mocks out `with conn.cursor() as cursor:`
-    mock_cursor.__iter__.return_value = records  # Mocks out `for record in cursor:`

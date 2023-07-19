@@ -86,7 +86,14 @@ class WrapperProperties:
                                                 "The name or the ARN of the secret to retrieve.")
     SECRETS_MANAGER_REGION = WrapperProperty("secrets_manager_region", "The region of the secret to retrieve.",
                                              "us-east-1")
-    DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect")
+    DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect.")
+    AUXILIARY_QUERY_TIMEOUT_SEC = WrapperProperty("auxiliary_query_timeout_sec",
+                                                  """Network timeout, in seconds, used for auxiliary queries to the database.
+                                                  This timeout applies to queries executed by the wrapper driver to
+                                                  gain info about the connected database.
+                                                  It does not apply to queries requested by the driver client.
+                                                  """,
+                                                  "5")
 
     # HostMonitoringPlugin
     FAILURE_DETECTION_ENABLED = WrapperProperty("failure_detection_enabled",
