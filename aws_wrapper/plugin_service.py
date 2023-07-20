@@ -114,6 +114,10 @@ class PluginService(ExceptionHandler, Protocol):
     def is_in_transaction(self) -> bool:
         ...
 
+    @is_in_transaction.setter
+    def is_in_transaction(self, value):
+        ...
+
     @property
     @abstractmethod
     def dialect(self) -> Optional[Dialect]:
@@ -171,9 +175,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._current_host_info: Optional[HostInfo] = None
         self._initial_connection_host_info: Optional[HostInfo] = None
         self._exception_manager: ExceptionManager = ExceptionManager()
-
+        self._is_in_transaction: bool = False
         self._dialect_provider = DialectManager()
-        self._dialect = self._dialect_provider.get_dialect(props)
+        self._dialect = DialectManager().get_dialect(props)
 
     @property
     def hosts(self) -> List[HostInfo]:
@@ -213,7 +217,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     @property
     def is_in_transaction(self) -> bool:
-        return False
+        return self._is_in_transaction
+
+    @is_in_transaction.setter
+    def is_in_transaction(self, value):
+        self._is_in_transaction = value
 
     @property
     def dialect(self) -> Optional[Dialect]:

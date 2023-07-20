@@ -26,7 +26,7 @@ from enum import Enum, auto
 from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.errors import AwsWrapperError, wrap_exception
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
                                             HostListProvider,
                                             HostListProviderService)
@@ -116,16 +116,25 @@ class FailoverPlugin(Plugin):
     def subscribed_methods(self):  # -> Set[str]:
         ...
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+    def execute(self, target: type, method_name: str, execute_func: Callable, *args: tuple) -> Any:
         if not self._enable_failover_setting or self._can_direct_execute(method_name):
             return execute_func()
 
         if self._is_closed and not self._allowed_on_closed_connection(method_name):
-            self._invalid_invocation_on_closed_connection()
+            try:
+                self._invalid_invocation_on_closed_connection()
+            except Exception as ex:
+                wrap_exception(target, ex)
 
-        self._update_topology(False)
+        result = None
+        try:
+            self._update_topology(False)
+            result = execute_func()
+        except Exception as ex:
+            # TODO: add extra exception handling logic here as appropriate
+            raise ex
 
-        return execute_func()
+        return result
 
     def notify_node_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         if not self._enable_failover_setting:
@@ -194,6 +203,8 @@ class FailoverPlugin(Plugin):
             self._failover_reader(failed_host)
 
         if self._is_in_transaction or self._plugin_service.is_in_transaction:
+            self._plugin_service.is_in_transaction = False
+
             error_msg = Messages.get("Failover.TransactionResolutionUnknownError")
             logger.warning(error_msg)
             raise TransactionResolutionUnknownError(error_msg)
@@ -298,6 +309,8 @@ class FailoverPlugin(Plugin):
                 self._invalidate_current_connection()
 
             self._plugin_service.set_current_connection(connection_for_host, host)
+            self._plugin_service.is_in_transaction = False
+
             logger.debug(Messages.get_formatted("Failover.EstablishedConnection", host))
         except Exception as ex:
             if self._plugin_service is not None:
