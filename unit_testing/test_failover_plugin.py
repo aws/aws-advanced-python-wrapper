@@ -34,7 +34,7 @@ from aws_wrapper.host_list_provider import (HostListProvider,
 from aws_wrapper.hostinfo import HostAvailability, HostInfo
 from aws_wrapper.pep249 import (Connection, Error, FailoverSuccessError,
                                 TransactionResolutionUnknownError)
-from aws_wrapper.utils.notifications import NodeChangeOptions
+from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 
@@ -81,7 +81,7 @@ class TestFailoverPlugin(TestCase):
         properties = Properties()
         WrapperProperties.ENABLE_FAILOVER.set(properties, "False")
         plugin = FailoverPlugin(plugin_service_mock, properties)
-        changes: Dict[str, Set[NodeChangeOptions]] = {}
+        changes: Dict[str, Set[HostEvent]] = {}
 
         get_current_host_mock = PropertyMock(return_value=host_mock)
         type(plugin_service_mock).current_host_info = get_current_host_mock
@@ -116,9 +116,9 @@ class TestFailoverPlugin(TestCase):
         get_aliases_mock = PropertyMock()
         type(host_mock).aliases = get_aliases_mock
 
-        changes: Dict[str, Set[NodeChangeOptions]] = \
-            {"cluster-host/": {NodeChangeOptions.NODE_DELETED},
-             "instance/": {NodeChangeOptions.NODE_ADDED}}
+        changes: Dict[str, Set[HostEvent]] = \
+            {"cluster-host/": {HostEvent.HOST_DELETED},
+             "instance/": {HostEvent.HOST_ADDED}}
         plugin.notify_node_list_changed(changes)
 
         get_current_host_mock.assert_called()
