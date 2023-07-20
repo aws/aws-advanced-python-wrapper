@@ -121,14 +121,15 @@ class Dialect(Protocol):
 
 
 class DialectProvider(Protocol):
-
-    """Returns the dialect identified by analyzing the AwsWrapperProperties.DIALECT property (if set) or the target
-    driver method"""
     def get_dialect(self, props: Properties) -> Optional[Dialect]:
+        """
+        Returns the dialect identified by analyzing the AwsWrapperProperties.DIALECT property (if set) or the target
+        driver method
+        """
         ...
 
-    """Returns the dialect identified by querying the database to identify the engine type"""
     def query_for_dialect(self, url: str, host_info: HostInfo, conn: Connection) -> Optional[Dialect]:
+        """Returns the dialect identified by querying the database to identify the engine type"""
         ...
 
 

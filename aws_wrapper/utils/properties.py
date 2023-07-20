@@ -144,10 +144,13 @@ class PropertiesUtils:
 
     @staticmethod
     def get_url(props: Properties) -> str:
-        if "host" not in props:
+        host = props.get("host")
+        port = props.get("port")
+
+        if host is None:
             raise AwsWrapperError(Messages.get("PropertiesUtils.NoHostDefined"))
 
-        return props["host"] if props.get("port") is None else f"{props['host']}:{props['port']}"
+        return host if port is None else f"{host}:{port}"
 
     @staticmethod
     def log_properties(props: Properties, caption: str):
