@@ -17,8 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.failover_result import (ReaderFailoverResult,
-                                             WriterFailoverResult)
+    from aws_wrapper.failover_result import ReaderFailoverResult, WriterFailoverResult
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
@@ -28,7 +27,6 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from aws_wrapper.errors import AwsWrapperError, wrap_exception
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
-                                            HostListProvider,
                                             HostListProviderService)
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import (Error, FailoverSuccessError,
@@ -53,6 +51,13 @@ class FailoverMode(Enum):
 
 
 class FailoverPlugin(Plugin):
+    # TODO: add network bound methods to set
+    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
+                                     "connect",
+                                     "force_connect",
+                                     "notify_connection_changed",
+                                     "notify_node_list_changed"}
+
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
         self._properties = props
@@ -61,40 +66,27 @@ class FailoverPlugin(Plugin):
         self._writer_failover_handler: WriterFailoverHandler
         self._enable_failover_setting = WrapperProperties.ENABLE_FAILOVER.get_bool(self._properties)
         self._failover_mode: FailoverMode
-        self._is_in_transaction = False
-        self._is_closed = False
-        self._closed_explicitly = False
+        self._is_in_transaction: bool = False
+        self._is_closed: bool = False
+        self._closed_explicitly: bool = False
         self._rds_utils = RdsUtils()
 
     def init_host_provider(
             self,
             properties: Properties,
             host_list_provider_service: HostListProviderService,
-            init_host_provider_func: Callable,
-            host_list_provider: Optional[HostListProvider] = None,
-            reader_failover_handler: Optional[ReaderFailoverHandler] = None,
-            writer_failover_handler: Optional[WriterFailoverHandler] = None):
+            init_host_provider_func: Callable):
 
         self._host_list_provider_service = host_list_provider_service
         if not self._enable_failover_setting:
             return
 
         if self._host_list_provider_service.is_static_host_list_provider():
-            if host_list_provider is None:
-                self._host_list_provider_service.host_list_provider = \
-                    AuroraHostListProvider(self._host_list_provider_service, properties)
-            else:
-                self._host_list_provider_service.host_list_provider = host_list_provider
+            self._host_list_provider_service.host_list_provider = \
+                AuroraHostListProvider(self._host_list_provider_service, properties)
 
-        if reader_failover_handler is None:
-            self._reader_failover_handler = ReaderFailoverHandlerImpl(self._plugin_service, self._properties)
-        else:
-            self._reader_failover_handler = reader_failover_handler
-
-        if writer_failover_handler is None:
-            self._writer_failover_handler = WriterFailoverHandlerImpl()
-        else:
-            self._writer_failover_handler = writer_failover_handler
+        self._reader_failover_handler = ReaderFailoverHandlerImpl(self._plugin_service, self._properties)
+        self._writer_failover_handler = WriterFailoverHandlerImpl()
 
         init_host_provider_func()
 
@@ -113,8 +105,9 @@ class FailoverPlugin(Plugin):
 
         logger.debug(Messages.get_formatted("Failover.ParameterValue", "FAILOVER_MODE", self._failover_mode))
 
-    def subscribed_methods(self):  # -> Set[str]:
-        ...
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return self._SUBSCRIBED_METHODS
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: tuple) -> Any:
         if not self._enable_failover_setting or self._can_direct_execute(method_name):
@@ -126,19 +119,21 @@ class FailoverPlugin(Plugin):
             except Exception as ex:
                 wrap_exception(target, ex)
 
-        result = None
         try:
             self._update_topology(False)
-            result = execute_func()
+            return execute_func()
         except Exception as ex:
             # TODO: add extra exception handling logic here as appropriate
             raise ex
 
-        return result
-
     def notify_node_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         if not self._enable_failover_setting:
             return
+
+        msg = "Changes: "
+        for key in changes:
+            msg += f"\n\tHost '{key}': {changes[key]}"
+        logger.debug(msg)
 
         current_host = self._plugin_service.current_host_info
         if current_host is not None:
@@ -222,13 +217,13 @@ class FailoverPlugin(Plugin):
 
         result: ReaderFailoverResult = self._reader_failover_handler.failover(self._plugin_service.hosts, failed_host)
 
-        if result is not None and result.exception is not None:
-            raise result.exception
-        elif result is None or not result.is_connected:
+        if result is None or not result.is_connected:
             raise Error(Messages.get("Failover.UnableToConnectToReader"))
-
-        if result.connection is not None and result.new_host is not None:
-            self._plugin_service.set_current_connection(result.connection, result.new_host)
+        else:
+            if result.exception is not None:
+                raise result.exception
+            if result.connection is not None and result.new_host is not None:
+                self._plugin_service.set_current_connection(result.connection, result.new_host)
 
         if self._plugin_service.current_host_info is not None:
             self._plugin_service.current_host_info.remove_alias(old_aliases)
@@ -360,12 +355,14 @@ class FailoverPlugin(Plugin):
 
     @staticmethod
     def _can_direct_execute(method_name):
+        # TODO: adjust method names to proper python method names
         return method_name == "Connection.close" or \
             method_name == "Connection.abort" or \
             method_name == "Connection.isClosed"
 
     @staticmethod
     def _allowed_on_closed_connection(method_name: str):
+        # TODO: adjust method names to proper python method names
         return method_name == "Connection.getAutoCommit" or \
             method_name == "Connection.getCatalog" or \
             method_name == "Connection.getSchema" or \

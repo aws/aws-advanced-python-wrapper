@@ -64,12 +64,12 @@ class TestFailoverPlugin(TestCase):
         WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
 
-        plugin.init_host_provider(properties, host_list_provider_service_mock,
-                                  init_host_provider_func_mock, host_list_provider_mock)
+        plugin.init_host_provider(properties, host_list_provider_service_mock, init_host_provider_func_mock)
+        plugin._host_list_provider_service.host_list_provider = host_list_provider_mock
 
         with mock.patch.object(HostListProviderService, "is_static_host_list_provider") as method_mock:
-            plugin.init_host_provider(properties, host_list_provider_service_mock,
-                                      init_host_provider_func_mock, host_list_provider_mock)
+            plugin.init_host_provider(properties, host_list_provider_service_mock, init_host_provider_func_mock)
+            plugin._host_list_provider_service.host_list_provider = host_list_provider_mock
             method_mock.assert_not_called()
 
         assert host_list_provider_service_mock.host_list_provider == host_list_provider_mock
@@ -197,7 +197,8 @@ class TestFailoverPlugin(TestCase):
         properties = Properties()
         WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
-        plugin.init_host_provider(properties, MagicMock(), MagicMock(), None, reader_failover_handler_mock)
+        plugin.init_host_provider(properties, MagicMock(), MagicMock())
+        plugin._reader_failover_handler = reader_failover_handler_mock
 
         with mock.patch.object(plugin_service_mock, "set_current_connection") as set_current_connection_mock:
             with mock.patch.object(reader_failover_handler_mock, "failover") as failover_mock:
@@ -218,8 +219,8 @@ class TestFailoverPlugin(TestCase):
         properties = Properties()
         WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
-        plugin.init_host_provider(
-            properties, MagicMock(), MagicMock(), reader_failover_handler=reader_failover_handler_mock)
+        plugin.init_host_provider(properties, MagicMock(), MagicMock())
+        plugin._reader_failover_handler = reader_failover_handler_mock
 
         with mock.patch.object(reader_failover_handler_mock, "failover") as failover_reader_mock:
             reader_failover_handler_mock.failover.return_value = \
@@ -238,8 +239,8 @@ class TestFailoverPlugin(TestCase):
         properties = Properties()
         WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
-        plugin.init_host_provider(
-            properties, MagicMock(), MagicMock(), writer_failover_handler=writer_failover_handler_mock)
+        plugin.init_host_provider(properties, MagicMock(), MagicMock())
+        plugin._writer_failover_handler = writer_failover_handler_mock
 
         with mock.patch.object(writer_failover_handler_mock, "failover") as failover_writer_mock:
             writer_failover_handler_mock.failover.return_value = \
@@ -266,8 +267,8 @@ class TestFailoverPlugin(TestCase):
         properties = Properties()
         WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
-        plugin.init_host_provider(
-            properties, MagicMock(), MagicMock(), writer_failover_handler=writer_failover_handler_mock)
+        plugin.init_host_provider(properties, MagicMock(), MagicMock())
+        plugin._writer_failover_handler = writer_failover_handler_mock
 
         with mock.patch.object(writer_failover_handler_mock, "failover") as failover_writer_mock:
             writer_failover_handler_mock.failover.return_value = writer_result_mock
@@ -288,8 +289,8 @@ class TestFailoverPlugin(TestCase):
         properties = Properties()
         WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
-        plugin.init_host_provider(
-            properties, MagicMock(), MagicMock(), writer_failover_handler=writer_failover_handler_mock)
+        plugin.init_host_provider(properties, MagicMock(), MagicMock())
+        plugin._writer_failover_handler = writer_failover_handler_mock
 
         with mock.patch.object(writer_failover_handler_mock, "failover") as failover_writer_mock:
             writer_failover_handler_mock.failover.return_value = \
