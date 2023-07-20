@@ -17,9 +17,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from aws_wrapper.dialect import (AuroraPgDialect, MariaDbDialect, MysqlDialect,
-                                 PgDialect, RdsMysqlDialect, RdsPgDialect)
+from aws_wrapper.dialect import (AuroraMysqlDialect, AuroraPgDialect,
+                                 DatabaseType, DialectCode, DialectManager,
+                                 MariaDbDialect, MysqlDialect, PgDialect,
+                                 RdsMysqlDialect, RdsPgDialect, UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.hostinfo import HostInfo
+from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 
 class TestDialect(TestCase):
@@ -95,6 +99,18 @@ class TestDialect(TestCase):
 
         assert not rds_mysql_dialect.is_dialect(mock_conn)
 
+    def test_aurora_mysql_is_dialect(self):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = None
+
+        dialect = AuroraMysqlDialect()
+        assert dialect.is_dialect(mock_conn) is False
+
+        mock_cursor.fetchone.return_value = ('aurora_version', '3.0.0')
+        assert dialect.is_dialect(mock_conn) is True
+
     @patch('aws_wrapper.dialect.super')
     def test_aurora_pg_is_dialect(self, mock_super):
         aurora_pg_dialect = AuroraPgDialect()
@@ -144,6 +160,174 @@ class TestDialect(TestCase):
 
         assert not rds_pg_dialect.is_dialect(mock_conn)
 
+    def test_get_dialect_custom_dialect(self):
+        manager = DialectManager()
+        mock_custom_dialect = MagicMock()
+        manager._custom_dialect = mock_custom_dialect
+
+        assert mock_custom_dialect == manager.get_dialect(Properties())
+
+    def test_get_dialect_user_setting(self):
+        manager = DialectManager()
+        props = Properties({"host": "localhost", WrapperProperties.DIALECT.name: "custom"})
+
+        with pytest.raises(AwsWrapperError):
+            manager.get_dialect(props)
+
+        props[WrapperProperties.DIALECT.name] = "invalid_dialect"
+        with pytest.raises(AwsWrapperError):
+            manager.get_dialect(props)
+
+        props[WrapperProperties.DIALECT.name] = "aurora-pg"
+        assert isinstance(manager.get_dialect(props), AuroraPgDialect)
+        assert isinstance(manager._dialect, AuroraPgDialect)
+        assert manager._dialect_code == DialectCode.AURORA_PG
+
+    def test_get_dialect_aurora_mysql(self):
+        manager = DialectManager()
+        props = Properties({"host": "my-database.cluster-xyz.us-east-2.rds.amazonaws.com"})
+
+        with patch.object(manager, '_get_database_type', return_value=DatabaseType.MYSQL):
+            assert isinstance(manager.get_dialect(props), AuroraMysqlDialect)
+            assert isinstance(manager._dialect, AuroraMysqlDialect)
+            assert DialectCode.AURORA_MYSQL == manager._dialect_code
+            assert manager._can_update is False
+
+    def test_get_dialect_rds_mysql(self):
+        manager = DialectManager()
+        props = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
+
+        with patch.object(manager, '_get_database_type', return_value=DatabaseType.MYSQL):
+            assert isinstance(manager.get_dialect(props), RdsMysqlDialect)
+            assert isinstance(manager._dialect, RdsMysqlDialect)
+            assert DialectCode.RDS_MYSQL == manager._dialect_code
+            assert manager._can_update is True
+
+    def test_get_dialect_mysql(self):
+        manager = DialectManager()
+        props = Properties({"host": "localhost"})
+
+        with patch.object(manager, '_get_database_type', return_value=DatabaseType.MYSQL):
+            assert isinstance(manager.get_dialect(props), MysqlDialect)
+            assert isinstance(manager._dialect, MysqlDialect)
+            assert DialectCode.MYSQL == manager._dialect_code
+            assert manager._can_update is True
+
+    def test_get_dialect_aurora_pg(self):
+        manager = DialectManager()
+        props = Properties({"host": "my-database.cluster-xyz.us-east-2.rds.amazonaws.com"})
+
+        with patch.object(manager, '_get_database_type', return_value=DatabaseType.POSTGRES):
+            assert isinstance(manager.get_dialect(props), AuroraPgDialect)
+            assert isinstance(manager._dialect, AuroraPgDialect)
+            assert DialectCode.AURORA_PG == manager._dialect_code
+            assert manager._can_update is False
+
+    def test_get_dialect_mysql_pg(self):
+        manager = DialectManager()
+        props = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
+
+        with patch.object(manager, '_get_database_type', return_value=DatabaseType.POSTGRES):
+            assert isinstance(manager.get_dialect(props), RdsPgDialect)
+            assert isinstance(manager._dialect, RdsPgDialect)
+            assert DialectCode.RDS_PG == manager._dialect_code
+            assert manager._can_update is True
+
+    def test_get_dialect_pg(self):
+        manager = DialectManager()
+        props = Properties({"host": "localhost"})
+
+        with patch.object(manager, '_get_database_type', return_value=DatabaseType.POSTGRES):
+            assert isinstance(manager.get_dialect(props), PgDialect)
+            assert isinstance(manager._dialect, PgDialect)
+            assert DialectCode.PG == manager._dialect_code
+            assert manager._can_update is True
+
+    def test_get_dialect_mariadb(self):
+        manager = DialectManager()
+        props = Properties({"host": "localhost"})
+
+        with patch.object(manager, '_get_database_type', return_value=DatabaseType.MARIADB):
+            assert isinstance(manager.get_dialect(props), MariaDbDialect)
+            assert isinstance(manager._dialect, MariaDbDialect)
+            assert DialectCode.MARIADB == manager._dialect_code
+            assert manager._can_update is True
+
+    def test_get_dialect_unknown_dialect(self):
+        manager = DialectManager()
+        props = Properties({"host": "localhost"})
+
+        with patch.object(manager, '_get_database_type', return_value=None):
+            assert isinstance(manager.get_dialect(props), UnknownDialect)
+            assert isinstance(manager._dialect, UnknownDialect)
+            assert DialectCode.UNKNOWN == manager._dialect_code
+            assert manager._can_update is True
+
+    def test_query_for_dialect_cannot_update(self):
+        manager = DialectManager()
+        mock_dialect = MagicMock()
+        manager._dialect = mock_dialect
+
+        assert mock_dialect == manager.query_for_dialect("", None, MagicMock())
+        mock_dialect.dialect_update_candidates.assert_not_called()
+
+    def test_query_for_dialect_errors(self):
+        manager = DialectManager()
+        manager._can_update = True
+        mock_dialect = MagicMock()
+        mock_candidate = MagicMock(spec=DialectCode)
+        mock_dialect.dialect_update_candidates = frozenset({mock_candidate})
+        manager._dialect = mock_dialect
+
+        with pytest.raises(AwsWrapperError):
+            manager.query_for_dialect("", None, MagicMock())
+
+        mock_dialect.dialect_update_candidates = frozenset()
+        with pytest.raises(AwsWrapperError):
+            manager.query_for_dialect("", None, MagicMock())
+
+    def test_query_for_dialect_no_update_candidates(self):
+        manager = DialectManager()
+        mock_dialect = MagicMock()
+        mock_dialect.dialect_update_candidates = None
+        manager._can_update = True
+        manager._dialect_code = DialectCode.MARIADB
+        manager._dialect = mock_dialect
+
+        assert mock_dialect == manager.query_for_dialect("url", HostInfo("host"), MagicMock())
+        assert DialectCode.MARIADB == manager._known_endpoint_dialects.get("url")
+        assert DialectCode.MARIADB == manager._known_endpoint_dialects.get("host")
+
+    def test_query_for_dialect_pg(self):
+        manager = DialectManager()
+        manager._can_update = True
+        manager._dialect = PgDialect()
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.__iter__.return_value = [(True, True)]
+        mock_cursor.fetch_one.return_value = (True,)
+
+        result = manager.query_for_dialect("url", HostInfo("host"), mock_conn)
+        assert isinstance(result, AuroraPgDialect)
+        assert DialectCode.AURORA_PG == manager._known_endpoint_dialects.get("url")
+        assert DialectCode.AURORA_PG == manager._known_endpoint_dialects.get("host")
+
+    def test_query_for_dialect_mysql(self):
+        manager = DialectManager()
+        manager._can_update = True
+        manager._dialect = MysqlDialect()
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.__iter__.return_value = [("version_comment", "Source distribution")]
+        mock_cursor.fetch_one.return_value = ("aurora_version", "3.0.0")
+
+        result = manager.query_for_dialect("url", HostInfo("host"), mock_conn)
+        assert isinstance(result, AuroraMysqlDialect)
+        assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("url")
+        assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("host")
+
     def test_is_closed(self):
         mock_conn = MagicMock()
         mock_conn.is_connected.return_value = False
@@ -163,3 +347,14 @@ class TestDialect(TestCase):
         del mock_conn.closed
         with pytest.raises(AwsWrapperError):
             dialect.is_closed(mock_conn)
+
+    def test_abort_connection(self):
+        mock_conn = MagicMock()
+        dialect = PgDialect()
+
+        dialect.abort_connection(mock_conn)
+        mock_conn.cancel.assert_called_once()
+
+        del mock_conn.cancel
+        with pytest.raises(AwsWrapperError):
+            dialect.abort_connection(mock_conn)

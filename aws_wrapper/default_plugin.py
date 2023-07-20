@@ -74,12 +74,12 @@ class DefaultPlugin(Plugin):
 
     def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
         if HostRole.UNKNOWN == role:
-            raise AwsWrapperError(Messages.get("Plugins.UnknownHosts"))
+            raise AwsWrapperError(Messages.get("DefaultPlugin.UnknownHosts"))
 
         hosts = self._plugin_service.hosts
 
         if len(hosts) < 1:
-            raise AwsWrapperError(Messages.get("Plugins.EmptyHosts"))
+            raise AwsWrapperError(Messages.get("DefaultPlugin.EmptyHosts"))
 
         return self._connection_provider_manager.get_host_info_by_strategy(hosts, role, strategy)
 

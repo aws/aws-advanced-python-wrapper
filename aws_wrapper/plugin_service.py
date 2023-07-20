@@ -51,7 +51,8 @@ from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
-from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
 
 logger = getLogger(__name__)
 
@@ -118,7 +119,7 @@ class PluginService(ExceptionHandler, Protocol):
     def dialect(self) -> Optional[Dialect]:
         ...
 
-    def update_dialect(self, connection: Connection):
+    def update_dialect(self, connection: Optional[Connection] = None):
         ...
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
@@ -148,7 +149,7 @@ class PluginService(ExceptionHandler, Protocol):
     def identify_connection(self, connection: Optional[Connection] = None):
         ...
 
-    def fill_aliases(self, connection: Optional[Connection], host_info: Optional[HostInfo]):
+    def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
         ...
 
 
@@ -162,6 +163,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._container = container
         self._container.plugin_service = self
         self._props = props
+        self._original_url = PropertiesUtils.get_url(props)
         self._host_list_provider: HostListProvider = ConnectionStringHostListProvider(self, props)
 
         self._hosts: List[HostInfo] = []
@@ -170,7 +172,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._initial_connection_host_info: Optional[HostInfo] = None
         self._exception_manager: ExceptionManager = ExceptionManager()
 
-        self._dialect = DialectManager().get_dialect(props)
+        self._dialect_provider = DialectManager()
+        self._dialect = self._dialect_provider.get_dialect(props)
 
     @property
     def hosts(self) -> List[HostInfo]:
@@ -216,8 +219,12 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def dialect(self) -> Optional[Dialect]:
         return self._dialect
 
-    def update_dialect(self, connection: Connection):
-        ...
+    def update_dialect(self, connection: Optional[Connection] = None):
+        connection = self.current_connection if connection is None else connection
+        if connection is None:
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.UpdateDialectNullConnection"))
+        self._dialect = \
+            self._dialect_provider.query_for_dialect(self._original_url, self._initial_connection_host_info, connection)
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -263,14 +270,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         return self.host_list_provider.identify_connection(connection)
 
-    def fill_aliases(self, connection: Optional[Connection], host_info: Optional[HostInfo]):
+    def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
         connection = self.current_connection if connection is None else connection
         host_info = self.current_host_info if host_info is None else host_info
-
-        if connection is None:
-            return
-
-        if host_info is None:
+        if connection is None or host_info is None:
             return
 
         if len(host_info.aliases) > 0:
@@ -412,7 +415,7 @@ class PluginManager(CanReleaseResources):
         for plugin_code in plugin_list:
             plugin_code = plugin_code.strip()
             if plugin_code not in PluginManager._PLUGIN_FACTORIES:
-                raise AwsWrapperError(Messages.get_joined("Plugins.InvalidPlugin", plugin_code))
+                raise AwsWrapperError(Messages.get_joined("PluginManager.InvalidPlugin", plugin_code))
             factory: PluginFactory = object.__new__(PluginManager._PLUGIN_FACTORIES[plugin_code])
             plugin: Plugin = factory.get_instance(self._container.plugin_service, props)
             self._plugins.append(plugin)
@@ -436,7 +439,6 @@ class PluginManager(CanReleaseResources):
             pipeline_func = self._make_pipeline(method_name)
             self._function_cache[method_name] = pipeline_func
 
-        assert (pipeline_func is not None)
         return pipeline_func(plugin_func, target_driver_func)
 
     # Builds the plugin pipeline function chain. The pipeline is built in a way that allows plugins to perform logic
@@ -459,7 +461,7 @@ class PluginManager(CanReleaseResources):
                     pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
 
         if pipeline_func is None:
-            raise AwsWrapperError(Messages.get("Plugins.NonePipeline"))
+            raise AwsWrapperError(Messages.get("PluginManager.NullPipeline"))
         else:
             return pipeline_func
 
