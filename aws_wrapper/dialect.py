@@ -425,8 +425,7 @@ class UnknownDialect(Dialect):
         return False
 
     def abort_connection(self, conn: Connection):
-        # TODO: Should this method throw an exception or do nothing?
-        pass
+        raise AwsWrapperError("UnknownDialect.AbortConnection")
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -537,7 +536,6 @@ class DialectManager(DialectProvider):
             return self._dialect
 
         if database_type is DatabaseType.MARIADB:
-            # TODO: should can_update be False?
             self._can_update = True
             self._dialect_code = DialectCode.MARIADB
             self._dialect = self._known_dialects_by_code.get(DialectCode.MARIADB)
