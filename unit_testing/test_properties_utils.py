@@ -12,36 +12,28 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from unittest import TestCase
-
-from parameterized import param, parameterized
+import pytest
 
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 
-class TestPropertiesUtils(TestCase):
+@pytest.mark.parametrize("expected, conn_info, kwargs",
+                         [pytest.param(Properties({"user": "postgres", "password": "kwargs_password"}),
+                                       "user=postgres password=conninfo_password",
+                                       dict(password="kwargs_password")),
+                          pytest.param(Properties({"user": "postgres"}), "", dict(user="postgres")),
+                          pytest.param(Properties({"user": "postgres"}), "user=postgres", {})])
+def test_parse_properties(expected, conn_info, kwargs):
+    assert expected == PropertiesUtils.parse_properties(conn_info, **kwargs)
 
-    @parameterized.expand([
-        param(Properties({"user": "postgres", "password": "kwargs_password"}),
-              "user=postgres password=conninfo_password",
-              password="kwargs_password"),
-        param(Properties({"user": "postgres"}),
-              "",
-              user="postgres"),
-        param(Properties({"user": "postgres"}),
-              "user=postgres"),
-    ])
-    def test_parse_properties(self, expected, conninfo, **kwargs):
-        assert expected == PropertiesUtils.parse_properties(conninfo, **kwargs)
 
-    @parameterized.expand([
-        param(Properties({"user": "postgres", "password": "conninfo_password"}),
-              Properties(user="postgres", plugins="pluginCode", password="conninfo_password")),
-        param(Properties({"user": "postgres", "password": "conninfo_password"}),
-              Properties(user="postgres", password="conninfo_password")),
-        param(Properties(), Properties())
-    ])
-    def test_remove_wrapper_props(self, expected, props):
-        props_copy = props.copy()
-        PropertiesUtils.remove_wrapper_props(props_copy)
-        assert expected == props_copy
+@pytest.mark.parametrize("expected, test_props",
+                         [pytest.param(Properties({"user": "postgres", "password": "conninfo_password"}),
+                                       Properties(user="postgres", plugins="pluginCode", password="conninfo_password")),
+                          pytest.param(Properties({"user": "postgres", "password": "conninfo_password"}),
+                                       Properties(user="postgres", password="conninfo_password")),
+                          pytest.param(Properties(), Properties())])
+def test_remove_wrapper_props(expected, test_props):
+    props_copy = test_props.copy()
+    PropertiesUtils.remove_wrapper_props(props_copy)
+    assert expected == props_copy

@@ -115,15 +115,15 @@ class TestAwsSecretsManagerPlugin(TestCase):
                                                                          self._mock_session)
 
         target_plugin.connect(self._TEST_HOST_INFO, self._properties, True, self._mock_func)
-        self.assertEqual(1, len(self._secrets_cache))
+        assert 1 == len(self._secrets_cache)
         self._mock_client.get_secret_value.assert_not_called()
         self._mock_func.assert_called_once()
-        self.assertEqual(self._TEST_USERNAME, self._properties.get("user"))
-        self.assertEqual(self._TEST_PASSWORD, self._properties.get("password"))
+        assert self._TEST_USERNAME == self._properties.get("user")
+        assert self._TEST_PASSWORD == self._properties.get("password")
 
     @patch("aws_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_connect_with_new_secrets(self):
-        self.assertEqual(0, len(self._secrets_cache))
+        assert 0 == len(self._secrets_cache)
 
         target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(self._mock_plugin_service,
                                                                          self._properties,
@@ -131,11 +131,11 @@ class TestAwsSecretsManagerPlugin(TestCase):
 
         target_plugin.connect(self._TEST_HOST_INFO, self._properties, True, self._mock_func)
 
-        self.assertEqual(1, len(self._secrets_cache))
+        assert 1 == len(self._secrets_cache)
         self._mock_client.get_secret_value.assert_called_once()
         self._mock_func.assert_called_once()
-        self.assertEqual(self._TEST_USERNAME, self._properties.get("user"))
-        self.assertEqual(self._TEST_PASSWORD, self._properties.get("password"))
+        assert self._TEST_USERNAME == self._properties.get("user")
+        assert self._TEST_PASSWORD == self._properties.get("password")
 
     @parameterized.expand([
         param(Properties({"secrets_manager_region": "us-east-2"})),
