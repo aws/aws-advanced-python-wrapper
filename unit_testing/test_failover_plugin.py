@@ -74,7 +74,7 @@ class TestFailoverPlugin(TestCase):
 
         assert host_list_provider_service_mock.host_list_provider == host_list_provider_mock
 
-    def test_notify_node_list_changed_with_failover_disabled(self):
+    def test_notify_host_list_changed_with_failover_disabled(self):
         plugin_service_mock: PluginService = MagicMock()
         host_mock: HostInfo = MagicMock()
 
@@ -88,19 +88,19 @@ class TestFailoverPlugin(TestCase):
         get_aliases_mock = PropertyMock()
         type(host_mock).aliases = get_aliases_mock
 
-        plugin.notify_node_list_changed(changes)
+        plugin.notify_host_list_changed(changes)
 
         get_current_host_mock.assert_not_called()
         get_aliases_mock.assert_not_called()
 
         WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
         plugin = FailoverPlugin(plugin_service_mock, properties)
-        plugin.notify_node_list_changed(changes)
+        plugin.notify_host_list_changed(changes)
 
         get_current_host_mock.assert_called()
         get_aliases_mock.assert_not_called()
 
-    def test_notify_node_list_changed_with_valid_connection_not_in_topology(self):
+    def test_notify_host_list_changed_with_valid_connection_not_in_topology(self):
         plugin_service_mock: PluginService = MagicMock()
         host_mock: HostInfo = MagicMock()
         host_mock.url = "cluster-url/"
@@ -119,7 +119,7 @@ class TestFailoverPlugin(TestCase):
         changes: Dict[str, Set[HostEvent]] = \
             {"cluster-host/": {HostEvent.HOST_DELETED},
              "instance/": {HostEvent.HOST_ADDED}}
-        plugin.notify_node_list_changed(changes)
+        plugin.notify_host_list_changed(changes)
 
         get_current_host_mock.assert_called()
         get_aliases_mock.assert_not_called()

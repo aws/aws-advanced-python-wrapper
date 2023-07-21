@@ -38,6 +38,7 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
+from aws_wrapper.utils.subscribed_method_utils import SubscribedMethodUtils
 from aws_wrapper.writer_failover_handler import (WriterFailoverHandler,
                                                  WriterFailoverHandlerImpl)
 
@@ -49,14 +50,28 @@ class FailoverMode(Enum):
     STRICT_READER = auto()
     READER_OR_WRITER = auto()
 
+    @staticmethod
+    def get_failover_mode(properties: Properties) -> FailoverMode:
+        mode = WrapperProperties.FAILOVER_MODE.get(properties)
+        if mode is None:
+            return FailoverMode.STRICT_WRITER
+        else:
+            mode = mode.lower()
+            # TODO: reconsider the exact format we expect from the user here
+            if mode == "strict_writer":
+                return FailoverMode.STRICT_WRITER
+            elif mode == "strict_reader":
+                return FailoverMode.STRICT_READER
+            else:
+                return FailoverMode.READER_OR_WRITER
+
 
 class FailoverPlugin(Plugin):
-    # TODO: add network bound methods to set
-    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
+    _SUBSCRIBED_METHODS: Set[str] = {*SubscribedMethodUtils.NETWORK_BOUND_METHODS,
+                                     "init_host_provider",
                                      "connect",
                                      "force_connect",
-                                     "notify_connection_changed",
-                                     "notify_node_list_changed"}
+                                     "notify_host_list_changed"}
 
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
@@ -90,18 +105,7 @@ class FailoverPlugin(Plugin):
 
         init_host_provider_func()
 
-        failover_mode = WrapperProperties.FAILOVER_MODE.get(self._properties)
-        if failover_mode is None:
-            self._failover_mode = FailoverMode.STRICT_WRITER
-        else:
-            failover_mode = failover_mode.lower()
-            # TODO: reconsider the exact format we expect from the user here
-            if failover_mode == "strict_writer":
-                self._failover_mode = FailoverMode.STRICT_WRITER
-            elif failover_mode == "strict_reader":
-                self._failover_mode = FailoverMode.STRICT_READER
-            else:
-                self._failover_mode = FailoverMode.READER_OR_WRITER
+        self._failover_mode = FailoverMode.get_failover_mode(self._properties)
 
         logger.debug(Messages.get_formatted("Failover.ParameterValue", "FAILOVER_MODE", self._failover_mode))
 
@@ -126,7 +130,7 @@ class FailoverPlugin(Plugin):
             # TODO: add extra exception handling logic here as appropriate
             raise ex
 
-    def notify_node_list_changed(self, changes: Dict[str, Set[HostEvent]]):
+    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         if not self._enable_failover_setting:
             return
 
