@@ -32,7 +32,8 @@ from aws_wrapper.plugin import Plugin
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
-from aws_wrapper.telemetry import Telemetry
+from aws_wrapper.telemetry import TelemetryContext, TelemetryFactory, TelemetryTraceLevel
+
 
 class DefaultPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
@@ -43,17 +44,16 @@ class DefaultPlugin(Plugin):
 
     def connect(self, host_info: HostInfo, props: Properties,
                 initial: bool, connect_func: Callable) -> Any:
-        telemetry = Telemetry()
-        telemetry.start_span()
-
-        target_driver_props = copy.copy(props)
-        PropertiesUtils.remove_wrapper_props(target_driver_props)
-        connection_provider: ConnectionProvider = \
-            self._connection_provider_manager.get_connection_provider(host_info, target_driver_props)
-        # logger.debug("Default plugin: connect before")
-        result = self._connect(host_info, target_driver_props, connection_provider)
-        # logger.debug("Default plugin: connect after")
-        return result
+        telemetry_factory = TelemetryFactory.get_telemetry_factory()
+        with telemetry_factory.open_telemetry_context("test", TelemetryTraceLevel.NESTED):
+            target_driver_props = copy.copy(props)
+            PropertiesUtils.remove_wrapper_props(target_driver_props)
+            connection_provider: ConnectionProvider = \
+                self._connection_provider_manager.get_connection_provider(host_info, target_driver_props)
+            # logger.debug("Default plugin: connect before")
+            result = self._connect(host_info, target_driver_props, connection_provider)
+            # logger.debug("Default plugin: connect after")
+            return result
 
     def _connect(self, host_info: HostInfo, props: Properties, conn_provider: ConnectionProvider):
         result = conn_provider.connect(host_info, props)
