@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, PropertyMock
 
 from aws_wrapper.wrapper import AwsWrapperConnection
 
@@ -31,7 +31,7 @@ def test_cursor_execute_no_plugins():
 
     plugin_service_mock = MagicMock()
     plugin_manager_mock = MagicMock()
-    plugin_manager_mock.num_plugins.return_value = 0
+    type(plugin_manager_mock).num_plugins = PropertyMock(return_value=0)
 
     awsconn = AwsWrapperConnection(plugin_service_mock, plugin_manager_mock, connection_mock)
 
