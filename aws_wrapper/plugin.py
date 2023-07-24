@@ -46,7 +46,7 @@ class Plugin(ABC):
                       initial: bool, force_connect_func: Callable) -> Connection:
         return force_connect_func()
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
+    def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any) -> Any:
         return execute_func()
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
