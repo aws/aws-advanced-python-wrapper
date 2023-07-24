@@ -37,6 +37,7 @@ from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.subscribed_method_utils import SubscribedMethodUtils
 from aws_wrapper.writer_failover_handler import (WriterFailoverHandler,
@@ -51,10 +52,10 @@ class FailoverMode(Enum):
     READER_OR_WRITER = auto()
 
     @staticmethod
-    def get_failover_mode(properties: Properties) -> FailoverMode:
+    def get_failover_mode(properties: Properties) -> Optional[FailoverMode]:
         mode = WrapperProperties.FAILOVER_MODE.get(properties)
         if mode is None:
-            return FailoverMode.STRICT_WRITER
+            return None
         else:
             mode = mode.lower()
             # TODO: reconsider the exact format we expect from the user here
@@ -80,6 +81,7 @@ class FailoverPlugin(Plugin):
         self._reader_failover_handler: ReaderFailoverHandler
         self._writer_failover_handler: WriterFailoverHandler
         self._enable_failover_setting = WrapperProperties.ENABLE_FAILOVER.get_bool(self._properties)
+        self._rds_url_type: RdsUrlType = RdsUrlType.OTHER
         self._failover_mode: FailoverMode
         self._is_in_transaction: bool = False
         self._is_closed: bool = False
@@ -105,8 +107,19 @@ class FailoverPlugin(Plugin):
 
         init_host_provider_func()
 
-        self._failover_mode = FailoverMode.get_failover_mode(self._properties)
+        host: str = self._properties["host"]
+        self._rds_url_type = self._rds_utils.identify_rds_type(host)
+        failover_mode = FailoverMode.get_failover_mode(self._properties)
+        if failover_mode is None:
+            if self._rds_url_type.is_rds_cluster:
+                if self._rds_url_type == RdsUrlType.RDS_READER_CLUSTER:
+                    failover_mode = FailoverMode.READER_OR_WRITER
+                else:
+                    failover_mode = FailoverMode.STRICT_WRITER
+            else:
+                failover_mode = FailoverMode.STRICT_WRITER
 
+        self._failover_mode = failover_mode
         logger.debug(Messages.get_formatted("Failover.ParameterValue", "FAILOVER_MODE", self._failover_mode))
 
     @property
@@ -330,6 +343,7 @@ class FailoverPlugin(Plugin):
 
     def _is_failover_enabled(self) -> bool:
         return self._enable_failover_setting and \
+            self._rds_url_type != RdsUrlType.RDS_PROXY and \
             self._plugin_service.hosts is not None and \
             len(self._plugin_service.hosts) > 0
 
