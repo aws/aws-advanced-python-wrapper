@@ -81,12 +81,12 @@ class FailoverPlugin(Plugin):
         self._reader_failover_handler: ReaderFailoverHandler
         self._writer_failover_handler: WriterFailoverHandler
         self._enable_failover_setting = WrapperProperties.ENABLE_FAILOVER.get_bool(self._properties)
-        self._rds_url_type: RdsUrlType = RdsUrlType.OTHER
         self._failover_mode: FailoverMode
         self._is_in_transaction: bool = False
         self._is_closed: bool = False
         self._closed_explicitly: bool = False
         self._rds_utils = RdsUtils()
+        self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
 
     def init_host_provider(
             self,
@@ -106,9 +106,6 @@ class FailoverPlugin(Plugin):
         self._writer_failover_handler = WriterFailoverHandlerImpl()
 
         init_host_provider_func()
-
-        if "host" in self._properties:
-            self._rds_url_type = self._rds_utils.identify_rds_type(self._properties["host"])
 
         failover_mode = FailoverMode.get_failover_mode(self._properties)
         if failover_mode is None:

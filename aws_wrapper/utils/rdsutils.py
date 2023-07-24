@@ -179,8 +179,8 @@ class RdsUtils:
     def is_dns_pattern_valid(self, host: str) -> bool:
         return "?" in host
 
-    def identify_rds_type(self, host: str) -> RdsUrlType:
-        if not host or not host.strip():
+    def identify_rds_type(self, host: Optional[str]) -> RdsUrlType:
+        if host is None or not host.strip():
             return RdsUrlType.OTHER
 
         if self.is_ipv4(host) or self.is_ipv6(host):
