@@ -107,8 +107,9 @@ class FailoverPlugin(Plugin):
 
         init_host_provider_func()
 
-        host: str = self._properties["host"]
-        self._rds_url_type = self._rds_utils.identify_rds_type(host)
+        if "host" in self._properties:
+            self._rds_url_type = self._rds_utils.identify_rds_type(self._properties["host"])
+
         failover_mode = FailoverMode.get_failover_mode(self._properties)
         if failover_mode is None:
             if self._rds_url_type.is_rds_cluster:
