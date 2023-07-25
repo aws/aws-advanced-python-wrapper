@@ -79,9 +79,6 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         return AwsWrapperConnection(plugin_service, plugin_manager, conn)
 
     def close(self) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_conn.close()
-
         self._plugin_manager.execute(self._target_conn, "Connection.close",
                                      lambda: self._target_conn.close())
 
@@ -90,51 +87,30 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         return AwsWrapperCursor(self, self._plugin_manager, _cursor)
 
     def commit(self) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_conn.commit()
-
         self._plugin_manager.execute(self._target_conn, "Connection.commit",
                                      lambda: self._target_conn.commit())
 
     def rollback(self) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_conn.rollback()
-
         self._plugin_manager.execute(self._target_conn, "Connection.rollback",
                                      lambda: self._target_conn.rollback())
 
     def tpc_begin(self, xid: Any) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_conn.tpc_begin(xid)
-
         self._plugin_manager.execute(self._target_conn, "Connection.tpc_begin",
                                      lambda: self._target_conn.tpc_begin(xid))
 
     def tpc_prepare(self) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_conn.tpc_prepare()
-
         self._plugin_manager.execute(self._target_conn, "Connection.tpc_prepare",
                                      lambda: self._target_conn.tpc_prepare())
 
     def tpc_commit(self, xid: Any = None) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_conn.tpc_commit(xid)
-
         self._plugin_manager.execute(self._target_conn, "Connection.tpc_commit",
                                      lambda: self._target_conn.tpc_commit(xid))
 
     def tpc_rollback(self, xid: Any = None) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_conn.tpc_rollback(xid)
-
         self._plugin_manager.execute(self._target_conn, "Connection.tpc_rollback",
                                      lambda: self._target_conn.tpc_rollback(xid))
 
     def tpc_recover(self) -> Any:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_conn.tpc_recover()
-
         return self._plugin_manager.execute(self._target_conn, "Connection.tpc_recover",
                                             lambda: self._target_conn.tpc_recover())
 
@@ -150,9 +126,6 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_conn.close()
-
         self._plugin_manager.execute(self._target_conn, "Connection.close",
                                      lambda: self._target_conn.close())
 
@@ -183,16 +156,10 @@ class AwsWrapperCursor(Cursor):
         return self._target_cursor.arraysize
 
     def close(self) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_cursor.close()
-
         self._plugin_manager.execute(self._target_cursor, "Cursor.close",
                                      lambda: self._target_cursor.close())
 
     def callproc(self, **kwargs: Union[None, int, str]):
-        if self._plugin_manager.num_plugins == 0:
-            return self._target_cursor.callproc(**kwargs)
-
         return self._plugin_manager.execute(self._target_cursor, "Cursor.callproc",
                                             lambda: self._target_cursor.callproc(**kwargs))
 
@@ -201,50 +168,30 @@ class AwsWrapperCursor(Cursor):
             query: str,
             **kwargs: Union[None, int, str]
     ) -> "AwsWrapperCursor":
-        if self._plugin_manager.num_plugins == 0:
-            self._target_cursor = self._target_cursor.execute(query, **kwargs)
-            return self
-
-        result = self._plugin_manager.execute(self._target_cursor, "Cursor.execute",
-                                              lambda: self._target_cursor.execute(query, **kwargs), query, kwargs)
-        return result
+        return self._plugin_manager.execute(self._target_cursor, "Cursor.execute",
+                                            lambda: self._target_cursor.execute(query, **kwargs), query, kwargs)
 
     def executemany(
             self,
             query: str,
             **kwargs: Union[None, int, str]
     ) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            self._target_cursor.executemany(query, **kwargs)
-
         self._plugin_manager.execute(self._target_cursor, "Cursor.executemany",
                                      lambda: self._target_cursor.executemany(query, **kwargs))
 
     def nextset(self) -> bool:
-        if self._plugin_manager.num_plugins == 0:
-            return self._target_cursor.nextset()
-
         return self._plugin_manager.execute(self._target_cursor, "Cursor.nextset",
                                             lambda: self._target_cursor.nextset())
 
     def fetchone(self) -> Any:
-        if self._plugin_manager.num_plugins == 0:
-            return self._target_cursor.fetchone()
-
         return self._plugin_manager.execute(self._target_cursor, "Cursor.fetchone",
                                             lambda: self._target_cursor.fetchone())
 
     def fetchmany(self, size: int = 0) -> List[Any]:
-        if self._plugin_manager.num_plugins == 0:
-            return self._target_cursor.fetchmany(size)
-
         return self._plugin_manager.execute(self._target_cursor, "Cursor.fetchmany",
                                             lambda: self._target_cursor.fetchmany(size))
 
     def fetchall(self) -> List[Any]:
-        if self._plugin_manager.num_plugins == 0:
-            return self._target_cursor.fetchall()
-
         return self._plugin_manager.execute(self._target_cursor, "Cursor.fetchall",
                                             lambda: self._target_cursor.fetchall())
 
@@ -252,16 +199,10 @@ class AwsWrapperCursor(Cursor):
         return self._target_cursor.__iter__()
 
     def setinputsizes(self, sizes: Any) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            return self._target_cursor.setinputsizes(sizes)
-
         return self._plugin_manager.execute(self._target_cursor, "Cursor.setinputsizes",
                                             lambda: self._target_cursor.setinputsizes(sizes))
 
     def setoutputsize(self, size: Any, column: Optional[int] = None) -> None:
-        if self._plugin_manager.num_plugins == 0:
-            return self._target_cursor.setoutputsize(size, column)
-
         return self._plugin_manager.execute(self._target_cursor, "Cursor.setoutputsize",
                                             lambda: self._target_cursor.setoutputsize(size, column))
 
