@@ -25,6 +25,8 @@ from aws_wrapper.plugin_service import (PluginManager, PluginService,
                                         PluginServiceManagerContainer)
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
+from aws_wrapper.telemetry import TelemetryContext, TelemetryFactory, TelemetryTraceLevel
+
 
 logger = getLogger(__name__)
 
@@ -57,9 +59,12 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
         logger.debug(PropertiesUtils.log_properties(props, "Connection Properties: "))
 
+
+        telemetry_factory = TelemetryFactory.get_telemetry_factory()
+
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
         plugin_service = PluginServiceImpl(container, props)
-        plugin_manager: PluginManager = PluginManager(container, props, DriverConnectionProvider(target_func))
+        plugin_manager: PluginManager = PluginManager(container, props, DriverConnectionProvider(target_func), telemetry_factory=telemetry_factory)
         plugin_service.host_list_provider = AuroraHostListProvider(plugin_service, props)
 
         plugin_manager.init_host_provider(props, plugin_service)

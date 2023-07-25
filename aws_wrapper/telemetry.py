@@ -87,10 +87,12 @@ class OpenTelemetryFactory(TelemetryFactory):
 
     def open_telemetry_context(self, name: str, trace_level: TelemetryTraceLevel) -> TelemetryContext:
         if trace_level == TelemetryTraceLevel.TOP_LEVEL or trace_level == TelemetryTraceLevel.FORCE_TOP_LEVEL:
+            print("TEST - TOP LEVEL") 
             span = self._tracer.start_span(name, context=self._root_context)
             return OpenTelemetryContext(span)
         elif trace_level == TelemetryTraceLevel.NESTED:
-            span = self._tracer.start_span(name)
+            print("TEST - current context - " + str(context.get_current()))
+            span = self._tracer.start_span(name, context=context.get_current())
             return OpenTelemetryContext(span)
         else:
             return NullTelemetryContext()
@@ -116,10 +118,11 @@ class NullTelemetryContext(TelemetryContext):
 class OpenTelemetryContext(TelemetryContext):
     def __init__(self, span: Span):
         self._span = span
-        trace.use_span(span)
+        self._open_telem_context_manager = trace.use_span(span, end_on_exit=True)
+        self._open_telem_context_manager.__enter__()
 
     def close_context(self):
-        self._span.end()
+        self._open_telem_context_manager.__exit__(None, None, None)
 
     def set_success(self, success: bool):
         self._span.set_status(status=(StatusCode.OK if success else StatusCode.ERROR))

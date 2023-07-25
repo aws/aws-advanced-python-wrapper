@@ -53,6 +53,9 @@ from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
+from aws_wrapper.telemetry import TelemetryContext, TelemetryFactory, TelemetryTraceLevel
+
+
 logger = getLogger(__name__)
 
 
@@ -392,12 +395,15 @@ class PluginManager(CanReleaseResources):
             self,
             container: PluginServiceManagerContainer,
             props: Properties,
-            default_conn_provider: ConnectionProvider):
+            default_conn_provider: ConnectionProvider,
+            telemetry_factory: TelemetryFactory):
         self._props: Properties = props
         self._plugins: List[Plugin] = []
         self._function_cache: Dict[str, Callable] = {}
         self._container = container
         self._container.plugin_manager = self
+
+        self.telemetry_factory = telemetry_factory
 
         requested_plugins = WrapperProperties.PLUGINS.get(props)
 
@@ -457,7 +463,7 @@ class PluginManager(CanReleaseResources):
                     pipeline_func = self._create_base_pipeline_func(plugin)
                 else:
                     pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
-
+                
         if pipeline_func is None:
             raise AwsWrapperError(Messages.get("Plugins.NonePipeline"))
         else:
@@ -474,13 +480,22 @@ class PluginManager(CanReleaseResources):
         return lambda plugin_func, target_driver_func: \
             plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func))
 
+    def _execute_with_telemetry(self, plugin_name: str, func: Callable, *args, **kwargs):
+        with self.telemetry_factory.open_telemetry_context(plugin_name, trace_level=TelemetryTraceLevel.NESTED):
+            return func(*args, **kwargs)
+    
+    def _wrap_func_with_telemetry(self, plugin: Plugin, func: Callable):
+        plugin_name = plugin.__class__.__name__
+        return lambda *args, **kwargs: self._execute_with_telemetry(plugin_name, func, *args, **kwargs)
+
     def connect(self, host_info: Optional[HostInfo], props: Properties, is_initial: bool) \
             -> Connection:
-        return self._execute_with_subscribed_plugins(
-            PluginManager._CONNECT_METHOD,
-            lambda plugin, func: plugin.connect(host_info, props, is_initial, func),
-            # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
-            lambda: None)
+        with self.telemetry_factory.open_telemetry_context("aws_wrapper.plugin_service.connect", TelemetryTraceLevel.TOP_LEVEL):
+            return self._execute_with_subscribed_plugins(
+                PluginManager._CONNECT_METHOD,
+                lambda plugin, func: self._wrap_func_with_telemetry(plugin, plugin.connect)(host_info, props, is_initial, func),
+                # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
+                lambda: None)
 
     def force_connect(self, host_info: HostInfo, props: Properties, is_initial: bool) \
             -> Connection:
