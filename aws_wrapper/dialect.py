@@ -27,7 +27,7 @@ from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
 from .exceptions import ExceptionHandler, PgExceptionHandler
-from .utils.cache_map import CacheMap
+from .utils.cache_dict import CacheDict
 from .utils.messages import Messages
 
 logger = getLogger(__name__)
@@ -446,7 +446,7 @@ class DialectManager(DialectProvider):
         self._dialect: Optional[Dialect] = None
         self._custom_dialect: Optional[Dialect] = custom_dialect if custom_dialect else None
         self._dialect_code: Optional[DialectCode] = None
-        self._known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
+        self._known_endpoint_dialects: CacheDict[str, DialectCode] = CacheDict()
         self._known_dialects_by_code: Dict[DialectCode, Dialect] = {DialectCode.MYSQL: MysqlDialect(),
                                                                     DialectCode.PG: PgDialect(),
                                                                     DialectCode.MARIADB: MariaDbDialect(),

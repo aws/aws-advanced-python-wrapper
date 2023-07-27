@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 from typing import Dict, Optional, Union
 
 from aws_wrapper.errors import AwsWrapperError
@@ -19,7 +21,7 @@ from aws_wrapper.utils.messages import Messages
 
 
 class Properties(Dict[str, str]):
-    ...
+    pass
 
 
 class WrapperProperty:

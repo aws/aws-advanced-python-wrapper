@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from queue import Empty, Queue
 from typing import Optional
 
 
@@ -35,3 +36,30 @@ class Utils:
         msg = "\n\t".join(["<null>" if not host else str(host) for host in hosts])
         prefix = "" if not message_prefix else message_prefix + " "
         return prefix + f"Topology: {{\n\t{msg}}}"
+
+
+class SubscribedMethodUtils:
+    # TODO: check for missing network methods
+    NETWORK_BOUND_METHODS = {
+        "Connection.commit",
+        "Connection.rollback",
+        "Cursor.callproc",
+        "Cursor.execute",
+        "Cursor.executemany"
+    }
+
+
+class QueueUtils:
+    @staticmethod
+    def get(q: Queue):
+        try:
+            return q.get_nowait()
+        except Empty:
+            return None
+
+    @staticmethod
+    def clear(q: Queue):
+        with q.mutex:
+            q.queue.clear()
+            q.all_tasks_done.notify_all()
+            q.unfinished_tasks = 0

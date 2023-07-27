@@ -123,7 +123,7 @@ def test_execute_monitoring_enabled(mocker, plugin, mock_monitor_service, mock_e
     mock_execute_func.assert_called_once()
 
 
-def test_execute_cleanup_error_checking_connection_status(
+def test_execute_cleanup__error_checking_connection_status(
         mocker, plugin, mock_monitor_service, mock_context, mock_conn, mock_dialect):
     mock_context.is_host_unavailable.return_value = True
     expected_exception = Error("Error checking connection status")
@@ -134,7 +134,7 @@ def test_execute_cleanup_error_checking_connection_status(
     assert expected_exception == exc_info.value
 
 
-def test_execute_cleanup_connection_not_closed(
+def test_execute_cleanup__connection_not_closed(
         mocker, plugin, mock_monitor_service, mock_context, mock_conn, mock_dialect):
     mock_context.is_host_unavailable.return_value = True
     mock_dialect.is_closed.return_value = False
@@ -166,11 +166,11 @@ def test_notify_host_list_changed(
 
     mock_plugin_service.current_host_info = mock_host_info1
     plugin.notify_host_list_changed(host_events)
-    mock_monitor_service.stop_monitoring_host_connections.assert_called_with(aliases1)
+    mock_monitor_service.stop_monitoring_host.assert_called_with(aliases1)
 
     mock_plugin_service.current_host_info = mock_host_info2
     plugin.notify_host_list_changed(host_events)
-    mock_monitor_service.stop_monitoring_host_connections.assert_called_with(aliases2)
+    mock_monitor_service.stop_monitoring_host.assert_called_with(aliases2)
 
 
 def test_get_monitoring_host_info_errors(mocker, plugin, mock_plugin_service):
