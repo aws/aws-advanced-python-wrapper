@@ -12,8 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
+from aws_wrapper.utils.atomic import AtomicInt
 from aws_wrapper.utils.concurrent import ConcurrentDict
 
 
@@ -30,6 +33,21 @@ def test_put_if_absent(test_dict):
     assert "a" == test_dict.get(1)
 
 
+def test_put_if_absent__multithreaded(test_dict):
+    n = AtomicInt()
+    num_threads = 50
+
+    def put_if_absent_thread(atomic_int: AtomicInt):
+        test_dict.put_if_absent("n", atomic_int.increment_and_get())
+
+    with ThreadPoolExecutor(num_threads) as executor:
+        for _ in range(num_threads):
+            executor.submit(put_if_absent_thread, n)
+
+    assert 1 == test_dict.get("n")
+    assert num_threads == n.get()
+
+
 def test_compute_if_absent(test_dict):
     assert test_dict.compute_if_absent(1, lambda k: None) is None
     assert test_dict.get(1) is None
@@ -39,6 +57,21 @@ def test_compute_if_absent(test_dict):
 
     assert "a" == test_dict.compute_if_absent(1, lambda k: "b")
     assert "a" == test_dict.get(1)
+
+
+def test_compute_if_absent__multithreaded(test_dict):
+    n = AtomicInt()
+    num_threads = 50
+
+    def compute_if_absent_thread(atomic_int: AtomicInt):
+        test_dict.compute_if_absent("n", lambda _: atomic_int.increment_and_get())
+
+    with ThreadPoolExecutor(num_threads) as executor:
+        for _ in range(num_threads):
+            executor.submit(compute_if_absent_thread, n)
+
+    assert 1 == test_dict.get("n")
+    assert 1 == n.get()
 
 
 def test_compute_if_present(test_dict):
@@ -53,6 +86,22 @@ def test_compute_if_present(test_dict):
     assert "a" == test_dict.get(1)
     assert "b" == test_dict.compute_if_present(1, lambda k, v: "b")
     assert "b" == test_dict.get(1)
+
+
+def test_compute_if_present__multithreaded(test_dict):
+    n = AtomicInt()
+    num_threads = 50
+    test_dict.put_if_absent("n", 0)
+
+    def compute_if_present_thread(atomic_int: AtomicInt):
+        test_dict.compute_if_present("n", lambda _, __: atomic_int.increment_and_get())
+
+    with ThreadPoolExecutor(num_threads) as executor:
+        for _ in range(num_threads):
+            executor.submit(compute_if_present_thread, n)
+
+    assert num_threads == test_dict.get("n")
+    assert num_threads == n.get()
 
 
 def test_clear(test_dict):
