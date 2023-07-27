@@ -21,9 +21,3 @@ class AwsWrapperError(Error):
 
 class FailoverError(AwsWrapperError):
     __module__ = "aws_wrapper"
-
-
-def wrap_exception(target: type, ex: Exception):
-    if target is None or isinstance(ex, target):
-        raise ex
-    raise target from ex

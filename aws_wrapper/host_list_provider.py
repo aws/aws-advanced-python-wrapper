@@ -171,12 +171,10 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     self._is_primary_cluster_id = cluster_id_suggestion.is_primary_cluster_id
                 else:
                     cluster_url = self._rds_utils.get_rds_cluster_host_url(self._initial_host_info.url)
-                    if not cluster_url:
-                        return
-
-                    self._cluster_id = cluster_url
-                    self._is_primary_cluster_id = True
-                    self._is_primary_cluster_id_cache.put(self._cluster_id, True, self._suggested_cluster_id_refresh_ns)
+                    if cluster_url is not None:
+                        self._cluster_id = cluster_url
+                        self._is_primary_cluster_id = True
+                        self._is_primary_cluster_id_cache.put(self._cluster_id, True, self._suggested_cluster_id_refresh_ns)
 
         self._is_initialized = True
 

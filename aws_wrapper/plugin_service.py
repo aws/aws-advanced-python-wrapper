@@ -38,6 +38,7 @@ from aws_wrapper.dialect import (Dialect, DialectManager,
 from aws_wrapper.dummy_plugin import DummyPluginFactory
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
+from aws_wrapper.failover_plugin import FailoverPluginFactory
 from aws_wrapper.host_list_provider import (AuroraHostListPluginFactory,
                                             ConnectionStringHostListProvider,
                                             HostListProvider,
@@ -177,7 +178,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
         self._dialect_provider = DialectManager()
-        self._dialect = DialectManager().get_dialect(props)
+        self._dialect = self._dialect_provider.get_dialect(props)
 
     @property
     def hosts(self) -> List[HostInfo]:
@@ -396,7 +397,8 @@ class PluginManager(CanReleaseResources):
         "aws_secrets_manager": AwsSecretsManagerPluginFactory,
         "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
         "aurora_host_list": AuroraHostListPluginFactory,
-        "host_monitoring": HostMonitoringPluginFactory
+        "host_monitoring": HostMonitoringPluginFactory,
+        "failover": FailoverPluginFactory
     }
 
     def __init__(

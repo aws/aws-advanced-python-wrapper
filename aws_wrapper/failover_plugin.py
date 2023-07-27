@@ -21,19 +21,21 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
-from enum import Enum, auto
 from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from aws_wrapper.errors import AwsWrapperError, wrap_exception
+from psycopg import OperationalError
+
+from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
                                             HostListProviderService)
-from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.pep249 import (Error, FailoverSuccessError,
                                 TransactionResolutionUnknownError)
-from aws_wrapper.plugin import Plugin
+from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)
+from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
@@ -44,27 +46,6 @@ from aws_wrapper.writer_failover_handler import (WriterFailoverHandler,
                                                  WriterFailoverHandlerImpl)
 
 logger = getLogger(__name__)
-
-
-class FailoverMode(Enum):
-    STRICT_WRITER = auto()
-    STRICT_READER = auto()
-    READER_OR_WRITER = auto()
-
-    @staticmethod
-    def get_failover_mode(properties: Properties) -> Optional[FailoverMode]:
-        mode = WrapperProperties.FAILOVER_MODE.get(properties)
-        if mode is None:
-            return None
-        else:
-            mode = mode.lower()
-            # TODO: reconsider the exact format we expect from the user here
-            if mode == "strict_writer":
-                return FailoverMode.STRICT_WRITER
-            elif mode == "strict_reader":
-                return FailoverMode.STRICT_READER
-            else:
-                return FailoverMode.READER_OR_WRITER
 
 
 class FailoverPlugin(Plugin):
@@ -85,6 +66,7 @@ class FailoverPlugin(Plugin):
         self._is_in_transaction: bool = False
         self._is_closed: bool = False
         self._closed_explicitly: bool = False
+        self._last_exception: Optional[Exception] = None
         self._rds_utils = RdsUtils()
         self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
 
@@ -107,7 +89,7 @@ class FailoverPlugin(Plugin):
 
         init_host_provider_func()
 
-        failover_mode = FailoverMode.get_failover_mode(self._properties)
+        failover_mode = get_failover_mode(self._properties)
         if failover_mode is None:
             if self._rds_url_type.is_rds_cluster:
                 if self._rds_url_type == RdsUrlType.RDS_READER_CLUSTER:
@@ -129,16 +111,21 @@ class FailoverPlugin(Plugin):
             return execute_func()
 
         if self._is_closed and not self._allowed_on_closed_connection(method_name):
-            try:
-                self._invalid_invocation_on_closed_connection()
-            except Exception as ex:
-                wrap_exception(target, ex)
+            self._invalid_invocation_on_closed_connection()
 
         try:
             self._update_topology(False)
             return execute_func()
         except Exception as ex:
-            # TODO: add extra exception handling logic here as appropriate
+            logger.debug(Messages.get_formatted("Failover.DetectedException", str(ex)))
+            if self._last_exception != ex and self._should_exception_trigger_connection_switch(ex):
+                self._invalidate_current_connection()
+                if self._plugin_service.current_host_info is not None:
+                    self._plugin_service.set_availability(
+                        self._plugin_service.current_host_info.aliases, HostAvailability.NOT_AVAILABLE)
+
+                self._pick_new_connection()
+                self._last_exception = ex
             raise ex
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
@@ -240,7 +227,7 @@ class FailoverPlugin(Plugin):
             if result.connection is not None and result.new_host is not None:
                 self._plugin_service.set_current_connection(result.connection, result.new_host)
 
-        if self._plugin_service.current_host_info is not None:
+        if self._plugin_service.current_host_info is not None and old_aliases is not None and len(old_aliases) > 0:
             self._plugin_service.current_host_info.remove_alias(old_aliases)
 
         self._update_topology(True)
@@ -352,6 +339,18 @@ class FailoverPlugin(Plugin):
 
         return self._get_writer(topology)
 
+    def _should_exception_trigger_connection_switch(self, ex: Exception) -> bool:
+        if not self._is_failover_enabled():
+            logger.debug(Messages.get_formatted("Failover.FailoverDisabled"))
+            return False
+
+        if isinstance(ex, OperationalError):
+            return True
+
+        # TODO: SQL State logic here
+
+        return self._plugin_service.is_network_exception(ex)
+
     @staticmethod
     def _get_writer(hosts: List[HostInfo]) -> Optional[HostInfo]:
         for host in hosts:
@@ -383,3 +382,8 @@ class FailoverPlugin(Plugin):
             method_name == "Connection.getCatalog" or \
             method_name == "Connection.getSchema" or \
             method_name == "Connection.getTransactionIsolation"
+
+
+class FailoverPluginFactory(PluginFactory):
+    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+        return FailoverPlugin(plugin_service, props)
