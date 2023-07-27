@@ -21,19 +21,19 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
-from enum import Enum, auto
 from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from aws_wrapper.errors import AwsWrapperError, wrap_exception
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
                                             HostListProviderService)
-from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.pep249 import (Error, FailoverSuccessError,
                                 TransactionResolutionUnknownError)
-from aws_wrapper.plugin import Plugin
+from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)
+from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
@@ -44,27 +44,6 @@ from aws_wrapper.writer_failover_handler import (WriterFailoverHandler,
                                                  WriterFailoverHandlerImpl)
 
 logger = getLogger(__name__)
-
-
-class FailoverMode(Enum):
-    STRICT_WRITER = auto()
-    STRICT_READER = auto()
-    READER_OR_WRITER = auto()
-
-    @staticmethod
-    def get_failover_mode(properties: Properties) -> Optional[FailoverMode]:
-        mode = WrapperProperties.FAILOVER_MODE.get(properties)
-        if mode is None:
-            return None
-        else:
-            mode = mode.lower()
-            # TODO: reconsider the exact format we expect from the user here
-            if mode == "strict_writer":
-                return FailoverMode.STRICT_WRITER
-            elif mode == "strict_reader":
-                return FailoverMode.STRICT_READER
-            else:
-                return FailoverMode.READER_OR_WRITER
 
 
 class FailoverPlugin(Plugin):
@@ -107,7 +86,7 @@ class FailoverPlugin(Plugin):
 
         init_host_provider_func()
 
-        failover_mode = FailoverMode.get_failover_mode(self._properties)
+        failover_mode = get_failover_mode(self._properties)
         if failover_mode is None:
             if self._rds_url_type.is_rds_cluster:
                 if self._rds_url_type == RdsUrlType.RDS_READER_CLUSTER:
@@ -139,7 +118,13 @@ class FailoverPlugin(Plugin):
             return execute_func()
         except Exception as ex:
             # TODO: add extra exception handling logic here as appropriate
-            raise ex
+            self._invalidate_current_connection()
+            self._plugin_service.set_availability(self._plugin_service.current_host_info.aliases, HostAvailability.NOT_AVAILABLE)
+
+            try:
+                self._pick_new_connection()
+            except Exception as e:
+                raise e
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         if not self._enable_failover_setting:
@@ -240,7 +225,7 @@ class FailoverPlugin(Plugin):
             if result.connection is not None and result.new_host is not None:
                 self._plugin_service.set_current_connection(result.connection, result.new_host)
 
-        if self._plugin_service.current_host_info is not None:
+        if self._plugin_service.current_host_info is not None and old_aliases is not None and len(old_aliases) > 0:
             self._plugin_service.current_host_info.remove_alias(old_aliases)
 
         self._update_topology(True)
@@ -383,3 +368,8 @@ class FailoverPlugin(Plugin):
             method_name == "Connection.getCatalog" or \
             method_name == "Connection.getSchema" or \
             method_name == "Connection.getTransactionIsolation"
+
+
+class FailoverPluginFactory(PluginFactory):
+    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+        return FailoverPlugin(plugin_service, props)

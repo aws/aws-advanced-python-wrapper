@@ -32,6 +32,7 @@ from typing import List, Optional
 
 from aws_wrapper.failover_result import ReaderFailoverResult
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
 from aws_wrapper.utils.messages import Messages
 
 logger = getLogger(__name__)
@@ -55,13 +56,15 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             plugin_service: PluginService,
             properties: Properties,
             max_timeout_sec: int = 60,
-            timeout_sec: int = 30,
-            strict_reader_failover: bool = False):
+            timeout_sec: int = 30):
         self._plugin_service = plugin_service
         self._properties = properties
         self._max_failover_timeout_sec = max_timeout_sec
         self._timeout_sec = timeout_sec
-        self._strict_reader_failover = strict_reader_failover
+
+        mode = get_failover_mode(self._properties)
+        self._strict_reader_failover = True if mode is not None and mode == FailoverMode.STRICT_READER else False
+
         self._timeout_event = Event()
 
     @property
