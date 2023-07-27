@@ -49,7 +49,7 @@ from aws_wrapper.host_monitoring_plugin import HostMonitoringPluginFactory
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_wrapper.plugin import CanReleaseResources
-from aws_wrapper.utils.cache_map import CacheMap
+from aws_wrapper.utils.cache_dict import CacheDict
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
@@ -168,7 +168,7 @@ class PluginService(ExceptionHandler, Protocol):
 
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
-    _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
+    _host_availability_expiring_cache: CacheDict[str, HostAvailability] = CacheDict()
 
     def __init__(
             self,

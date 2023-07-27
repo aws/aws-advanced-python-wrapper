@@ -12,25 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from logging import DEBUG, Handler, getLogger
+import pydevd_pycharm
+import pytest
+import sys
 
-from .utils.utils import LogUtils
-from .wrapper import AwsWrapperConnection
+pydevd_pycharm.settrace('host.docker.internal', port=5005, stdoutToServer=True, stderrToServer=True)
 
-# PEP249 compliance
-connect = AwsWrapperConnection.connect
-apilevel = "2.0"
-threadsafety = 2
-paramstyle = "pyformat"
-
-
-def set_logger(name='aws_wrapper', level=DEBUG, format_string=None):
-    LogUtils.setup_logger(getLogger(name), level, format_string)
-
-
-class NullHandler(Handler):
-    def emit(self, record):
-        pass
-
-
-getLogger("aws_wrapper").addHandler(NullHandler())
+if __name__ == "__main__":
+    test_filter = sys.argv[1]
+    report_setting = sys.argv[2]
+    sys.exit(pytest.main([report_setting, "-k", test_filter, "-p", "no:logging", "--capture=tee-sys", "./tests/integration"]))

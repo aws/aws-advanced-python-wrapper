@@ -17,6 +17,7 @@
 package integration.host;
 
 import integration.TestEnvironmentRequest;
+import integration.host.TestEnvironmentConfig;
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -26,16 +27,16 @@ public class TestRunner {
   @TestTemplate
   public void runTests(TestEnvironmentRequest testEnvironmentRequest) throws Exception {
 
-    try (final TestEnvironment env = TestEnvironment.build(testEnvironmentRequest)) {
-      env.runTests("./tests/integration");
+    try (final TestEnvironmentConfig config = TestEnvironmentConfig.build(testEnvironmentRequest)) {
+      config.runTests("./tests/integration");
     }
   }
 
   @TestTemplate
   public void debugTests(TestEnvironmentRequest testEnvironmentRequest) throws Exception {
 
-    try (final TestEnvironment env = TestEnvironment.build(testEnvironmentRequest)) {
-      env.debugTests("./tests/integration");
-    }
+     try (final TestEnvironmentConfig config = TestEnvironmentConfig.build(testEnvironmentRequest)) {
+       config.debugTests("./tests/integration");
+     }
   }
 }

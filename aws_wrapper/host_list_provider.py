@@ -32,13 +32,13 @@ from aws_wrapper.errors import AwsWrapperError, QueryTimeoutError
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.plugin import Plugin, PluginFactory
-from aws_wrapper.utils.cache_map import CacheMap
+from aws_wrapper.utils.cache_dict import CacheDict
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.timeout import timeout
-from aws_wrapper.utils.utils import Utils
+from aws_wrapper.utils.utils import LogUtils
 
 logger = getLogger(__name__)
 
@@ -106,14 +106,14 @@ class HostListProviderService(Protocol):
 
 
 class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
-    _topology_cache: CacheMap[str, List[HostInfo]] = CacheMap()
+    _topology_cache: CacheDict[str, List[HostInfo]] = CacheDict()
     # Maps cluster IDs to a boolean representing whether they are a primary cluster ID or not. A primary cluster ID is a
     # cluster ID that is equivalent to a cluster URL. Topology info is shared between AuroraHostListProviders that have
     # the same cluster ID.
-    _is_primary_cluster_id_cache: CacheMap[str, bool] = CacheMap()
+    _is_primary_cluster_id_cache: CacheDict[str, bool] = CacheDict()
     # Maps existing cluster IDs to suggested cluster IDs. This is used to update non-primary cluster IDs to primary
     # cluster IDs so that connections to the same clusters can share topology info.
-    _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
+    _cluster_ids_to_update: CacheDict[str, str] = CacheDict()
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
@@ -344,7 +344,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._initialize()
         connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, False)
-        logger.debug(Utils.log_topology(topology.hosts))
+        logger.debug(LogUtils.log_topology(topology.hosts))
         self._hosts = topology.hosts
         return tuple(self._hosts)
 
@@ -352,7 +352,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._initialize()
         connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, True)
-        logger.debug(Utils.log_topology(topology.hosts))
+        logger.debug(LogUtils.log_topology(topology.hosts))
         self._hosts = topology.hosts
         return tuple(self._hosts)
 

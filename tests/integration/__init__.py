@@ -11,3 +11,14 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+from logging import DEBUG, getLogger
+
+from aws_wrapper.utils.utils import LogUtils
+
+
+def set_logger(name=__name__, level=DEBUG, format_string=None):
+    LogUtils.setup_logger(getLogger(name), level, format_string)
+
+
+set_logger()

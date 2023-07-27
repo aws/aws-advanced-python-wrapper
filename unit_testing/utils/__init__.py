@@ -11,26 +11,3 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
-from logging import DEBUG, Handler, getLogger
-
-from .utils.utils import LogUtils
-from .wrapper import AwsWrapperConnection
-
-# PEP249 compliance
-connect = AwsWrapperConnection.connect
-apilevel = "2.0"
-threadsafety = 2
-paramstyle = "pyformat"
-
-
-def set_logger(name='aws_wrapper', level=DEBUG, format_string=None):
-    LogUtils.setup_logger(getLogger(name), level, format_string)
-
-
-class NullHandler(Handler):
-    def emit(self, record):
-        pass
-
-
-getLogger("aws_wrapper").addHandler(NullHandler())

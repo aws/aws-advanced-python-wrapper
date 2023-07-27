@@ -42,6 +42,14 @@ class TestEnvironment:
         self._proxies = None
         self._current_driver = None
 
+    def __repr__(self):
+        deployment = self._info.get_request().get_database_engine_deployment()
+        engine = self._info.get_request().get_database_engine()
+        num_instances = self._info.get_request().get_num_of_instances()
+        python_version = self._info.get_request().get_target_python_version()
+        return (f"TestEnvironment[deployment={deployment},engine={engine},instances={num_instances},"
+                f"python_version={python_version},driver={self._current_driver}]")
+
     @staticmethod
     def get_current() -> "TestEnvironment":
         if not hasattr(TestEnvironment, "_env") or TestEnvironment._env is None:

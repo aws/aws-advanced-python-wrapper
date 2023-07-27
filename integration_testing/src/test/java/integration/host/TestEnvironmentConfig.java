@@ -41,9 +41,9 @@ import org.testcontainers.shaded.org.apache.commons.lang3.NotImplementedExceptio
 import integration.util.StringUtils;
 import software.amazon.awssdk.services.rds.model.DBCluster;
 
-public class TestEnvironment implements AutoCloseable {
+public class TestEnvironmentConfig implements AutoCloseable {
 
-  private static final Logger LOGGER = Logger.getLogger(TestEnvironment.class.getName());
+  private static final Logger LOGGER = Logger.getLogger(TestEnvironmentConfig.class.getName());
 
   private static final String DATABASE_CONTAINER_NAME_PREFIX = "database-container-";
   private static final String TEST_CONTAINER_NAME = "test-container";
@@ -74,12 +74,12 @@ public class TestEnvironment implements AutoCloseable {
 
   private AuroraTestUtility auroraUtil;
 
-  private TestEnvironment(TestEnvironmentRequest request) {
+  private TestEnvironmentConfig(TestEnvironmentRequest request) {
     this.info.setRequest(request);
   }
 
-  public static TestEnvironment build(TestEnvironmentRequest request) {
-    TestEnvironment env = new TestEnvironment(request);
+  public static TestEnvironmentConfig build(TestEnvironmentRequest request) {
+    TestEnvironmentConfig env = new TestEnvironmentConfig(request);
 
     switch (request.getDatabaseEngineDeployment()) {
       case DOCKER:
@@ -118,7 +118,7 @@ public class TestEnvironment implements AutoCloseable {
     return env;
   }
 
-  private static void createDatabaseContainers(TestEnvironment env) {
+  private static void createDatabaseContainers(TestEnvironmentConfig env) {
     ContainerHelper containerHelper = new ContainerHelper();
 
     switch (env.info.getRequest().getDatabaseInstances()) {
@@ -210,7 +210,7 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static void createAuroraDbCluster(TestEnvironment env) {
+  private static void createAuroraDbCluster(TestEnvironmentConfig env) {
 
     switch (env.info.getRequest().getDatabaseInstances()) {
       case SINGLE_INSTANCE:
@@ -236,7 +236,7 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static void createAuroraDbCluster(TestEnvironment env, int numOfInstances) {
+  private static void createAuroraDbCluster(TestEnvironmentConfig env, int numOfInstances) {
 
     env.info.setAuroraRegion(
         !StringUtils.isNullOrEmpty(System.getenv("AURORA_DB_REGION"))
@@ -408,7 +408,7 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static void initDatabaseParams(TestEnvironment env) {
+  private static void initDatabaseParams(TestEnvironmentConfig env) {
     final String dbName =
         !StringUtils.isNullOrEmpty(System.getenv("DB_DATABASE_NAME"))
             ? System.getenv("DB_DATABASE_NAME")
@@ -428,7 +428,7 @@ public class TestEnvironment implements AutoCloseable {
     env.info.getDatabaseInfo().setDefaultDbName(dbName);
   }
 
-  private static void initAwsCredentials(TestEnvironment env) {
+  private static void initAwsCredentials(TestEnvironmentConfig env) {
     env.awsAccessKeyId = System.getenv("AWS_ACCESS_KEY_ID");
     env.awsSecretAccessKey = System.getenv("AWS_SECRET_ACCESS_KEY");
     env.awsSessionToken = System.getenv("AWS_SESSION_TOKEN");
@@ -452,7 +452,7 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static void createProxyContainers(TestEnvironment env) {
+  private static void createProxyContainers(TestEnvironmentConfig env) {
     ContainerHelper containerHelper = new ContainerHelper();
 
     int port = getPort(env.info.getRequest());
@@ -534,7 +534,7 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static void createTestContainer(TestEnvironment env) {
+  private static void createTestContainer(TestEnvironmentConfig env) {
     final ContainerHelper containerHelper = new ContainerHelper();
 
     env.testContainer = containerHelper.createTestContainer(
@@ -570,7 +570,7 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static void configureIamAccess(TestEnvironment env) {
+  private static void configureIamAccess(TestEnvironmentConfig env) {
 
     if (env.info.getRequest().getDatabaseEngineDeployment() != DatabaseEngineDeployment.AURORA) {
       throw new UnsupportedOperationException(
@@ -615,7 +615,7 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static String getEnvironmentInfoAsString(TestEnvironment env) {
+  private static String getEnvironmentInfoAsString(TestEnvironmentConfig env) {
     try {
       final ObjectMapper mapper = new ObjectMapper();
       return mapper.writeValueAsString(env.info);
@@ -626,12 +626,12 @@ public class TestEnvironment implements AutoCloseable {
 
   public void runTests(String folderName) throws IOException, InterruptedException {
     final ContainerHelper containerHelper = new ContainerHelper();
-    containerHelper.runTest(this.testContainer, folderName);
+    containerHelper.runTest(this.testContainer, folderName, this);
   }
 
   public void debugTests(String folderName) throws IOException, InterruptedException {
     final ContainerHelper containerHelper = new ContainerHelper();
-    containerHelper.debugTest(this.testContainer, folderName);
+    containerHelper.debugTest(this.testContainer, folderName, this);
   }
 
   @Override
@@ -668,6 +668,15 @@ public class TestEnvironment implements AutoCloseable {
       default:
         // do nothing
     }
+  }
+
+  public String getPrimaryInfo() {
+    TestEnvironmentRequest request = this.info.getRequest();
+    String deployment = request.getDatabaseEngineDeployment().toString();
+    String engine = request.getDatabaseEngine().toString();
+    String numInstances = Integer.toString(request.getNumOfInstances());
+    String pythonVersion = request.getTargetPythonVersion().toString();
+    return String.format("%s-%s-%s_instance-%s", deployment, engine, numInstances, pythonVersion);
   }
 
   private void deleteAuroraDbCluster() {

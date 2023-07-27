@@ -95,8 +95,8 @@ def pytest_runtest_setup(item):
 
 def pytest_generate_tests(metafunc):
     if "test_environment" in metafunc.fixturenames:
-        metafunc.parametrize("test_environment",
-                             [TestEnvironment.get_current()])
+        environment = TestEnvironment.get_current()
+        metafunc.parametrize("test_environment", [environment], ids=[repr(environment)])
     if "test_driver" in metafunc.fixturenames:
         allowed_drivers: List[TestDriver] = TestEnvironment.get_current().get_allowed_test_drivers()  # type: ignore
         metafunc.parametrize("test_driver", allowed_drivers)

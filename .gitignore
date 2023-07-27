@@ -36,7 +36,7 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
+# Testing / coverage reports
 htmlcov/
 .tox/
 .nox/
@@ -50,6 +50,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+tests/reports
+integration_testing/bin
 
 # Translations
 *.mo
@@ -155,6 +157,5 @@ cython_debug/
 .idea/
 .vs/
 .gradle/
-
 **/.gradle
-integration_testing/bin
+
