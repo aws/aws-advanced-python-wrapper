@@ -103,7 +103,7 @@ class FailoverPlugin(Plugin):
                 AuroraHostListProvider(self._host_list_provider_service, properties)
 
         self._reader_failover_handler = ReaderFailoverHandlerImpl(self._plugin_service, self._properties)
-        self._writer_failover_handler = WriterFailoverHandlerImpl()
+        self._writer_failover_handler = WriterFailoverHandlerImpl(self._plugin_service, self._reader_failover_handler, self._properties)
 
         init_host_provider_func()
 
