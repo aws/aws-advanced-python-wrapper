@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.utils.properties import Properties
     from aws_wrapper.pep249 import Connection
+    from aws_wrapper.reader_failover_handler import ReaderFailoverHandler
 
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -33,7 +34,6 @@ from typing import List, Optional
 from aws_wrapper.failover_result import (ReaderFailoverResult,
                                          WriterFailoverResult)
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
-from aws_wrapper.reader_failover_handler import ReaderFailoverHandler
 from aws_wrapper.utils.messages import Messages
 
 logger = getLogger(__name__)
@@ -47,6 +47,9 @@ class WriterFailoverHandler:
 
 class WriterFailoverHandlerImpl(WriterFailoverHandler):
     failed_writer_failover_result = WriterFailoverResult(False, False, None, None, None, None)
+    _current_connection: Optional[Connection] = None
+    _current_reader_connection: Optional[Connection] = None
+    _current_reader_host: Optional[HostInfo] = None
 
     def __init__(
             self,
@@ -55,14 +58,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             initial_connection_properties: Properties,
             timeout_sec: int = 30,
             read_topology_interval_sec: int = 5,
-            reconnect_writer_interval_sec: int = 5
-            ):
+            reconnect_writer_interval_sec: int = 5):
         self._plugin_service = plugin_service
         self._reader_failover_handler = reader_failover_handler
         self._initial_connection_properties = initial_connection_properties
-        self._current_reader_connection: Optional[Connection] = None
-        self._current_connection: Optional[Connection] = None
-        self._current_reader_host: Optional[HostInfo] = None
         self._timeout_sec = timeout_sec
         self._read_topology_interval_sec = read_topology_interval_sec
         self._reconnect_writer_interval_sec = reconnect_writer_interval_sec
@@ -171,7 +170,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         try:
             success: bool = False
             while not success:
-                self.connect_to_reader()
+                self.connect_to_reader(current_topology)
                 success = self.refresh_topology_and_connect_to_new_writer(current_host)
                 if not success:
                     self.close_reader_connection()
@@ -187,10 +186,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBFinished"))
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
-    def connect_to_reader(self) -> None:
+    def connect_to_reader(self, current_topology: List[HostInfo]) -> None:
         while True:
             try:
-                conn_result: ReaderFailoverResult = self._reader_failover_handler.get_reader_connection(self._current_topology)
+                conn_result: ReaderFailoverResult = self._reader_failover_handler.get_reader_connection(current_topology)
                 if (self.is_valid_reader_connection(conn_result)):
                     self._current_reader_connection = conn_result.connection
                     self._current_reader_host = conn_result.new_host
@@ -211,17 +210,16 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         while True:
             try:
                 self._plugin_service.force_refresh_host_list(self._current_reader_connection)
-                topology: List[HostInfo] = self._plugin_service.hosts
+                current_topology: List[HostInfo] = self._plugin_service.hosts
 
-                if len(topology) == 0:
-                    if len(topology) == 1:
+                if len(current_topology) == 0:
+                    if len(current_topology) == 1:
                         logger.debug(Messages.get_formatted("WriterFailoverHandler.StandaloneNode"))
                     else:
-                        self._current_topology = topology
-                        writer_candidate: Optional[HostInfo] = self.get_writer(self._current_topology)
+                        writer_candidate: Optional[HostInfo] = self.get_writer(current_topology)
 
                         if not self.is_same(writer_candidate, initial_writer_host):
-                            logger.debug(Utils.log_topology(self._current_topology))
+                            logger.debug(Utils.log_topology(current_topology))
 
                             if self.connect_to_writer(writer_candidate):
                                 return True
