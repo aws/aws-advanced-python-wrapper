@@ -283,6 +283,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 self._current_reader_connection.close()
         except Exception:
             pass
+
         finally:
             self._current_reader_connection = None
             self._current_reader_host = None
