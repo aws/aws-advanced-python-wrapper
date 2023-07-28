@@ -65,7 +65,7 @@ def test_failover():
     # connstring = "host=localhost dbname=postgres user=postgres password=qwerty"
     # connstring = "host=atlas-postgres-3.cluster-czygpppufgy4.us-east-2.rds.amazonaws.com "
     connstring = "host=atlas-postgres-instance-1.czygpppufgy4.us-east-2.rds.amazonaws.com "
-    connstring += "dbname=postgres user=pgadmin password=my_password_2020 failover_mode=strict_reader"
+    connstring += "dbname=postgres user=pgadmin password=my_password_2020 failover_mode=strict_writer"
     plugins = "failover"
 
     with AwsWrapperConnection.connect(
