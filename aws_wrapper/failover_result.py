@@ -34,9 +34,9 @@ class ReaderFailoverResult:
 
 @dataclass
 class WriterFailoverResult:
-    new_connection: Connection
     is_connected: bool
     is_new_host: bool
-    topology: List[HostInfo]
-    task_name: str
-    exception: Exception
+    topology: Optional[List[HostInfo]]
+    new_connection: Optional[Connection]
+    task_name: Optional[str]
+    exception: Optional[Exception]

@@ -103,7 +103,7 @@ class FailoverPlugin(Plugin):
                 AuroraHostListProvider(self._host_list_provider_service, properties)
 
         self._reader_failover_handler = ReaderFailoverHandlerImpl(self._plugin_service, self._properties)
-        self._writer_failover_handler = WriterFailoverHandlerImpl()
+        self._writer_failover_handler = WriterFailoverHandlerImpl(self._plugin_service, self._reader_failover_handler, self._properties)
 
         init_host_provider_func()
 
@@ -258,7 +258,7 @@ class FailoverPlugin(Plugin):
             raise Error(Messages.get("Failover.UnableToConnectToWriter"))
 
         writer_host = self._get_writer(result.topology)
-        self._plugin_service.set_current_connection(result.connection, writer_host)
+        self._plugin_service.set_current_connection(result.new_connection, writer_host)
 
         logger.debug(Messages.get_formatted("Failover.EstablishedConnection", self._plugin_service.current_host_info))
 
