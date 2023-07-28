@@ -118,7 +118,7 @@ def test_failover_timeout(plugin_service_mock, connection_mock, default_properti
     hosts[4].availability = HostAvailability.NOT_AVAILABLE
 
     # Set max failover timeout to 5 seconds
-    target: ReaderFailoverHandler = ReaderFailoverHandlerImpl(plugin_service_mock, props, 5, 30, False)
+    target: ReaderFailoverHandler = ReaderFailoverHandlerImpl(plugin_service_mock, props, 5, 30)
 
     start_time = time()
     result: ReaderFailoverResult = target.failover(hosts, current_host)
@@ -210,7 +210,7 @@ def test_get_reader_connection_attempts_timeout(plugin_service_mock, connection_
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
 
     # Connection attempt times out and returns failed result
-    target: ReaderFailoverHandler = ReaderFailoverHandlerImpl(plugin_service_mock, props, 60, 1, False)
+    target: ReaderFailoverHandler = ReaderFailoverHandlerImpl(plugin_service_mock, props, 60, 1)
     result: ReaderFailoverResult = target.get_reader_connection(hosts)
 
     assert not result.is_connected
