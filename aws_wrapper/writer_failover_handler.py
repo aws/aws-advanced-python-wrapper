@@ -56,12 +56,14 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             plugin_service: PluginService,
             reader_failover_handler: ReaderFailoverHandler,
             initial_connection_properties: Properties,
+            max_timeout_sec: int = 60,
             timeout_sec: int = 30,
             read_topology_interval_sec: int = 5,
             reconnect_writer_interval_sec: int = 5):
         self._plugin_service = plugin_service
         self._reader_failover_handler = reader_failover_handler
         self._initial_connection_properties = initial_connection_properties
+        self._max_failover_timeout_sec = max_timeout_sec
         self._timeout_sec = timeout_sec
         self._read_topology_interval_sec = read_topology_interval_sec
         self._reconnect_writer_interval_sec = reconnect_writer_interval_sec
@@ -106,7 +108,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                            executor.submit(self.wait_for_new_writer_handler, current_topology, writer_host)]
                 try:
                     for future in as_completed(futures, timeout=self.timeout_sec):
-                        result = future.result()
+                        result = future.result(timeout=self._max_failover_timeout_sec)
                         if result.is_connected or result.exception is not None:
                             executor.shutdown()
                             self.log_task_success(result)
@@ -166,9 +168,11 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
     def is_current_host_writer(self, latest_topology: List[HostInfo], initial_writer_host: HostInfo) -> bool:
         latest_writer: Optional[HostInfo] = self.get_writer(latest_topology)
-        if latest_writer is not None:
-            latest_writer_all_aliases: frozenset[str] = latest_writer.all_aliases
-            current_aliases: frozenset[str] = initial_writer_host.all_aliases
+        if latest_writer is None:
+            return False
+
+        latest_writer_all_aliases: frozenset[str] = latest_writer.all_aliases
+        current_aliases: frozenset[str] = initial_writer_host.all_aliases
 
         return latest_writer is not None and bool(current_aliases.intersection(latest_writer_all_aliases))
 
@@ -197,10 +201,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         while True:
             try:
                 conn_result: ReaderFailoverResult = self._reader_failover_handler.get_reader_connection(current_topology)
-                if (self.is_valid_reader_connection(conn_result)):
+                if self.is_valid_reader_connection(conn_result):
                     self._current_reader_connection = conn_result.connection
                     self._current_reader_host = conn_result.new_host
-                    logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBConnectedToReader"))
+                    logger.debug(Messages.get("WriterFailoverHandler.TaskBConnectedToReader"))
                     break
 
             except Exception:
@@ -209,10 +213,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         sleep(1)
 
     def is_valid_reader_connection(self, result: ReaderFailoverResult) -> bool:
-        if result.is_connected or result.connection is not None or result.new_host is not None:
-            return False
-
-        return True
+        return result.is_connected and result.connection is not None and result.new_host is not None
 
     def refresh_topology_and_connect_to_new_writer(self, initial_writer_host: HostInfo) -> bool:
         while True:
@@ -220,7 +221,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 self._plugin_service.force_refresh_host_list(self._current_reader_connection)
                 current_topology: List[HostInfo] = self._plugin_service.hosts
 
-                if len(current_topology) == 0:
+                if len(current_topology) > 0:
                     if len(current_topology) == 1:
                         # currently connected reader is in the middle of failover. It is not yet connected to a new writer and works as a standalone
                         # node. The handler must wait until the reader connects to the entire cluster to fetch the cluster topology
