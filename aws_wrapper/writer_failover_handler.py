@@ -103,7 +103,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                     for future in as_completed(futures, timeout=self._max_failover_timeout_sec):
                         result = future.result()
                         if result.is_connected or result.exception is not None:
-                            executor.shutdown(cancel_futures=True)
+                            executor.shutdown()
                             self.log_task_success(result)
                             return result
                 except TimeoutError:
