@@ -78,13 +78,13 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
     def failover(self, current_topology: List[HostInfo]) -> WriterFailoverResult:
         if current_topology is None or len(current_topology) == 0:
-            logger.debug(Messages.get_formatted("WriterFailoverHandler.InvalidTopology"))
+            logger.debug(Messages.get_formatted("WriterFailoverHandler.FailoverCalledWithInvalidTopology"))
             return WriterFailoverHandlerImpl.failed_writer_failover_result
         result: WriterFailoverResult = self.get_result_from_future(current_topology)
         if result.is_connected or result.exception is not None:
             return result
 
-        logger.debug(Messages.get_formatted("WriterFailoverHandler.failedToConnectToWriterInstance"))
+        logger.debug(Messages.get_formatted("WriterFailoverHandler.FailedToConnectToWriterInstance"))
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
     def get_writer(self, topology: List[HostInfo]) -> Optional[HostInfo]:
@@ -118,7 +118,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
     def log_task_success(self, result: WriterFailoverResult) -> None:
-        logger.debug(Messages.get_formatted("ReaderFailoverHandler.FailedReaderConnection", result))
+        topology: Optional[List[HostInfo]] = result.topology
+        if topology is None or len(topology) == 0:
+            task_name: Optional[str] = result.task_name if not None else "None"
+            logger.debug(Messages.get_formatted("ReaderFailoverHandler.FailedReaderConnection", task_name))
 
     def reconnect_to_writer_handler(self, initial_writer_host: HostInfo):
         conn: Optional[Connection] = None
@@ -154,7 +157,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                     conn.close()
             except Exception:
                 pass
-            logger.debug(Messages.get_formatted("ClusterAwareWriterFailoverHandler.taskAFinished"))
+            logger.debug(Messages.get_formatted("WriterFailoverHandler.taskAFinished"))
 
     def is_current_host_writer(self, latest_topology: List[HostInfo], initial_writer_host: HostInfo) -> bool:
         latest_writer: Optional[HostInfo] = self.get_writer(latest_topology)
@@ -164,7 +167,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         return latest_writer is not None and bool(current_aliases.intersection(latest_writer_all_aliases))
 
     def wait_for_new_writer_handler(self, current_topology: List[HostInfo], current_host: HostInfo) -> WriterFailoverResult:
-        logger.debug(Messages.get_formatted("WriterFailoverHandler.taskBAttemptConnectionToNewWriterInstance"))
+        logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBAttemptConnectionToNewWriterInstance"))
         try:
             success: bool = False
             while not success:
@@ -177,11 +180,11 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         except InterruptedError:
             return WriterFailoverResult(False, False, None, None, "TaskB", None)
         except Exception:
-            logger.debug(Messages.get_formatted("ClusterAwareWriterFailoverHandler.taskBEncounteredException"))
+            logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBEncounteredException"))
 
         finally:
             self.cleanup()
-            logger.debug(Messages.get_formatted("WriterFailoverHandler.taskBFinished"))
+            logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBFinished"))
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
     def connect_to_reader(self) -> None:
@@ -191,12 +194,12 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 if (self.is_valid_reader_connection(conn_result)):
                     self._current_reader_connection = conn_result.connection
                     self._current_reader_host = conn_result.new_host
-                    logger.debug(Messages.get_formatted("WriterFailoverHandler.taskBConnectedToReader"))
+                    logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBConnectedToReader"))
                     break
 
             except Exception:
                 pass
-        logger.debug(Messages.get_formatted("WriterFailoverHandler.taskBFailedToConnectToAnyReader"))
+        logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBFailedToConnectToAnyReader"))
         sleep(1)
 
     def is_valid_reader_connection(self, result: ReaderFailoverResult) -> bool:
@@ -212,7 +215,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
                 if len(topology) == 0:
                     if len(topology) == 1:
-                        logger.debug(Messages.get_formatted("WriterFailoverHandler.standaloneNode"))
+                        logger.debug(Messages.get_formatted("WriterFailoverHandler.StandaloneNode"))
                     else:
                         self._current_topology = topology
                         writer_candidate: Optional[HostInfo] = self.get_writer(self._current_topology)
@@ -223,7 +226,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                             if self.connect_to_writer(writer_candidate):
                                 return True
             except Exception as err:
-                logger.debug(Messages.get_formatted("WriterFailoverHandler.taskBEncounteredException", err))
+                logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBEncounteredException", err))
                 return False
             sleep(self._read_topology_interval_sec)
 
@@ -235,11 +238,11 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
     def connect_to_writer(self, writer_candidate: Optional[HostInfo]) -> bool:
         if self.is_same(writer_candidate, self._current_reader_host):
-            logger.debug(Messages.get_formatted("ClusterAwareWriterFailoverHandler.alreadyWriter"))
+            logger.debug(Messages.get_formatted("WriterFailoverHandler.AlreadyWriter"))
             self._current_connection = self._current_reader_connection
             return True
         else:
-            logger.debug(Messages.get_formatted("ClusterAwareWriterFailoverHandler.taskBAttemptConnectionToNewWriter"))
+            logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBAttemptConnectionToNewWriter"))
 
         try:
             if writer_candidate is not None:
