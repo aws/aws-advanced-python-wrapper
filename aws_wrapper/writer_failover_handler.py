@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.utils.properties import Properties
-    from aws_wrapper.utils.utils import Utils
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.reader_failover_handler import ReaderFailoverHandler
 
@@ -34,6 +33,7 @@ from aws_wrapper.failover_result import (ReaderFailoverResult,
                                          WriterFailoverResult)
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.utils.messages import Messages
+from aws_wrapper.utils.utils import Utils
 
 logger = getLogger(__name__)
 
