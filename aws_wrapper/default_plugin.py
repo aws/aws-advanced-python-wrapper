@@ -53,7 +53,7 @@ class DefaultPlugin(Plugin):
 
     def _connect(self, host_info: HostInfo, props: Properties, conn_provider: ConnectionProvider) -> Connection:
         conn = conn_provider.connect(host_info, props)
-        self._plugin_service.set_availability(host_info.aliases, HostAvailability.AVAILABLE)
+        self._plugin_service.set_availability(host_info.all_aliases, HostAvailability.AVAILABLE)
         self._plugin_service.update_dialect(conn)
         return conn
 

@@ -117,7 +117,8 @@ class FailoverPlugin(Plugin):
             self._update_topology(False)
             return execute_func()
         except Exception as ex:
-            logger.debug(Messages.get_formatted("Failover.DetectedException", str(ex)))
+            msg = Messages.get_formatted("Failover.DetectedException", str(ex))
+            logger.debug(msg)
             if self._last_exception != ex and self._should_exception_trigger_connection_switch(ex):
                 self._invalidate_current_connection()
                 if self._plugin_service.current_host_info is not None:
@@ -126,7 +127,7 @@ class FailoverPlugin(Plugin):
 
                 self._pick_new_connection()
                 self._last_exception = ex
-            raise ex
+            raise AwsWrapperError(msg) from ex
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         if not self._enable_failover_setting:
@@ -344,10 +345,9 @@ class FailoverPlugin(Plugin):
             logger.debug(Messages.get_formatted("Failover.FailoverDisabled"))
             return False
 
+        # TODO: Consider whether this should belong to the is_network_exception logic
         if isinstance(ex, OperationalError):
             return True
-
-        # TODO: SQL State logic here
 
         return self._plugin_service.is_network_exception(ex)
 
