@@ -91,8 +91,8 @@ class HostInfo:
             return
 
         for x in kwargs:
-            self._aliases.remove(x)
-            self._all_aliases.remove(x)
+            self._aliases.discard(x)
+            self._all_aliases.discard(x)
 
     def reset_aliases(self):
         self._aliases.clear()

@@ -18,7 +18,7 @@ from typing import Any, Callable, Iterator, List, Optional, Union
 from aws_wrapper.connection_provider import DriverConnectionProvider
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import AuroraHostListProvider
-from aws_wrapper.pep249 import Connection, Cursor, Error
+from aws_wrapper.pep249 import Connection, Cursor, Error, FailoverSuccessError
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.plugin_service import (PluginManager, PluginService,
                                         PluginServiceImpl,
@@ -36,6 +36,18 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         self._plugin_service = plugin_service
         self._plugin_manager: PluginManager = plugin_manager
         self._target_conn: Connection = target_conn
+
+    @property
+    def plugin_service(self):
+        return self._plugin_service
+
+    @property
+    def target_connection(self):
+        return self._target_conn
+
+    @target_connection.setter
+    def target_connection(self, conn):
+        self._target_conn = conn
 
     @staticmethod
     def connect(
@@ -168,8 +180,19 @@ class AwsWrapperCursor(Cursor):
             query: str,
             **kwargs: Union[None, int, str]
     ) -> "AwsWrapperCursor":
-        return self._plugin_manager.execute(self._target_cursor, "Cursor.execute",
-                                            lambda: self._target_cursor.execute(query, **kwargs), query, kwargs)
+        try:
+            return self._plugin_manager.execute(self._target_cursor, "Cursor.execute",
+                                                lambda: self._target_cursor.execute(query, **kwargs), query, kwargs)
+        except FailoverSuccessError as e:
+            # Update to new connection after failover
+            new_conn = self.connection.plugin_service.current_connection
+            self.connection.target_connection = new_conn
+
+            # Close and reset cursor
+            self.close()
+            self._target_cursor = self.connection.target_connection.cursor()
+
+            raise e
 
     def executemany(
             self,
