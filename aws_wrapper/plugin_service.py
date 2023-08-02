@@ -164,7 +164,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def __init__(
             self,
             container: PluginServiceManagerContainer,
-            props: Properties):
+            props: Properties,
+            target_driver: str):
         self._container = container
         self._container.plugin_service = self
         self._props = props
@@ -178,7 +179,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
         self._dialect_provider = DialectManager()
-        self._dialect = self._dialect_provider.get_dialect(props)
+        self._dialect = self._dialect_provider.get_dialect(target_driver, props)
 
     @property
     def hosts(self) -> List[HostInfo]:

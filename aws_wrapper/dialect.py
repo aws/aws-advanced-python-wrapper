@@ -27,6 +27,7 @@ from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
 from .exceptions import ExceptionHandler, PgExceptionHandler
+from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
 
@@ -470,7 +471,7 @@ class DialectManager(DialectProvider):
     def reset_endpoint_cache(self):
         self._known_endpoint_dialects.clear()
 
-    def get_dialect(self, props: Properties) -> Optional[Dialect]:
+    def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[Dialect]:
         self._can_update = False
         self._dialect = None
 
@@ -499,7 +500,7 @@ class DialectManager(DialectProvider):
                 raise AwsWrapperError(Messages.get_formatted("Dialect.UnknownDialectCode", str(dialect_code)))
 
         host: str = props["host"]
-        database_type: DatabaseType = self._get_database_type()
+        database_type: DatabaseType = self._get_database_type(driver_dialect)
         if database_type is DatabaseType.MYSQL:
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
@@ -537,6 +538,18 @@ class DialectManager(DialectProvider):
             return self._dialect
 
         if database_type is DatabaseType.MARIADB:
+            rds_type = self._rds_helper.identify_rds_type(host)
+            if rds_type.is_rds_cluster:
+                self._dialect_code = DialectCode.AURORA_MYSQL
+                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_MYSQL)
+                return self._dialect
+            if rds_type.is_rds:
+                self._can_update = True
+                self._dialect_code = DialectCode.RDS_MYSQL
+                self._dialect = self._known_dialects_by_code.get(DialectCode.RDS_MYSQL)
+                self._log_current_dialect()
+                return self._dialect
+
             self._can_update = True
             self._dialect_code = DialectCode.MARIADB
             self._dialect = self._known_dialects_by_code.get(DialectCode.MARIADB)
@@ -549,9 +562,16 @@ class DialectManager(DialectProvider):
         self._log_current_dialect()
         return self._dialect
 
-    def _get_database_type(self) -> DatabaseType:
-        # TODO: Add logic to identify database based on target driver connect info
-        return DatabaseType.POSTGRES
+    def _get_database_type(self, driver_dialect: str) -> DatabaseType:
+        if driver_dialect == TargetDriverDialectCodes.PSYCOPG:
+            return DatabaseType.POSTGRES
+        if driver_dialect == TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON:
+            return DatabaseType.MYSQL
+        if driver_dialect == TargetDriverDialectCodes.MARIADB_CONNECTOR_PYTHON:
+            # TODO: verify, might need to return MySQL here as well
+            return DatabaseType.MARIADB
+
+        return DatabaseType.CUSTOM
 
     def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection) -> Optional[Dialect]:
         if not self._can_update:

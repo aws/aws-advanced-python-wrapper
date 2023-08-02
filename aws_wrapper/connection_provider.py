@@ -14,20 +14,22 @@
 
 from __future__ import annotations
 
+from logging import getLogger
 from threading import Lock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Protocol
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo, HostRole
     from aws_wrapper.pep249 import Connection
-    from aws_wrapper.utils.properties import Properties
+    from aws_wrapper.target_driver_dialect import TargetDriverDialect
 
-from typing import Callable, Dict, List, Optional, Protocol
-
+from aws_wrapper.utils.properties import Properties, PropertiesUtils
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostselector import HostSelector, RandomHostSelector
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.utils.messages import Messages
+
+logger = getLogger(__name__)
 
 
 class ConnectionProvider(Protocol):
@@ -101,11 +103,11 @@ class ConnectionProviderManager:
 
 
 class DriverConnectionProvider(ConnectionProvider):
-
     _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector()}
 
-    def __init__(self, connect_func: Callable):
+    def __init__(self, connect_func: Callable, target_driver_dialect: TargetDriverDialect):
         self._connect_func = connect_func
+        self._target_driver_dialect = target_driver_dialect
 
     def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
         return True
@@ -122,12 +124,8 @@ class DriverConnectionProvider(ConnectionProvider):
             return host_selector.get_host(hosts, role)
 
     def connect(self, host_info: HostInfo, properties: Properties) -> Connection:
-        # TODO: Behavior based on dialects
-        prop_copy = properties.copy()
+        prepared_properties = self._target_driver_dialect.prepare_connect_info(host_info, properties)
+        logger.debug(
+            f"Connecting to {host_info.host} with properties: {PropertiesUtils.log_properties(prepared_properties)}")
 
-        prop_copy["host"] = host_info.host
-
-        if host_info.is_port_specified():
-            prop_copy["port"] = str(host_info.port)
-
-        return self._connect_func(**prop_copy)
+        return self._connect_func(**prepared_properties)
