@@ -32,22 +32,13 @@ logger = getLogger(__name__)
 class AwsWrapperConnection(Connection, CanReleaseResources):
     __module__ = "aws_wrapper"
 
-    def __init__(self, plugin_service: PluginService, plugin_manager: PluginManager, target_conn: Connection):
+    def __init__(self, plugin_service: PluginService, plugin_manager: PluginManager):
         self._plugin_service = plugin_service
         self._plugin_manager: PluginManager = plugin_manager
-        self._target_conn: Connection = target_conn
-
-    @property
-    def plugin_service(self):
-        return self._plugin_service
 
     @property
     def target_connection(self):
-        return self._target_conn
-
-    @target_connection.setter
-    def target_connection(self, conn):
-        self._target_conn = conn
+        return self._plugin_service.current_connection
 
     @staticmethod
     def connect(
@@ -79,7 +70,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         plugin_service.refresh_host_list()
 
         if plugin_service.current_connection is not None:
-            return AwsWrapperConnection(plugin_service, plugin_manager, plugin_service.current_connection)
+            return AwsWrapperConnection(plugin_service, plugin_manager)
 
         conn = plugin_manager.connect(plugin_service.initial_connection_host_info, props, True)
 
@@ -88,43 +79,42 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
         plugin_service.set_current_connection(conn, plugin_service.initial_connection_host_info)
 
-        return AwsWrapperConnection(plugin_service, plugin_manager, conn)
+        return AwsWrapperConnection(plugin_service, plugin_manager)
 
     def close(self) -> None:
-        self._plugin_manager.execute(self._target_conn, "Connection.close",
-                                     lambda: self._target_conn.close())
+        self._plugin_manager.execute(self.target_connection, "Connection.close",
+                                     lambda: self.target_connection.close())
 
     def cursor(self, **kwargs: Union[None, int, str]) -> "AwsWrapperCursor":
-        _cursor = self._target_conn.cursor(**kwargs)
-        return AwsWrapperCursor(self, self._plugin_manager, _cursor)
+        return AwsWrapperCursor(self, self._plugin_manager)
 
     def commit(self) -> None:
-        self._plugin_manager.execute(self._target_conn, "Connection.commit",
-                                     lambda: self._target_conn.commit())
+        self._plugin_manager.execute(self.target_connection, "Connection.commit",
+                                     lambda: self.target_connection.commit())
 
     def rollback(self) -> None:
-        self._plugin_manager.execute(self._target_conn, "Connection.rollback",
-                                     lambda: self._target_conn.rollback())
+        self._plugin_manager.execute(self.target_connection, "Connection.rollback",
+                                     lambda: self.target_connection.rollback())
 
     def tpc_begin(self, xid: Any) -> None:
-        self._plugin_manager.execute(self._target_conn, "Connection.tpc_begin",
-                                     lambda: self._target_conn.tpc_begin(xid))
+        self._plugin_manager.execute(self.target_connection, "Connection.tpc_begin",
+                                     lambda: self.target_connection.tpc_begin(xid))
 
     def tpc_prepare(self) -> None:
-        self._plugin_manager.execute(self._target_conn, "Connection.tpc_prepare",
-                                     lambda: self._target_conn.tpc_prepare())
+        self._plugin_manager.execute(self.target_connection, "Connection.tpc_prepare",
+                                     lambda: self.target_connection.tpc_prepare())
 
     def tpc_commit(self, xid: Any = None) -> None:
-        self._plugin_manager.execute(self._target_conn, "Connection.tpc_commit",
-                                     lambda: self._target_conn.tpc_commit(xid))
+        self._plugin_manager.execute(self.target_connection, "Connection.tpc_commit",
+                                     lambda: self.target_connection.tpc_commit(xid))
 
     def tpc_rollback(self, xid: Any = None) -> None:
-        self._plugin_manager.execute(self._target_conn, "Connection.tpc_rollback",
-                                     lambda: self._target_conn.tpc_rollback(xid))
+        self._plugin_manager.execute(self.target_connection, "Connection.tpc_rollback",
+                                     lambda: self.target_connection.tpc_rollback(xid))
 
     def tpc_recover(self) -> Any:
-        return self._plugin_manager.execute(self._target_conn, "Connection.tpc_recover",
-                                            lambda: self._target_conn.tpc_recover())
+        return self._plugin_manager.execute(self.target_connection, "Connection.tpc_recover",
+                                            lambda: self.target_connection.tpc_recover())
 
     def release_resources(self):
         self._plugin_manager.release_resources()
@@ -138,17 +128,16 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self._plugin_manager.execute(self._target_conn, "Connection.close",
-                                     lambda: self._target_conn.close())
+        self._plugin_manager.execute(self.target_connection, "Connection.close",
+                                     lambda: self.target_connection.close())
 
 
 class AwsWrapperCursor(Cursor):
     __module__ = "aws_wrapper"
 
-    def __init__(self, conn: AwsWrapperConnection, plugin_manager: PluginManager, target_cursor: Cursor):
+    def __init__(self, conn: AwsWrapperConnection, plugin_manager: PluginManager):
         self._conn: AwsWrapperConnection = conn
         self._plugin_manager: PluginManager = plugin_manager
-        self._target_cursor: Cursor = target_cursor
 
     # It's not part of PEP249
     @property
@@ -156,78 +145,71 @@ class AwsWrapperCursor(Cursor):
         return self._conn
 
     @property
+    def target_cursor(self) -> Cursor:
+        return self.connection.target_connection.cursor()
+
+    @property
     def description(self):
-        return self._target_cursor.description
+        return self.target_cursor.description
 
     @property
     def rowcount(self) -> int:
-        return self._target_cursor.rowcount
+        return self.target_cursor.rowcount
 
     @property
     def arraysize(self) -> int:
-        return self._target_cursor.arraysize
+        return self.target_cursor.arraysize
 
     def close(self) -> None:
-        self._plugin_manager.execute(self._target_cursor, "Cursor.close",
-                                     lambda: self._target_cursor.close())
+        self._plugin_manager.execute(self.target_cursor, "Cursor.close",
+                                     lambda: self.target_cursor.close())
 
     def callproc(self, **kwargs: Union[None, int, str]):
-        return self._plugin_manager.execute(self._target_cursor, "Cursor.callproc",
-                                            lambda: self._target_cursor.callproc(**kwargs))
+        return self._plugin_manager.execute(self.target_cursor, "Cursor.callproc",
+                                            lambda: self.target_cursor.callproc(**kwargs))
 
     def execute(
             self,
             query: str,
             **kwargs: Union[None, int, str]
     ) -> "AwsWrapperCursor":
-        try:
-            return self._plugin_manager.execute(self._target_cursor, "Cursor.execute",
-                                                lambda: self._target_cursor.execute(query, **kwargs), query, kwargs)
-        except FailoverSuccessError as e:
-            # Update to new connection after failover
-            new_conn = self.connection.plugin_service.current_connection
-            self.connection.target_connection = new_conn
-
-            # Close and reset cursor
-            self.close()
-            self._target_cursor = self.connection.target_connection.cursor()
-
-            raise e
+        return self._plugin_manager.execute(self.target_cursor, "Cursor.execute",
+                                            lambda: self.target_cursor.execute(query, **kwargs), query, kwargs)
 
     def executemany(
             self,
             query: str,
             **kwargs: Union[None, int, str]
     ) -> None:
-        self._plugin_manager.execute(self._target_cursor, "Cursor.executemany",
-                                     lambda: self._target_cursor.executemany(query, **kwargs))
+        self._plugin_manager.execute(self.target_cursor, "Cursor.executemany",
+                                     lambda: self.target_cursor.executemany(query, **kwargs))
 
     def nextset(self) -> bool:
-        return self._plugin_manager.execute(self._target_cursor, "Cursor.nextset",
-                                            lambda: self._target_cursor.nextset())
+        return self._plugin_manager.execute(self.target_cursor, "Cursor.nextset",
+                                            lambda: self.target_cursor.nextset())
 
     def fetchone(self) -> Any:
-        return self._plugin_manager.execute(self._target_cursor, "Cursor.fetchone",
-                                            lambda: self._target_cursor.fetchone())
+        return self._plugin_manager.execute(self.target_cursor, "Cursor.fetchone",
+                                            lambda: self.target_cursor.fetchone())
 
     def fetchmany(self, size: int = 0) -> List[Any]:
-        return self._plugin_manager.execute(self._target_cursor, "Cursor.fetchmany",
-                                            lambda: self._target_cursor.fetchmany(size))
+        return self._plugin_manager.execute(self.target_cursor, "Cursor.fetchmany",
+                                            lambda: self.target_cursor.fetchmany(size))
 
     def fetchall(self) -> List[Any]:
-        return self._plugin_manager.execute(self._target_cursor, "Cursor.fetchall",
-                                            lambda: self._target_cursor.fetchall())
+        return self._plugin_manager.execute(self.target_cursor, "Cursor.fetchall",
+                                            lambda: self.target_cursor.fetchall())
 
     def __iter__(self) -> Iterator[Any]:
-        return self._target_cursor.__iter__()
+        return self.target_cursor.__iter__()
 
     def setinputsizes(self, sizes: Any) -> None:
-        return self._plugin_manager.execute(self._target_cursor, "Cursor.setinputsizes",
-                                            lambda: self._target_cursor.setinputsizes(sizes))
+        return self._plugin_manager.execute(self.target_cursor, "Cursor.setinputsizes",
+                                            lambda: self.target_cursor.setinputsizes(sizes))
 
     def setoutputsize(self, size: Any, column: Optional[int] = None) -> None:
-        return self._plugin_manager.execute(self._target_cursor, "Cursor.setoutputsize",
-                                            lambda: self._target_cursor.setoutputsize(size, column))
+        return self._plugin_manager.execute(self.target_cursor, "Cursor.setoutputsize",
+                                            lambda: self.target_cursor.setoutputsize(size, column))
 
     def __enter__(self: "AwsWrapperCursor") -> "AwsWrapperCursor":
         return self
