@@ -12,17 +12,20 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-
 from __future__ import annotations
 
 from inspect import signature
 from typing import Callable
 
-from aws_wrapper.GenericDriverDialect import GenericTargetDriverDialect
+from aws_wrapper.generic_target_driver_dialect import \
+    GenericTargetDriverDialect
+from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 
 
 class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     TARGET_DRIVER = "MySQL"
+
+    _dialect_code: str = TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON
 
     def is_dialect(self, conn: Callable) -> bool:
         return MySQLTargetDriverDialect.TARGET_DRIVER in str(signature(conn))

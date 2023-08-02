@@ -122,7 +122,7 @@ class Dialect(Protocol):
 
 
 class DialectProvider(Protocol):
-    def get_dialect(self, props: Properties) -> Optional[Dialect]:
+    def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[Dialect]:
         """
         Returns the dialect identified by analyzing the AwsWrapperProperties.DIALECT property (if set) or the target
         driver method

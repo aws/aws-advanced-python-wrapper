@@ -12,17 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-
-from __future__ import annotations
-
-from inspect import signature
-from typing import Callable
-
-from aws_wrapper.GenericDriverDialect import GenericTargetDriverDialect
-
-
-class MariaDBTargetDriverDialect(GenericTargetDriverDialect):
-    TARGET_DRIVER = "Mariadb"
-
-    def is_dialect(self, conn: Callable) -> bool:
-        return MariaDBTargetDriverDialect.TARGET_DRIVER in str(signature(conn))
+class TargetDriverDialectCodes:
+    PSYCOPG = "psycopg"
+    MYSQL_CONNECTOR_PYTHON = "mysql-connector-python"
+    MARIADB_CONNECTOR_PYTHON = "mariadb-connector-python"
+    GENERIC = "generic"

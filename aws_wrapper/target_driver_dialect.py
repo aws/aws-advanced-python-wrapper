@@ -15,33 +15,28 @@
 from __future__ import annotations
 
 from logging import getLogger
-from typing import Protocol, Dict, Callable, Optional
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol
+
+from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 
 if TYPE_CHECKING:
-    from aws_wrapper.GenericDriverDialect import TargetDriverDialect
-
-from aws_wrapper.GenericDriverDialect import GenericTargetDriverDialect
-from aws_wrapper.MariaDBTargetDriverDialect import MariaDBTargetDriverDialect
-from aws_wrapper.MySQLTargetDriverDialect import MySQLTargetDriverDialect
-from aws_wrapper.PgTargetDriverDialect import PgTargetDriverDialect
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
 
 from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.generic_target_driver_dialect import \
+    GenericTargetDriverDialect
+from aws_wrapper.mariadb_target_driver_dialect import \
+    MariaDBTargetDriverDialect
+from aws_wrapper.mysql_target_driver_dialect import MySQLTargetDriverDialect
+from aws_wrapper.pg_target_driver_dialect import PgTargetDriverDialect
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 logger = getLogger(__name__)
 
 
-class TargetDriverDialectCodes:
-    PSYCOPG = "psycopg"
-    MYSQL_CONNECTOR_PYTHON = "mysql-connector-python"
-    MARIADB_CONNECTOR_PYTHON = "mariadb-connector-python"
-    GENERIC = "generic"
-
-
 class TargetDriverDialectProvider(Protocol):
-    def get_dialect(self, conn: Callable, props: Properties) -> TargetDriverDialect:
+    def get_dialect(self, conn_func: Callable, props: Properties) -> TargetDriverDialect:
         ...
 
 
@@ -58,9 +53,9 @@ class TargetDriverDialectManager(TargetDriverDialectProvider):
     def set_custom_dialect(target_driver_dialect: TargetDriverDialect):
         TargetDriverDialectManager._custom_dialect = target_driver_dialect
 
-    def get_dialect(self, conn: Callable, props: Properties) -> TargetDriverDialect:
+    def get_dialect(self, conn_func: Callable, props: Properties) -> TargetDriverDialect:
         if self._custom_dialect is not None:
-            if self._custom_dialect.is_dialect(conn):
+            if self._custom_dialect.is_dialect(conn_func):
                 self._log_dialect("custom", self._custom_dialect)
                 return self._custom_dialect
         logger.warning(Messages.get("TargetDriverDialectManager.CustomDialectNotSupported"))
@@ -78,7 +73,7 @@ class TargetDriverDialectManager(TargetDriverDialectProvider):
             return result
 
         for key, value in TargetDriverDialectManager.known_dialects_by_code.items():
-            if value.is_dialect(conn):
+            if value.is_dialect(conn_func):
                 self._log_dialect(key, value)
                 return value
 

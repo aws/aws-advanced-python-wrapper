@@ -23,11 +23,11 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.target_driver_dialect import TargetDriverDialect
 
-from aws_wrapper.utils.properties import Properties, PropertiesUtils
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostselector import HostSelector, RandomHostSelector
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.utils.messages import Messages
+from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 logger = getLogger(__name__)
 

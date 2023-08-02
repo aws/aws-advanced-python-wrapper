@@ -12,17 +12,20 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-
 from __future__ import annotations
 
 from inspect import signature
 from typing import Callable
 
-from aws_wrapper.target_driver_dialect import GenericTargetDriverDialect
+from aws_wrapper.generic_target_driver_dialect import \
+    GenericTargetDriverDialect
+from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 
 
-class PgTargetDriverDialect(GenericTargetDriverDialect):
-    TARGET_DRIVER = "psycopg"
+class MariaDBTargetDriverDialect(GenericTargetDriverDialect):
+    TARGET_DRIVER = "Mariadb"
+
+    _dialect_code: str = TargetDriverDialectCodes.MARIADB_CONNECTOR_PYTHON
 
     def is_dialect(self, conn: Callable) -> bool:
-        return PgTargetDriverDialect.TARGET_DRIVER in str(signature(conn))
+        return MariaDBTargetDriverDialect.TARGET_DRIVER in str(signature(conn))

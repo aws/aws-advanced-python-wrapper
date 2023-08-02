@@ -98,7 +98,7 @@ def test_provider_returns_connection(connection_mock, mock_target_driver_dialect
 
     connection_provider.connect(host_info, properties)
 
-    mock_target_driver_dialect.prepare_connect_info.assert_called_with(host_info , properties)
+    mock_target_driver_dialect.prepare_connect_info.assert_called_with(host_info, properties)
     connection_mock.connect.assert_called_with(test_prop=5, host="localhost", port="1234")
 
 

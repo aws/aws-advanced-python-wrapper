@@ -14,23 +14,34 @@
 
 from __future__ import annotations
 
-from typing import Callable, Protocol, TYPE_CHECKING
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Callable
 
+from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
 
 
-class TargetDriverDialect(Protocol):
+class TargetDriverDialect(ABC):
+    _dialect_code: str = TargetDriverDialectCodes.GENERIC
+
+    @property
+    def dialect_code(self) -> str:
+        return self._dialect_code
+
+    @abstractmethod
     def is_dialect(self, conn: Callable) -> bool:
         pass
 
+    @abstractmethod
     def prepare_connect_info(self, host_info: HostInfo, props: Properties) -> Properties:
         pass
 
 
 class GenericTargetDriverDialect(TargetDriverDialect):
+
     def is_dialect(self, conn: Callable) -> bool:
         return True
 
