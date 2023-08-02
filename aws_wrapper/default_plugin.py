@@ -27,7 +27,7 @@ from typing import Any, Callable, Set
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.plugin import Plugin
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
@@ -51,9 +51,11 @@ class DefaultPlugin(Plugin):
         # logger.debug("Default plugin: connect after")
         return result
 
-    def _connect(self, host_info: HostInfo, props: Properties, conn_provider: ConnectionProvider):
-        result = conn_provider.connect(host_info, props)
-        return result
+    def _connect(self, host_info: HostInfo, props: Properties, conn_provider: ConnectionProvider) -> Connection:
+        conn = conn_provider.connect(host_info, props)
+        self._plugin_service.set_availability(host_info.all_aliases, HostAvailability.AVAILABLE)
+        self._plugin_service.update_dialect(conn)
+        return conn
 
     def force_connect(self, host_info: HostInfo, props: Properties,
                       initial: bool, force_connect_func: Callable) -> Connection:

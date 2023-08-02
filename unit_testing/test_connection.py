@@ -30,7 +30,7 @@ def test_connection_basic():
     conninfo: str = "host=localhost dbname=postgres user=postgres password=qwerty"
     connection_mock: Connection = MagicMock()
     container_mock = MagicMock()
-    connection_mock.connect.return_value = "Test"
+    connection_mock.connect.return_value = MagicMock()
 
     with patch.object(PluginServiceManagerContainer, "__new__", container_mock), \
             patch.object(PluginServiceImpl, "refresh_host_list"), \
