@@ -24,7 +24,9 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 @pytest.fixture
 def mock_plugin_service(mocker):
-    return mocker.MagicMock()
+    service_mock = mocker.MagicMock()
+    service_mock.network_bounded_methods = {"*"}
+    return service_mock
 
 
 @pytest.fixture
@@ -107,7 +109,9 @@ def test_execute_monitoring_disabled(mocker, mock_plugin_service, props, mock_mo
     mock_execute_func.assert_called_once()
 
 
-def test_execute_non_network_method(mocker, plugin, mock_monitor_service, mock_execute_func):
+def test_execute_non_network_method(mocker, plugin, mock_execute_func):
+    mock_monitor_service = mocker.MagicMock()
+    mock_monitor_service.network_bounded_methods = {"foo"}
     plugin.execute(mocker.MagicMock(), "Connection.cancel", mock_execute_func)
 
     mock_monitor_service.start_monitoring.assert_not_called()

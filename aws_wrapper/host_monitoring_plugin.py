@@ -83,7 +83,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
             raise AwsWrapperError(Messages.get_formatted("HostMonitoringPlugin.NullHostInfo", method_name))
 
         is_enabled = WrapperProperties.FAILURE_DETECTION_ENABLED.get_bool(self._props)
-        if not is_enabled or method_name not in self._plugin_service.network_bounded_methods:
+        if not is_enabled or not self._is_network_bounded_method(method_name):
             return execute_func()
 
         failure_detection_time_ms = WrapperProperties.FAILURE_DETECTION_TIME_MS.get_int(self._props)
@@ -159,6 +159,12 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
             self._monitor_service.release_resources()
 
         self._monitor_service = None
+
+    def _is_network_bounded_method(self, method_name: str):
+        if len(self._plugin_service.network_bounded_methods) == 1 and \
+                list(self._plugin_service.network_bounded_methods)[0] == "*":
+            return True
+        return method_name not in self._plugin_service.network_bounded_methods
 
 
 class MonitoringContext:
