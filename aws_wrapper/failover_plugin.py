@@ -41,7 +41,6 @@ from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.subscribed_method_utils import SubscribedMethodUtils
 from aws_wrapper.writer_failover_handler import (WriterFailoverHandler,
                                                  WriterFailoverHandlerImpl)
 
@@ -49,8 +48,7 @@ logger = getLogger(__name__)
 
 
 class FailoverPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {*SubscribedMethodUtils.NETWORK_BOUND_METHODS,
-                                     "init_host_provider",
+    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
                                      "connect",
                                      "force_connect",
                                      "notify_host_list_changed"}
@@ -69,6 +67,7 @@ class FailoverPlugin(Plugin):
         self._last_exception: Optional[Exception] = None
         self._rds_utils = RdsUtils()
         self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
+        FailoverPlugin._SUBSCRIBED_METHODS.add(*self._plugin_service.network_bounded_methods)
 
     def init_host_provider(
             self,

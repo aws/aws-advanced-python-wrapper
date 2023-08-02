@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Set
 
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
@@ -26,10 +26,15 @@ if TYPE_CHECKING:
 
 class TargetDriverDialect(ABC):
     _dialect_code: str = TargetDriverDialectCodes.GENERIC
+    _network_bound_methods: Set[str] = {"*"}
 
     @property
     def dialect_code(self) -> str:
         return self._dialect_code
+
+    @property
+    def network_bounded_methods(self) -> Set[str]:
+        return self._network_bound_methods
 
     @abstractmethod
     def is_dialect(self, conn: Callable) -> bool:

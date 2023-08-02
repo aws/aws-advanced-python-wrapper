@@ -32,7 +32,6 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.subscribed_method_utils import SubscribedMethodUtils
 
 logger = getLogger(__name__)
 
@@ -84,7 +83,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
             raise AwsWrapperError(Messages.get_formatted("HostMonitoringPlugin.NullHostInfo", method_name))
 
         is_enabled = WrapperProperties.FAILURE_DETECTION_ENABLED.get_bool(self._props)
-        if not is_enabled or method_name not in SubscribedMethodUtils.NETWORK_BOUND_METHODS:
+        if not is_enabled or method_name not in self._plugin_service.network_bounded_methods:
             return execute_func()
 
         failure_detection_time_ms = WrapperProperties.FAILURE_DETECTION_TIME_MS.get_int(self._props)

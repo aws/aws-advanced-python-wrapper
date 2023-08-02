@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from inspect import signature
-from typing import Callable
+from typing import Callable, Set
 
 from aws_wrapper.target_driver_dialect import GenericTargetDriverDialect
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
@@ -25,6 +25,16 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     TARGET_DRIVER = "psycopg"
 
     _dialect_code: str = TargetDriverDialectCodes.PSYCOPG
+    _network_bound_methods: Set[str] = {
+        "Connection.commit()",
+        "Connection.rollback()",
+        "Connection.cursor()",
+        "Cursor.callproc()",
+        "Cursor.execute()",
+        "Cursor.fetchone()",
+        "Cursor.fetchmany()",
+        "Cursor.fetchall()",
+    }
 
     def is_dialect(self, conn: Callable) -> bool:
         return PgTargetDriverDialect.TARGET_DRIVER in str(signature(conn))

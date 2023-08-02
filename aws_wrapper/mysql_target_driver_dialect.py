@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from inspect import signature
-from typing import Callable
+from typing import Callable, Set
 
 from aws_wrapper.generic_target_driver_dialect import \
     GenericTargetDriverDialect
@@ -26,6 +26,16 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     TARGET_DRIVER = "MySQL"
 
     _dialect_code: str = TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON
+    _network_bound_methods: Set[str] = {
+        "Connection.commit()",
+        "Connection.rollback()",
+        "Connection.cursor()",
+        "Cursor.close()",
+        "Cursor.execute()",
+        "Cursor.fetchone()",
+        "Cursor.fetchmany()",
+        "Cursor.fetchall()",
+    }
 
     def is_dialect(self, conn: Callable) -> bool:
         return MySQLTargetDriverDialect.TARGET_DRIVER in str(signature(conn))

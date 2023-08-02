@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin import Plugin, PluginFactory
     from aws_wrapper.connection_provider import ConnectionProvider
     from threading import Event
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
 
 from abc import abstractmethod
 from logging import getLogger
@@ -124,6 +125,11 @@ class PluginService(ExceptionHandler, Protocol):
     def dialect(self) -> Optional[Dialect]:
         ...
 
+    @property
+    @abstractmethod
+    def network_bounded_methods(self) -> Set[str]:
+        ...
+
     def update_dialect(self, connection: Optional[Connection] = None):
         ...
 
@@ -165,7 +171,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             self,
             container: PluginServiceManagerContainer,
             props: Properties,
-            target_driver: str):
+            target_driver_dialect: TargetDriverDialect):
         self._container = container
         self._container.plugin_service = self
         self._props = props
@@ -179,7 +185,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
         self._dialect_provider = DialectManager()
-        self._dialect = self._dialect_provider.get_dialect(target_driver, props)
+        self._target_driver_dialect = target_driver_dialect
+        self._dialect = self._dialect_provider.get_dialect(target_driver_dialect.dialect_code, props)
 
     @property
     def hosts(self) -> List[HostInfo]:
@@ -228,6 +235,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     @property
     def dialect(self) -> Optional[Dialect]:
         return self._dialect
+
+    @property
+    def network_bounded_methods(self) -> Set[str]:
+        return self._target_driver_dialect.network_bounded_methods
 
     def update_dialect(self, connection: Optional[Connection] = None):
         connection = self.current_connection if connection is None else connection

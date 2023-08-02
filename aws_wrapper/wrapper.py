@@ -64,7 +64,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         target_driver_dialect_manager: TargetDriverDialectManager = TargetDriverDialectManager()
         target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
-        plugin_service = PluginServiceImpl(container, props, target_driver_dialect.dialect_code)
+        plugin_service = PluginServiceImpl(container, props, target_driver_dialect)
         plugin_manager: PluginManager = PluginManager(
             container,
             props,
