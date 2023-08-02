@@ -128,7 +128,7 @@ class AuroraTestUtility:
             cursor.fetchone()
             assert False
         except Exception as x:
-            if type(x) == exception_cls:
+            if isinstance(x, exception_cls):
                 return
             assert False
 

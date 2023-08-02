@@ -17,9 +17,10 @@ from unittest.mock import patch
 import pytest
 
 from aws_wrapper.dialect import (AuroraMysqlDialect, AuroraPgDialect,
-                                 DatabaseType, DialectCode, DialectManager,
-                                 MariaDbDialect, MysqlDialect, PgDialect,
-                                 RdsMysqlDialect, RdsPgDialect, UnknownDialect)
+                                 DialectCode, DialectManager, MariaDbDialect,
+                                 MysqlDialect, PgDialect, RdsMysqlDialect,
+                                 RdsPgDialect, TargetDriverType,
+                                 UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.utils.properties import Properties, WrapperProperties
@@ -57,6 +58,11 @@ def mock_fetchone_row(mocker):
 
 @pytest.fixture
 def mock_dialect(mocker):
+    return mocker.MagicMock()
+
+
+@pytest.fixture
+def mock_target_driver_dialect(mocker):
     return mocker.MagicMock()
 
 
@@ -200,113 +206,113 @@ def test_rds_pg_is_dialect(mock_super, mock_cursor, mock_conn, rds_pg_dialect):
     assert not rds_pg_dialect.is_dialect(mock_conn)
 
 
-def test_get_dialect_custom_dialect(mock_custom_dialect):
+def test_get_dialect_custom_dialect(mock_custom_dialect, mock_target_driver_dialect):
     manager = DialectManager()
     manager._custom_dialect = mock_custom_dialect
 
-    assert mock_custom_dialect == manager.get_dialect(Properties())
+    assert mock_custom_dialect == manager.get_dialect(mock_target_driver_dialect, Properties())
 
 
-def test_get_dialect_user_setting():
+def test_get_dialect_user_setting(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "localhost", WrapperProperties.DIALECT.name: "custom"})
 
     with pytest.raises(AwsWrapperError):
-        manager.get_dialect(props)
+        manager.get_dialect(mock_target_driver_dialect, props)
 
     props[WrapperProperties.DIALECT.name] = "invalid_dialect"
     with pytest.raises(AwsWrapperError):
-        manager.get_dialect(props)
+        manager.get_dialect(mock_target_driver_dialect, props)
 
     props[WrapperProperties.DIALECT.name] = "aurora-pg"
-    assert isinstance(manager.get_dialect(props), AuroraPgDialect)
+    assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), AuroraPgDialect)
     assert isinstance(manager._dialect, AuroraPgDialect)
     assert manager._dialect_code == DialectCode.AURORA_PG
 
 
-def test_get_dialect_aurora_mysql():
+def test_get_dialect_aurora_mysql(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "my-database.cluster-xyz.us-east-2.rds.amazonaws.com"})
 
-    with patch.object(manager, '_get_database_type', return_value=DatabaseType.MYSQL):
-        assert isinstance(manager.get_dialect(props), AuroraMysqlDialect)
+    with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.MYSQL):
+        assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), AuroraMysqlDialect)
         assert isinstance(manager._dialect, AuroraMysqlDialect)
         assert DialectCode.AURORA_MYSQL == manager._dialect_code
         assert manager._can_update is False
 
 
-def test_get_dialect_rds_mysql():
+def test_get_dialect_rds_mysql(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
 
-    with patch.object(manager, '_get_database_type', return_value=DatabaseType.MYSQL):
-        assert isinstance(manager.get_dialect(props), RdsMysqlDialect)
+    with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.MYSQL):
+        assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), RdsMysqlDialect)
         assert isinstance(manager._dialect, RdsMysqlDialect)
         assert DialectCode.RDS_MYSQL == manager._dialect_code
         assert manager._can_update is True
 
 
-def test_get_dialect_mysql():
+def test_get_dialect_mysql(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "localhost"})
 
-    with patch.object(manager, '_get_database_type', return_value=DatabaseType.MYSQL):
-        assert isinstance(manager.get_dialect(props), MysqlDialect)
+    with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.MYSQL):
+        assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), MysqlDialect)
         assert isinstance(manager._dialect, MysqlDialect)
         assert DialectCode.MYSQL == manager._dialect_code
         assert manager._can_update is True
 
 
-def test_get_dialect_aurora_pg():
+def test_get_dialect_aurora_pg(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "my-database.cluster-xyz.us-east-2.rds.amazonaws.com"})
 
-    with patch.object(manager, '_get_database_type', return_value=DatabaseType.POSTGRES):
-        assert isinstance(manager.get_dialect(props), AuroraPgDialect)
+    with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.POSTGRES):
+        assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), AuroraPgDialect)
         assert isinstance(manager._dialect, AuroraPgDialect)
         assert DialectCode.AURORA_PG == manager._dialect_code
         assert manager._can_update is False
 
 
-def test_get_dialect_mysql_pg():
+def test_get_dialect_mysql_pg(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
 
-    with patch.object(manager, '_get_database_type', return_value=DatabaseType.POSTGRES):
-        assert isinstance(manager.get_dialect(props), RdsPgDialect)
+    with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.POSTGRES):
+        assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), RdsPgDialect)
         assert isinstance(manager._dialect, RdsPgDialect)
         assert DialectCode.RDS_PG == manager._dialect_code
         assert manager._can_update is True
 
 
-def test_get_dialect_pg():
+def test_get_dialect_pg(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "localhost"})
 
-    with patch.object(manager, '_get_database_type', return_value=DatabaseType.POSTGRES):
-        assert isinstance(manager.get_dialect(props), PgDialect)
+    with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.POSTGRES):
+        assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), PgDialect)
         assert isinstance(manager._dialect, PgDialect)
         assert DialectCode.PG == manager._dialect_code
         assert manager._can_update is True
 
 
-def test_get_dialect_mariadb():
+def test_get_dialect_mariadb(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "localhost"})
 
-    with patch.object(manager, '_get_database_type', return_value=DatabaseType.MARIADB):
-        assert isinstance(manager.get_dialect(props), MariaDbDialect)
+    with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.MARIADB):
+        assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), MariaDbDialect)
         assert isinstance(manager._dialect, MariaDbDialect)
         assert DialectCode.MARIADB == manager._dialect_code
         assert manager._can_update is True
 
 
-def test_get_dialect_unknown_dialect():
+def test_get_dialect_unknown_dialect(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "localhost"})
 
-    with patch.object(manager, '_get_database_type', return_value=None):
-        assert isinstance(manager.get_dialect(props), UnknownDialect)
+    with patch.object(manager, '_get_target_driver_type', return_value=None):
+        assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), UnknownDialect)
         assert isinstance(manager._dialect, UnknownDialect)
         assert DialectCode.UNKNOWN == manager._dialect_code
         assert manager._can_update is True

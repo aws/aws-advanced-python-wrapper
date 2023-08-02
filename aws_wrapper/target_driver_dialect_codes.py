@@ -11,3 +11,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+class TargetDriverDialectCodes:
+    PSYCOPG = "psycopg"
+    MYSQL_CONNECTOR_PYTHON = "mysql-connector-python"
+    MARIADB_CONNECTOR_PYTHON = "mariadb-connector-python"
+    GENERIC = "generic"

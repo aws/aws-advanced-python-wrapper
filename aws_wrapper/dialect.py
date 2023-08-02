@@ -27,6 +27,7 @@ from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
 from .exceptions import ExceptionHandler, PgExceptionHandler
+from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
 
@@ -55,7 +56,7 @@ class DialectCode(Enum):
             raise AwsWrapperError(Messages.get_formatted("DialectCode.InvalidStringValue", value))
 
 
-class DatabaseType(Enum):
+class TargetDriverType(Enum):
     MYSQL = auto()
     POSTGRES = auto()
     MARIADB = auto()
@@ -121,7 +122,7 @@ class Dialect(Protocol):
 
 
 class DialectProvider(Protocol):
-    def get_dialect(self, props: Properties) -> Optional[Dialect]:
+    def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[Dialect]:
         """
         Returns the dialect identified by analyzing the AwsWrapperProperties.DIALECT property (if set) or the target
         driver method
@@ -470,7 +471,7 @@ class DialectManager(DialectProvider):
     def reset_endpoint_cache(self):
         self._known_endpoint_dialects.clear()
 
-    def get_dialect(self, props: Properties) -> Optional[Dialect]:
+    def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[Dialect]:
         self._can_update = False
         self._dialect = None
 
@@ -499,8 +500,8 @@ class DialectManager(DialectProvider):
                 raise AwsWrapperError(Messages.get_formatted("Dialect.UnknownDialectCode", str(dialect_code)))
 
         host: str = props["host"]
-        database_type: DatabaseType = self._get_database_type()
-        if database_type is DatabaseType.MYSQL:
+        target_driver_type: TargetDriverType = self._get_target_driver_type(driver_dialect)
+        if target_driver_type is TargetDriverType.MYSQL:
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCode.AURORA_MYSQL
@@ -518,7 +519,7 @@ class DialectManager(DialectProvider):
             self._log_current_dialect()
             return self._dialect
 
-        if database_type is DatabaseType.POSTGRES:
+        if target_driver_type is TargetDriverType.POSTGRES:
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCode.AURORA_PG
@@ -536,7 +537,14 @@ class DialectManager(DialectProvider):
             self._log_current_dialect()
             return self._dialect
 
-        if database_type is DatabaseType.MARIADB:
+        if target_driver_type is TargetDriverType.MARIADB:
+            rds_type = self._rds_helper.identify_rds_type(host)
+            if rds_type.is_rds_cluster:
+                # Aurora MariaDB doesn't exist.
+                # If this is a cluster endpoint then user is trying to connect to AMS via the MariaDB driver.
+                self._dialect_code = DialectCode.AURORA_MYSQL
+                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_MYSQL)
+                return self._dialect
             self._can_update = True
             self._dialect_code = DialectCode.MARIADB
             self._dialect = self._known_dialects_by_code.get(DialectCode.MARIADB)
@@ -549,9 +557,15 @@ class DialectManager(DialectProvider):
         self._log_current_dialect()
         return self._dialect
 
-    def _get_database_type(self) -> DatabaseType:
-        # TODO: Add logic to identify database based on target driver connect info
-        return DatabaseType.POSTGRES
+    def _get_target_driver_type(self, driver_dialect: str) -> TargetDriverType:
+        if driver_dialect == TargetDriverDialectCodes.PSYCOPG:
+            return TargetDriverType.POSTGRES
+        if driver_dialect == TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON:
+            return TargetDriverType.MYSQL
+        if driver_dialect == TargetDriverDialectCodes.MARIADB_CONNECTOR_PYTHON:
+            return TargetDriverType.MARIADB
+
+        return TargetDriverType.CUSTOM
 
     def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection) -> Optional[Dialect]:
         if not self._can_update:
