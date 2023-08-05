@@ -14,37 +14,272 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from time import sleep
+from typing import TYPE_CHECKING, List
+
+import pytest
+
+from aws_wrapper.pep249 import (Connection, FailoverSuccessError,
+                                TransactionResolutionUnknownError)
+from .utils.proxy_helper import ProxyHelper
 
 from .utils.test_environment_features import TestEnvironmentFeatures
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
     from .utils.test_environment import TestEnvironment
+    from .utils.test_instance_info import TestInstanceInfo
+    from .utils.test_database_info import TestDatabaseInfo
+    from .utils.test_proxy_database_info import TestProxyDatabaseInfo
 
 from logging import getLogger
 
-import pytest
-
+from aws_wrapper.wrapper import AwsWrapperConnection
 from .utils.aurora_test_utility import AuroraTestUtility
 from .utils.conditions import enable_on_features, enable_on_num_instances
+from .utils.driver_helper import DriverHelper
 
 
 @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
 @enable_on_num_instances(min_instances=2)
 class TestAuroraFailover:
+    IDLE_CONNECTIONS_NUM: int = 5
     logger = getLogger(__name__)
 
-    @pytest.mark.skip(reason="This test is just sample code and it will eventually be removed")
-    def test_dummy(
-            self, test_environment: TestEnvironment, test_driver: TestDriver):
-        # TODO: this test is an example on how to use AuroraTestUtility. Remove this test.
+    def test_fail_from_writer_to_new_writer_fail_on_connection_invocation(self, test_environment: TestEnvironment,
+                                                                          test_driver: TestDriver):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        connect_params: str = self._init_default_props(test_environment)
+        plugin: str = "failover"
+        region: str = test_environment.get_info().get_aurora_region()
+        aurora_utility = AuroraTestUtility(region)
+        initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
+
+        with AwsWrapperConnection.connect(connect_params, target_driver_connect, plugins=plugin) as aws_conn:
+            # crash instance1 and nominate a new writer
+            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+            # failure occurs on Connection invocation
+            aurora_utility.assert_first_query_throws(aws_conn, FailoverSuccessError)
+
+            # assert that we are connected to the new writer after failover happens.
+            current_connection_id = aurora_utility.query_instance_id(aws_conn)
+            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            assert current_connection_id != initial_writer_id
+
+    def test_fail_from_writer_to_new_writer_fail_on_connection_bound_object_invocation(self,
+                                                                                       test_environment: TestEnvironment,
+                                                                                       test_driver: TestDriver):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        connect_params: str = self._init_default_props(test_environment)
+        plugin: str = "failover"
 
         region: str = test_environment.get_aurora_region()
         aurora_utility = AuroraTestUtility(region)
+        initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
+
+        with AwsWrapperConnection.connect(connect_params, target_driver_connect, plugins=plugin) as aws_conn:
+            cursor = aws_conn.cursor()
+            assert cursor is not None
+
+            # crash instance1 and nominate a new writer
+            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+            # failure occurs on Connection invocation
+            aurora_utility.assert_first_query_throws(aws_conn, FailoverSuccessError)
+
+            # assert that we are connected to the new writer after failover happens and we can reuse the cursor
+            current_connection_id = aurora_utility.query_instance_id(aws_conn)
+            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            assert current_connection_id != initial_writer_id
+
+    @pytest.mark.skip
+    def test_fail_from_reader_to_writer(self, test_environment: TestEnvironment,
+                                        test_driver: TestDriver):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        database_info: TestProxyDatabaseInfo = test_environment.get_info().get_proxy_database_info()
+        instance: TestInstanceInfo = database_info.get_instances()[1]
+        writer_id: str = database_info.get_instances()[0].get_instance_id()
+        db_name: str = database_info.get_default_db_name()
+        user: str = database_info.get_username()
+        password: str = database_info.get_password()
+        plugin: str = "failover,efm"
+        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} connect_timeout=10".format(
+            instance.get_host(), instance.get_port(), db_name, user, password)
+
+        region: str = test_environment.get_info().get_aurora_region()
+        aurora_utility = AuroraTestUtility(region)
+
+        aws_conn = AwsWrapperConnection.connect(
+            connect_params,
+            target_driver_connect,
+            plugins=plugin,
+            cluster_instance_host_pattern=f"?.{database_info.get_instance_endpoint_suffix()}")
+        ProxyHelper.disable_connectivity(instance.get_instance_id())
+
+        aurora_utility.assert_first_query_throws(aws_conn, FailoverSuccessError, None)
         TestAuroraFailover.logger.debug(aurora_utility.get_aurora_instance_ids())
+
+        current_connection_id = aurora_utility.query_instance_id(aws_conn)
+
+        assert writer_id == current_connection_id
+        assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+
+    @pytest.mark.skip
+    def test_writer_fail_within_transaction_set_autocommit_false(self, test_environment: TestEnvironment,
+                                                                 test_driver: TestDriver):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        connect_params: str = self._init_default_props(test_environment)
+        region: str = test_environment.get_info().get_aurora_region()
+        aurora_utility = AuroraTestUtility(region)
+        initial_writer_id = test_environment.get_info().get_database_info().get_instances()[0].get_instance_id()
+
+        with AwsWrapperConnection.connect(connect_params, target_driver_connect, plugins="failover") as conn, \
+                conn.cursor() as cursor_1:
+            cursor_1.execute("DROP TABLE IF EXISTS test3_2")
+            cursor_1.execute("CREATE TABLE test3_2 (id int not null primary key, test3_2_field varchar(255) not null)")
+
+            # conn.autocommit(False);
+
+            with conn.cursor() as cursor_2:
+                cursor_2.execute("INSERT INTO test3_2 VALUES (1, 'test field string 1')")
+
+                aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+                with pytest.raises(TransactionResolutionUnknownError):
+                    cursor_2.execute("INSERT INTO test3_2 VALUES (2, 'test field string 2')")
+
+            # attempt to query the instance id
+            current_connection_id: str = aurora_utility.query_instance_id(conn)
+
+            # assert that we are connected to the new writer after failover happens
+            assert aurora_utility.is_db_instance_writer(current_connection_id)
+            next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
+
+            assert current_connection_id == next_cluster_writer_id
+            assert initial_writer_id != next_cluster_writer_id
+
+            # cursor_2 can not be used anymore since it's invalid
+
+            with conn.cursor() as cursor_3:
+                cursor_3.execute("SELECT count(*) from test3_2")
+                result = cursor_1.fetchone()
+                assert 0 == int(result)
+                cursor_3.execute("DROP TABLE IF EXISTS test3_2")
+
+    @pytest.mark.skip
+    def test_writer_fail_within_transaction_start_transaction(self, test_environment: TestEnvironment,
+                                                              test_driver: TestDriver):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        connect_params: str = self._init_default_props(test_environment)
+        region: str = test_environment.get_info().get_aurora_region()
+        aurora_utility = AuroraTestUtility(region)
+        initial_writer_id = test_environment.get_info().get_database_info().get_instances()[0].get_instance_id()
+
+        with AwsWrapperConnection.connect(connect_params, target_driver_connect, plugins="failover") as conn, \
+                conn.cursor() as cursor_1:
+            cursor_1.execute("DROP TABLE IF EXISTS test3_3")
+            cursor_1.execute("CREATE TABLE test3_3 (id int not null primary key, test3_3_field varchar(255) not null)")
+
+            cursor_1.execute("START TRANSACTION")
+
+            # conn.autocommit(False);
+
+            with conn.cursor() as cursor_2:
+                cursor_2.execute("INSERT INTO test3_3 VALUES (1, 'test field string 1')")
+
+                aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+                with pytest.raises(TransactionResolutionUnknownError):
+                    cursor_2.execute("INSERT INTO test3_3 VALUES (2, 'test field string 2')")
+
+            # attempt to query the instance id
+            current_connection_id: str = aurora_utility.query_instance_id(conn)
+
+            # assert that we are connected to the new writer after failover happens
+            assert aurora_utility.is_db_instance_writer(current_connection_id)
+            next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
+
+            assert current_connection_id == next_cluster_writer_id
+            assert initial_writer_id != next_cluster_writer_id
+
+            # cursor_2 can not be used anymore since it's invalid
+
+            with conn.cursor() as cursor_3:
+                cursor_3.execute("SELECT count(*) from test3_3")
+                result = cursor_1.fetchone()
+                assert 0 == int(result)
+                cursor_3.execute("DROP TABLE IF EXISTS test3_3")
+
+    def test_writer_failover_in_idle_connections(self, test_environment: TestEnvironment,
+                                                 test_driver: TestDriver):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        connect_params: str = self._init_default_props(test_environment)
+        region: str = test_environment.get_info().get_aurora_region()
+        aurora_utility = AuroraTestUtility(region)
         current_writer_id = aurora_utility.get_cluster_writer_instance_id()
-        TestAuroraFailover.logger.debug("Current writer: " + current_writer_id)
-        aurora_utility.failover_cluster_and_wait_until_writer_changed(current_writer_id)
-        current_writer_id = aurora_utility.get_cluster_writer_instance_id()
-        TestAuroraFailover.logger.debug("New writer: " + current_writer_id)
+
+        idle_connections: List[Connection] = []
+
+        for i in range(self.IDLE_CONNECTIONS_NUM):
+            idle_connections.append(AwsWrapperConnection.connect(connect_params, target_driver_connect,
+                                                                 plugins="aurora_connection_tracker,failover"))
+
+        with AwsWrapperConnection.connect(connect_params, target_driver_connect,
+                                          plugins="aurora_connection_tracker,failover") as conn, \
+                conn.cursor():
+            instance_id = aurora_utility.query_instance_id(conn)
+            assert current_writer_id == instance_id
+
+            # ensure that all idle connections are still opened
+            for idle_connection in idle_connections:
+                assert idle_connection is not None
+
+            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+            with pytest.raises(FailoverSuccessError):
+                aurora_utility.query_instance_id(conn)
+
+        sleep(10)
+
+        # Ensure that all idle connections are closed.
+        for idle_connection in idle_connections:
+            assert idle_connection is None
+
+    def test_basic_failover_with_efm(self, test_environment: TestEnvironment,
+                                     test_driver: TestDriver):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        connect_params: str = self._init_default_props(test_environment)
+        region: str = test_environment.get_info().get_aurora_region()
+        aurora_utility = AuroraTestUtility(region)
+        initial_writer_instance_info = test_environment.get_info().get_database_info().get_instances()[0]
+        nominated_writer_instance_info = test_environment.get_info().get_database_info().get_instances()[1]
+
+        nominated_writer_id = nominated_writer_instance_info.get_instance_id()
+
+        with AwsWrapperConnection.connect(connect_params, target_driver_connect,
+                                          plugins="failover,aurora_host_list") as conn, conn.cursor():
+            aurora_utility.failover_cluster_and_wait_until_writer_changed(nominated_writer_id)
+            aurora_utility.assert_first_query_throws(conn, FailoverSuccessError)
+
+            current_connection_id = aurora_utility.query_instance_id(conn)
+
+            instance_ids = aurora_utility.get_aurora_instance_ids()
+
+            assert len(instance_ids) > 0
+
+            next_writer_id = instance_ids[0]
+
+            assert initial_writer_instance_info.get_instance_id() != current_connection_id
+            assert next_writer_id == current_connection_id
+
+    def _init_default_props(self, test_environment: TestEnvironment, ) -> str:
+        database_info: TestDatabaseInfo = test_environment.get_info().get_database_info()
+        instance: TestInstanceInfo = database_info.get_instances()[0]
+        db_name: str = database_info.get_default_db_name()
+        user: str = database_info.get_username()
+        password: str = database_info.get_password()
+        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} connect_timeout=10".format(
+            instance.get_host(), instance.get_port(), db_name, user, password)
+
+        return connect_params

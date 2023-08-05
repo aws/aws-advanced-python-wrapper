@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 from _weakrefset import WeakSet
 
 from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.pep249 import FailoverError
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.rdsutils import RdsUtils

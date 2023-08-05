@@ -61,10 +61,13 @@ class AuroraTestUtility:
         return clusters[0]
 
     def failover_cluster_and_wait_until_writer_changed(
-            self, initial_writer_id: str, cluster_id: Optional[str] = None) -> None:
+            self, initial_writer_id: Optional[str] = None, cluster_id: Optional[str] = None) -> None:
 
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_aurora_cluster_name()
+
+        if initial_writer_id is None:
+            initial_writer_id = self.get_cluster_writer_instance_id(cluster_id)
 
         database_info = TestEnvironment.get_current().get_database_info()
         cluster_endpoint = database_info.get_cluster_endpoint()
@@ -140,7 +143,10 @@ class AuroraTestUtility:
         else:
             raise NotImplementedError(database_engine)
 
-    def query_instance_id(self, conn, database_engine: Optional[DatabaseEngine] = None) -> str:
+    def query_instance_id(
+            self,
+            conn,
+            database_engine: Optional[DatabaseEngine] = None) -> str:
         if database_engine is None:
             database_engine = TestEnvironment.get_current().get_engine()
 
