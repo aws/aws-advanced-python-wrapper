@@ -50,8 +50,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-tests/reports
-integration_testing/bin
+tests/integration/container/reports
+tests/integration/host/bin
 
 # Translations
 *.mo

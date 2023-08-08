@@ -60,5 +60,5 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: pytest-integration-report
-          path: ./tests/reports
+          path: ./tests/integration/container/reports
           retention-days: 5
