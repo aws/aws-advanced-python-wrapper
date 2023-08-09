@@ -145,7 +145,7 @@ class PluginService(ExceptionHandler, Protocol):
     def connect(self, host_info: HostInfo, props: Properties) -> Connection:
         ...
 
-    def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Event) -> Connection:
+    def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Optional[Event]) -> Connection:
         ...
 
     def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
@@ -264,7 +264,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.connect(host_info, props, self.current_connection is None)
 
-    def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Event) -> Connection:
+    def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Optional[Event]) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.force_connect(host_info, props, self.current_connection is None)
 

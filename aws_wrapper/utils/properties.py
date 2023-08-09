@@ -19,7 +19,7 @@ from aws_wrapper.utils.messages import Messages
 
 
 class Properties(Dict[str, str]):
-    ...
+    pass
 
 
 class WrapperProperty:
