@@ -18,7 +18,7 @@ from typing import Any, Callable, Iterator, List, Optional, Union
 from aws_wrapper.connection_provider import DriverConnectionProvider
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import AuroraHostListProvider
-from aws_wrapper.pep249 import Connection, Cursor, Error
+from aws_wrapper.pep249 import Connection, Cursor, Error, FailoverSuccessError
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.plugin_service import (PluginManager, PluginService,
                                         PluginServiceImpl,
@@ -86,7 +86,8 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
                                      lambda: self.target_connection.close())
 
     def cursor(self, **kwargs: Union[None, int, str]) -> "AwsWrapperCursor":
-        return AwsWrapperCursor(self, self._plugin_manager)
+        _cursor = self.target_connection.cursor(**kwargs)
+        return AwsWrapperCursor(self, self._plugin_manager, _cursor)
 
     def commit(self) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.commit",
@@ -135,9 +136,10 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 class AwsWrapperCursor(Cursor):
     __module__ = "aws_wrapper"
 
-    def __init__(self, conn: AwsWrapperConnection, plugin_manager: PluginManager):
+    def __init__(self, conn: AwsWrapperConnection, plugin_manager: PluginManager, target_cursor: Cursor):
         self._conn: AwsWrapperConnection = conn
         self._plugin_manager: PluginManager = plugin_manager
+        self._target_cursor: Cursor = target_cursor
 
     # It's not part of PEP249
     @property
@@ -146,7 +148,7 @@ class AwsWrapperCursor(Cursor):
 
     @property
     def target_cursor(self) -> Cursor:
-        return self.connection.target_connection.cursor()
+        return self._target_cursor
 
     @property
     def description(self):
@@ -173,8 +175,12 @@ class AwsWrapperCursor(Cursor):
             query: str,
             **kwargs: Union[None, int, str]
     ) -> "AwsWrapperCursor":
-        return self._plugin_manager.execute(self.target_cursor, "Cursor.execute",
-                                            lambda: self.target_cursor.execute(query, **kwargs), query, kwargs)
+        try:
+            return self._plugin_manager.execute(self.target_cursor, "Cursor.execute",
+                                                lambda: self.target_cursor.execute(query, **kwargs), query, kwargs)
+        except FailoverSuccessError as e:
+            self._target_cursor = self.connection.target_connection.cursor()
+            raise e
 
     def executemany(
             self,
