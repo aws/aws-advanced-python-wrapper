@@ -28,8 +28,8 @@ import pytest
 
 from aws_wrapper import AwsWrapperConnection
 from aws_wrapper.errors import AwsWrapperError
-from tests.integration.container.utils.conditions import (disable_on_mariadb_driver,
-                                                    iam_required)
+from tests.integration.container.utils.conditions import (
+    disable_on_mariadb_driver, iam_required)
 from tests.integration.container.utils.driver_helper import DriverHelper
 
 

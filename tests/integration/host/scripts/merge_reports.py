@@ -12,12 +12,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import os
 import sys
 
-import pytest
-
 if __name__ == "__main__":
-    test_filter = sys.argv[1]
-    report_setting = sys.argv[2]
-    test_folder = sys.argv[3]
-    sys.exit(pytest.main([report_setting, "-k", test_filter, "-p", "no:logging", "--capture=tee-sys", test_folder]))
+    sys.exit(os.system(
+        "poetry run pytest_html_merger -i ../container/reports/ -o ../container/reports/integration_tests.html"))

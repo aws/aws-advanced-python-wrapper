@@ -88,14 +88,13 @@ public class ContainerHelper {
     execInContainer(container, consumer, "poetry", "install");
     execInContainer(container, consumer, "poetry", "env", "use", "system");
     execInContainer(container, consumer, "poetry", "env", "info");
-    execInContainer(container, consumer, "rm", "-rf", "/app/tests/integration/container/reports");  // Remove old reports
 
     String filter = System.getenv("FILTER");
-    String reportSetting = String.format("--html=./tests/integration/container/reports/%s.html", config.getPrimaryInfo());
-    Long exitCode = execInContainer(container, consumer, "poetry", "run", "pytest", reportSetting, "-k", filter, "-p", "no:logging", "--capture=tee-sys", testFolder);
-    execInContainer(container, consumer, "poetry", "run", "pytest_html_merger", "-i", "./tests/integration/container/reports/", "-o", "./tests/integration/container/reports/integration_tests.html");
-    execInContainer(container, consumer, "pwd");
-    execInContainer(container, consumer, "sh", "-c", "[ -d /app/tests/integration/container/reports ] && find /app/tests/integration/container/reports/ -type f ! -name integration_tests.html -delete");  // Delete individual reports in favor of consolidated report
+    String reportSetting = String.format(
+        "--html=./tests/integration/container/reports/%s.html", config.getPrimaryInfo());
+    Long exitCode = execInContainer(container, consumer,
+        "poetry", "run", "pytest", reportSetting, "-k", filter,
+        "-p", "no:logging", "--capture=tee-sys", testFolder);
 
     System.out.println("==== Container console feed ==== <<<<");
     assertEquals(0, exitCode, "Some tests failed.");
@@ -109,27 +108,34 @@ public class ContainerHelper {
     execInContainer(container, consumer, "poetry", "install");
     execInContainer(container, consumer, "poetry", "env", "use", "system");
     execInContainer(container, consumer, "poetry", "env", "info");
-    execInContainer(container, consumer, "rm", "-rf", "/app/tests/integration/container/reports");  // Remove old reports
 
     Long exitCode;
-    DebugEnv debugEnv = DebugEnv.fromEnv();
     if (System.getenv("DEBUG_ENV") == null) {
-      System.out.println("\nThe DEBUG_ENV environment variable was not set - PYCHARM will be used as the default debug environment");
+      throw new RuntimeException("Environment variable 'DEBUG_ENV' is required to debug the integration tests. " +
+                                 "Please set 'DEBUG_ENV' to 'PYCHARM' or 'VSCODE'.");
     }
+    DebugEnv debugEnv = DebugEnv.fromEnv();
 
-    String reportSetting = String.format("--html=./tests/integration/container/reports/%s.html", config.getPrimaryInfo());
+    String reportSetting = String.format(
+        "--html=./tests/integration/container/reports/%s.html", config.getPrimaryInfo());
     if (DebugEnv.PYCHARM.equals(debugEnv)) {
-      System.out.println("\n\n    Attaching to the debugger - open the Pycharm debug tab and click resume to begin debugging your tests...\n\n");
-      exitCode = execInContainer(container, consumer, "poetry", "run", "python", "./tests/integration/container/scripts/debug_integration_pycharm.py", System.getenv("FILTER"), reportSetting);
+      System.out.println("\n\n    " +
+          "Attaching to the debugger - open the Pycharm debug tab and click resume to begin debugging your tests..." +
+          "\n\n");
+      exitCode = execInContainer(container, consumer,
+          "poetry", "run", "python", "./tests/integration/container/scripts/debug_integration_pycharm.py",
+          System.getenv("FILTER"), reportSetting, testFolder);
     } else if (DebugEnv.VSCODE.equals(debugEnv)) {
       System.out.println("\n\n    Starting debugpy - you may now attach to the debugger from vscode...\n\n");
-      exitCode = execInContainer(container, consumer, "poetry", "run", "python", "-Xfrozen_modules=off", "-m", "debugpy", "--listen", "0.0.0.0:5005", "--wait-for-client", "./tests/integration/container/scripts/debug_integration_vscode.py", System.getenv("FILTER"), reportSetting);
+      exitCode = execInContainer(container, consumer,
+          "poetry", "run", "python", "-Xfrozen_modules=off", "-m", "debugpy", "--listen", "0.0.0.0:5005",
+          "--wait-for-client", "./tests/integration/container/scripts/debug_integration_vscode.py",
+          System.getenv("FILTER"), reportSetting, testFolder);
     } else {
-      throw new RuntimeException("The detected debugging environment was invalid. If you are setting the DEBUG_ENV environment variable, please ensure it is set to 'PYCHARM' or 'VSCODE'");
+      throw new RuntimeException(
+          "The detected debugging environment was invalid. " +
+          "If you are setting the DEBUG_ENV environment variable, please ensure it is set to 'PYCHARM' or 'VSCODE'");
     }
-
-    execInContainer(container, consumer, "poetry", "run", "pytest_html_merger", "-i", "./tests/integration/container/reports/", "-o", "./tests/integration/container/reports/integration_tests.html");
-    execInContainer(container, consumer, "sh", "-c", "[ -d /app/tests/integration/container/reports ] && find /app/tests/integration/container/reports/ -type f ! -name integration_tests.html -delete");  // Delete individual reports in favor of consolidated report
 
     System.out.println("==== Container console feed ==== <<<<");
     assertEquals(0, exitCode, "Some tests failed.");
@@ -163,44 +169,46 @@ public class ContainerHelper {
     DebugEnv debugEnv = DebugEnv.fromEnv();
     FixedExposedPortContainer container;
     if (DebugEnv.VSCODE.equals(debugEnv)) {
-        container = (FixedExposedPortContainer) new FixedExposedPortContainer<>(
-            new ImageFromDockerfile(dockerImageName, true)
-                .withDockerfileFromBuilder(
-                    builder -> appendExtraCommandsToBuilder.apply(
-                        builder
-                            .from(testContainerImageName)
-                            .run("apk", "add", "curl")
-                            .run("mkdir", "app")
-                            .workDir("/app")
-                            .run("curl", "-sSL", "https://install.python-poetry.org", "--output", "/app/poetry.py")
-                            .run("python3", "/app/poetry.py")
-                            .env("PATH", "${PATH}:/root/.local/bin")
-                            .entryPoint("/bin/sh -c \"while true; do sleep 30; done;\"")
-                            .expose(5005)
-                    ).build())).withFixedExposedPort(5005, 5005);
+      container = (FixedExposedPortContainer) new FixedExposedPortContainer<>(
+          new ImageFromDockerfile(dockerImageName, true)
+              .withDockerfileFromBuilder(
+                  builder -> appendExtraCommandsToBuilder.apply(
+                      builder
+                          .from(testContainerImageName)
+                          .run("apk", "add", "curl")
+                          .run("mkdir", "app")
+                          .workDir("/app")
+                          .run("curl", "-sSL", "https://install.python-poetry.org", "--output", "/app/poetry.py")
+                          .run("python3", "/app/poetry.py")
+                          .env("PATH", "${PATH}:/root/.local/bin")
+                          .entryPoint("/bin/sh -c \"while true; do sleep 30; done;\"")
+                          .expose(5005)
+                  ).build())).withFixedExposedPort(5005, 5005);
     } else {
-        container = new FixedExposedPortContainer<>(
-            new ImageFromDockerfile(dockerImageName, true)
-                .withDockerfileFromBuilder(
-                    builder -> appendExtraCommandsToBuilder.apply(
-                        builder
-                            .from(testContainerImageName)
-                            .run("apk", "add", "curl")
-                            .run("mkdir", "app")
-                            .workDir("/app")
-                            .run("curl", "-sSL", "https://install.python-poetry.org", "--output", "/app/poetry.py")
-                            .run("python3", "/app/poetry.py")
-                            .env("PATH", "${PATH}:/root/.local/bin")
-                            .entryPoint("/bin/sh -c \"while true; do sleep 30; done;\"")
-                    ).build()));
+      container = new FixedExposedPortContainer<>(
+          new ImageFromDockerfile(dockerImageName, true)
+              .withDockerfileFromBuilder(
+                  builder -> appendExtraCommandsToBuilder.apply(
+                      builder
+                          .from(testContainerImageName)
+                          .run("apk", "add", "curl")
+                          .run("mkdir", "app")
+                          .workDir("/app")
+                          .run("curl", "-sSL", "https://install.python-poetry.org", "--output", "/app/poetry.py")
+                          .run("python3", "/app/poetry.py")
+                          .env("PATH", "${PATH}:/root/.local/bin")
+                          .entryPoint("/bin/sh -c \"while true; do sleep 30; done;\"")
+                  ).build()));
     }
 
-    return container.withFileSystemBind("../../../aws_wrapper", "/app/aws_wrapper", BindMode.READ_ONLY)
-        .withFileSystemBind("../../../README.md", "/app/README.md", BindMode.READ_ONLY) // some tests may write some files here
-        .withFileSystemBind("../../../pyproject.toml", "/app/pyproject.toml", BindMode.READ_ONLY) // some tests may write some files here
-        .withFileSystemBind("../../../poetry.lock", "/app/poetry.lock", BindMode.READ_ONLY) // some tests may write some files here
-        .withFileSystemBind("../../../tests/integration/container", "/app/tests/integration/container", BindMode.READ_WRITE) // some tests may write some files here
-        .withPrivilegedMode(true); // it's needed to control Linux core settings like TcpKeepAlive
+    return container
+        .withFileSystemBind("../../../aws_wrapper", "/app/aws_wrapper", BindMode.READ_ONLY)
+        .withFileSystemBind("../../../README.md", "/app/README.md", BindMode.READ_ONLY)
+        .withFileSystemBind("../../../pyproject.toml", "/app/pyproject.toml", BindMode.READ_ONLY)
+        .withFileSystemBind("../../../poetry.lock", "/app/poetry.lock", BindMode.READ_ONLY)
+        .withFileSystemBind("../../../tests/integration/container",
+                            "/app/tests/integration/container", BindMode.READ_WRITE)
+        .withPrivilegedMode(true); // Required to control Linux core settings like TcpKeepAlive
   }
 
   protected Long execInContainer(

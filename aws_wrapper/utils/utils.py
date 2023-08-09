@@ -13,16 +13,16 @@
 #  limitations under the License.
 
 import sys
-from logging import DEBUG, Logger, StreamHandler, Formatter
+from logging import DEBUG, Formatter, Logger, StreamHandler
 from queue import Empty, Queue
 from typing import Optional
 
 
 class LogUtils:
     @staticmethod
-    def setup_logger(logger: Logger, level: int = DEBUG, format_string: str = None):
+    def setup_logger(logger: Logger, level: int = DEBUG, format_string: Optional[str] = None):
         for handler in logger.handlers:
-            if type(handler) == StreamHandler:
+            if isinstance(handler, StreamHandler):
                 return
 
         if format_string is None:
@@ -54,17 +54,6 @@ class LogUtils:
         msg = "\n\t".join(["<null>" if not host else str(host) for host in hosts])
         prefix = "" if not message_prefix else message_prefix + " "
         return prefix + f"Topology: {{\n\t{msg}}}"
-
-
-class SubscribedMethodUtils:
-    # TODO: check for missing network methods
-    NETWORK_BOUND_METHODS = {
-        "Connection.commit",
-        "Connection.rollback",
-        "Cursor.callproc",
-        "Cursor.execute",
-        "Cursor.executemany"
-    }
 
 
 class QueueUtils:

@@ -12,13 +12,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import sys
+
 import pydevd_pycharm
 import pytest
-import sys
 
 pydevd_pycharm.settrace('host.docker.internal', port=5005, stdoutToServer=True, stderrToServer=True)
 
 if __name__ == "__main__":
     test_filter = sys.argv[1]
     report_setting = sys.argv[2]
-    sys.exit(pytest.main([report_setting, "-k", test_filter, "-p", "no:logging", "--capture=tee-sys", "./tests/integration"]))
+    test_folder = sys.argv[3]
+    sys.exit(pytest.main([report_setting, "-k", test_filter, "-p", "no:logging", "--capture=tee-sys", test_folder]))
