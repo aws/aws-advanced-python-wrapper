@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_wrapper import LogUtils
 from aws_wrapper.errors import AwsWrapperError
 
 if TYPE_CHECKING:
@@ -35,7 +36,6 @@ from aws_wrapper.failover_result import (ReaderFailoverResult,
                                          WriterFailoverResult)
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.utils.messages import Messages
-from aws_wrapper.utils.utils import Utils
 
 logger = getLogger(__name__)
 
@@ -238,7 +238,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
                         if not self.is_same(writer_candidate, initial_writer_host):
                             # new writer available
-                            logger.debug(Utils.log_topology(self._current_topology, "[TaskB] "))
+                            logger.debug(LogUtils.log_topology(self._current_topology, "[TaskB] "))
 
                             if self.connect_to_writer(writer_candidate):
                                 return True

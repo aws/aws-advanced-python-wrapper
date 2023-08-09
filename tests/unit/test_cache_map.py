@@ -14,11 +14,11 @@
 
 import time
 
-from aws_wrapper.utils.cache_dict import CacheDict
+from aws_wrapper.utils.cache_map import CacheMap
 
 
 def test_get():
-    cache = CacheDict()
+    cache = CacheMap()
     cache.put("a", 1, 1_000_000_000)  # 1 sec
     cache.put("b", 2, 1)
 
@@ -28,7 +28,7 @@ def test_get():
 
 
 def test_get_with_default():
-    cache = CacheDict()
+    cache = CacheMap()
     cache.put("a", 1, 1_000_000_000)  # 1 sec
     cache.put("b", 2, 1)
     cache.put("c", 2, 1)
@@ -38,7 +38,7 @@ def test_get_with_default():
 
 
 def test_remove():
-    cache = CacheDict()
+    cache = CacheMap()
     cache.put("a", 1, 1_000_000_000)
 
     cache.remove("a")
@@ -47,7 +47,7 @@ def test_remove():
 
 
 def test_clear():
-    cache = CacheDict()
+    cache = CacheMap()
     cache.put("a", 1, 1_000_000_000)  # 1 sec
     cache.put("b", 2, 1_000_000_000)
 
@@ -56,7 +56,7 @@ def test_clear():
 
 
 def test_get_dict():
-    cache = CacheDict()
+    cache = CacheMap()
     cache.put("a", 1, 1_000_000_000)  # 1 sec
     cache.put("b", 2, 1)
 
@@ -65,7 +65,7 @@ def test_get_dict():
 
 
 def test_cleanup():
-    cache = CacheDict()
+    cache = CacheMap()
     cache._cleanup_time_ns = time.perf_counter_ns()
     cache.put("b", 2, 1)
     cache.put("a", 1, 1_000_000_000)  # 1 sec

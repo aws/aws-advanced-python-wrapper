@@ -103,5 +103,4 @@ def pytest_generate_tests(metafunc):
 
 
 def pytest_sessionstart(session):
-    aws_wrapper.set_logger()
     TestEnvironment.get_current()

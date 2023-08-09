@@ -45,7 +45,6 @@ jobs:
           echo "TEMP_AWS_SESSION_TOKEN=${creds[2]}" >> $GITHUB_ENV
 
       - name: 'Run Integration Tests'
-        working-directory: ${{ github.workspace }}/integration_testing
         run: |
           ./gradlew --no-parallel --no-daemon test-all-environments --info
         env:

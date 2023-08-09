@@ -38,7 +38,7 @@ public enum DebugEnv {
   public static DebugEnv fromEnv() {
     String envVar = System.getenv("DEBUG_ENV");
     if (envVar == null) {
-      return DebugEnv.PYCHARM;  // Use PYCHARM by default
+      return null;
     }
 
     String errorMessage = "Invalid environment variable setting for DEBUG_ENV: '%s'. Valid values are 'PYCHARM' or 'VSCODE'.";

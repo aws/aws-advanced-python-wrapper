@@ -22,3 +22,4 @@ def set_logger(name=__name__, level=DEBUG, format_string=None):
 
 
 set_logger()
+set_logger('aws_wrapper')
