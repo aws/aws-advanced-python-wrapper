@@ -20,7 +20,7 @@ K = TypeVar('K')
 V = TypeVar('V')
 
 
-class CacheDict(Generic[K, V]):
+class CacheMap(Generic[K, V]):
     def __init__(self):
         self._cache: Dict[K, CacheItem[V]] = {}
         self._cleanup_interval_ns: int = 600_000_000_000  # 10 minutes

@@ -14,21 +14,21 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
-from copy import copy
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from aws_wrapper.dialect import Dialect
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
+from concurrent.futures import Future, ThreadPoolExecutor
+from copy import copy
+from dataclasses import dataclass
 from logging import getLogger
 from queue import Queue
 from threading import Event, Lock, RLock
 from time import perf_counter_ns, sleep
-from typing import Any, Callable, Dict, FrozenSet, Optional, Set
+from typing import Any, Callable, ClassVar, Dict, FrozenSet, Optional, Set
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostAvailability, HostInfo
@@ -217,8 +217,8 @@ class MonitoringContext:
         return self._is_active
 
     @is_active.setter
-    def is_active(self, is_active_context: bool):
-        self._is_active = is_active_context
+    def is_active(self, is_active: bool):
+        self._is_active = is_active
 
     def is_host_unavailable(self) -> bool:
         return self._is_host_unavailable
@@ -272,7 +272,6 @@ class MonitoringContext:
 
 
 class Monitor:
-    _LOGGER = getLogger(__name__)
     _INACTIVE_SLEEP_MS = 100
     _MIN_HOST_CHECK_TIMEOUT_MS = 3000
     _MONITORING_PROPERTY_PREFIX = "monitoring-"
@@ -314,7 +313,7 @@ class Monitor:
 
     def stop_monitoring(self, context: MonitoringContext):
         if context is None:
-            Monitor._LOGGER.warning(Messages.get("Monitor.NullContext"))
+            logger.warning(Messages.get("Monitor.NullContext"))
             return
 
         context.is_active = False
@@ -344,7 +343,7 @@ class Monitor:
                         # Discard inactive contexts
                         continue
 
-                    if current_time_ns > new_monitor_context.active_monitoring_start_time_ns:
+                    if current_time_ns >= new_monitor_context.active_monitoring_start_time_ns:
                         # Submit the context for active monitoring
                         self._active_contexts.put(new_monitor_context)
                         continue
@@ -404,9 +403,8 @@ class Monitor:
                     delay_ms = Monitor._INACTIVE_SLEEP_MS
                 else:
                     # Subtract the time taken for the status check from the delay
-                    delay_ms -= status.elapsed_time_ns
-                    if delay_ms < Monitor._MIN_HOST_CHECK_TIMEOUT_MS:
-                        delay_ms = Monitor._MIN_HOST_CHECK_TIMEOUT_MS
+                    delay_ms -= (status.elapsed_time_ns / 1_000_000)
+                    delay_ms = max(delay_ms, Monitor._MIN_HOST_CHECK_TIMEOUT_MS)
                     # Use this delay for all active contexts
                     self._host_check_timeout_ms = delay_ms
 
@@ -440,10 +438,10 @@ class Monitor:
                         props_copy[key[len(Monitor._MONITORING_PROPERTY_PREFIX):len(key)]] = value
                         props_copy.pop(key, None)
 
-                Monitor._LOGGER.debug(Messages.get_formatted("Monitor.OpeningMonitorConnection", self._host_info.url))
+                logger.debug(Messages.get_formatted("Monitor.OpeningMonitorConnection", self._host_info.url))
                 start_ns = perf_counter_ns()
                 self._monitoring_conn = self._plugin_service.force_connect(self._host_info, props_copy, None)
-                Monitor._LOGGER.debug(Messages.get_formatted("Monitor.OpenedMonitorConnection", self._host_info.url))
+                logger.debug(Messages.get_formatted("Monitor.OpenedMonitorConnection", self._host_info.url))
                 return Monitor.HostStatus(True, perf_counter_ns() - start_ns)
 
             start_ns = perf_counter_ns()
@@ -463,8 +461,8 @@ class Monitor:
 
     @staticmethod
     def _execute_conn_check(conn: Connection):
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1")
 
 
 class MonitoringThreadContainer:
@@ -516,8 +514,9 @@ class MonitoringThreadContainer:
 
         if monitor is None:
             monitor = self._monitor_map.compute_if_absent(any_alias, _get_or_create_monitor)
-        if monitor is None:
-            raise AwsWrapperError(Messages.get_formatted("MonitoringThreadContainer.ErrorGettingMonitor", host_aliases))
+            if monitor is None:
+                raise AwsWrapperError(
+                    Messages.get_formatted("MonitoringThreadContainer.ErrorGettingMonitor", host_aliases))
 
         for host_alias in host_aliases:
             self._monitor_map.put_if_absent(host_alias, monitor)
