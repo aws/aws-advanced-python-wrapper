@@ -18,11 +18,14 @@ from abc import abstractmethod
 from contextlib import closing
 from enum import Enum, auto
 from logging import getLogger
-from typing import Dict, Optional, Protocol, Tuple, runtime_checkable
+from typing import (TYPE_CHECKING, Dict, Optional, Protocol, Tuple,
+                    runtime_checkable)
+
+if TYPE_CHECKING:
+    from aws_wrapper.pep249 import Connection
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pep249 import Connection, Error
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
@@ -162,7 +165,7 @@ class MysqlDialect(Dialect):
                     for column_value in record:
                         if "mysql" in column_value.lower():
                             return True
-        except Error:
+        except Exception:
             pass
 
         return False
@@ -203,8 +206,10 @@ class PgDialect(Dialect):
                 aws_cursor.execute('SELECT 1 FROM pg_proc LIMIT 1')
                 if aws_cursor.fetchone() is not None:
                     return True
-        except Error:
-            pass
+        except Exception:
+            # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
+            # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
+            conn.rollback()
 
         return False
 
@@ -252,7 +257,7 @@ class MariaDbDialect(Dialect):
                 for record in aws_cursor:
                     if "mariadb" in record[0].lower():
                         return True
-        except Error:
+        except Exception:
             pass
 
         return False
@@ -286,7 +291,7 @@ class RdsMysqlDialect(MysqlDialect):
                     for column_value in record:
                         if "source distribution" in column_value.lower():
                             return True
-        except Error:
+        except Exception:
             pass
 
         return False
@@ -318,8 +323,10 @@ class RdsPgDialect(PgDialect):
                     if rds_tools and not aurora_utils:
                         return True
 
-        except Error:
-            pass
+        except Exception:
+            # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
+            # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
+            conn.rollback()
         return False
 
     @property
@@ -345,7 +352,7 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
                 # If variable with such a name is presented then it means it's an Aurora cluster
                 if aws_cursor.fetchone() is not None:
                     return True
-        except Error:
+        except Exception:
             pass
 
         return False
@@ -392,8 +399,10 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
                     has_topology = True
 
             return has_extensions and has_topology
-        except Error:
-            pass
+        except Exception:
+            # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
+            # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
+            conn.rollback()
 
         return False
 

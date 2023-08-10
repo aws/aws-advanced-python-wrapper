@@ -67,7 +67,7 @@ class FailoverPlugin(Plugin):
         self._last_exception: Optional[Exception] = None
         self._rds_utils = RdsUtils()
         self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
-        FailoverPlugin._SUBSCRIBED_METHODS.add(*self._plugin_service.network_bound_methods)
+        FailoverPlugin._SUBSCRIBED_METHODS.update(*self._plugin_service.network_bound_methods)
 
     def init_host_provider(
             self,
