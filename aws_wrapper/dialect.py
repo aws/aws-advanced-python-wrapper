@@ -207,7 +207,9 @@ class PgDialect(Dialect):
                 if aws_cursor.fetchone() is not None:
                     return True
         except Exception:
-            pass
+            # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
+            # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
+            conn.rollback()
 
         return False
 
@@ -322,7 +324,9 @@ class RdsPgDialect(PgDialect):
                         return True
 
         except Exception:
-            pass
+            # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
+            # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
+            conn.rollback()
         return False
 
     @property
@@ -396,7 +400,9 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
             return has_extensions and has_topology
         except Exception:
-            pass
+            # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
+            # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
+            conn.rollback()
 
         return False
 
