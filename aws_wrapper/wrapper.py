@@ -23,6 +23,7 @@ from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.plugin_service import (PluginManager, PluginService,
                                         PluginServiceImpl,
                                         PluginServiceManagerContainer)
+from aws_wrapper.target_driver_dialect import TargetDriverDialectManager
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
@@ -50,7 +51,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
             raise Error(Messages.get("Wrapper.RequiredTargetDriver"))
 
         # TODO: fix target str parsing functionality
-        if type(target) == str:
+        if isinstance(target, str):
             target = eval(target)
 
         if not callable(target):
@@ -60,9 +61,14 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
         logger.debug(PropertiesUtils.log_properties(props, "Connection Properties: "))
 
+        target_driver_dialect_manager: TargetDriverDialectManager = TargetDriverDialectManager()
+        target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
-        plugin_service = PluginServiceImpl(container, props)
-        plugin_manager: PluginManager = PluginManager(container, props, DriverConnectionProvider(target_func))
+        plugin_service = PluginServiceImpl(container, props, target_driver_dialect)
+        plugin_manager: PluginManager = PluginManager(
+            container,
+            props,
+            DriverConnectionProvider(target_func, target_driver_dialect))
         plugin_service.host_list_provider = AuroraHostListProvider(plugin_service, props)
 
         plugin_manager.init_host_provider(props, plugin_service)

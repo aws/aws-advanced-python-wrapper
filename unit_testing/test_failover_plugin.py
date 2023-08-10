@@ -40,7 +40,7 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 @pytest.fixture
 def plugin_service_mock(mocker):
     service_mock = mocker.MagicMock()
-    service_mock.network_bounded_methods = {"*"}
+    service_mock.network_bound_methods = {"*"}
     return service_mock
 
 

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin import Plugin, PluginFactory
     from aws_wrapper.connection_provider import ConnectionProvider
     from threading import Event
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
 
 from abc import abstractmethod
 from logging import getLogger
@@ -124,6 +125,14 @@ class PluginService(ExceptionHandler, Protocol):
     def dialect(self) -> Optional[Dialect]:
         ...
 
+    @property
+    @abstractmethod
+    def network_bound_methods(self) -> Set[str]:
+        ...
+
+    def is_network_bound_method(self, method_name: str) -> bool:
+        ...
+
     def update_dialect(self, connection: Optional[Connection] = None):
         ...
 
@@ -164,7 +173,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def __init__(
             self,
             container: PluginServiceManagerContainer,
-            props: Properties):
+            props: Properties,
+            target_driver_dialect: TargetDriverDialect):
         self._container = container
         self._container.plugin_service = self
         self._props = props
@@ -178,7 +188,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
         self._dialect_provider = DialectManager()
-        self._dialect = self._dialect_provider.get_dialect(props)
+        self._target_driver_dialect = target_driver_dialect
+        self._dialect = self._dialect_provider.get_dialect(target_driver_dialect.dialect_code, props)
 
     @property
     def hosts(self) -> List[HostInfo]:
@@ -227,6 +238,16 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     @property
     def dialect(self) -> Optional[Dialect]:
         return self._dialect
+
+    @property
+    def network_bound_methods(self) -> Set[str]:
+        return self._target_driver_dialect.network_bound_methods
+
+    def is_network_bound_method(self, method_name: str):
+        if len(self.network_bound_methods) == 1 and \
+                list(self.network_bound_methods)[0] == "*":
+            return True
+        return method_name in self.network_bound_methods
 
     def update_dialect(self, connection: Optional[Connection] = None):
         connection = self.current_connection if connection is None else connection

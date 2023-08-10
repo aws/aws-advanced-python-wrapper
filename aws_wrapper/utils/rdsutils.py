@@ -193,7 +193,7 @@ class RdsUtils:
             return RdsUrlType.RDS_CUSTOM_CLUSTER
         elif self.is_rds_proxy_dns(host):
             return RdsUrlType.RDS_PROXY
-        elif self.is_rds_dns(host):
+        elif self.is_rds_instance(host):
             return RdsUrlType.RDS_INSTANCE
 
         return RdsUrlType.OTHER

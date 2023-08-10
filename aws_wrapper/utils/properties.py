@@ -125,6 +125,12 @@ class WrapperProperties:
                                     "Decide which node role (writer, reader, or either) to connect to during failover",
                                     None)
 
+    # Target Driver Dialect
+    TARGET_DRIVER_DIALECT = WrapperProperty(
+        "wrapper_target_driver_dialect",
+        "A unique identifier for the target driver dialect.",
+        None)
+
 
 class PropertiesUtils:
 
@@ -161,9 +167,8 @@ class PropertiesUtils:
         return host if port is None else f"{host}:{port}"
 
     @staticmethod
-    def log_properties(props: Properties, caption: str):
+    def log_properties(props: Properties, caption: str = ""):
         if not props:
             return "<empty>"
 
-        prefix = "" if not caption else caption
-        return f"\n{prefix} {props}"
+        return f"\n{caption} {props}"
