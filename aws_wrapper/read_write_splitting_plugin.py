@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 from typing import Any, Callable, Set
 
 from aws_wrapper.pep249 import Connection
-from aws_wrapper.plugin import Plugin
+from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.notifications import (ConnectionEvent,
                                              OldConnectionSuggestedAction)
 
@@ -73,3 +73,8 @@ class ReadWriteSplittingPlugin(Plugin):
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any) -> Any:
         ...
+
+
+class ReadWriteSplittingPluginFactory(PluginFactory):
+    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+        return ReadWriteSplittingPlugin(plugin_service, props)
