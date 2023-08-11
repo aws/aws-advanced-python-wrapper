@@ -26,14 +26,14 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
 
     _dialect_code: str = TargetDriverDialectCodes.PSYCOPG
     _network_bound_methods: Set[str] = {
-        "Connection.commit()",
-        "Connection.rollback()",
-        "Connection.cursor()",
-        "Cursor.callproc()",
-        "Cursor.execute()",
-        "Cursor.fetchone()",
-        "Cursor.fetchmany()",
-        "Cursor.fetchall()",
+        "Connection.commit",
+        "Connection.rollback",
+        "Connection.cursor",
+        "Cursor.callproc",
+        "Cursor.execute",
+        "Cursor.fetchone",
+        "Cursor.fetchmany",
+        "Cursor.fetchall",
     }
 
     def is_dialect(self, conn: Callable) -> bool:
