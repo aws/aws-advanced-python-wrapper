@@ -89,7 +89,8 @@ public class ContainerHelper {
     execInContainer(container, consumer, "poetry", "env", "use", "system");
     execInContainer(container, consumer, "poetry", "env", "info");
 
-    String filter = System.getenv("FILTER");
+//    String filter = System.getenv("FILTER");
+    String filter = "test_iam_using";
     String reportSetting = String.format(
         "--html=./tests/integration/container/reports/%s.html", config.getPrimaryInfo());
     Long exitCode = execInContainer(container, consumer,

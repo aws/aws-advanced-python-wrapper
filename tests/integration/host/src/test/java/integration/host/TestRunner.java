@@ -21,8 +21,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -46,19 +47,38 @@ public class TestRunner {
      File reportFolder = new File("../container/reports");
      System.out.println("Report folder exists: " + reportFolder.exists());
 
+     File[] files = reportFolder.listFiles();
+     if (files != null) {
+       for (File f: files) {
+         System.out.println("Report folder contains file: " + f.getName());
+       }
+     }
+
      if (reportFolder.exists()) {
        File mergeReportsScript = new File("./scripts/merge_reports.py");
        ProcessBuilder processBuilder = new ProcessBuilder("python", mergeReportsScript.getAbsolutePath());
+       processBuilder.redirectErrorStream(true);
        Process process = processBuilder.start();
+       InputStream inputStream = process.getInputStream();
+       List<String> results;
+       try (BufferedReader output = new BufferedReader(new InputStreamReader(inputStream))) {
+         results = output.lines()
+             .collect(Collectors.toList());
+       }
+       System.out.println(results);
+
        int exitCode = process.waitFor();
 
        System.out.println("Exit code: " + exitCode);
        assertEquals(0, exitCode, "An error occurred while attempting to run merge_reports.py");
 
        // Delete individual reports in favor of consolidated report
-       File[] files = reportFolder.listFiles();
+       System.out.println("Deleting individual reports");
+       files = reportFolder.listFiles();
        if (files != null) {
+         System.out.println("files was not null");
          for (File f: files) {
+           System.out.println("found file: " + f.getName());
            if (!f.getName().equals("integration_tests.html") && !f.getName().equals("assets")) {
              f.delete();
            }
