@@ -49,6 +49,8 @@ from aws_wrapper.host_monitoring_plugin import HostMonitoringPluginFactory
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_wrapper.plugin import CanReleaseResources
+from aws_wrapper.read_write_splitting_plugin import \
+    ReadWriteSplittingPluginFactory
 from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
@@ -419,7 +421,8 @@ class PluginManager(CanReleaseResources):
         "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
         "aurora_host_list": AuroraHostListPluginFactory,
         "host_monitoring": HostMonitoringPluginFactory,
-        "failover": FailoverPluginFactory
+        "failover": FailoverPluginFactory,
+        "readWriteSplitting": ReadWriteSplittingPluginFactory
     }
 
     def __init__(
