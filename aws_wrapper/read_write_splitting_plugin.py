@@ -19,15 +19,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.hostinfo import HostInfo
-    from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
-    from aws_wrapper.utils.notifications import (ConnectionEvent,
-                                                 OldConnectionSuggestedAction)
     from aws_wrapper.utils.properties import Properties
 
 from typing import Any, Callable, Set
 
+from aws_wrapper.pep249 import Connection
 from aws_wrapper.plugin import Plugin
+from aws_wrapper.utils.notifications import (ConnectionEvent,
+                                             OldConnectionSuggestedAction)
 
 
 class ReadWriteSplittingPlugin(Plugin):
