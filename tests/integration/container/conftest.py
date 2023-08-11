@@ -24,7 +24,6 @@ import timeit
 from time import sleep
 from typing import List
 
-import aws_wrapper
 from .utils.aurora_test_utility import AuroraTestUtility
 from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.proxy_helper import ProxyHelper

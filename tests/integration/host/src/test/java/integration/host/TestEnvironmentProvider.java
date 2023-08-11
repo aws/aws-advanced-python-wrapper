@@ -286,7 +286,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
         }
 
         if (numInstances == null || numInstances == 2) {
-          // Tests for HIKARI, IAM, SECRETS_MANAGER and PERFORMANCE are covered by
+          // Tests for IAM, SECRETS_MANAGER and PERFORMANCE are covered by
           // cluster configuration above, so it's safe to skip these tests for configurations below.
           // The main goal of the following cluster configurations is to check failover.
           resultContextList.add(
@@ -327,7 +327,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
         }
 
         if (numInstances == null || numInstances == 2) {
-          // Tests for HIKARI, IAM, SECRETS_MANAGER and PERFORMANCE are covered by
+          // Tests for IAM, SECRETS_MANAGER and PERFORMANCE are covered by
           // cluster configuration above, so it's safe to skip these tests for configurations below.
           // The main goal of the following cluster configurations is to check failover.
           resultContextList.add(
