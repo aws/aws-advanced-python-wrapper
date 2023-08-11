@@ -52,7 +52,7 @@ public class TestRunner {
        Process process = processBuilder.start();
        int exitCode = process.waitFor();
 
-       System.out.println("Exit code: " + exitCode)
+       System.out.println("Exit code: " + exitCode);
        assertEquals(0, exitCode, "An error occurred while attempting to run merge_reports.py");
 
        // Delete individual reports in favor of consolidated report
