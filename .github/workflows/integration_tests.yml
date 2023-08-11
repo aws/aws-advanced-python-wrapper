@@ -23,6 +23,14 @@ jobs:
           distribution: 'corretto'
           java-version: 8
 
+      - name: Install poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: '1.4.2'
+
+      - name: Install dependencies
+        run: poetry install
+
       - name: 'Configure AWS Credentials'
         uses: aws-actions/configure-aws-credentials@v1
         with:

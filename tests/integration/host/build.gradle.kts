@@ -77,6 +77,7 @@ tasks.register<Test>("test-all-environments") {
         systemProperty("test-no-mariadb-engine", "true")
 
         systemProperty("test-no-python-38", "true")
+        systemProperty("test-no-aurora", "true")
     }
 }
 
