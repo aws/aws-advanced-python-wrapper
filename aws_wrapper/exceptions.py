@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_wrapper.errors import QueryTimeoutError
+
 if TYPE_CHECKING:
     from aws_wrapper.dialect import Dialect
 
@@ -55,7 +57,8 @@ class PgExceptionHandler(ExceptionHandler):
     _PAM_AUTHENTICATION_FAILED_MSG = "PAM authentication failed"
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        # TODO: verify implementation
+        if isinstance(error, QueryTimeoutError):
+            return True
 
         if sql_state:
             if sql_state in self._NETWORK_ERRORS:

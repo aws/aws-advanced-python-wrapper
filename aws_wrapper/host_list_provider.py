@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
 
 from aws_wrapper.dialect import Dialect, TopologyAwareDatabaseDialect
-from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.errors import AwsWrapperError, QueryTimeoutError
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.plugin import Plugin, PluginFactory
@@ -238,7 +238,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                         self._suggest_cluster_id(hosts)
                     return AuroraHostListProvider.FetchTopologyResult(hosts, False)
             except Exception as e:
-                raise AwsWrapperError(Messages.get("AuroraHostListProvider.TopologyTimeout")) from e
+                raise QueryTimeoutError(Messages.get("AuroraHostListProvider.TopologyTimeout")) from e
 
         if cached_hosts:
             return AuroraHostListProvider.FetchTopologyResult(cached_hosts, True)

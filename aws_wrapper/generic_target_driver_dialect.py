@@ -59,4 +59,4 @@ class GenericTargetDriverDialect(TargetDriverDialect):
             prop_copy["port"] = str(host_info.port)
 
         PropertiesUtils.remove_wrapper_props(prop_copy)
-        return props
+        return prop_copy

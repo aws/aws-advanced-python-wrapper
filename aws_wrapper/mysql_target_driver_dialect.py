@@ -27,14 +27,14 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
 
     _dialect_code: str = TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
-        "Connection.commit()",
-        "Connection.rollback()",
-        "Connection.cursor()",
-        "Cursor.close()",
-        "Cursor.execute()",
-        "Cursor.fetchone()",
-        "Cursor.fetchmany()",
-        "Cursor.fetchall()",
+        "Connection.commit",
+        "Connection.rollback",
+        "Connection.cursor",
+        "Cursor.close",
+        "Cursor.execute",
+        "Cursor.fetchone",
+        "Cursor.fetchmany",
+        "Cursor.fetchall",
     }
 
     def is_dialect(self, conn: Callable) -> bool:

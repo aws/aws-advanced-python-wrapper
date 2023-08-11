@@ -27,15 +27,15 @@ class MariaDBTargetDriverDialect(GenericTargetDriverDialect):
 
     _dialect_code: str = TargetDriverDialectCodes.MARIADB_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
-        "Connection.commit()",
-        "Connection.rollback()",
-        "Connection.cursor()",
-        "Cursor.callproc()",
-        "Cursor.execute()",
-        "Cursor.fetchone()",
-        "Cursor.fetchmany()",
-        "Cursor.fetchall()",
-        "Cursor.nextset()",
+        "Connection.commit",
+        "Connection.rollback",
+        "Connection.cursor",
+        "Cursor.callproc",
+        "Cursor.execute",
+        "Cursor.fetchone",
+        "Cursor.fetchmany",
+        "Cursor.fetchall",
+        "Cursor.nextset",
     }
 
     def is_dialect(self, conn: Callable) -> bool:
