@@ -12,25 +12,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from logging import DEBUG, Handler, getLogger
+import os
+import sys
 
-from .utils.utils import LogUtils
-from .wrapper import AwsWrapperConnection
-
-# PEP249 compliance
-connect = AwsWrapperConnection.connect
-apilevel = "2.0"
-threadsafety = 2
-paramstyle = "pyformat"
-
-
-def set_logger(name='aws_wrapper', level=DEBUG, format_string=None):
-    LogUtils.setup_logger(getLogger(name), level, format_string)
-
-
-class NullHandler(Handler):
-    def emit(self, record):
-        pass
-
-
-getLogger("aws_wrapper").addHandler(NullHandler())
+if __name__ == "__main__":
+    sys.exit(os.system(
+        "poetry run pytest_html_merger -i ../container/reports/ -o ../container/reports/integration_tests.html"))

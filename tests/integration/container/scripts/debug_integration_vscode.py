@@ -12,25 +12,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from logging import DEBUG, Handler, getLogger
+import sys
 
-from .utils.utils import LogUtils
-from .wrapper import AwsWrapperConnection
+import pytest
 
-# PEP249 compliance
-connect = AwsWrapperConnection.connect
-apilevel = "2.0"
-threadsafety = 2
-paramstyle = "pyformat"
-
-
-def set_logger(name='aws_wrapper', level=DEBUG, format_string=None):
-    LogUtils.setup_logger(getLogger(name), level, format_string)
-
-
-class NullHandler(Handler):
-    def emit(self, record):
-        pass
-
-
-getLogger("aws_wrapper").addHandler(NullHandler())
+if __name__ == "__main__":
+    test_filter = sys.argv[1]
+    report_setting = sys.argv[2]
+    test_folder = sys.argv[3]
+    sys.exit(pytest.main([report_setting, "-k", test_filter, "-p", "no:logging", "--capture=tee-sys", test_folder]))

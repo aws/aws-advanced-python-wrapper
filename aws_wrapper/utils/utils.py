@@ -12,11 +12,29 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import sys
+from logging import DEBUG, Formatter, Logger, StreamHandler
 from queue import Empty, Queue
 from typing import Optional
 
 
-class Utils:
+class LogUtils:
+    @staticmethod
+    def setup_logger(logger: Logger, level: int = DEBUG, format_string: Optional[str] = None):
+        for handler in logger.handlers:
+            if isinstance(handler, StreamHandler):
+                return
+
+        if format_string is None:
+            format_string = \
+                "%(asctime)s.%(msecs)03d %(name)-12s:%(funcName)s [%(levelname)-8s] - %(threadName)s - %(message)s"
+
+        handler = StreamHandler(stream=sys.stdout)
+        handler.setFormatter(Formatter(format_string))
+        handler.setLevel(level)
+
+        logger.setLevel(level)
+        logger.addHandler(handler)
 
     @staticmethod
     def log_topology(hosts: list, message_prefix: Optional[str] = None):
@@ -36,17 +54,6 @@ class Utils:
         msg = "\n\t".join(["<null>" if not host else str(host) for host in hosts])
         prefix = "" if not message_prefix else message_prefix + " "
         return prefix + f"Topology: {{\n\t{msg}}}"
-
-
-class SubscribedMethodUtils:
-    # TODO: check for missing network methods
-    NETWORK_BOUND_METHODS = {
-        "Connection.commit",
-        "Connection.rollback",
-        "Cursor.callproc",
-        "Cursor.execute",
-        "Cursor.executemany"
-    }
 
 
 class QueueUtils:

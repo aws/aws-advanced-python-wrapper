@@ -38,7 +38,7 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.timeout import timeout
-from aws_wrapper.utils.utils import Utils
+from aws_wrapper.utils.utils import LogUtils
 
 logger = getLogger(__name__)
 
@@ -344,7 +344,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._initialize()
         connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, False)
-        logger.debug(Utils.log_topology(topology.hosts))
+        logger.debug(LogUtils.log_topology(topology.hosts))
         self._hosts = topology.hosts
         return tuple(self._hosts)
 
@@ -352,7 +352,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._initialize()
         connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, True)
-        logger.debug(Utils.log_topology(topology.hosts))
+        logger.debug(LogUtils.log_topology(topology.hosts))
         self._hosts = topology.hosts
         return tuple(self._hosts)
 

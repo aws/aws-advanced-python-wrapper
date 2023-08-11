@@ -45,4 +45,4 @@ jobs:
       - name: Run isort - dependency import sorting check
         run: poetry run isort --check-only .
       - name: Run unit tests
-        run: poetry run python -m pytest ./unit_testing -Werror
+        run: poetry run pytest ./tests/unit -Werror

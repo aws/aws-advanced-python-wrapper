@@ -45,7 +45,6 @@ jobs:
           echo "TEMP_AWS_SESSION_TOKEN=${creds[2]}" >> $GITHUB_ENV
 
       - name: 'Run Integration Tests'
-        working-directory: ${{ github.workspace }}/integration_testing
         run: |
           ./gradlew --no-parallel --no-daemon test-all-environments --info
         env:
@@ -54,3 +53,11 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ env.TEMP_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ env.TEMP_AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ env.TEMP_AWS_SESSION_TOKEN }}
+
+      - name: 'Archive results'
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: pytest-integration-report
+          path: ./tests/integration/container/reports
+          retention-days: 5
