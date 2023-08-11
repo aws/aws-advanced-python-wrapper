@@ -38,12 +38,21 @@ public class TestRunner {
 
    @AfterAll
    public static void cleanup() throws IOException, InterruptedException {
+     System.out.println("Inside integration test cleanup");
+
+     String currentPath = new java.io.File(".").getCanonicalPath();
+     System.out.println("Current dir:" + currentPath);
+
      File reportFolder = new File("../container/reports");
+     System.out.println("Report folder exists: " + reportFolder.exists());
+
      if (reportFolder.exists()) {
        File mergeReportsScript = new File("./scripts/merge_reports.py");
        ProcessBuilder processBuilder = new ProcessBuilder("python", mergeReportsScript.getAbsolutePath());
        Process process = processBuilder.start();
        int exitCode = process.waitFor();
+
+       System.out.println("Exit code: " + exitCode)
        assertEquals(0, exitCode, "An error occurred while attempting to run merge_reports.py");
 
        // Delete individual reports in favor of consolidated report
