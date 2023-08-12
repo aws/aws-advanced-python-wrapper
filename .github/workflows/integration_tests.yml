@@ -62,6 +62,12 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ env.TEMP_AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ env.TEMP_AWS_SESSION_TOKEN }}
 
+      - name: Consolidate reports
+        run: poetry run pytest_html_merger -i ./tests/integration/container/reports/ -o ./tests/integration/container/reports/integration_tests.html
+
+      - name: Delete individual reports
+        run: find ./tests/integration/container/reports -type f ! -name integration_tests.html -delete
+
       - name: 'Archive results'
         if: always()
         uses: actions/upload-artifact@v3
