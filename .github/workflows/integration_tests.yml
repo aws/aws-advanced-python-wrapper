@@ -62,17 +62,17 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ env.TEMP_AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ env.TEMP_AWS_SESSION_TOKEN }}
 
-      - name: Give write permissions to the reports directory
-        run: git update-index --chmod=+x ./tests/integration/host/scripts/merge_reports.py
-
-      - name: Setup upterm session
-        uses: lhotari/action-upterm@v1
-
-      - name: Consolidate reports
-        run: sudo poetry run pytest_html_merger -i ./tests/integration/container/reports/ -o ./tests/integration/container/reports/integration_tests.html
-
-      - name: Delete individual reports
-        run: find ./tests/integration/container/reports -type f ! -name integration_tests.html -delete
+#      - name: Give write permissions to the reports directory
+#        run: git update-index --chmod=+x ./tests/integration/host/scripts/merge_reports.py
+#
+#      - name: Setup upterm session
+#        uses: lhotari/action-upterm@v1
+#
+#      - name: Consolidate reports
+#        run: sudo poetry run pytest_html_merger -i ./tests/integration/container/reports/ -o ./tests/integration/container/reports/integration_tests.html
+#
+#      - name: Delete individual reports
+#        run: find ./tests/integration/container/reports -type f ! -name integration_tests.html -delete
 
       - name: 'Archive results'
         if: always()

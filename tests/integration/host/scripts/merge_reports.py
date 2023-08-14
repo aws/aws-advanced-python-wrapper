@@ -13,9 +13,12 @@
 #  limitations under the License.
 
 import os
+import platform
 import sys
 
 if __name__ == "__main__":
-    print("Current working directory: " + os.getcwd())
+    if platform.system() != "Windows":
+        print("Running chmod...")
+        os.system("sudo chmod 777 ../container/reports")  # Give write permissions. Only needed on GH Actions
     sys.exit(os.system(
-        "sudo poetry run pytest_html_merger -i ../container/reports/ -o ../container/reports/integration_tests.html"))
+        "poetry run pytest_html_merger -i ../container/reports/ -o ../container/reports/integration_tests.html"))
