@@ -62,33 +62,33 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
       System.out.println(String.format("The NUM_INSTANCES environment variable was set to %d. All test configurations for different cluster sizes will be skipped.", numInstances));
     }
 
-    final boolean noDocker = Boolean.parseBoolean(System.getProperty("test-no-docker", "false"));
-    final boolean noAurora = Boolean.parseBoolean(System.getProperty("test-no-aurora", "false"));
-    final boolean noPerformance =
-        Boolean.parseBoolean(System.getProperty("test-no-performance", "false"));
-    final boolean noMysqlEngine =
-        Boolean.parseBoolean(System.getProperty("test-no-mysql-engine", "false"));
-    final boolean noMysqlDriver =
-        Boolean.parseBoolean(System.getProperty("test-no-mysql-driver", "false"));
-    final boolean noPgEngine =
-        Boolean.parseBoolean(System.getProperty("test-no-pg-engine", "false"));
-    final boolean noPgDriver =
-        Boolean.parseBoolean(System.getProperty("test-no-pg-driver", "false"));
-    final boolean noMariadbEngine =
-        Boolean.parseBoolean(System.getProperty("test-no-mariadb-engine", "false"));
-    final boolean noMariadbDriver =
-        Boolean.parseBoolean(System.getProperty("test-no-mariadb-driver", "false"));
-    final boolean noFailover =
-        Boolean.parseBoolean(System.getProperty("test-no-failover", "false"));
-    final boolean noIam = Boolean.parseBoolean(System.getProperty("test-no-iam", "false"));
-    final boolean noSecretsManager =
-        Boolean.parseBoolean(System.getProperty("test-no-secrets-manager", "false"));
-    final boolean noPython38 = Boolean.parseBoolean(System.getProperty("test-no-python-38", "false"));
-    final boolean noPython311 = Boolean.parseBoolean(System.getProperty("test-no-python-311", "false"));
+    final boolean excludeDocker = Boolean.parseBoolean(System.getProperty("exclude-docker", "false"));
+    final boolean excludeAurora = Boolean.parseBoolean(System.getProperty("exclude-aurora", "false"));
+    final boolean excludePerformance =
+        Boolean.parseBoolean(System.getProperty("exclude-performance", "false"));
+    final boolean excludeMysqlEngine =
+        Boolean.parseBoolean(System.getProperty("exclude-mysql-engine", "false"));
+    final boolean excludeMysqlDriver =
+        Boolean.parseBoolean(System.getProperty("exclude-mysql-driver", "false"));
+    final boolean excludePgEngine =
+        Boolean.parseBoolean(System.getProperty("exclude-pg-engine", "false"));
+    final boolean excludePgDriver =
+        Boolean.parseBoolean(System.getProperty("exclude-pg-driver", "false"));
+    final boolean excludeMariadbEngine =
+        Boolean.parseBoolean(System.getProperty("exclude-mariadb-engine", "false"));
+    final boolean excludeMariadbDriver =
+        Boolean.parseBoolean(System.getProperty("exclude-mariadb-driver", "false"));
+    final boolean excludeFailover =
+        Boolean.parseBoolean(System.getProperty("exclude-failover", "false"));
+    final boolean excludeIam = Boolean.parseBoolean(System.getProperty("exclude-iam", "false"));
+    final boolean excludeSecretsManager =
+        Boolean.parseBoolean(System.getProperty("exclude-secrets-manager", "false"));
+    final boolean excludePython38 = Boolean.parseBoolean(System.getProperty("exclude-python-38", "false"));
+    final boolean excludePython311 = Boolean.parseBoolean(System.getProperty("exclude-python-311", "false"));
 
-    if (!noDocker) {
+    if (!excludeDocker) {
       if (numInstances == null || numInstances == 1) {
-        if (!noMysqlEngine && !noPython38) {
+        if (!excludeMysqlEngine && !excludePython38) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -98,11 +98,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_8,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noPgEngine && !noPython38) {
+        if (!excludePgEngine && !excludePython38) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -112,11 +112,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_8,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noMariadbEngine && !noPython38) {
+        if (!excludeMariadbEngine && !excludePython38) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -126,11 +126,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_8,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noMysqlEngine && !noPython311) {
+        if (!excludeMysqlEngine && !excludePython311) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -140,11 +140,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noPgEngine && !noPython311) {
+        if (!excludePgEngine && !excludePython311) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -154,11 +154,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noMariadbEngine && !noPython311) {
+        if (!excludeMariadbEngine && !excludePython311) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -168,15 +168,15 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
       }
 
       // multiple instances
       if (numInstances == null || numInstances == 2) {
-        if (!noMysqlEngine && !noPython38) {
+        if (!excludeMysqlEngine && !excludePython38) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -186,11 +186,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_8,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noPgEngine && !noPython38) {
+        if (!excludePgEngine && !excludePython38) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -200,11 +200,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_8,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noMariadbEngine && !noPython38) {
+        if (!excludeMariadbEngine && !excludePython38) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -214,11 +214,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_8,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noMysqlEngine && !noPython311) {
+        if (!excludeMysqlEngine && !excludePython311) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -228,11 +228,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noPgEngine && !noPython311) {
+        if (!excludePgEngine && !excludePython311) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -242,11 +242,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
-        if (!noMariadbEngine && !noPython311) {
+        if (!excludeMariadbEngine && !excludePython311) {
           resultContextList.add(
               getEnvironment(
                   new TestEnvironmentRequest(
@@ -256,15 +256,15 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
       }
     }
 
-    if (!noAurora) {
-      if (!noMysqlEngine && !noPython311) {
+    if (!excludeAurora) {
+      if (!excludeMysqlEngine && !excludePython311) {
         if (numInstances == null || numInstances == 5) {
           resultContextList.add(
               getEnvironment(
@@ -275,14 +275,14 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.AURORA,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
+                      excludeFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
                       TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
-                      noIam ? null : TestEnvironmentFeatures.IAM,
-                      noSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
-                      noPerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeIam ? null : TestEnvironmentFeatures.IAM,
+                      excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
+                      excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
 
         if (numInstances == null || numInstances == 2) {
@@ -298,14 +298,14 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.AURORA,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
+                      excludeFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
                       TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
       }
-      if (!noPgEngine && !noPython311) {
+      if (!excludePgEngine && !excludePython311) {
         if (numInstances == null || numInstances == 5) {
           resultContextList.add(
               getEnvironment(
@@ -316,14 +316,14 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.AURORA,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
+                      excludeFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
                       TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
-                      noIam ? null : TestEnvironmentFeatures.IAM,
-                      noSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
-                      noPerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeIam ? null : TestEnvironmentFeatures.IAM,
+                      excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
+                      excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
 
         if (numInstances == null || numInstances == 2) {
@@ -339,11 +339,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.AURORA,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                      noFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
+                      excludeFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
                       TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
-                      noMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                      noPgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      noMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                      excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
         }
       }
     }
