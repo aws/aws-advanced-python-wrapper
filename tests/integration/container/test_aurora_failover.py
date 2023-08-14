@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
 from logging import getLogger
 
+import pytest
+
 from .utils.aurora_test_utility import AuroraTestUtility
 from .utils.conditions import failover_support_required
 
