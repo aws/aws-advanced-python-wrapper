@@ -18,4 +18,4 @@ import sys
 if __name__ == "__main__":
     print("Current working directory: " + os.getcwd())
     sys.exit(os.system(
-        "poetry run pytest_html_merger -i ../container/reports/ -o ../container/reports/integration_tests.html"))
+        "sudo poetry run pytest_html_merger -i ../container/reports/ -o ../container/reports/integration_tests.html"))
