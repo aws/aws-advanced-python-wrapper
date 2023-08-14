@@ -80,7 +80,7 @@ tasks.register<Test>("test-all-environments") {
     }
 }
 
-tasks.register<Test>("test-all-docker") {
+tasks.register<Test>("test-docker") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
@@ -97,7 +97,7 @@ tasks.register<Test>("test-all-docker") {
     }
 }
 
-tasks.register<Test>("test-all-aurora") {
+tasks.register<Test>("test-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
@@ -114,7 +114,7 @@ tasks.register<Test>("test-all-aurora") {
     }
 }
 
-tasks.register<Test>("test-all-pg-aurora") {
+tasks.register<Test>("test-pg-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
@@ -127,7 +127,7 @@ tasks.register<Test>("test-all-pg-aurora") {
     }
 }
 
-tasks.register<Test>("test-all-mysql-aurora") {
+tasks.register<Test>("test-mysql-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
@@ -156,7 +156,7 @@ tasks.register<Test>("debug-all-environments") {
     }
 }
 
-tasks.register<Test>("debug-all-docker") {
+tasks.register<Test>("debug--docker") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
@@ -173,7 +173,7 @@ tasks.register<Test>("debug-all-docker") {
     }
 }
 
-tasks.register<Test>("debug-all-aurora") {
+tasks.register<Test>("debug--aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
@@ -190,7 +190,7 @@ tasks.register<Test>("debug-all-aurora") {
     }
 }
 
-tasks.register<Test>("debug-all-pg-aurora") {
+tasks.register<Test>("debug--pg-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
@@ -203,7 +203,7 @@ tasks.register<Test>("debug-all-pg-aurora") {
     }
 }
 
-tasks.register<Test>("debug-all-mysql-aurora") {
+tasks.register<Test>("debug--mysql-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
