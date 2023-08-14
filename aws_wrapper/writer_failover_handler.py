@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from aws_wrapper.reader_failover_handler import ReaderFailoverHandler
 
 from abc import abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from logging import getLogger
 from threading import Event
 from time import sleep
@@ -58,7 +58,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             plugin_service: PluginService,
             reader_failover_handler: ReaderFailoverHandler,
             initial_connection_properties: Properties,
-            max_timeout_sec: int = 60,
+            max_timeout_sec: int = 5,
             read_topology_interval_sec: int = 5,
             reconnect_writer_interval_sec: int = 5):
         self._plugin_service = plugin_service
@@ -96,18 +96,20 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         if writer_host is not None:
             self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.NOT_AVAILABLE)
 
-            with ThreadPoolExecutor() as executor:
+            executor: ThreadPoolExecutor = ThreadPoolExecutor()
+
+            try:
                 futures = [executor.submit(self.reconnect_to_writer, writer_host),
                            executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
-                try:
-                    for future in as_completed(futures, timeout=self._max_failover_timeout_sec):
-                        result = future.result()
-                        if result.is_connected or result.exception is not None:
-                            executor.shutdown()
-                            self.log_task_success(result)
-                            return result
-                except TimeoutError:
-                    self._timeout_event.set()
+                for future in as_completed(futures, timeout=self._max_failover_timeout_sec):
+                    result = future.result()
+                    if result.is_connected or result.exception is not None:
+                        self.log_task_success(result)
+                        return result
+            except TimeoutError:
+                self._timeout_event.set()
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
 
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
