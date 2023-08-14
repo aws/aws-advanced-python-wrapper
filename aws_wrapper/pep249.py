@@ -125,6 +125,9 @@ class Connection:
     def commit(self) -> None:
         ...
 
+    def autocommit(self, autocommit: bool) -> None:
+        ...
+
     def rollback(self) -> None:
         ...
 
