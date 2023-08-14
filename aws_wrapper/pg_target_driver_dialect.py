@@ -27,7 +27,6 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     _dialect_code: str = TargetDriverDialectCodes.PSYCOPG
     _network_bound_methods: Set[str] = {
         "Connection.commit",
-        "Connection.autocommit",
         "Connection.rollback",
         "Connection.cursor",
         "Cursor.callproc",
