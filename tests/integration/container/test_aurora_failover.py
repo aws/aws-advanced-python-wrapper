@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
 from logging import getLogger
 
+import pytest
+
 from .utils.aurora_test_utility import AuroraTestUtility
 from .utils.conditions import failover_support_required
 
@@ -29,6 +31,7 @@ from .utils.conditions import failover_support_required
 class TestAuroraFailover:
     logger = getLogger(__name__)
 
+    @pytest.mark.skip(reason="This test is just sample code and it will eventually be removed")
     @failover_support_required
     def test_dummy(
             self, test_environment: TestEnvironment, test_driver: TestDriver):
