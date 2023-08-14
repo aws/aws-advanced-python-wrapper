@@ -66,7 +66,7 @@ jobs:
         run: git update-index --chmod=+x ./tests/integration/host/scripts/merge_reports.py
 
       - name: Consolidate reports
-        run: poetry run pytest_html_merger -i ./tests/integration/container/reports/ -o ./tests/integration/container/reports/integration_tests.html
+        run: sudo poetry run pytest_html_merger -i ./tests/integration/container/reports/ -o ./tests/integration/container/reports/integration_tests.html
 
       - name: Delete individual reports
         run: find ./tests/integration/container/reports -type f ! -name integration_tests.html -delete
