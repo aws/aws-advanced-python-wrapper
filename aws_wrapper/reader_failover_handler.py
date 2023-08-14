@@ -88,6 +88,9 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
                     result = ReaderFailoverHandlerImpl.failed_reader_failover_result
             except TimeoutError:
                 self._timeout_event.set()
+            finally:
+                self._timeout_event.set()
+                executor.shutdown(wait=False, cancel_futures=True)
 
         return result
 

@@ -110,6 +110,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 self._timeout_event.set()
             finally:
                 executor.shutdown(wait=False, cancel_futures=True)
+                self._timeout_event.set()
 
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
@@ -135,7 +136,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         success: bool = False
 
         try:
-            while latest_topology is None or len(latest_topology) == 0:
+            while not self._timeout_event.is_set() or latest_topology is None or len(latest_topology) == 0:
                 try:
                     if conn is not None:
                         conn.close()
@@ -184,7 +185,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         self._current_topology = current_topology
         try:
             success: bool = False
-            while not success:
+            while not self._timeout_event.is_set() or not success:
                 self.connect_to_reader()
                 success = self.refresh_topology_and_connect_to_new_writer(current_host)
                 if not success:
@@ -201,7 +202,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             logger.debug(Messages.get("WriterFailoverHandler.TaskBFinished"))
 
     def connect_to_reader(self) -> None:
-        while True:
+        while not self._timeout_event.is_set():
             try:
                 if self._current_topology is not None:
                     conn_result: ReaderFailoverResult = self._reader_failover_handler.get_reader_connection(self._current_topology)
@@ -223,7 +224,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             sleep(1)
 
     def refresh_topology_and_connect_to_new_writer(self, initial_writer_host: HostInfo) -> bool:
-        while True:
+        while not self._timeout_event.is_set():
             try:
                 self._plugin_service.force_refresh_host_list(self._current_reader_connection)
                 current_topology: List[HostInfo] = self._plugin_service.hosts
