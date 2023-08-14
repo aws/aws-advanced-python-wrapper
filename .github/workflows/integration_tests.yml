@@ -62,6 +62,9 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ env.TEMP_AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ env.TEMP_AWS_SESSION_TOKEN }}
 
+      - name: Give write permissions to the reports directory
+        run: find ./tests/integration/container/reports/ \( -type d -exec chmod u+rwx,g+rwx,o+rx {} \; -o -type f -exec chmod u+rw,g+rw,o+r {} \; \)
+
       - name: Consolidate reports
         run: poetry run pytest_html_merger -i ./tests/integration/container/reports/ -o ./tests/integration/container/reports/integration_tests.html
 
