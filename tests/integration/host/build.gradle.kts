@@ -156,7 +156,7 @@ tasks.register<Test>("debug-all-environments") {
     }
 }
 
-tasks.register<Test>("debug--docker") {
+tasks.register<Test>("debug-docker") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
@@ -173,7 +173,7 @@ tasks.register<Test>("debug--docker") {
     }
 }
 
-tasks.register<Test>("debug--aurora") {
+tasks.register<Test>("debug-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
@@ -190,7 +190,7 @@ tasks.register<Test>("debug--aurora") {
     }
 }
 
-tasks.register<Test>("debug--pg-aurora") {
+tasks.register<Test>("debug-pg-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
@@ -203,7 +203,7 @@ tasks.register<Test>("debug--pg-aurora") {
     }
 }
 
-tasks.register<Test>("debug--mysql-aurora") {
+tasks.register<Test>("debug-mysql-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
