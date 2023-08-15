@@ -41,6 +41,26 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def target_connection(self):
         return self._plugin_service.current_connection
 
+    @property
+    def autocommit(self):
+        if not hasattr(self.target_connection, "autocommit"):
+            raise AwsWrapperError(Messages.get_formatted("Wrapper.NotImplemented", "autocommit"))
+
+        return self._plugin_manager.execute(
+            self.target_connection,
+            "Connection.autocommit",
+            lambda: self.target_connection.autocommit)
+
+    @autocommit.setter
+    def autocommit(self, autocommit: bool):
+        if not hasattr(self.target_connection, "autocommit"):
+            raise AwsWrapperError(Messages.get_formatted("Wrapper.NotImplemented", "autocommit"))
+
+        self._plugin_manager.execute(
+            self.target_connection,
+            "Connection.autocommit_setter",
+            lambda: setattr(self.target_connection, "autocommit", autocommit))
+
     @staticmethod
     def connect(
             conninfo: str = "",

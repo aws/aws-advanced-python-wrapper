@@ -28,6 +28,8 @@ class MariaDBTargetDriverDialect(GenericTargetDriverDialect):
     _dialect_code: str = TargetDriverDialectCodes.MARIADB_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
         "Connection.commit",
+        "Connection.autocommit",
+        "Connection.autocommit_setter",
         "Connection.rollback",
         "Connection.cursor",
         "Cursor.callproc",
