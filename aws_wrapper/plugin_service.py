@@ -390,7 +390,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return changes
 
     def release_resources(self):
-        logger.debug(Messages.get("PluginServiceImpl.ReleaseResources"))
+        logger.debug("[PluginServiceImpl] Releasing resources.")
         dialect = self.dialect
         try:
             if self.current_connection is not None and not dialect.is_closed(self.current_connection):

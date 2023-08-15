@@ -21,3 +21,15 @@ class AwsWrapperError(Error):
 
 class QueryTimeoutError(AwsWrapperError):
     __module__ = "aws_wrapper"
+
+
+class FailoverError(Error):
+    __module__ = "aws_wrapper"
+
+
+class TransactionResolutionUnknownError(FailoverError):
+    __module__ = "aws_wrapper"
+
+
+class FailoverSuccessError(FailoverError):
+    __module__ = "aws_wrapper"

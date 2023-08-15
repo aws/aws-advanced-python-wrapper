@@ -18,9 +18,11 @@ from logging import getLogger
 from threading import Thread
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 
+from aws_wrapper.errors import FailoverError
+
 if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
-    from aws_wrapper.pep249 import Connection, FailoverError
+    from aws_wrapper.pep249 import Connection
 
     from aws_wrapper.utils.rds_url_type import RdsUrlType
     from aws_wrapper.utils.properties import Properties
@@ -66,7 +68,7 @@ class OpenedConnectionTracker:
         """
 
         if host_info:
-            self.invalidate_all_connections(node=set(host_info.as_alias()))
+            self.invalidate_all_connections(node={host_info.as_alias()})
             self.invalidate_all_connections(node=host_info.as_aliases())
             return
 
@@ -83,18 +85,24 @@ class OpenedConnectionTracker:
             return
 
         connection_set: Optional[WeakSet] = self._opened_connections.get(instance_endpoint)
-        self._log_connection_set(instance_endpoint, connection_set)
-        self._invalidate_connections(self._opened_connections.get(instance_endpoint))
+        if connection_set is not None:
+            self._log_connection_set(instance_endpoint, connection_set)
+            self._invalidate_connections(connection_set)
 
     def _track_connection(self, instance_endpoint: str, conn: Connection):
-        if self._opened_connections.get(instance_endpoint) is None:
-            connection_set: WeakSet = WeakSet()
+        connection_set: Optional[WeakSet] = self._opened_connections.get(instance_endpoint)
+        if connection_set is None:
+            connection_set = WeakSet()
             connection_set.add(conn)
             self._opened_connections[instance_endpoint] = connection_set
+        else:
+            connection_set.add(conn)
+
         self.log_opened_connections()
 
-    def _task(self, connection_set: Optional[WeakSet]):
-        while connection_set:
+    @staticmethod
+    def _task(connection_set: WeakSet):
+        while connection_set is not None and len(connection_set) > 0:
             conn_reference = connection_set.pop()
 
             if conn_reference is None:
@@ -107,9 +115,9 @@ class OpenedConnectionTracker:
                 # Swallow this exception, current connection should be useless anyway
                 pass
 
-    def _invalidate_connections(self, connection_set: Optional[WeakSet]):
+    def _invalidate_connections(self, connection_set: WeakSet):
         invalidate_connection_thread: Thread = Thread(daemon=True, target=self._task,
-                                                      args=connection_set)  # type: ignore
+                                                      args=[connection_set])  # type: ignore
         invalidate_connection_thread.start()
 
     def log_opened_connections(self):
