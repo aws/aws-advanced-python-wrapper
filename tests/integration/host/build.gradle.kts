@@ -68,73 +68,73 @@ tasks.register<Test>("test-all-environments") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
-        systemProperty("test-no-performance", "true")
+        systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
-        systemProperty("test-no-mysql-driver", "true")
-        systemProperty("test-no-mysql-engine", "true")
-        systemProperty("test-no-mariadb-driver", "true")
-        systemProperty("test-no-mariadb-engine", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
 
-        systemProperty("test-no-python-38", "true")
+        systemProperty("exclude-python-38", "true")
     }
 }
 
-tasks.register<Test>("test-all-docker") {
+tasks.register<Test>("test-docker") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
-        systemProperty("test-no-aurora", "true")
-        systemProperty("test-no-performance", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
-        systemProperty("test-no-mysql-driver", "true")
-        systemProperty("test-no-mysql-engine", "true")
-        systemProperty("test-no-mariadb-driver", "true")
-        systemProperty("test-no-mariadb-engine", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
 
-        systemProperty("test-no-python-38", "true")
+        systemProperty("exclude-python-38", "true")
     }
 }
 
-tasks.register<Test>("test-all-aurora") {
+tasks.register<Test>("test-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
-        systemProperty("test-no-docker", "true")
-        systemProperty("test-no-performance", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
-        systemProperty("test-no-mysql-driver", "true")
-        systemProperty("test-no-mysql-engine", "true")
-        systemProperty("test-no-mariadb-driver", "true")
-        systemProperty("test-no-mariadb-engine", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
 
-        systemProperty("test-no-python-38", "true")
+        systemProperty("exclude-python-38", "true")
     }
 }
 
-tasks.register<Test>("test-all-pg-aurora") {
+tasks.register<Test>("test-pg-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
-        systemProperty("test-no-docker", "true")
-        systemProperty("test-no-performance", "true")
-        systemProperty("test-no-mysql-driver", "true")
-        systemProperty("test-no-mysql-engine", "true")
-        systemProperty("test-no-mariadb-driver", "true")
-        systemProperty("test-no-mariadb-engine", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
     }
 }
 
-tasks.register<Test>("test-all-mysql-aurora") {
+tasks.register<Test>("test-mysql-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
-        systemProperty("test-no-docker", "true")
-        systemProperty("test-no-performance", "true")
-        systemProperty("test-no-pg-driver", "true")
-        systemProperty("test-no-pg-engine", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
     }
 }
 
@@ -144,72 +144,72 @@ tasks.register<Test>("debug-all-environments") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
-        systemProperty("test-no-performance", "true")
+        systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
-        systemProperty("test-no-mysql-driver", "true")
-        systemProperty("test-no-mysql-engine", "true")
-        systemProperty("test-no-mariadb-driver", "true")
-        systemProperty("test-no-mariadb-engine", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
 
-        systemProperty("test-no-python-38", "true")
+        systemProperty("exclude-python-38", "true")
     }
 }
 
-tasks.register<Test>("debug-all-docker") {
+tasks.register<Test>("debug-docker") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
-        systemProperty("test-no-aurora", "true")
-        systemProperty("test-no-performance", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
-        systemProperty("test-no-mysql-driver", "true")
-        systemProperty("test-no-mysql-engine", "true")
-        systemProperty("test-no-mariadb-driver", "true")
-        systemProperty("test-no-mariadb-engine", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
 
-        systemProperty("test-no-python-38", "true")
+        systemProperty("exclude-python-38", "true")
     }
 }
 
-tasks.register<Test>("debug-all-aurora") {
+tasks.register<Test>("debug-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
-        systemProperty("test-no-docker", "true")
-        systemProperty("test-no-performance", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
-        systemProperty("test-no-mysql-driver", "true")
-        systemProperty("test-no-mysql-engine", "true")
-        systemProperty("test-no-mariadb-driver", "true")
-        systemProperty("test-no-mariadb-engine", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
 
-        systemProperty("test-no-python-38", "true")
+        systemProperty("exclude-python-38", "true")
     }
 }
 
-tasks.register<Test>("debug-all-pg-aurora") {
+tasks.register<Test>("debug-pg-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
-        systemProperty("test-no-docker", "true")
-        systemProperty("test-no-performance", "true")
-        systemProperty("test-no-mysql-driver", "true")
-        systemProperty("test-no-mysql-engine", "true")
-        systemProperty("test-no-mariadb-driver", "true")
-        systemProperty("test-no-mariadb-engine", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
     }
 }
 
-tasks.register<Test>("debug-all-mysql-aurora") {
+tasks.register<Test>("debug-mysql-aurora") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
-        systemProperty("test-no-docker", "true")
-        systemProperty("test-no-performance", "true")
-        systemProperty("test-no-pg-driver", "true")
-        systemProperty("test-no-pg-engine", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
     }
 }
