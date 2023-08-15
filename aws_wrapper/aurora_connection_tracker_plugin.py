@@ -20,14 +20,13 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
-    from aws_wrapper.pep249 import Connection
+    from aws_wrapper.pep249 import Connection, FailoverError
 
     from aws_wrapper.utils.rds_url_type import RdsUrlType
     from aws_wrapper.utils.properties import Properties
 
 from _weakrefset import WeakSet
 
-from aws_wrapper.errors import FailoverError
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
@@ -186,7 +185,6 @@ class AuroraConnectionTrackerPlugin(Plugin):
 
         except Exception as e:
             if isinstance(e, FailoverError):
-                # TODO: verify behaviour after implementing the failover plugin
                 self._tracker.invalidate_all_connections(host_info=self._current_writer)
                 self._tracker.log_opened_connections()
                 self._need_update_current_writer = True

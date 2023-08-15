@@ -594,7 +594,7 @@ class PluginManager(CanReleaseResources):
         Allows all connection plugins a chance to clean up any dangling resources
         or perform any last tasks before shutting down.
         """
-        logger.debug(Messages.get("PluginManager.ReleaseResources"))
+        logger.debug("[PluginManager] Releasing resources.")
 
         for plugin in self._plugins:
             if isinstance(plugin, CanReleaseResources):

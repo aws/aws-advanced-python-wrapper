@@ -61,11 +61,15 @@ class InterfaceError(Error):
     __module__ = "aws_wrapper"
 
 
-class TransactionResolutionUnknownError(Error):
+class FailoverError(Error):
     __module__ = "aws_wrapper"
 
 
-class FailoverSuccessError(Error):
+class TransactionResolutionUnknownError(FailoverError):
+    __module__ = "aws_wrapper"
+
+
+class FailoverSuccessError(FailoverError):
     __module__ = "aws_wrapper"
 
 

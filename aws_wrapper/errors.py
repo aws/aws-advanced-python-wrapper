@@ -19,9 +19,5 @@ class AwsWrapperError(Error):
     __module__ = "aws_wrapper"
 
 
-class FailoverError(AwsWrapperError):
-    __module__ = "aws_wrapper"
-
-
 class QueryTimeoutError(AwsWrapperError):
     __module__ = "aws_wrapper"
