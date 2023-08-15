@@ -140,15 +140,13 @@ def test_reconnect_to_writer_task_b_reader_exception(connection_mock: Connection
     def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
         if host_info == writer:
             return connection_mock
-        if host_info == reader_a or host_info == reader_b:
-            raise exception
         else:
-            return None
+            raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
 
     plugin_service_mock.hosts = current_topology
-    reader_failover_mock.get_reader_connection.side_effect = FailoverError("error")
+    reader_failover_mock.get_reader_connection = FailoverError("error")
 
     target: WriterFailoverHandler = WriterFailoverHandlerImpl(plugin_service_mock, reader_failover_mock, props, 5, 2, 2)
     result: WriterFailoverResult = target.failover(current_topology)
