@@ -96,21 +96,20 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         if writer_host is not None:
             self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.NOT_AVAILABLE)
 
-            executor: ThreadPoolExecutor = ThreadPoolExecutor()
-
-            try:
-                futures = [executor.submit(self.reconnect_to_writer, writer_host),
-                           executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
-                for future in as_completed(futures, timeout=self._max_failover_timeout_sec):
-                    result = future.result()
-                    if result.is_connected or result.exception is not None:
-                        self.log_task_success(result)
-                        return result
-            except TimeoutError:
-                self._timeout_event.set()
-            finally:
-                executor.shutdown(wait=False, cancel_futures=True)
-                self._timeout_event.set()
+            with ThreadPoolExecutor() as executor:
+                try:
+                    futures = [executor.submit(self.reconnect_to_writer, writer_host),
+                               executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
+                    for future in as_completed(futures, timeout=self._max_failover_timeout_sec):
+                        result = future.result()
+                        if result.is_connected or result.exception is not None:
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            self.log_task_success(result)
+                            return result
+                except TimeoutError:
+                    self._timeout_event.set()
+                finally:
+                    self._timeout_event.set()
 
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
@@ -136,7 +135,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         success: bool = False
 
         try:
-            while not self._timeout_event.is_set() or latest_topology is None or len(latest_topology) == 0:
+            while not self._timeout_event.is_set() and (latest_topology is None or len(latest_topology) == 0):
                 try:
                     if conn is not None:
                         conn.close()
@@ -185,7 +184,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         self._current_topology = current_topology
         try:
             success: bool = False
-            while not self._timeout_event.is_set() or not success:
+            while not self._timeout_event.is_set() and not success:
                 self.connect_to_reader()
                 success = self.refresh_topology_and_connect_to_new_writer(current_host)
                 if not success:

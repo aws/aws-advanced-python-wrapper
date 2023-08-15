@@ -111,10 +111,8 @@ def topology(writer, reader_a, reader_b):
 
 
 @pytest.fixture
-def new_topology():
-    return [HostInfo("new-writer-host", 1234, HostAvailability.AVAILABLE, HostRole.WRITER),
-            HostInfo("reader-a-host", 1234, HostAvailability.AVAILABLE, HostRole.READER),
-            HostInfo("reader-b-host", 1234, HostAvailability.AVAILABLE, HostRole.READER)]
+def new_topology(new_writer_host, reader_a, reader_b):
+    return [new_writer_host, reader_a, reader_b]
 
 
 @pytest.fixture
