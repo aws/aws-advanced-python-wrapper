@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from aws_wrapper.reader_failover_handler import ReaderFailoverHandler
 
 from abc import abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from logging import getLogger
 from threading import Event
 from time import sleep
@@ -97,16 +97,18 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.NOT_AVAILABLE)
 
             with ThreadPoolExecutor() as executor:
-                futures = [executor.submit(self.reconnect_to_writer, writer_host),
-                           executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
                 try:
+                    futures = [executor.submit(self.reconnect_to_writer, writer_host),
+                               executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
                     for future in as_completed(futures, timeout=self._max_failover_timeout_sec):
                         result = future.result()
                         if result.is_connected or result.exception is not None:
-                            executor.shutdown()
+                            executor.shutdown(wait=False)
                             self.log_task_success(result)
                             return result
                 except TimeoutError:
+                    self._timeout_event.set()
+                finally:
                     self._timeout_event.set()
 
         return WriterFailoverHandlerImpl.failed_writer_failover_result
@@ -133,7 +135,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         success: bool = False
 
         try:
-            while latest_topology is None or len(latest_topology) == 0:
+            while not self._timeout_event.is_set() and (latest_topology is None or len(latest_topology) == 0):
                 try:
                     if conn is not None:
                         conn.close()
@@ -149,9 +151,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
                 if latest_topology is None or len(latest_topology) == 0:
                     sleep(self._reconnect_writer_interval_sec)
+                else:
+                    success = self.is_current_host_writer(latest_topology, initial_writer_host)
 
-            success = self.is_current_host_writer(latest_topology, initial_writer_host)
-            self._plugin_service.set_availability(initial_writer_host.as_aliases(), HostAvailability.AVAILABLE)
+                self._plugin_service.set_availability(initial_writer_host.as_aliases(), HostAvailability.AVAILABLE)
 
             return WriterFailoverResult(success, False, latest_topology, conn if success else None, "TaskA", None)
 
@@ -182,7 +185,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         self._current_topology = current_topology
         try:
             success: bool = False
-            while not success:
+            while not self._timeout_event.is_set() and not success:
                 self.connect_to_reader()
                 success = self.refresh_topology_and_connect_to_new_writer(current_host)
                 if not success:
@@ -199,7 +202,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             logger.debug(Messages.get("WriterFailoverHandler.TaskBFinished"))
 
     def connect_to_reader(self) -> None:
-        while True:
+        while not self._timeout_event.is_set():
             try:
                 if self._current_topology is not None:
                     conn_result: ReaderFailoverResult = self._reader_failover_handler.get_reader_connection(self._current_topology)
@@ -221,15 +224,16 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             sleep(1)
 
     def refresh_topology_and_connect_to_new_writer(self, initial_writer_host: HostInfo) -> bool:
-        while True:
+        while not self._timeout_event.is_set():
             try:
                 self._plugin_service.force_refresh_host_list(self._current_reader_connection)
                 current_topology: List[HostInfo] = self._plugin_service.hosts
 
                 if len(current_topology) > 0:
                     if len(current_topology) == 1:
-                        # currently connected reader is in the middle of failover. It is not yet connected to a new writer and works as a standalone
-                        # node. The handler must wait until the reader connects to the entire cluster to fetch the cluster topology
+                        # currently connected reader is in the middle of failover. It is not yet connected to a new writer and works
+                        # as a standalone node. The handler must wait until the reader connects to the entire cluster to fetch the
+                        # cluster topology
                         logger.debug(Messages.get_formatted("WriterFailoverHandler.StandaloneNode",
                                                             "None" if self._current_reader_host is None else self._current_reader_host.url))
                     else:
@@ -247,6 +251,8 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 return False
 
             sleep(self._read_topology_interval_sec)
+
+        return False
 
     def is_same(self, host_info: Optional[HostInfo], current_host_info: Optional[HostInfo]) -> bool:
         if host_info is None or current_host_info is None:

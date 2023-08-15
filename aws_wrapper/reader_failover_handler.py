@@ -148,6 +148,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             futures = [executor.submit(self.attempt_connection, hosts[i])]
             if i + 1 < len(hosts):
                 futures.append(executor.submit(self.attempt_connection, hosts[i + 1]))
+
             try:
                 for future in as_completed(futures, timeout=self.timeout_sec):
                     result = future.result()
@@ -155,8 +156,10 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
                         return result
             except TimeoutError:
                 self._timeout_event.set()
+            finally:
+                self._timeout_event.set()
 
-            return ReaderFailoverHandlerImpl.failed_reader_failover_result
+        return ReaderFailoverHandlerImpl.failed_reader_failover_result
 
     def attempt_connection(self, host: HostInfo) -> ReaderFailoverResult:
         props: Properties = deepcopy(self._properties)
