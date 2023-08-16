@@ -111,11 +111,6 @@ def new_topology(new_writer_host, reader_a, reader_b):
     return [new_writer_host, reader_a, reader_b]
 
 
-@pytest.fixture
-def set_available_count_for_host():
-    return 0
-
-
 @pytest.fixture(autouse=True)
 def setup(writer, new_writer_host, reader_a, reader_b):
     writer.add_alias("writer-host")
@@ -365,7 +360,7 @@ def test_failed_to_connect_failover_timeout(plugin_service_mock, reader_failover
     plugin_service_mock.set_availability.assert_has_calls(expected)
     plugin_service_mock.force_refresh_host_list.assert_called()
 
-    assert elapsed_time < 7
+    assert elapsed_time < 6
 
 
 def test_failed_to_connect_task_a_exception_task_b_writer_exception(plugin_service_mock, reader_failover_mock, reader_a_connection_mock,
@@ -391,7 +386,6 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(plugin_servi
             raise exception
 
     plugin_service_mock.is_network_exception.return_value = True
-
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
 
     def get_reader_connection_side_effect(current_topology):
