@@ -265,7 +265,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if connection is None:
             raise AwsWrapperError(Messages.get("PluginServiceImpl.UpdateDialectNullConnection"))
         self._dialect = \
-            self._dialect_provider.query_for_dialect(self._original_url, self._initial_connection_host_info, connection)
+            self._dialect_provider.query_for_dialect(
+                self._original_url,
+                self._initial_connection_host_info,
+                connection,
+                self.target_driver_dialect)
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         plugin_manager: PluginManager = self._container.plugin_manager

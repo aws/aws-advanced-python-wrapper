@@ -26,6 +26,7 @@ from typing import (TYPE_CHECKING, Callable, List, Optional, Protocol, Set,
 
 if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
 
 from aws_wrapper.dialect import Dialect, TopologyAwareDatabaseDialect
 from aws_wrapper.errors import AwsWrapperError, QueryTimeoutError
@@ -81,6 +82,11 @@ class HostListProviderService(Protocol):
     @property
     @abstractmethod
     def dialect(self) -> Optional[Dialect]:
+        ...
+
+    @property
+    @abstractmethod
+    def target_driver_dialect(self) -> TargetDriverDialect:
         ...
 
     @property
@@ -174,7 +180,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     if cluster_url is not None:
                         self._cluster_id = cluster_url
                         self._is_primary_cluster_id = True
-                        self._is_primary_cluster_id_cache.put(self._cluster_id, True, self._suggested_cluster_id_refresh_ns)
+                        self._is_primary_cluster_id_cache.put(self._cluster_id, True,
+                                                              self._suggested_cluster_id_refresh_ns)
 
         self._is_initialized = True
 
@@ -274,11 +281,17 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 return None
             self._topology_aware_dialect = self._host_list_provider_service.dialect
 
+        target_driver_dialect = self._host_list_provider_service.target_driver_dialect
+        initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._topology_aware_dialect.topology_query)
-                return self._process_query_results(cursor)
+                res = self._process_query_results(cursor)
+                if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
+                    # this condition is True when autocommit is false and the topology query started a new transaction.
+                    conn.commit()
+                return res
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.InvalidQuery")) from e
 

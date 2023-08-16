@@ -23,6 +23,7 @@ from typing import (TYPE_CHECKING, Dict, Optional, Protocol, Tuple,
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
+    from .generic_target_driver_dialect import TargetDriverDialect
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
@@ -532,7 +533,8 @@ class DialectManager(DialectProvider):
 
         return TargetDriverType.CUSTOM
 
-    def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection) -> Optional[Dialect]:
+    def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection,
+                          driver_dialect: TargetDriverDialect) -> Optional[Dialect]:
         if not self._can_update:
             self._log_current_dialect()
             return self._dialect
@@ -543,7 +545,12 @@ class DialectManager(DialectProvider):
                 dialect_candidate = self._known_dialects_by_code.get(dialect_code)
                 if dialect_candidate is None:
                     raise AwsWrapperError(Messages.get_formatted("DialectManager.UnknownDialectCode", dialect_code))
+
+                initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
                 is_dialect = dialect_candidate.is_dialect(conn)
+                if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                    # this condition is True when autocommit is false and the topology query started a new transaction.
+                    conn.commit()
                 if not is_dialect:
                     continue
 
