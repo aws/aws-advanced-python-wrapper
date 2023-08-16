@@ -126,7 +126,8 @@ class DialectProvider(Protocol):
         """
         ...
 
-    def query_for_dialect(self, url: str, host_info: HostInfo, conn: Connection) -> Optional[Dialect]:
+    def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection,
+                          driver_dialect: TargetDriverDialect) -> Optional[Dialect]:
         """Returns the dialect identified by querying the database to identify the engine type"""
         ...
 

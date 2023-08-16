@@ -118,10 +118,6 @@ class PluginService(ExceptionHandler, Protocol):
     def is_in_transaction(self) -> bool:
         ...
 
-    @is_in_transaction.setter
-    def is_in_transaction(self, value):
-        ...
-
     @property
     @abstractmethod
     def target_driver_dialect(self) -> TargetDriverDialect:
@@ -254,9 +250,12 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._target_driver_dialect.network_bound_methods
 
     def update_in_transaction(self, is_in_transaction: Optional[bool] = None):
-        self._is_in_transaction = is_in_transaction \
-            if is_in_transaction is not None \
-            else self.target_driver_dialect.is_in_transaction(self.current_connection)
+        if is_in_transaction is not None:
+            self._is_in_transaction = is_in_transaction
+        elif self.current_connection is not None:
+            self._is_in_transaction = self.target_driver_dialect.is_in_transaction(self.current_connection)
+        else:
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.UnableToUpdateTransactionStatus"))
 
     def is_network_bound_method(self, method_name: str):
         if len(self.network_bound_methods) == 1 and \
