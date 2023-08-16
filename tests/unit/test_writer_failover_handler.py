@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 import time
 from time import sleep
+
 from aws_wrapper.failover_result import ReaderFailoverResult
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.utils.properties import Properties
