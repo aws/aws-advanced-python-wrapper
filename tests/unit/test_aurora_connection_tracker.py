@@ -30,12 +30,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from aws_wrapper.errors import FailoverError
+
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
 
 from aws_wrapper.aurora_connection_tracker_plugin import \
     AuroraConnectionTrackerPlugin
-from aws_wrapper.errors import FailoverError
 from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.utils.properties import Properties
 

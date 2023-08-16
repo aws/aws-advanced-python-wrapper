@@ -26,12 +26,12 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from psycopg import OperationalError
 
-from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.errors import (AwsWrapperError, FailoverSuccessError,
+                                TransactionResolutionUnknownError)
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
                                             HostListProviderService)
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
-from aws_wrapper.pep249 import (Error, FailoverSuccessError,
-                                TransactionResolutionUnknownError)
+from aws_wrapper.pep249 import Error
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)

@@ -18,6 +18,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from aws_wrapper.errors import (FailoverSuccessError,
+                                TransactionResolutionUnknownError)
+
 if TYPE_CHECKING:
     from aws_wrapper.dialect import Dialect
     from aws_wrapper.writer_failover_handler import WriterFailoverHandler
@@ -31,8 +34,7 @@ from aws_wrapper.failover_result import (ReaderFailoverResult,
                                          WriterFailoverResult)
 from aws_wrapper.host_list_provider import HostListProviderService
 from aws_wrapper.hostinfo import HostAvailability, HostInfo
-from aws_wrapper.pep249 import (Error, FailoverSuccessError,
-                                TransactionResolutionUnknownError)
+from aws_wrapper.pep249 import Error
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
