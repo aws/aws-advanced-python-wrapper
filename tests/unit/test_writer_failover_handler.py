@@ -268,8 +268,9 @@ def test_connect_to_reader_a_slow_writer(plugin_service_mock, reader_failover_mo
     plugin_service_mock.set_availability.assert_has_calls(expected)
 
 
-def test_connect_to_reader_a_task_a_defers(connection_mock, plugin_service_mock, reader_failover_mock, new_writer_connection_mock, reader_a_connection_mock,
-                                           reader_b_connection_mock, default_properties, new_writer_host, writer, reader_a, reader_b, topology):
+def test_connect_to_reader_a_task_a_defers(connection_mock, plugin_service_mock, reader_failover_mock, new_writer_connection_mock,
+                                           reader_a_connection_mock, reader_b_connection_mock, default_properties, new_writer_host, writer, reader_a,
+                                           reader_b, topology):
     props = default_properties
     current_topology = topology.copy()
 
