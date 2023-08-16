@@ -23,7 +23,6 @@ from aws_wrapper.dialect import (AuroraMysqlDialect, AuroraPgDialect,
                                  UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pg_target_driver_dialect import PgTargetDriverDialect
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 

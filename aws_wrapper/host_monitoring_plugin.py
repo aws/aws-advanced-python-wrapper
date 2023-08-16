@@ -452,19 +452,23 @@ class Monitor:
         except Exception:
             return Monitor.HostStatus(False, perf_counter_ns() - start_ns)
 
-    @staticmethod
-    def _is_host_available(conn: Connection, timeout_sec: float) -> bool:
+    def _is_host_available(self, conn: Connection, timeout_sec: float) -> bool:
         try:
-            check_conn_with_timeout = timeout(timeout_sec)(lambda: Monitor._execute_conn_check(conn))
+            check_conn_with_timeout = timeout(timeout_sec)(lambda: self._execute_conn_check(conn))
             check_conn_with_timeout()
             return True
         except TimeoutError:
             return False
 
-    @staticmethod
-    def _execute_conn_check(conn: Connection):
+    def _execute_conn_check(self, conn: Connection):
+        target_driver_dialect = self._plugin_service.target_driver_dialect
+        initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
+
         with conn.cursor() as cursor:
             cursor.execute("SELECT 1")
+
+        if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
+            conn.commit()
 
 
 class MonitoringThreadContainer:

@@ -46,9 +46,7 @@ class DefaultPlugin(Plugin):
         PropertiesUtils.remove_wrapper_props(target_driver_props)
         connection_provider: ConnectionProvider = \
             self._connection_provider_manager.get_connection_provider(host_info, target_driver_props)
-        # logger.debug("Default plugin: connect before")
         result = self._connect(host_info, target_driver_props, connection_provider)
-        # logger.debug("Default plugin: connect after")
         return result
 
     def _connect(self, host_info: HostInfo, props: Properties, conn_provider: ConnectionProvider) -> Connection:
@@ -64,10 +62,7 @@ class DefaultPlugin(Plugin):
         return self._connect(host_info, target_driver_props, self._connection_provider_manager.default_provider)
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
-        # logger.debug("Default plugin: execute before")
         result = execute_func()
-
-        # Update transaction status
         if self._plugin_service.current_connection is not None:
             self._plugin_service.update_in_transaction()
 
