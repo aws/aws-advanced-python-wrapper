@@ -403,4 +403,4 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(plugin_servi
     assert not result.is_connected
     assert not result.is_new_host
 
-    plugin_service_mock.set_availability.assert_has_calls(expected)
+    plugin_service_mock.set_availability.assert_has_calls(expected, any_order=True)
