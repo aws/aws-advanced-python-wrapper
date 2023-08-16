@@ -16,13 +16,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .utils.test_environment_features import TestEnvironmentFeatures
+
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
     from .utils.test_environment import TestEnvironment
     from .utils.test_instance_info import TestInstanceInfo
 
 from aws_wrapper.wrapper import AwsWrapperConnection
-from .utils.conditions import network_outages_required
+from .utils.conditions import enable_on_features
 from .utils.driver_helper import DriverHelper
 from .utils.proxy_helper import ProxyHelper
 
@@ -49,7 +51,7 @@ class TestBasicConnectivity:
 
         awsconn.close()
 
-    @network_outages_required
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_proxied_direct_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         conn = target_driver_connect(conn_utils.get_proxy_conn_string())
@@ -60,7 +62,7 @@ class TestBasicConnectivity:
 
         conn.close()
 
-    @network_outages_required
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_proxied_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         awsconn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
@@ -71,7 +73,7 @@ class TestBasicConnectivity:
 
         awsconn.close()
 
-    @network_outages_required
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_proxied_wrapper_connection_failed(
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)

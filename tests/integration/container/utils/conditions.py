@@ -16,33 +16,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-
 if TYPE_CHECKING:
     from .database_engine import DatabaseEngine
     from .database_engine_deployment import DatabaseEngineDeployment
     from .test_driver import TestDriver
+    from .test_environment_features import TestEnvironmentFeatures
 
 from typing import List
 
 import pytest
 
 from .test_environment import TestEnvironment
-from .test_environment_features import TestEnvironmentFeatures
-
-failover_support_required = pytest.mark.skipif(
-    TestEnvironmentFeatures.FAILOVER_SUPPORTED not in TestEnvironment.get_current().get_features(),
-    reason="FAILOVER_SUPPORTED required"
-)
-
-network_outages_required = pytest.mark.skipif(
-    TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED not in TestEnvironment.get_current().get_features(),
-    reason="NETWORK_OUTAGES_ENABLED required"
-)
-
-iam_required = pytest.mark.skipif(
-    TestEnvironmentFeatures.IAM not in TestEnvironment.get_current().get_features(),
-    reason="IAM required"
-)
 
 
 def enable_on_deployment(requested_deployment: DatabaseEngineDeployment):

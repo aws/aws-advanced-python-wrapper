@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .utils.test_environment_features import TestEnvironmentFeatures
+
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
     from .utils.test_environment import TestEnvironment
@@ -25,14 +27,15 @@ from logging import getLogger
 import pytest
 
 from .utils.aurora_test_utility import AuroraTestUtility
-from .utils.conditions import failover_support_required
+from .utils.conditions import enable_on_features, enable_on_num_instances
 
 
+@enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+@enable_on_num_instances(min_instances=2)
 class TestAuroraFailover:
     logger = getLogger(__name__)
 
     @pytest.mark.skip(reason="This test is just sample code and it will eventually be removed")
-    @failover_support_required
     def test_dummy(
             self, test_environment: TestEnvironment, test_driver: TestDriver):
         # TODO: this test is an example on how to use AuroraTestUtility. Remove this test.
