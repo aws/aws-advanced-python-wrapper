@@ -18,10 +18,12 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable, Set
 
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
+from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
+    from aws_wrapper.pep249 import Connection
 
 
 class TargetDriverDialect(ABC):
@@ -44,6 +46,18 @@ class TargetDriverDialect(ABC):
     def prepare_connect_info(self, host_info: HostInfo, props: Properties) -> Properties:
         pass
 
+    @abstractmethod
+    def is_closed(self, conn: Connection) -> bool:
+        pass
+
+    @abstractmethod
+    def abort_connection(self, conn: Connection):
+        pass
+
+    @abstractmethod
+    def is_in_transaction(self, conn: Connection) -> bool:
+        pass
+
 
 class GenericTargetDriverDialect(TargetDriverDialect):
 
@@ -60,3 +74,12 @@ class GenericTargetDriverDialect(TargetDriverDialect):
 
         PropertiesUtils.remove_wrapper_props(prop_copy)
         return prop_copy
+
+    def is_closed(self, conn: Connection) -> bool:
+        raise NotImplementedError(Messages.get("TargetDriverDialect.UnImplementedError"))
+
+    def abort_connection(self, conn: Connection):
+        raise NotImplementedError(Messages.get("TargetDriverDialect.UnImplementedError"))
+
+    def is_in_transaction(self, conn: Connection) -> bool:
+        raise NotImplementedError(Messages.get("TargetDriverDialect.UnImplementedError"))

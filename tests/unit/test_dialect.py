@@ -23,6 +23,7 @@ from aws_wrapper.dialect import (AuroraMysqlDialect, AuroraPgDialect,
                                  UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
+from aws_wrapper.pg_target_driver_dialect import PgTargetDriverDialect
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 
@@ -380,28 +381,8 @@ def test_query_for_dialect_mysql(mock_conn, mock_cursor):
     assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("host")
 
 
-def test_is_closed(mock_conn):
-    mock_conn.is_connected.return_value = False
-    dialect = MysqlDialect()
-
-    assert dialect.is_closed(mock_conn) is True
-
-    del mock_conn.is_connected
-    with pytest.raises(AwsWrapperError):
-        dialect.is_closed(mock_conn)
-
-    dialect = PgDialect()
-    mock_conn.closed = True
-
-    assert dialect.is_closed(mock_conn) is True
-
-    del mock_conn.closed
-    with pytest.raises(AwsWrapperError):
-        dialect.is_closed(mock_conn)
-
-
 def test_abort_connection(mock_conn):
-    dialect = PgDialect()
+    dialect = PgTargetDriverDialect()
 
     dialect.abort_connection(mock_conn)
     mock_conn.cancel.assert_called_once()

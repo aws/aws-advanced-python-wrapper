@@ -15,11 +15,16 @@
 from __future__ import annotations
 
 from inspect import signature
-from typing import Callable, Set
+from typing import TYPE_CHECKING, Callable, Set
 
+if TYPE_CHECKING:
+    from aws_wrapper.pep249 import Connection
+
+from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.generic_target_driver_dialect import \
     GenericTargetDriverDialect
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
+from aws_wrapper.utils.messages import Messages
 
 
 class MariaDBTargetDriverDialect(GenericTargetDriverDialect):
@@ -42,3 +47,27 @@ class MariaDBTargetDriverDialect(GenericTargetDriverDialect):
 
     def is_dialect(self, conn: Callable) -> bool:
         return MariaDBTargetDriverDialect.TARGET_DRIVER in str(signature(conn))
+
+    def is_closed(self, conn: Connection) -> bool:
+        if hasattr(conn, "open"):
+            return not conn.open
+
+        raise AwsWrapperError(
+            Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "PsycopgDialect", "open"))
+
+    def abort_connection(self, conn: Connection):
+        raise NotImplementedError(
+            Messages.get_formatted(
+                "TargetDriverDialect.UnImplementedError",
+                "MariaDB Connector Python",
+                "abort_connection"))
+
+    def is_in_transaction(self, conn: Connection):
+        # MariaDB Connector Python does not provide a connection attribute for the transaction status.
+        # Need to use database dialect to track transaction status.
+
+        raise NotImplementedError(
+            Messages.get_formatted(
+                "TargetDriverDialect.UnImplementedError",
+                "MariaDB Connector Python",
+                "is_in_transaction"))

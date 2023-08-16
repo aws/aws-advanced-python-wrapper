@@ -111,13 +111,6 @@ class Dialect(Protocol):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         ...
 
-    @abstractmethod
-    def is_closed(self, conn: Connection) -> bool:
-        ...
-
-    def abort_connection(self, conn: Connection):
-        ...
-
     @property
     @abstractmethod
     def exception_handler(self) -> Optional[ExceptionHandler]:
@@ -170,16 +163,6 @@ class MysqlDialect(Dialect):
 
         return False
 
-    def is_closed(self, conn: Connection) -> bool:
-        is_connected_func = getattr(conn, "is_connected", None)
-        if is_connected_func is None or not callable(is_connected_func):
-            raise AwsWrapperError(Messages.get_formatted("Dialect.InvalidTargetAttribute", "MySqlDialect", "is_closed"))
-        return not is_connected_func()
-
-    def abort_connection(self, conn: Connection):
-        # TODO: investigate how to abort MySQL connections and add logic here
-        ...
-
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return MysqlDialect._DIALECT_UPDATE_CANDIDATES
@@ -212,19 +195,6 @@ class PgDialect(Dialect):
             conn.rollback()
 
         return False
-
-    def is_closed(self, conn: Connection) -> bool:
-        if hasattr(conn, "closed"):
-            return conn.closed
-        else:
-            raise AwsWrapperError(Messages.get_formatted("Dialect.InvalidTargetAttribute", "PgDialect", "is_closed"))
-
-    def abort_connection(self, conn: Connection):
-        cancel_func = getattr(conn, "cancel", None)
-        if cancel_func is None or not callable(cancel_func):
-            raise AwsWrapperError(
-                Messages.get_formatted("Dialect.InvalidTargetAttribute", "PgDialect", "abort_connection"))
-        cancel_func()
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -261,14 +231,6 @@ class MariaDbDialect(Dialect):
             pass
 
         return False
-
-    def is_closed(self, conn: Connection) -> bool:
-        # TODO: investigate how to check if a connection is closed with MariaDB
-        return False
-
-    def abort_connection(self, conn: Connection):
-        # TODO: investigate how to abort MariaDB connections and add logic here
-        ...
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode]]:
@@ -431,12 +393,6 @@ class UnknownDialect(Dialect):
 
     def is_dialect(self, conn: Connection) -> bool:
         return False
-
-    def is_closed(self, conn: Connection) -> bool:
-        return False
-
-    def abort_connection(self, conn: Connection):
-        raise AwsWrapperError("UnknownDialect.AbortConnection")
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:

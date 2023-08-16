@@ -181,8 +181,8 @@ class FailoverPlugin(Plugin):
             return
 
         conn = self._plugin_service.current_connection
-        dialect = self._plugin_service.dialect
-        if conn is None or (dialect is not None and dialect.is_closed(conn)):
+        target_driver_dialect = self._plugin_service.target_driver_dialect
+        if conn is None or (target_driver_dialect is not None and target_driver_dialect.is_closed(conn)):
             return
 
         if force_update:
@@ -263,8 +263,8 @@ class FailoverPlugin(Plugin):
             except Exception:
                 pass  # Swallow this exception
 
-        dialect = self._plugin_service.dialect
-        if dialect is not None and not dialect.is_closed(conn):
+        target_driver_dialect = self._plugin_service.target_driver_dialect
+        if target_driver_dialect is not None and not target_driver_dialect.is_closed(conn):
             try:
                 conn.close()
             except Exception:

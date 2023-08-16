@@ -66,7 +66,11 @@ class DefaultPlugin(Plugin):
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
         # logger.debug("Default plugin: execute before")
         result = execute_func()
-        # logger.debug("Default plugin: execute after")
+
+        # Update transaction status
+        if self._plugin_service.current_connection is not None:
+            self._plugin_service.is_in_transaction = self._plugin_service.target_driver_dialect.is_in_transaction(
+                self._plugin_service.current_connection)
         return result
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:

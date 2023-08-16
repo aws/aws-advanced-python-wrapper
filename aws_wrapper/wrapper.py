@@ -35,11 +35,15 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     def __init__(self, plugin_service: PluginService, plugin_manager: PluginManager):
         self._plugin_service = plugin_service
-        self._plugin_manager: PluginManager = plugin_manager
+        self._plugin_manager = plugin_manager
 
     @property
     def target_connection(self):
         return self._plugin_service.current_connection
+
+    @property
+    def is_closed(self):
+        return self._plugin_service.target_driver_dialect.is_closed(self.target_connection)
 
     @property
     def autocommit(self):

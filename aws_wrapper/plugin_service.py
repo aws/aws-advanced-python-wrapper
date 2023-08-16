@@ -124,6 +124,11 @@ class PluginService(ExceptionHandler, Protocol):
 
     @property
     @abstractmethod
+    def target_driver_dialect(self) -> TargetDriverDialect:
+        ...
+
+    @property
+    @abstractmethod
     def dialect(self) -> Optional[Dialect]:
         ...
 
@@ -236,6 +241,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     @is_in_transaction.setter
     def is_in_transaction(self, value):
         self._is_in_transaction = value
+
+    @property
+    def target_driver_dialect(self) -> TargetDriverDialect:
+        return self._target_driver_dialect
 
     @property
     def dialect(self) -> Optional[Dialect]:
@@ -391,9 +400,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def release_resources(self):
         logger.debug("[PluginServiceImpl] Releasing resources.")
-        dialect = self.dialect
+        target_driver_dialect = self.target_driver_dialect
         try:
-            if self.current_connection is not None and not dialect.is_closed(self.current_connection):
+            if self.current_connection is None or target_driver_dialect.is_closed(self.current_connection):
                 self.current_connection.close()
         except Exception:
             # ignore
