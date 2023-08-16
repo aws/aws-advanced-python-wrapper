@@ -17,7 +17,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from tests.integration.container.utils.test_driver import TestDriver
     from tests.integration.container.utils.test_environment import TestEnvironment
     from tests.integration.container.utils.test_instance_info import TestInstanceInfo
 
@@ -28,49 +27,45 @@ import pytest
 
 from aws_wrapper import AwsWrapperConnection
 from aws_wrapper.errors import AwsWrapperError
-from tests.integration.container.utils.conditions import (
-    disable_on_mariadb_driver, iam_required)
+from tests.integration.container.utils.conditions import (disable_on_drivers,
+                                                          iam_required)
 from tests.integration.container.utils.driver_helper import DriverHelper
+from tests.integration.container.utils.test_driver import TestDriver
 
 
 class TestAwsIamAuthentication:
 
     @iam_required
-    @disable_on_mariadb_driver
-    def test_iam_wrong_database_username(self, test_environment: TestEnvironment,
-                                         test_driver: TestDriver):
+    @disable_on_drivers([TestDriver.MARIADB])
+    def test_iam_wrong_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        user: str = f"WRONG_{test_environment.get_info().get_iam_user_name()}_USER"
-        password: str = test_environment.get_info().get_database_info().get_password()
+        user: str = f"WRONG_{conn_utils.iam_user}_USER"
         connect_params: str = self.init_aws_iam_properties(test_environment, {
             "user": user,
-            "password": password
+            "password": conn_utils.password
         })
 
         with pytest.raises(AwsWrapperError):
             AwsWrapperConnection.connect(connect_params, target_driver_connect)
 
     @iam_required
-    @disable_on_mariadb_driver
-    def test_iam_no_database_username(self, test_environment: TestEnvironment,
-                                      test_driver: TestDriver):
+    @disable_on_drivers([TestDriver.MARIADB])
+    def test_iam_no_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        password: str = test_environment.get_info().get_database_info().get_password()
         connect_params: str = self.init_aws_iam_properties(test_environment, {
-            "password": password
+            "password": conn_utils.password
         })
 
         with pytest.raises(AwsWrapperError):
             AwsWrapperConnection.connect(connect_params, target_driver_connect)
 
     @iam_required
-    @disable_on_mariadb_driver
-    def test_iam_using_ip_address(self, test_environment: TestEnvironment,
-                                  test_driver: TestDriver):
+    @disable_on_drivers([TestDriver.MARIADB])
+    def test_iam_using_ip_address(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        instance: TestInstanceInfo = test_environment.get_info().get_database_info().get_instances()[0]
+        instance: TestInstanceInfo = test_environment.get_writer()
         ip_address = self.get_ip_address(instance.get_host())
-        user: str = test_environment.get_info().get_iam_user_name()
+        user: str = conn_utils.iam_user
         connect_params: str = self.init_aws_iam_properties(test_environment, {
             "host": ip_address,
             "user": user,
@@ -81,41 +76,38 @@ class TestAwsIamAuthentication:
         self.validate_connection(target_driver_connect, connect_params)
 
     @iam_required
-    @disable_on_mariadb_driver
-    def test_iam_valid_connection_properties(self, test_environment: TestEnvironment,
-                                             test_driver: TestDriver):
+    @disable_on_drivers([TestDriver.MARIADB])
+    def test_iam_valid_connection_properties(
+            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        user: str = test_environment.get_info().get_iam_user_name()
         connect_params: str = self.init_aws_iam_properties(test_environment, {
-            "user": user,
+            "user": conn_utils.iam_user,
             "password": "<anything>"
         })
 
         self.validate_connection(target_driver_connect, connect_params)
 
     @iam_required
-    @disable_on_mariadb_driver
-    def test_iam_valid_connection_properties_no_password(self, test_environment: TestEnvironment,
-                                                         test_driver: TestDriver):
+    @disable_on_drivers([TestDriver.MARIADB])
+    def test_iam_valid_connection_properties_no_password(
+            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        db_name: str = test_environment.get_info().get_database_info().get_default_db_name()
-        user: str = test_environment.get_info().get_iam_user_name()
         connect_params: str = self.init_aws_iam_properties(test_environment, {
-            "dbname": db_name,
-            "user": user,
+            "dbname": conn_utils.dbname,
+            "user": conn_utils.iam_user,
         })
 
         self.validate_connection(target_driver_connect, connect_params)
 
     def init_aws_iam_properties(self, test_environment: TestEnvironment, props: Dict[str, str]) -> str:
-        instance = test_environment.get_info().get_database_info().get_instances()[0]
+        instance = test_environment.get_writer()
         props["plugins"] = "iam"
         props["port"] = str(instance.get_port())
 
         if not props.get("host"):
             props["host"] = instance.get_host()
         if not props.get("dbname"):
-            props["dbname"] = test_environment.get_info().get_database_info().get_default_db_name()
+            props["dbname"] = test_environment.get_database_info().get_default_db_name()
 
         return "plugins=iam " + " ".join([f"{key}={value}" for key, value in props.items()])
 

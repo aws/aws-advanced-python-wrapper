@@ -37,7 +37,7 @@ class TestAuroraFailover:
             self, test_environment: TestEnvironment, test_driver: TestDriver):
         # TODO: this test is an example on how to use AuroraTestUtility. Remove this test.
 
-        region: str = test_environment.get_info().get_aurora_region()
+        region: str = test_environment.get_aurora_region()
         aurora_utility = AuroraTestUtility(region)
         TestAuroraFailover.logger.debug(aurora_utility.get_aurora_instance_ids())
         current_writer_id = aurora_utility.get_cluster_writer_instance_id()

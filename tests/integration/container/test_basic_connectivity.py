@@ -22,25 +22,16 @@ if TYPE_CHECKING:
     from .utils.test_instance_info import TestInstanceInfo
 
 from aws_wrapper.wrapper import AwsWrapperConnection
-from .utils.conditions import network_outages_enabled_required
+from .utils.conditions import network_outages_required
 from .utils.driver_helper import DriverHelper
 from .utils.proxy_helper import ProxyHelper
 
 
 class TestBasicConnectivity:
 
-    def test_direct_connection(self, test_environment: TestEnvironment,
-                               test_driver: TestDriver):
-
+    def test_direct_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        instance: TestInstanceInfo = test_environment.get_info().get_database_info().get_instances()[0]
-        db_name: str = test_environment.get_info().get_database_info().get_default_db_name()
-        user: str = test_environment.get_info().get_database_info().get_username()
-        password: str = test_environment.get_info().get_database_info().get_password()
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4}".format(
-            instance.get_host(), instance.get_port(), db_name, user, password)
-
-        conn = target_driver_connect(connect_params)
+        conn = target_driver_connect(conn_utils.get_conn_string())
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         records = cursor.fetchall()
@@ -48,19 +39,9 @@ class TestBasicConnectivity:
 
         conn.close()
 
-    def test_wrapper_connection(self, test_environment: TestEnvironment,
-                                test_driver: TestDriver):
-
+    def test_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        instance: TestInstanceInfo = test_environment.get_info().get_database_info().get_instances()[0]
-        db_name: str = test_environment.get_info().get_database_info().get_default_db_name()
-        user: str = test_environment.get_info().get_database_info().get_username()
-        password: str = test_environment.get_info().get_database_info().get_password()
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4}".format(
-            instance.get_host(), instance.get_port(), db_name, user, password)
-
-        awsconn = AwsWrapperConnection.connect(connect_params,
-                                               target_driver_connect)
+        awsconn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect)
         awscursor = awsconn.cursor()
         awscursor.execute("SELECT 1")
         records = awscursor.fetchall()
@@ -68,19 +49,10 @@ class TestBasicConnectivity:
 
         awsconn.close()
 
-    @network_outages_enabled_required
-    def test_proxied_direct_connection(self, test_environment: TestEnvironment,
-                                       test_driver: TestDriver):
-
+    @network_outages_required
+    def test_proxied_direct_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        instance: TestInstanceInfo = test_environment.get_info().get_proxy_database_info().get_instances()[0]
-        db_name: str = test_environment.get_info().get_proxy_database_info().get_default_db_name()
-        user: str = test_environment.get_info().get_proxy_database_info().get_username()
-        password: str = test_environment.get_info().get_proxy_database_info().get_password()
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4}".format(
-            instance.get_host(), instance.get_port(), db_name, user, password)
-
-        conn = target_driver_connect(connect_params)
+        conn = target_driver_connect(conn_utils.get_proxy_conn_string())
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         records = cursor.fetchall()
@@ -88,20 +60,10 @@ class TestBasicConnectivity:
 
         conn.close()
 
-    @network_outages_enabled_required
-    def test_proxied_wrapper_connection(self, test_environment: TestEnvironment,
-                                        test_driver: TestDriver):
-
+    @network_outages_required
+    def test_proxied_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        instance: TestInstanceInfo = test_environment.get_info().get_proxy_database_info().get_instances()[0]
-        db_name: str = test_environment.get_info().get_proxy_database_info().get_default_db_name()
-        user: str = test_environment.get_info().get_proxy_database_info().get_username()
-        password: str = test_environment.get_info().get_proxy_database_info().get_password()
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4}".format(
-            instance.get_host(), instance.get_port(), db_name, user, password)
-
-        awsconn = AwsWrapperConnection.connect(connect_params,
-                                               target_driver_connect)
+        awsconn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
         awscursor = awsconn.cursor()
         awscursor.execute("SELECT 1")
         records = awscursor.fetchall()
@@ -109,22 +71,16 @@ class TestBasicConnectivity:
 
         awsconn.close()
 
-    @network_outages_enabled_required
+    @network_outages_required
     def test_proxied_wrapper_connection_failed(
-            self, test_environment: TestEnvironment, test_driver: TestDriver):
-
+            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        instance: TestInstanceInfo = test_environment.get_info().get_proxy_database_info().get_instances()[0]
-        db_name: str = test_environment.get_info().get_proxy_database_info().get_default_db_name()
-        user: str = test_environment.get_info().get_proxy_database_info().get_username()
-        password: str = test_environment.get_info().get_proxy_database_info().get_password()
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} connect_timeout=3".format(
-            instance.get_host(), instance.get_port(), db_name, user, password)
+        instance: TestInstanceInfo = test_environment.get_proxy_writer()
 
         ProxyHelper.disable_connectivity(instance.get_instance_id())
 
         try:
-            AwsWrapperConnection.connect(connect_params, target_driver_connect)
+            AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
 
             # Should not be here since proxy is blocking db connectivity
             assert False

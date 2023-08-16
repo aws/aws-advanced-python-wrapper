@@ -66,7 +66,7 @@ class AuroraTestUtility:
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_aurora_cluster_name()
 
-        database_info = TestEnvironment.get_current().get_info().get_database_info()
+        database_info = TestEnvironment.get_current().get_database_info()
         cluster_endpoint = database_info.get_cluster_endpoint()
         initial_cluster_address = socket.gethostbyname(cluster_endpoint)
 
@@ -121,7 +121,7 @@ class AuroraTestUtility:
             exception_cls: type,
             database_engine: Optional[DatabaseEngine] = None) -> None:
         if database_engine is None:
-            database_engine = TestEnvironment.get_current().get_info().get_request().get_database_engine()
+            database_engine = TestEnvironment.get_current().get_engine()
         try:
             cursor = conn.cursor()
             cursor.execute(self._get_instance_id_sql(database_engine))
@@ -142,7 +142,7 @@ class AuroraTestUtility:
 
     def query_instance_id(self, conn, database_engine: Optional[DatabaseEngine] = None) -> str:
         if database_engine is None:
-            database_engine = TestEnvironment.get_current().get_info().get_request().get_database_engine()
+            database_engine = TestEnvironment.get_current().get_engine()
 
         cursor = conn.cursor()
         cursor.execute(self._get_instance_id_sql(database_engine))
@@ -172,8 +172,8 @@ class AuroraTestUtility:
     def get_aurora_instance_ids(self) -> List[str]:
 
         test_environment: TestEnvironment = TestEnvironment.get_current()
-        database_engine: DatabaseEngine = test_environment.get_info().get_request().get_database_engine()
-        instance_info: TestInstanceInfo = test_environment.get_info().get_database_info().get_instances()[0]
+        database_engine: DatabaseEngine = test_environment.get_engine()
+        instance_info: TestInstanceInfo = test_environment.get_writer()
 
         conn = self._open_connection(instance_info)
         sql: str = self._get_topology_sql(database_engine)
@@ -191,14 +191,14 @@ class AuroraTestUtility:
     def _open_connection(self, instance_info: TestInstanceInfo) -> Any:
 
         test_environment: TestEnvironment = TestEnvironment.get_current()
-        database_engine: DatabaseEngine = test_environment.get_info().get_request().get_database_engine()
+        database_engine: DatabaseEngine = test_environment.get_engine()
         test_driver = self._get_driver_for_database_engine(database_engine)
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
 
-        db_name: str = test_environment.get_info().get_database_info().get_default_db_name()
-        user: str = test_environment.get_info().get_database_info().get_username()
-        password: str = test_environment.get_info().get_database_info().get_password()
+        db_name: str = test_environment.get_database_info().get_default_db_name()
+        user: str = test_environment.get_database_info().get_username()
+        password: str = test_environment.get_database_info().get_password()
         # TODO: connection params should be driver specific
         connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} connect_timeout=3".format(
             instance_info.get_host(), instance_info.get_port(), db_name, user, password)
@@ -227,7 +227,7 @@ class AuroraTestUtility:
             raise NotImplementedError(database_engine)
 
     def make_sure_instances_up(self, instances: List[str]) -> None:
-        database_info: TestDatabaseInfo = TestEnvironment.get_current().get_info().get_database_info()
+        database_info: TestDatabaseInfo = TestEnvironment.get_current().get_database_info()
         for i in instances:
             instance_info: TestInstanceInfo = database_info.get_instance(i)
             success: bool = False
