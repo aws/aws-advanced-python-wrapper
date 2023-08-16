@@ -20,6 +20,7 @@ from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
 
 if TYPE_CHECKING:
+    from tests.integration.container.utils.test_driver import TestDriver
     from tests.integration.container.utils.test_environment import TestEnvironment
     from tests.integration.container.utils.test_instance_info import TestInstanceInfo
 
@@ -30,15 +31,14 @@ import pytest
 
 from aws_wrapper import AwsWrapperConnection
 from aws_wrapper.errors import AwsWrapperError
-from tests.integration.container.utils.conditions import (disable_on_drivers,
-                                                          enable_on_features)
+from tests.integration.container.utils.conditions import (
+    disable_on_mariadb_driver, enable_on_features)
 from tests.integration.container.utils.driver_helper import DriverHelper
-from tests.integration.container.utils.test_driver import TestDriver
 
 
 @enable_on_features([TestEnvironmentFeatures.IAM])
+@disable_on_mariadb_driver
 class TestAwsIamAuthentication:
-    @disable_on_drivers([TestDriver.MARIADB])
     def test_iam_wrong_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         user: str = f"WRONG_{conn_utils.iam_user}_USER"
@@ -50,7 +50,6 @@ class TestAwsIamAuthentication:
         with pytest.raises(AwsWrapperError):
             AwsWrapperConnection.connect(connect_params, target_driver_connect)
 
-    @disable_on_drivers([TestDriver.MARIADB])
     def test_iam_no_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         connect_params: str = self.init_aws_iam_properties(test_environment, {
@@ -60,7 +59,6 @@ class TestAwsIamAuthentication:
         with pytest.raises(AwsWrapperError):
             AwsWrapperConnection.connect(connect_params, target_driver_connect)
 
-    @disable_on_drivers([TestDriver.MARIADB])
     def test_iam_using_ip_address(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         instance: TestInstanceInfo = test_environment.get_writer()
@@ -75,7 +73,6 @@ class TestAwsIamAuthentication:
 
         self.validate_connection(target_driver_connect, connect_params)
 
-    @disable_on_drivers([TestDriver.MARIADB])
     def test_iam_valid_connection_properties(
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -86,7 +83,6 @@ class TestAwsIamAuthentication:
 
         self.validate_connection(target_driver_connect, connect_params)
 
-    @disable_on_drivers([TestDriver.MARIADB])
     def test_iam_valid_connection_properties_no_password(
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -97,7 +93,6 @@ class TestAwsIamAuthentication:
 
         self.validate_connection(target_driver_connect, connect_params)
 
-    @disable_on_drivers([TestDriver.MARIADB])
     def init_aws_iam_properties(self, test_environment: TestEnvironment, props: Dict[str, str]) -> str:
         instance = test_environment.get_writer()
         props["plugins"] = "iam"
