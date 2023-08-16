@@ -170,6 +170,8 @@ def test_reconnect_to_writer_slow_reader_a(plugin_service_mock, reader_failover_
             return new_writer_connection_mock
         elif host_info == reader_b:
             raise exception
+        else:
+            raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
 
@@ -206,6 +208,8 @@ def test_reconnect_to_writer_task_b_defers(plugin_service_mock, reader_failover_
             return writer_connection_mock
         elif host_info == reader_b:
             raise exception
+        else:
+            raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
 
@@ -228,6 +232,7 @@ def test_connect_to_reader_a_slow_writer(plugin_service_mock, reader_failover_mo
     props = default_properties
     current_topology = topology.copy()
 
+    exception = Exception("Test Exception")
     expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
                 call(writer.as_aliases(), HostAvailability.AVAILABLE)]
 
@@ -241,6 +246,8 @@ def test_connect_to_reader_a_slow_writer(plugin_service_mock, reader_failover_mo
             return reader_b
         elif host_info == new_writer_host:
             return new_writer_connection_mock
+        else:
+            raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
 
@@ -261,10 +268,12 @@ def test_connect_to_reader_a_slow_writer(plugin_service_mock, reader_failover_mo
     plugin_service_mock.set_availability.assert_has_calls(expected)
 
 
-def test_connect_to_reader_a_task_a_defers(plugin_service_mock, reader_failover_mock, new_writer_connection_mock, reader_a_connection_mock,
+def test_connect_to_reader_a_task_a_defers(connection_mock, plugin_service_mock, reader_failover_mock, new_writer_connection_mock, reader_a_connection_mock,
                                            reader_b_connection_mock, default_properties, new_writer_host, writer, reader_a, reader_b, topology):
     props = default_properties
     current_topology = topology.copy()
+
+    exception = Exception("Test Exception")
 
     def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
         if host_info == writer:
@@ -276,6 +285,8 @@ def test_connect_to_reader_a_task_a_defers(plugin_service_mock, reader_failover_
         elif host_info == new_writer_host:
             sleep(5)
             return new_writer_connection_mock
+        else:
+            raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
 
@@ -305,7 +316,7 @@ def test_failed_to_connect_failover_timeout(plugin_service_mock, reader_failover
                                             reader_a, reader_b, topology, new_topology):
     props = default_properties
     current_topology = topology.copy()
-
+    exception = Exception("Test Exception")
     expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE)]
 
     def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
@@ -319,6 +330,8 @@ def test_failed_to_connect_failover_timeout(plugin_service_mock, reader_failover
         elif host_info == new_writer_host:
             sleep(30)
             return new_writer_connection_mock
+        else:
+            raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
 
@@ -360,6 +373,8 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(plugin_servi
         elif host_info == reader_b:
             return reader_b_connection_mock
         elif host_info == new_writer_host:
+            raise exception
+        else:
             raise exception
 
     plugin_service_mock.is_network_exception.return_value = True
