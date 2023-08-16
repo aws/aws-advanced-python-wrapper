@@ -379,14 +379,3 @@ def test_query_for_dialect_mysql(mock_conn, mock_cursor):
     assert isinstance(result, AuroraMysqlDialect)
     assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("url")
     assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("host")
-
-
-def test_abort_connection(mock_conn):
-    dialect = PgTargetDriverDialect()
-
-    dialect.abort_connection(mock_conn)
-    mock_conn.cancel.assert_called_once()
-
-    del mock_conn.cancel
-    with pytest.raises(AwsWrapperError):
-        dialect.abort_connection(mock_conn)

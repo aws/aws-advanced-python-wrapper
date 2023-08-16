@@ -140,6 +140,9 @@ class PluginService(ExceptionHandler, Protocol):
     def is_network_bound_method(self, method_name: str) -> bool:
         ...
 
+    def update_in_transaction(self, is_in_transaction: Optional[bool] = None):
+        ...
+
     def update_dialect(self, connection: Optional[Connection] = None):
         ...
 
@@ -238,10 +241,6 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def is_in_transaction(self) -> bool:
         return self._is_in_transaction
 
-    @is_in_transaction.setter
-    def is_in_transaction(self, value):
-        self._is_in_transaction = value
-
     @property
     def target_driver_dialect(self) -> TargetDriverDialect:
         return self._target_driver_dialect
@@ -253,6 +252,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     @property
     def network_bound_methods(self) -> Set[str]:
         return self._target_driver_dialect.network_bound_methods
+
+    def update_in_transaction(self, is_in_transaction: Optional[bool] = None):
+        self._is_in_transaction = is_in_transaction \
+            if is_in_transaction is not None \
+            else self.target_driver_dialect.is_in_transaction(self.current_connection)
 
     def is_network_bound_method(self, method_name: str):
         if len(self.network_bound_methods) == 1 and \
@@ -404,9 +408,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def release_resources(self):
         logger.debug("[PluginServiceImpl] Releasing resources.")
-        target_driver_dialect = self.target_driver_dialect
         try:
-            if self.current_connection is None or target_driver_dialect.is_closed(self.current_connection):
+            if self.current_connection is not None and self.target_driver_dialect.is_closed(self.current_connection):
                 self.current_connection.close()
         except Exception:
             # ignore

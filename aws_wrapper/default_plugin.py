@@ -69,8 +69,8 @@ class DefaultPlugin(Plugin):
 
         # Update transaction status
         if self._plugin_service.current_connection is not None:
-            self._plugin_service.is_in_transaction = self._plugin_service.target_driver_dialect.is_in_transaction(
-                self._plugin_service.current_connection)
+            self._plugin_service.update_in_transaction()
+
         return result
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:

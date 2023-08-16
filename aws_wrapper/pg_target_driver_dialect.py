@@ -55,13 +55,13 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
             return conn.closed
 
         raise AwsWrapperError(
-            Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "PsycopgDialect", "closed"))
+            Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "Psycopg", "closed"))
 
     def abort_connection(self, conn: Connection):
         cancel_func = getattr(conn, "cancel", None)
         if cancel_func is None:
             raise AwsWrapperError(
-                Messages.get_formatted("TargetDriverTargetDriverDialect.InvalidTargetAttribute", "PsycopgDialect",
+                Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "Psycopg",
                                        "cancel"))
 
         cancel_func()
@@ -74,5 +74,5 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
 
         raise AwsWrapperError(Messages.get_formatted(
             "TargetDriverDialect.InvalidTargetAttribute",
-            "PsycopgDialect",
+            "Psycopg",
             "transaction_status"))

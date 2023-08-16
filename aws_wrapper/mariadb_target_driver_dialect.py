@@ -53,7 +53,7 @@ class MariaDBTargetDriverDialect(GenericTargetDriverDialect):
             return not conn.open
 
         raise AwsWrapperError(
-            Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "PsycopgDialect", "open"))
+            Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "MariaDB Connector Python", "open"))
 
     def abort_connection(self, conn: Connection):
         raise NotImplementedError(
