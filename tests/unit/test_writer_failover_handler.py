@@ -13,8 +13,8 @@
 #  limitations under the License.
 
 from __future__ import annotations
-from itertools import chain, cycle
 
+from itertools import chain, cycle
 from typing import TYPE_CHECKING
 from unittest.mock import call
 
@@ -125,7 +125,8 @@ def setup(writer, new_writer_host, reader_a, reader_b):
     yield
 
 
-def test_reconnect_to_writer_task_b_reader_exception(connection_mock, plugin_service_mock, reader_failover_mock, default_properties, writer, topology):
+def test_reconnect_to_writer_task_b_reader_exception(connection_mock, plugin_service_mock, reader_failover_mock, default_properties, writer,
+                                                     topology):
     props = default_properties
     current_topology = topology.copy()
 
@@ -154,7 +155,7 @@ def test_reconnect_to_writer_task_b_reader_exception(connection_mock, plugin_ser
     plugin_service_mock.set_availability.assert_has_calls(expected)
 
 
-def test_reconnect_to_writer_slow_reader_a(plugin_service_mock, reader_failover_mock, writer_connection_mock, new_writer_connection_mock,
+def test_reconnect_to_writer_slow_reader_a(mocker, plugin_service_mock, reader_failover_mock, writer_connection_mock, new_writer_connection_mock,
                                            reader_a_connection_mock, default_properties, new_writer_host, writer, reader_a, reader_b,
                                            topology, new_topology):
     props = default_properties
@@ -163,7 +164,9 @@ def test_reconnect_to_writer_slow_reader_a(plugin_service_mock, reader_failover_
     exception = Exception("Test Exception")
     expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
                 call(writer.as_aliases(), HostAvailability.AVAILABLE)]
-    plugin_service_mock.hosts.side_effect = chain([current_topology], cycle([new_topology]))
+
+    mock_hosts_property = mocker.PropertyMock(side_effect=chain([current_topology], cycle([new_topology])))
+    type(plugin_service_mock).hosts = mock_hosts_property
 
     def force_connect_side_effect(host_info, props, timeout_event) -> Connection:
         if host_info == writer:
