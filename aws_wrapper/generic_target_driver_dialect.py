@@ -76,10 +76,10 @@ class GenericTargetDriverDialect(TargetDriverDialect):
         return prop_copy
 
     def is_closed(self, conn: Connection) -> bool:
-        raise NotImplementedError(Messages.get("TargetDriverDialect.UnImplementedError"))
+        raise NotImplementedError(Messages.get_formatted("TargetDriverDialect.UnImplementedError", "is_closed"))
 
     def abort_connection(self, conn: Connection):
-        raise NotImplementedError(Messages.get("TargetDriverDialect.UnImplementedError"))
+        raise NotImplementedError(Messages.get_formatted("TargetDriverDialect.UnImplementedError", "abort_connection"))
 
     def is_in_transaction(self, conn: Connection) -> bool:
-        raise NotImplementedError(Messages.get("TargetDriverDialect.UnImplementedError"))
+        raise NotImplementedError(Messages.get_formatted("TargetDriverDialect.UnImplementedError", "is_in_transaction"))

@@ -318,41 +318,41 @@ def test_get_dialect_unknown_dialect(mock_target_driver_dialect):
         assert manager._can_update is True
 
 
-def test_query_for_dialect_cannot_update(mock_dialect, mock_conn):
+def test_query_for_dialect_cannot_update(mock_dialect, mock_conn, mock_target_driver_dialect):
     manager = DialectManager()
     manager._dialect = mock_dialect
 
-    assert mock_dialect == manager.query_for_dialect("", None, mock_conn)
+    assert mock_dialect == manager.query_for_dialect("", None, mock_conn, mock_target_driver_dialect)
     mock_dialect.dialect_update_candidates.assert_not_called()
 
 
-def test_query_for_dialect_errors(mock_conn, mock_dialect, mock_candidate):
+def test_query_for_dialect_errors(mock_conn, mock_dialect, mock_candidate, mock_target_driver_dialect):
     manager = DialectManager()
     manager._can_update = True
     mock_dialect.dialect_update_candidates = frozenset({mock_candidate})
     manager._dialect = mock_dialect
 
     with pytest.raises(AwsWrapperError):
-        manager.query_for_dialect("", None, mock_conn)
+        manager.query_for_dialect("", None, mock_conn, mock_target_driver_dialect)
 
     mock_dialect.dialect_update_candidates = frozenset()
     with pytest.raises(AwsWrapperError):
-        manager.query_for_dialect("", None, mock_conn)
+        manager.query_for_dialect("", None, mock_conn, mock_target_driver_dialect)
 
 
-def test_query_for_dialect_no_update_candidates(mock_dialect, mock_conn):
+def test_query_for_dialect_no_update_candidates(mock_dialect, mock_conn, mock_target_driver_dialect):
     manager = DialectManager()
     mock_dialect.dialect_update_candidates = None
     manager._can_update = True
     manager._dialect_code = DialectCode.MARIADB
     manager._dialect = mock_dialect
 
-    assert mock_dialect == manager.query_for_dialect("url", HostInfo("host"), mock_conn)
+    assert mock_dialect == manager.query_for_dialect("url", HostInfo("host"), mock_conn, mock_target_driver_dialect)
     assert DialectCode.MARIADB == manager._known_endpoint_dialects.get("url")
     assert DialectCode.MARIADB == manager._known_endpoint_dialects.get("host")
 
 
-def test_query_for_dialect_pg(mock_conn, mock_cursor):
+def test_query_for_dialect_pg(mock_conn, mock_cursor, mock_target_driver_dialect):
     manager = DialectManager()
     manager._can_update = True
     manager._dialect = PgDialect()
@@ -360,13 +360,13 @@ def test_query_for_dialect_pg(mock_conn, mock_cursor):
     mock_cursor.__iter__.return_value = [(True, True)]
     mock_cursor.fetch_one.return_value = (True,)
 
-    result = manager.query_for_dialect("url", HostInfo("host"), mock_conn)
+    result = manager.query_for_dialect("url", HostInfo("host"), mock_conn, mock_target_driver_dialect)
     assert isinstance(result, AuroraPgDialect)
     assert DialectCode.AURORA_PG == manager._known_endpoint_dialects.get("url")
     assert DialectCode.AURORA_PG == manager._known_endpoint_dialects.get("host")
 
 
-def test_query_for_dialect_mysql(mock_conn, mock_cursor):
+def test_query_for_dialect_mysql(mock_conn, mock_cursor, mock_target_driver_dialect):
     manager = DialectManager()
     manager._can_update = True
     manager._dialect = MysqlDialect()
@@ -374,7 +374,7 @@ def test_query_for_dialect_mysql(mock_conn, mock_cursor):
     mock_cursor.__iter__.return_value = [("version_comment", "Source distribution")]
     mock_cursor.fetch_one.return_value = ("aurora_version", "3.0.0")
 
-    result = manager.query_for_dialect("url", HostInfo("host"), mock_conn)
+    result = manager.query_for_dialect("url", HostInfo("host"), mock_conn, mock_target_driver_dialect)
     assert isinstance(result, AuroraMysqlDialect)
     assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("url")
     assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("host")
