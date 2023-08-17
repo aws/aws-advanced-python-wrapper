@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 import socket
 import timeit
 from logging import getLogger
-from time import sleep
+from time import perf_counter_ns, sleep
 from typing import Any, List, Optional
 
 import boto3
@@ -62,7 +62,7 @@ class AuroraTestUtility:
 
     def failover_cluster_and_wait_until_writer_changed(
             self, initial_writer_id: Optional[str] = None, cluster_id: Optional[str] = None) -> None:
-
+        start = perf_counter_ns()
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_aurora_cluster_name()
 
@@ -89,7 +89,7 @@ class AuroraTestUtility:
             sleep(1)
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
-        self.logger.debug("Finished failover from " + initial_writer_id)
+        self.logger.debug(f"Finished failover from {initial_writer_id} in {(perf_counter_ns() - start) / 1_000_000}ms\n")
 
     def failover_cluster(self, cluster_id: Optional[str] = None) -> None:
         if cluster_id is None:

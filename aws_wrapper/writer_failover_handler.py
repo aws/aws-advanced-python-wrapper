@@ -213,14 +213,12 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                     self._current_reader_connection = conn_result.connection
                     self._current_reader_host = conn_result.new_host
                     logger.debug(Messages.get_formatted("WriterFailoverHandler.TaskBConnectedToReader", self._current_reader_host.url))
-                    return
+                    break
 
-            except Exception as ex:
-                logger.debug(f"Ignored exception during task : {str(ex)}")
+            except Exception:
                 pass
+            logger.debug(Messages.get("WriterFailoverHandler.TaskBFailedToConnectToAnyReader"))
             sleep(1)
-
-        logger.debug(Messages.get("WriterFailoverHandler.TaskBFailedToConnectToAnyReader"))
 
     def refresh_topology_and_connect_to_new_writer(self, initial_writer_host: HostInfo) -> bool:
         while not self._timeout_event.is_set():

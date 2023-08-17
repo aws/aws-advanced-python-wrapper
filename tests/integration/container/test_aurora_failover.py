@@ -21,6 +21,7 @@ import pytest
 
 from aws_wrapper.errors import (FailoverSuccessError,
                                 TransactionResolutionUnknownError)
+from .utils.conditions import enable_on_features, enable_on_num_instances
 from .utils.proxy_helper import ProxyHelper
 
 if TYPE_CHECKING:
@@ -34,15 +35,16 @@ from logging import getLogger
 
 from aws_wrapper.wrapper import AwsWrapperConnection
 from .utils.aurora_test_utility import AuroraTestUtility
-from .utils.conditions import failover_support_required
 from .utils.driver_helper import DriverHelper
+from .utils.test_environment_features import TestEnvironmentFeatures
 
 
+@enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+@enable_on_num_instances(min_instances=2)
 class TestAuroraFailover:
     IDLE_CONNECTIONS_NUM: int = 5
     logger = getLogger(__name__)
 
-    @failover_support_required
     def test_fail_from_writer_to_new_writer_fail_on_connection_invocation(self, test_environment: TestEnvironment,
                                                                           test_driver: TestDriver):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -67,7 +69,6 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
-    @failover_support_required
     def test_fail_from_writer_to_new_writer_fail_on_connection_bound_object_invocation(self,
                                                                                        test_environment: TestEnvironment,
                                                                                        test_driver: TestDriver):
@@ -98,7 +99,6 @@ class TestAuroraFailover:
             assert current_connection_id != initial_writer_id
 
     @pytest.mark.skip
-    @failover_support_required
     def test_fail_from_reader_to_writer(self, test_environment: TestEnvironment,
                                         test_driver: TestDriver):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -133,7 +133,6 @@ class TestAuroraFailover:
             assert writer_id == current_connection_id
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
 
-    @failover_support_required
     def test_writer_fail_within_transaction_set_autocommit_false(self, test_environment: TestEnvironment,
                                                                  test_driver: TestDriver):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -176,7 +175,6 @@ class TestAuroraFailover:
                 assert 0 == int(result[0])
                 cursor_3.execute("DROP TABLE IF EXISTS test3_2")
 
-    @failover_support_required
     def test_writer_fail_within_transaction_start_transaction(self, test_environment: TestEnvironment,
                                                               test_driver: TestDriver):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -223,7 +221,6 @@ class TestAuroraFailover:
                 assert 0 == int(result[0])
                 cursor_3.execute("DROP TABLE IF EXISTS test3_3")
 
-    @failover_support_required
     def test_writer_failover_in_idle_connections(self, test_environment: TestEnvironment,
                                                  test_driver: TestDriver):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -262,7 +259,6 @@ class TestAuroraFailover:
         for idle_connection in idle_connections:
             assert idle_connection.is_closed is True
 
-    @failover_support_required
     def test_basic_failover_with_efm(self, test_environment: TestEnvironment,
                                      test_driver: TestDriver):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -299,7 +295,7 @@ class TestAuroraFailover:
         db_name: str = database_info.get_default_db_name()
         user: str = database_info.get_username()
         password: str = database_info.get_password()
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} connect_timeout=10".format(
+        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} connect_timeout=60 topology_refresh_ms=10".format(
             instance.get_host(), instance.get_port(), db_name, user, password)
 
         return connect_params
