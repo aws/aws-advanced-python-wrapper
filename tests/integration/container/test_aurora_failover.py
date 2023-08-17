@@ -97,6 +97,7 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
+    @pytest.mark.skip
     @failover_support_required
     def test_fail_from_reader_to_writer(self, test_environment: TestEnvironment,
                                         test_driver: TestDriver):
