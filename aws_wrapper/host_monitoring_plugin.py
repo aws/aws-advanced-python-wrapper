@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.dialect import Dialect
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
@@ -121,8 +121,9 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
                     if monitor_context.is_host_unavailable():
                         self._plugin_service.set_availability(
                             self._get_monitoring_host_info().all_aliases, HostAvailability.NOT_AVAILABLE)
-                        dialect = self._plugin_service.dialect
-                        if dialect is not None and not dialect.is_closed(connection):
+
+                        target_driver_dialect = self._plugin_service.target_driver_dialect
+                        if target_driver_dialect is not None and not target_driver_dialect.is_closed(connection):
                             try:
                                 connection.close()
                             except Exception:
@@ -178,13 +179,13 @@ class MonitoringContext:
             self,
             monitor: Monitor,
             connection: Connection,
-            dialect: Dialect,
+            target_dialect: TargetDriverDialect,
             failure_detection_time_ms: int,
             failure_detection_interval_ms: int,
             failure_detection_count: int):
         self._monitor: Monitor = monitor
         self._connection: Connection = connection
-        self._dialect: Dialect = dialect
+        self._target_dialect: TargetDriverDialect = target_dialect
         self._failure_detection_time_ms: int = failure_detection_time_ms
         self._failure_detection_interval_ms: int = failure_detection_interval_ms
         self._failure_detection_count: int = failure_detection_count
@@ -231,7 +232,7 @@ class MonitoringContext:
         if self._connection is None or not self._is_active:
             return
         try:
-            self._dialect.abort_connection(self._connection)
+            self._target_dialect.abort_connection(self._connection)
         except Exception as e:
             # log and ignore
             logger.debug(Messages.get_formatted("MonitorContext.ExceptionAbortingConnection", e))
@@ -431,7 +432,8 @@ class Monitor:
                 if dialect is None:
                     raise AwsWrapperError(Messages.get("Monitor.NullDialect"))
 
-            if self._monitoring_conn is None or dialect.is_closed(self._monitoring_conn):
+            target_driver_dialect = self._plugin_service.target_driver_dialect
+            if self._monitoring_conn is None or target_driver_dialect.is_closed(self._monitoring_conn):
                 props_copy: Properties = copy(self._props)
                 for key, value in self._props.items():
                     if key.startswith(Monitor._MONITORING_PROPERTY_PREFIX):
@@ -450,19 +452,23 @@ class Monitor:
         except Exception:
             return Monitor.HostStatus(False, perf_counter_ns() - start_ns)
 
-    @staticmethod
-    def _is_host_available(conn: Connection, timeout_sec: float) -> bool:
+    def _is_host_available(self, conn: Connection, timeout_sec: float) -> bool:
         try:
-            check_conn_with_timeout = timeout(timeout_sec)(lambda: Monitor._execute_conn_check(conn))
+            check_conn_with_timeout = timeout(timeout_sec)(lambda: self._execute_conn_check(conn))
             check_conn_with_timeout()
             return True
         except TimeoutError:
             return False
 
-    @staticmethod
-    def _execute_conn_check(conn: Connection):
+    def _execute_conn_check(self, conn: Connection):
+        target_driver_dialect = self._plugin_service.target_driver_dialect
+        initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
+
         with conn.cursor() as cursor:
             cursor.execute("SELECT 1")
+
+        if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
+            conn.commit()
 
 
 class MonitoringThreadContainer:
@@ -598,7 +604,8 @@ class MonitorService:
                 raise AwsWrapperError(Messages.get("MonitorService.NullDialect"))
 
         context = MonitoringContext(
-            monitor, conn, dialect, failure_detection_time_ms, failure_detection_interval_ms, failure_detection_count)
+            monitor, conn, self._plugin_service.target_driver_dialect, failure_detection_time_ms,
+            failure_detection_interval_ms, failure_detection_count)
         monitor.start_monitoring(context)
         return context
 

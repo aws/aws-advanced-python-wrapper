@@ -84,7 +84,8 @@ class FailoverPlugin(Plugin):
                 AuroraHostListProvider(self._host_list_provider_service, properties)
 
         self._reader_failover_handler = ReaderFailoverHandlerImpl(self._plugin_service, self._properties)
-        self._writer_failover_handler = WriterFailoverHandlerImpl(self._plugin_service, self._reader_failover_handler, self._properties)
+        self._writer_failover_handler = WriterFailoverHandlerImpl(self._plugin_service, self._reader_failover_handler,
+                                                                  self._properties)
 
         init_host_provider_func()
 
@@ -181,8 +182,8 @@ class FailoverPlugin(Plugin):
             return
 
         conn = self._plugin_service.current_connection
-        dialect = self._plugin_service.dialect
-        if conn is None or (dialect is not None and dialect.is_closed(conn)):
+        target_driver_dialect = self._plugin_service.target_driver_dialect
+        if conn is None or (target_driver_dialect is not None and target_driver_dialect.is_closed(conn)):
             return
 
         if force_update:
@@ -200,7 +201,7 @@ class FailoverPlugin(Plugin):
             self._failover_reader(failed_host)
 
         if self._is_in_transaction or self._plugin_service.is_in_transaction:
-            self._plugin_service.is_in_transaction = False
+            self._plugin_service.update_in_transaction(False)
 
             error_msg = Messages.get("Failover.TransactionResolutionUnknownError")
             logger.warning(error_msg)
@@ -257,14 +258,14 @@ class FailoverPlugin(Plugin):
             return
 
         if self._plugin_service.is_in_transaction:
-            self._is_in_transaction = True
+            self._plugin_service.update_in_transaction(True)
             try:
                 conn.rollback()
             except Exception:
                 pass  # Swallow this exception
 
-        dialect = self._plugin_service.dialect
-        if dialect is not None and not dialect.is_closed(conn):
+        target_driver_dialect = self._plugin_service.target_driver_dialect
+        if target_driver_dialect is not None and not target_driver_dialect.is_closed(conn):
             try:
                 conn.close()
             except Exception:
@@ -306,7 +307,7 @@ class FailoverPlugin(Plugin):
                 self._invalidate_current_connection()
 
             self._plugin_service.set_current_connection(connection_for_host, host)
-            self._plugin_service.is_in_transaction = False
+            self._plugin_service.update_in_transaction(False)
 
             logger.debug(Messages.get_formatted("Failover.EstablishedConnection", host))
         except Exception as ex:

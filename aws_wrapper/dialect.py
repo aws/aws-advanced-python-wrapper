@@ -23,6 +23,7 @@ from typing import (TYPE_CHECKING, Dict, Optional, Protocol, Tuple,
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
+    from .generic_target_driver_dialect import TargetDriverDialect
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
@@ -111,13 +112,6 @@ class Dialect(Protocol):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         ...
 
-    @abstractmethod
-    def is_closed(self, conn: Connection) -> bool:
-        ...
-
-    def abort_connection(self, conn: Connection):
-        ...
-
     @property
     @abstractmethod
     def exception_handler(self) -> Optional[ExceptionHandler]:
@@ -132,7 +126,8 @@ class DialectProvider(Protocol):
         """
         ...
 
-    def query_for_dialect(self, url: str, host_info: HostInfo, conn: Connection) -> Optional[Dialect]:
+    def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection,
+                          driver_dialect: TargetDriverDialect) -> Optional[Dialect]:
         """Returns the dialect identified by querying the database to identify the engine type"""
         ...
 
@@ -170,16 +165,6 @@ class MysqlDialect(Dialect):
 
         return False
 
-    def is_closed(self, conn: Connection) -> bool:
-        is_connected_func = getattr(conn, "is_connected", None)
-        if is_connected_func is None or not callable(is_connected_func):
-            raise AwsWrapperError(Messages.get_formatted("Dialect.InvalidTargetAttribute", "MySqlDialect", "is_closed"))
-        return not is_connected_func()
-
-    def abort_connection(self, conn: Connection):
-        # TODO: investigate how to abort MySQL connections and add logic here
-        ...
-
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return MysqlDialect._DIALECT_UPDATE_CANDIDATES
@@ -212,19 +197,6 @@ class PgDialect(Dialect):
             conn.rollback()
 
         return False
-
-    def is_closed(self, conn: Connection) -> bool:
-        if hasattr(conn, "closed"):
-            return conn.closed
-        else:
-            raise AwsWrapperError(Messages.get_formatted("Dialect.InvalidTargetAttribute", "PgDialect", "is_closed"))
-
-    def abort_connection(self, conn: Connection):
-        cancel_func = getattr(conn, "cancel", None)
-        if cancel_func is None or not callable(cancel_func):
-            raise AwsWrapperError(
-                Messages.get_formatted("Dialect.InvalidTargetAttribute", "PgDialect", "abort_connection"))
-        cancel_func()
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -261,14 +233,6 @@ class MariaDbDialect(Dialect):
             pass
 
         return False
-
-    def is_closed(self, conn: Connection) -> bool:
-        # TODO: investigate how to check if a connection is closed with MariaDB
-        return False
-
-    def abort_connection(self, conn: Connection):
-        # TODO: investigate how to abort MariaDB connections and add logic here
-        ...
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode]]:
@@ -432,12 +396,6 @@ class UnknownDialect(Dialect):
     def is_dialect(self, conn: Connection) -> bool:
         return False
 
-    def is_closed(self, conn: Connection) -> bool:
-        return False
-
-    def abort_connection(self, conn: Connection):
-        raise AwsWrapperError("UnknownDialect.AbortConnection")
-
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return UnknownDialect._DIALECT_UPDATE_CANDIDATES
@@ -576,7 +534,8 @@ class DialectManager(DialectProvider):
 
         return TargetDriverType.CUSTOM
 
-    def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection) -> Optional[Dialect]:
+    def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection,
+                          driver_dialect: TargetDriverDialect) -> Optional[Dialect]:
         if not self._can_update:
             self._log_current_dialect()
             return self._dialect
@@ -587,7 +546,12 @@ class DialectManager(DialectProvider):
                 dialect_candidate = self._known_dialects_by_code.get(dialect_code)
                 if dialect_candidate is None:
                     raise AwsWrapperError(Messages.get_formatted("DialectManager.UnknownDialectCode", dialect_code))
+
+                initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
                 is_dialect = dialect_candidate.is_dialect(conn)
+                if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                    # this condition is True when autocommit is False and the query started a new transaction.
+                    conn.commit()
                 if not is_dialect:
                     continue
 

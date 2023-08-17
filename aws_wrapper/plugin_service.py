@@ -118,8 +118,9 @@ class PluginService(ExceptionHandler, Protocol):
     def is_in_transaction(self) -> bool:
         ...
 
-    @is_in_transaction.setter
-    def is_in_transaction(self, value):
+    @property
+    @abstractmethod
+    def target_driver_dialect(self) -> TargetDriverDialect:
         ...
 
     @property
@@ -133,6 +134,9 @@ class PluginService(ExceptionHandler, Protocol):
         ...
 
     def is_network_bound_method(self, method_name: str) -> bool:
+        ...
+
+    def update_in_transaction(self, is_in_transaction: Optional[bool] = None):
         ...
 
     def update_dialect(self, connection: Optional[Connection] = None):
@@ -233,9 +237,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def is_in_transaction(self) -> bool:
         return self._is_in_transaction
 
-    @is_in_transaction.setter
-    def is_in_transaction(self, value):
-        self._is_in_transaction = value
+    @property
+    def target_driver_dialect(self) -> TargetDriverDialect:
+        return self._target_driver_dialect
 
     @property
     def dialect(self) -> Optional[Dialect]:
@@ -244,6 +248,14 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     @property
     def network_bound_methods(self) -> Set[str]:
         return self._target_driver_dialect.network_bound_methods
+
+    def update_in_transaction(self, is_in_transaction: Optional[bool] = None):
+        if is_in_transaction is not None:
+            self._is_in_transaction = is_in_transaction
+        elif self.current_connection is not None:
+            self._is_in_transaction = self.target_driver_dialect.is_in_transaction(self.current_connection)
+        else:
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.UnableToUpdateTransactionStatus"))
 
     def is_network_bound_method(self, method_name: str):
         if len(self.network_bound_methods) == 1 and \
@@ -256,7 +268,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if connection is None:
             raise AwsWrapperError(Messages.get("PluginServiceImpl.UpdateDialectNullConnection"))
         self._dialect = \
-            self._dialect_provider.query_for_dialect(self._original_url, self._initial_connection_host_info, connection)
+            self._dialect_provider.query_for_dialect(
+                self._original_url,
+                self._initial_connection_host_info,
+                connection,
+                self.target_driver_dialect)
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -391,9 +407,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def release_resources(self):
         logger.debug("[PluginServiceImpl] Releasing resources.")
-        dialect = self.dialect
         try:
-            if self.current_connection is not None and not dialect.is_closed(self.current_connection):
+            if self.current_connection is not None and not self.target_driver_dialect.is_closed(
+                    self.current_connection):
                 self.current_connection.close()
         except Exception:
             # ignore
