@@ -24,11 +24,19 @@ import timeit
 from time import sleep
 from typing import List
 
+import pytest
+
 from .utils.aurora_test_utility import AuroraTestUtility
+from .utils.connection_utils import ConnectionUtils
 from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.proxy_helper import ProxyHelper
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
+
+
+@pytest.fixture(scope='module')
+def conn_utils():
+    return ConnectionUtils()
 
 
 def pytest_runtest_setup(item):
