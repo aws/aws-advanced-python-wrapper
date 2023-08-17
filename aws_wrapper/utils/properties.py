@@ -131,6 +131,13 @@ class WrapperProperties:
         "A unique identifier for the target driver dialect.",
         None)
 
+    # Read Write Splitting
+    READER_HOST_SELECTOR_STRATEGY = WrapperProperty(
+        "reader_host_selector_strategy",
+        "The strategy that should be used to select a new reader host.",
+        "random"
+    )
+
 
 class PropertiesUtils:
 

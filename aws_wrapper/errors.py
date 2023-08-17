@@ -33,3 +33,7 @@ class TransactionResolutionUnknownError(FailoverError):
 
 class FailoverSuccessError(FailoverError):
     __module__ = "aws_wrapper"
+
+
+class ReadWriteSplittingError(AwsWrapperError):
+    __module__ = "aws_wrapper"

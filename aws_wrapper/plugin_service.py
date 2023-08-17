@@ -438,7 +438,7 @@ class PluginManager(CanReleaseResources):
         "aurora_host_list": AuroraHostListPluginFactory,
         "host_monitoring": HostMonitoringPluginFactory,
         "failover": FailoverPluginFactory,
-        "readWriteSplitting": ReadWriteSplittingPluginFactory
+        "read_write_splitting": ReadWriteSplittingPluginFactory
     }
 
     def __init__(
