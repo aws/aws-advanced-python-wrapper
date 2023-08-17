@@ -109,8 +109,7 @@ class OpenedConnectionTracker:
                 continue
 
             try:
-                conn: Connection = conn_reference()
-                conn.close()
+                conn_reference.close()
             except Exception:
                 # Swallow this exception, current connection should be useless anyway
                 pass

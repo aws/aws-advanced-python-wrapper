@@ -203,13 +203,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
     def connect_to_reader(self) -> None:
         while not self._timeout_event.is_set():
+            if self._current_topology is None:
+                raise AwsWrapperError(Messages.get("WriterFailoverHandler.CurrentTopologyNone"))
             try:
-                if self._current_topology is not None:
-                    conn_result: ReaderFailoverResult = self._reader_failover_handler.get_reader_connection(self._current_topology)
-                elif self._current_reader_connection is None:
-                    raise AwsWrapperError(Messages.get("WriterFailoverHandler.CurrentReaderConnectionAndTopologyNone"))
-                else:
-                    break
+                conn_result: ReaderFailoverResult = self._reader_failover_handler.get_reader_connection(self._current_topology)
 
                 # check if valid reader connection
                 if conn_result.is_connected and conn_result.connection is not None and conn_result.new_host is not None:
