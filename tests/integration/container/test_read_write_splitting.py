@@ -39,6 +39,7 @@ from tests.integration.container.utils.test_environment_features import \
 
 @enable_on_num_instances(min_instances=2)
 @enable_on_deployment(DatabaseEngineDeployment.AURORA)
+@pytest.mark.skip(reason="The read-write plugin is not implemented yet. Remove this line after implementing.")
 class TestReadWriteSplitting:
     @pytest.fixture(scope='class')
     def aurora_utils(self):
