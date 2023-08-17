@@ -550,7 +550,7 @@ class DialectManager(DialectProvider):
                 initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
                 is_dialect = dialect_candidate.is_dialect(conn)
                 if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                    # this condition is True when autocommit is false and the topology query started a new transaction.
+                    # this condition is True when autocommit is False and the query started a new transaction.
                     conn.commit()
                 if not is_dialect:
                     continue

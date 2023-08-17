@@ -289,7 +289,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 cursor.execute(self._topology_aware_dialect.topology_query)
                 res = self._process_query_results(cursor)
                 if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
-                    # this condition is True when autocommit is false and the topology query started a new transaction.
+                    # this condition is True when autocommit is False and the query started a new transaction.
                     conn.commit()
                 return res
         except ProgrammingError as e:
