@@ -53,7 +53,7 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
 
 ## Debugging Aurora Integration Tests - Pycharm
 
-> :warn: The integration tests can only be debugged in Pycharm if you are using Pycharm Professional. Pycharm
+> :warning: The integration tests can only be debugged in Pycharm if you are using Pycharm Professional. Pycharm
 > Professional can be downloaded separately from Pycharm Community. You will either need to get a license or sign up for
 > a
 > temporary trial. If you want to debug the integration tests but cannot get a license, you will need to use VSCode,
@@ -81,7 +81,7 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
    in `tests/integration/host/build.gradle.kts`
 6. The logs in the console will print the following message prompting you to open the Pycharm debug window when the
    debugger has attached:
-   Attaching to the debugger - open the Pycharm debug tab and click resume to begin debugging your tests...
+   `Attaching to the debugger - open the Pycharm debug tab and click resume to begin debugging your tests...`
    The debugger pauses at the entry point automatically. Set any desired breakpoints in the integration test code and
    then click resume to begin debugging.
 
@@ -161,7 +161,7 @@ can also be useful.
     ```md
     # Runs tests whose name contains the substring "test_iam_using" or "test_iam_valid"
     
-    `export FILTER="test_iam_using or test_iam_valid" `
+    export FILTER="test_iam_using or test_iam_valid"
     
     # Runs TestMyClass.test_something but not TestMyClass.test_method_simple
     
