@@ -197,7 +197,7 @@ def test_reconnect_to_writer_task_b_defers(plugin_service_mock, reader_failover_
 
     def get_reader_connection_side_effect(topology):
         return ReaderFailoverResult(reader_a_connection_mock, True, reader_a, None)
-    
+
     plugin_service_mock.hosts = topology
     reader_failover_mock.get_reader_connection.side_effect = get_reader_connection_side_effect
 
@@ -254,8 +254,8 @@ def test_connect_to_new_writer_slow_task_a(plugin_service_mock, reader_failover_
 
 
 def test_connect_to_new_writer_task_a_defers(plugin_service_mock, reader_failover_mock, writer_connection_mock, new_writer_connection_mock,
-                                             reader_a_connection_mock, reader_b_connection_mock, default_properties, new_writer_host, writer, reader_a,
-                                             reader_b, topology):
+                                             reader_a_connection_mock, reader_b_connection_mock, default_properties, new_writer_host, writer,
+                                             reader_a, reader_b, topology):
     updated_topology = [new_writer_host, writer, reader_a, reader_b]
 
     exception = Exception("Test Exception")
@@ -289,7 +289,7 @@ def test_connect_to_new_writer_task_a_defers(plugin_service_mock, reader_failove
     assert result.new_connection is new_writer_connection_mock
     assert len(result.topology) == 4
     assert "new-writer-host" == result.topology[0].host
-    
+
     expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
                 call(new_writer_host.as_aliases(), HostAvailability.AVAILABLE)]
 
