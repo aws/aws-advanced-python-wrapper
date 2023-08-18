@@ -28,6 +28,7 @@ from .utils.proxy_helper import ProxyHelper
 if TYPE_CHECKING:
     from .utils.test_instance_info import TestInstanceInfo
     from .utils.test_driver import TestDriver
+    from .utils.test_database_info import TestDatabaseInfo
 
 from logging import getLogger
 
@@ -60,12 +61,14 @@ class TestAuroraFailover:
         props_copy.update({WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.name: f"?.{endpoint_suffix}"})
         return props_copy
 
-    def test_fail_from_writer_to_new_writer_fail_on_connection_invocation(self, test_driver: TestDriver, props,
+    def test_fail_from_writer_to_new_writer_fail_on_connection_invocation(self, test_environment: TestEnvironment,
+                                                                          test_driver: TestDriver, props,
                                                                           conn_utils, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
 
-        with AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props) as aws_conn:
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as aws_conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             aws_conn.autocommit = True
 
@@ -81,13 +84,16 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
-    def test_fail_from_writer_to_new_writer_fail_on_connection_bound_object_invocation(self, test_driver: TestDriver,
+    def test_fail_from_writer_to_new_writer_fail_on_connection_bound_object_invocation(self,
+                                                                                       test_environment: TestEnvironment,
+                                                                                       test_driver: TestDriver,
                                                                                        props, conn_utils,
                                                                                        aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
 
-        with AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props) as aws_conn:
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as aws_conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             aws_conn.autocommit = True
 
@@ -135,7 +141,8 @@ class TestAuroraFailover:
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         initial_writer_id = test_environment.get_writer().get_instance_id()
 
-        with AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props) as conn, \
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as conn, \
                 conn.cursor() as cursor_1:
             cursor_1.execute("DROP TABLE IF EXISTS test3_2")
             cursor_1.execute("CREATE TABLE test3_2 (id int not null primary key, test3_2_field varchar(255) not null)")
@@ -177,7 +184,8 @@ class TestAuroraFailover:
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         initial_writer_id = test_environment.get_writer().get_instance_id()
 
-        with AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props) as conn:
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             conn.autocommit = True
 
@@ -216,7 +224,7 @@ class TestAuroraFailover:
                 cursor_3.execute("DROP TABLE IF EXISTS test3_3")
                 conn.commit()
 
-    def test_writer_failover_in_idle_connections(self, test_driver: TestDriver,
+    def test_writer_failover_in_idle_connections(self, test_environment: TestEnvironment, test_driver: TestDriver,
                                                  props, conn_utils,
                                                  aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -227,9 +235,11 @@ class TestAuroraFailover:
 
         for i in range(self.IDLE_CONNECTIONS_NUM):
             idle_connections.append(
-                AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props))
+                AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                             **props))
 
-        with AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props) as conn:
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as conn:
 
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             conn.autocommit = True
@@ -262,7 +272,8 @@ class TestAuroraFailover:
         nominated_writer_id = nominated_writer_instance_info.get_instance_id()
 
         props["plugins"] = "failover,host_monitoring"
-        with AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props) as conn:
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             conn.autocommit = True
 
@@ -279,3 +290,14 @@ class TestAuroraFailover:
 
             assert initial_writer_instance_info.get_instance_id() != current_connection_id
             assert next_writer_id == current_connection_id
+
+    def _init_default_props(self, test_environment: TestEnvironment) -> str:
+        database_info: TestDatabaseInfo = test_environment.get_info().get_database_info()
+        instance: TestInstanceInfo = test_environment.get_writer()
+        db_name: str = database_info.get_default_db_name()
+        user: str = database_info.get_username()
+        password: str = database_info.get_password()
+        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4}".format(
+            instance.get_host(), instance.get_port(), db_name, user, password)
+
+        return connect_params
