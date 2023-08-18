@@ -17,6 +17,8 @@ from __future__ import annotations
 import typing
 from typing import TYPE_CHECKING
 
+import pytest
+
 if TYPE_CHECKING:
     from .test_database_info import TestDatabaseInfo
     from .test_instance_info import TestInstanceInfo
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
 import socket
 import timeit
 from logging import getLogger
-from time import sleep
+from time import perf_counter_ns, sleep
 from typing import Any, List, Optional
 
 import boto3
@@ -61,10 +63,13 @@ class AuroraTestUtility:
         return clusters[0]
 
     def failover_cluster_and_wait_until_writer_changed(
-            self, initial_writer_id: str, cluster_id: Optional[str] = None) -> None:
-
+            self, initial_writer_id: Optional[str] = None, cluster_id: Optional[str] = None) -> None:
+        start = perf_counter_ns()
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_aurora_cluster_name()
+
+        if initial_writer_id is None:
+            initial_writer_id = self.get_cluster_writer_instance_id(cluster_id)
 
         database_info = TestEnvironment.get_current().get_database_info()
         cluster_endpoint = database_info.get_cluster_endpoint()
@@ -86,7 +91,8 @@ class AuroraTestUtility:
             sleep(1)
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
-        self.logger.debug("Finished failover from " + initial_writer_id)
+        self.logger.debug(
+            f"Finished failover from {initial_writer_id} in {(perf_counter_ns() - start) / 1_000_000}ms\n")
 
     def failover_cluster(self, cluster_id: Optional[str] = None) -> None:
         if cluster_id is None:
@@ -118,19 +124,14 @@ class AuroraTestUtility:
     def assert_first_query_throws(
             self,
             conn,
-            exception_cls: type,
+            exception_cls,
             database_engine: Optional[DatabaseEngine] = None) -> None:
         if database_engine is None:
             database_engine = TestEnvironment.get_current().get_engine()
-        try:
+        with pytest.raises(exception_cls):
             cursor = conn.cursor()
             cursor.execute(self._get_instance_id_sql(database_engine))
             cursor.fetchone()
-            assert False
-        except Exception as x:
-            if isinstance(x, exception_cls):
-                return
-            assert False
 
     def _get_instance_id_sql(self, database_engine: DatabaseEngine) -> str:
         if database_engine == DatabaseEngine.MYSQL:
@@ -140,7 +141,10 @@ class AuroraTestUtility:
         else:
             raise NotImplementedError(database_engine)
 
-    def query_instance_id(self, conn, database_engine: Optional[DatabaseEngine] = None) -> str:
+    def query_instance_id(
+            self,
+            conn,
+            database_engine: Optional[DatabaseEngine] = None) -> str:
         if database_engine is None:
             database_engine = TestEnvironment.get_current().get_engine()
 
