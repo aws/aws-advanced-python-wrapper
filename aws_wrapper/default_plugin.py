@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import socket
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -62,6 +63,9 @@ class DefaultPlugin(Plugin):
         return self._connect(host_info, target_driver_props, self._connection_provider_manager.default_provider)
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
+        s = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+        s.setblocking(False)
+        s.settimeout(10)
         result = execute_func()
         if self._plugin_service.current_connection is not None:
             self._plugin_service.update_in_transaction()
