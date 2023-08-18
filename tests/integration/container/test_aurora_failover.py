@@ -111,7 +111,6 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
-    @pytest.mark.skip
     def test_fail_from_reader_to_writer(self, test_environment: TestEnvironment,
                                         test_driver: TestDriver, conn_utils, proxied_props, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -297,7 +296,7 @@ class TestAuroraFailover:
         db_name: str = database_info.get_default_db_name()
         user: str = database_info.get_username()
         password: str = database_info.get_password()
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4}".format(
+        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} statement_timeout=10".format(
             instance.get_host(), instance.get_port(), db_name, user, password)
 
         return connect_params

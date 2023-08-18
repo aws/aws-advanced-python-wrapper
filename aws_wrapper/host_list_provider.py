@@ -285,9 +285,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         target_driver_dialect = self._host_list_provider_service.target_driver_dialect
         initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
-        # s = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
         s = socket.fromfd(conn.fileno(), socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(10)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, 15000) # linux specific
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._topology_aware_dialect.topology_query)
