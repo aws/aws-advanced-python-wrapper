@@ -24,7 +24,6 @@ from aws_wrapper.errors import FailoverError
 from aws_wrapper.failover_result import WriterFailoverResult
 
 if TYPE_CHECKING:
-    from threading import Event
     from aws_wrapper.pep249 import Connection
 
 from time import sleep, time
@@ -119,7 +118,7 @@ def test_reconnect_to_writer_task_b_reader_exception(writer_connection_mock, plu
                                                      topology):
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         if host_info == writer:
             return writer_connection_mock
         else:
@@ -154,7 +153,7 @@ def test_reconnect_to_writer_slow_task_b(mocker, plugin_service_mock, reader_fai
     mock_hosts_property = mocker.PropertyMock(side_effect=chain([topology], cycle([new_topology])))
     type(plugin_service_mock).hosts = mock_hosts_property
 
-    def force_connect_side_effect(host_info, default_properties, timeout_event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         if host_info == writer:
             return writer_connection_mock
         elif host_info == new_writer_host:
@@ -186,7 +185,7 @@ def test_reconnect_to_writer_task_b_defers(plugin_service_mock, reader_failover_
 
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         if host_info == writer:
             sleep(5)
             return writer_connection_mock
@@ -219,7 +218,7 @@ def test_connect_to_new_writer_slow_task_a(plugin_service_mock, reader_failover_
                                            new_topology):
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         if host_info == writer:
             sleep(5)
             return writer_connection_mock
@@ -260,7 +259,7 @@ def test_connect_to_new_writer_task_a_defers(plugin_service_mock, reader_failove
 
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         if host_info == writer:
             return writer_connection_mock
         elif host_info == reader_a:
@@ -302,7 +301,7 @@ def test_failed_to_connect_failover_timeout(plugin_service_mock, reader_failover
                                             reader_a, reader_b, topology, new_topology):
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         if host_info == writer:
             for _ in range(0, 30):
                 if timeout_event.is_set():
@@ -352,7 +351,7 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(plugin_servi
                                                                     reader_a, reader_b, topology, new_topology):
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         if host_info == reader_a:
             return reader_a_connection_mock
         elif host_info == reader_b:

@@ -20,7 +20,6 @@ from unittest.mock import call
 import pytest
 
 if TYPE_CHECKING:
-    from threading import Event
     from aws_wrapper.failover_result import ReaderFailoverResult
     from aws_wrapper.pep249 import Connection
 
@@ -76,7 +75,7 @@ def test_failover(plugin_service_mock, connection_mock, default_properties, defa
     expected.append(call(current_host.all_aliases, HostAvailability.NOT_AVAILABLE))
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         if host_info == success_host:
             return connection_mock
         else:
@@ -104,7 +103,7 @@ def test_failover_timeout(plugin_service_mock, connection_mock, default_properti
     props = default_properties
     current_host = hosts[2]
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         # Sleep for 1 second 20 times unless interrupted by timeout
         for _ in range(0, 20):
             if timeout_event.is_set():
@@ -157,7 +156,7 @@ def test_get_reader_connection_success(plugin_service_mock, connection_mock, def
     slow_host = hosts[1]
     fast_host = hosts[2]
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         # we want slow host to take 20 seconds before returning connection
         if host_info == slow_host:
             sleep(20)
@@ -181,7 +180,7 @@ def test_get_reader_connection_failure(plugin_service_mock, connection_mock, def
     props = default_properties
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
@@ -200,7 +199,7 @@ def test_get_reader_connection_attempts_timeout(plugin_service_mock, connection_
     hosts = default_hosts[0:3]
     props = default_properties
 
-    def force_connect_side_effect(host_info: HostInfo, properties: Properties, timeout_event: Event) -> Connection:
+    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
         try:
             sleep(5)
         except Exception:
