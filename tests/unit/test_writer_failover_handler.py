@@ -111,7 +111,6 @@ def setup(writer, new_writer_host, reader_a, reader_b):
     new_writer_host.add_alias("new-writer-host")
     reader_a.add_alias("reader-a")
     reader_b.add_alias("reader-b")
-    yield
 
 
 def test_reconnect_to_writer_task_b_reader_exception(writer_connection_mock, plugin_service_mock, reader_failover_mock, default_properties, writer,
