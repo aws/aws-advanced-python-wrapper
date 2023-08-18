@@ -17,6 +17,8 @@ from __future__ import annotations
 import typing
 from typing import TYPE_CHECKING
 
+import pytest
+
 if TYPE_CHECKING:
     from .test_database_info import TestDatabaseInfo
     from .test_instance_info import TestInstanceInfo
@@ -89,7 +91,8 @@ class AuroraTestUtility:
             sleep(1)
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
-        self.logger.debug(f"Finished failover from {initial_writer_id} in {(perf_counter_ns() - start) / 1_000_000}ms\n")
+        self.logger.debug(
+            f"Finished failover from {initial_writer_id} in {(perf_counter_ns() - start) / 1_000_000}ms\n")
 
     def failover_cluster(self, cluster_id: Optional[str] = None) -> None:
         if cluster_id is None:
@@ -121,19 +124,14 @@ class AuroraTestUtility:
     def assert_first_query_throws(
             self,
             conn,
-            exception_cls: type,
+            exception_cls,
             database_engine: Optional[DatabaseEngine] = None) -> None:
         if database_engine is None:
             database_engine = TestEnvironment.get_current().get_engine()
-        try:
+        with pytest.raises(exception_cls):
             cursor = conn.cursor()
             cursor.execute(self._get_instance_id_sql(database_engine))
             cursor.fetchone()
-            assert False
-        except Exception as x:
-            if isinstance(x, exception_cls):
-                return
-            assert False
 
     def _get_instance_id_sql(self, database_engine: DatabaseEngine) -> str:
         if database_engine == DatabaseEngine.MYSQL:

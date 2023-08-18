@@ -21,21 +21,21 @@ import pytest
 
 from aws_wrapper.errors import (FailoverSuccessError,
                                 TransactionResolutionUnknownError)
+from aws_wrapper.utils.properties import WrapperProperties
 from .utils.conditions import enable_on_features, enable_on_num_instances
 from .utils.proxy_helper import ProxyHelper
 
 if TYPE_CHECKING:
-    from .utils.test_environment import TestEnvironment
     from .utils.test_instance_info import TestInstanceInfo
-    from .utils.test_database_info import TestDatabaseInfo
-    from .utils.test_proxy_database_info import TestProxyDatabaseInfo
     from .utils.test_driver import TestDriver
+    from .utils.test_database_info import TestDatabaseInfo
 
 from logging import getLogger
 
 from aws_wrapper.wrapper import AwsWrapperConnection
 from .utils.aurora_test_utility import AuroraTestUtility
 from .utils.driver_helper import DriverHelper
+from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
 
@@ -45,16 +45,30 @@ class TestAuroraFailover:
     IDLE_CONNECTIONS_NUM: int = 5
     logger = getLogger(__name__)
 
+    @pytest.fixture(scope='class')
+    def aurora_utility(self):
+        region: str = TestEnvironment.get_current().get_info().get_aurora_region()
+        return AuroraTestUtility(region)
+
+    @pytest.fixture(scope='class')
+    def props(self):
+        return {"plugins": "failover", "connect_timeout": 60, "topology_refresh_ms": 10}
+
+    @pytest.fixture(scope='class')
+    def proxied_props(self, props):
+        props_copy = props.copy()
+        endpoint_suffix = TestEnvironment.get_current().get_proxy_database_info().get_instance_endpoint_suffix()
+        props_copy.update({WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.name: f"?.{endpoint_suffix}"})
+        return props_copy
+
     def test_fail_from_writer_to_new_writer_fail_on_connection_invocation(self, test_environment: TestEnvironment,
-                                                                          test_driver: TestDriver):
+                                                                          test_driver: TestDriver, props,
+                                                                          conn_utils, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        connect_params: str = self._init_default_props(test_environment)
-        plugin: str = "failover"
-        region: str = test_environment.get_info().get_aurora_region()
-        aurora_utility = AuroraTestUtility(region)
         initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
 
-        with AwsWrapperConnection.connect(connect_params, target_driver_connect, plugins=plugin) as aws_conn:
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as aws_conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             aws_conn.autocommit = True
 
@@ -62,7 +76,8 @@ class TestAuroraFailover:
             aurora_utility.failover_cluster_and_wait_until_writer_changed()
 
             # failure occurs on Connection invocation
-            aurora_utility.assert_first_query_throws(aws_conn, FailoverSuccessError)
+            with pytest.raises(FailoverSuccessError):
+                aws_conn.commit()
 
             # assert that we are connected to the new writer after failover happens.
             current_connection_id = aurora_utility.query_instance_id(aws_conn)
@@ -71,26 +86,21 @@ class TestAuroraFailover:
 
     def test_fail_from_writer_to_new_writer_fail_on_connection_bound_object_invocation(self,
                                                                                        test_environment: TestEnvironment,
-                                                                                       test_driver: TestDriver):
+                                                                                       test_driver: TestDriver,
+                                                                                       props, conn_utils,
+                                                                                       aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        connect_params: str = self._init_default_props(test_environment)
-        plugin: str = "failover"
-
-        region: str = test_environment.get_info().get_aurora_region()
-        aurora_utility = AuroraTestUtility(region)
         initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
 
-        with AwsWrapperConnection.connect(connect_params, target_driver_connect, plugins=plugin) as aws_conn:
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as aws_conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             aws_conn.autocommit = True
-
-            cursor = aws_conn.cursor()
-            assert cursor is not None
 
             # crash instance1 and nominate a new writer
             aurora_utility.failover_cluster_and_wait_until_writer_changed()
 
-            # failure occurs on Connection invocation
+            # failure occurs on Cursor invocation
             aurora_utility.assert_first_query_throws(aws_conn, FailoverSuccessError)
 
             # assert that we are connected to the new writer after failover happens and we can reuse the cursor
@@ -100,26 +110,15 @@ class TestAuroraFailover:
 
     @pytest.mark.skip
     def test_fail_from_reader_to_writer(self, test_environment: TestEnvironment,
-                                        test_driver: TestDriver):
+                                        test_driver: TestDriver, conn_utils, proxied_props, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        database_info: TestProxyDatabaseInfo = test_environment.get_info().get_proxy_database_info()
-        instance: TestInstanceInfo = database_info.get_instances()[1]
-        writer_id: str = database_info.get_instances()[0].get_instance_id()
-        db_name: str = database_info.get_default_db_name()
-        user: str = database_info.get_username()
-        password: str = database_info.get_password()
-        plugin: str = "failover"
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} connect_timeout=10".format(
-            instance.get_host(), instance.get_port(), db_name, user, password)
+        instance: TestInstanceInfo = test_environment.get_proxy_instances()[1]
+        writer_id: str = test_environment.get_proxy_writer().get_instance_id()
 
-        region: str = test_environment.get_info().get_aurora_region()
-        aurora_utility = AuroraTestUtility(region)
-
+        proxied_props["plugins"] = "failover,host_monitoring"
         with AwsWrapperConnection.connect(
-                connect_params,
-                target_driver_connect,
-                plugins=plugin,
-                cluster_instance_host_pattern=f"?.{database_info.get_instance_endpoint_suffix()}") as aws_conn:
+                conn_utils.get_proxy_conn_string(instance.get_host()),
+                target_driver_connect, **proxied_props) as aws_conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             aws_conn.autocommit = True
 
@@ -133,15 +132,15 @@ class TestAuroraFailover:
             assert writer_id == current_connection_id
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
 
-    def test_writer_fail_within_transaction_set_autocommit_false(self, test_environment: TestEnvironment,
-                                                                 test_driver: TestDriver):
+    def test_writer_fail_within_transaction_set_autocommit_false(self, test_driver: TestDriver,
+                                                                 test_environment: TestEnvironment,
+                                                                 props, conn_utils,
+                                                                 aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        connect_params: str = self._init_default_props(test_environment)
-        region: str = test_environment.get_info().get_aurora_region()
-        aurora_utility = AuroraTestUtility(region)
-        initial_writer_id = test_environment.get_info().get_database_info().get_instances()[0].get_instance_id()
+        initial_writer_id = test_environment.get_writer().get_instance_id()
 
-        with AwsWrapperConnection.connect(connect_params, target_driver_connect, plugins="failover") as conn, \
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as conn, \
                 conn.cursor() as cursor_1:
             cursor_1.execute("DROP TABLE IF EXISTS test3_2")
             cursor_1.execute("CREATE TABLE test3_2 (id int not null primary key, test3_2_field varchar(255) not null)")
@@ -174,16 +173,17 @@ class TestAuroraFailover:
                 result = cursor_3.fetchone()
                 assert 0 == int(result[0])
                 cursor_3.execute("DROP TABLE IF EXISTS test3_2")
+                conn.commit()
 
-    def test_writer_fail_within_transaction_start_transaction(self, test_environment: TestEnvironment,
-                                                              test_driver: TestDriver):
+    def test_writer_fail_within_transaction_start_transaction(self, test_driver: TestDriver,
+                                                              test_environment: TestEnvironment,
+                                                              props, conn_utils,
+                                                              aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        connect_params: str = self._init_default_props(test_environment)
-        region: str = test_environment.get_info().get_aurora_region()
-        aurora_utility = AuroraTestUtility(region)
-        initial_writer_id = test_environment.get_info().get_database_info().get_instances()[0].get_instance_id()
+        initial_writer_id = test_environment.get_writer().get_instance_id()
 
-        with AwsWrapperConnection.connect(connect_params, target_driver_connect, plugins="failover") as conn:
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             conn.autocommit = True
 
@@ -220,23 +220,24 @@ class TestAuroraFailover:
                 result = cursor_3.fetchone()
                 assert 0 == int(result[0])
                 cursor_3.execute("DROP TABLE IF EXISTS test3_3")
+                conn.commit()
 
-    def test_writer_failover_in_idle_connections(self, test_environment: TestEnvironment,
-                                                 test_driver: TestDriver):
+    def test_writer_failover_in_idle_connections(self, test_environment: TestEnvironment, test_driver: TestDriver,
+                                                 props, conn_utils,
+                                                 aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        connect_params: str = self._init_default_props(test_environment)
-        region: str = test_environment.get_info().get_aurora_region()
-        aurora_utility = AuroraTestUtility(region)
         current_writer_id = aurora_utility.get_cluster_writer_instance_id()
 
         idle_connections: List[AwsWrapperConnection] = []
+        props["plugins"] = "aurora_connection_tracker,failover"
 
         for i in range(self.IDLE_CONNECTIONS_NUM):
-            idle_connections.append(AwsWrapperConnection.connect(connect_params, target_driver_connect,
-                                                                 plugins="aurora_connection_tracker,failover"))
+            idle_connections.append(
+                AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                             **props))
 
-        with AwsWrapperConnection.connect(connect_params, target_driver_connect,
-                                          plugins="aurora_connection_tracker,failover") as conn:
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as conn:
 
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             conn.autocommit = True
@@ -246,7 +247,7 @@ class TestAuroraFailover:
 
             # ensure that all idle connections are still opened
             for idle_connection in idle_connections:
-                assert idle_connection is not None
+                assert idle_connection.is_closed is False
 
             aurora_utility.failover_cluster_and_wait_until_writer_changed()
 
@@ -259,19 +260,18 @@ class TestAuroraFailover:
         for idle_connection in idle_connections:
             assert idle_connection.is_closed is True
 
-    def test_basic_failover_with_efm(self, test_environment: TestEnvironment,
-                                     test_driver: TestDriver):
+    def test_basic_failover_with_efm(self, test_driver: TestDriver,
+                                     test_environment: TestEnvironment,
+                                     props, conn_utils,
+                                     aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        connect_params: str = self._init_default_props(test_environment)
-        region: str = test_environment.get_info().get_aurora_region()
-        aurora_utility = AuroraTestUtility(region)
-        initial_writer_instance_info = test_environment.get_info().get_database_info().get_instances()[0]
-        nominated_writer_instance_info = test_environment.get_info().get_database_info().get_instances()[1]
-
+        initial_writer_instance_info = test_environment.get_writer()
+        nominated_writer_instance_info = test_environment.get_instances()[1]
         nominated_writer_id = nominated_writer_instance_info.get_instance_id()
 
-        with AwsWrapperConnection.connect(connect_params, target_driver_connect,
-                                          plugins="failover,aurora_host_list") as conn:
+        props["plugins"] = "failover,host_monitoring"
+        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
+                                          **props) as conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             conn.autocommit = True
 
@@ -289,13 +289,13 @@ class TestAuroraFailover:
             assert initial_writer_instance_info.get_instance_id() != current_connection_id
             assert next_writer_id == current_connection_id
 
-    def _init_default_props(self, test_environment: TestEnvironment, ) -> str:
+    def _init_default_props(self, test_environment: TestEnvironment) -> str:
         database_info: TestDatabaseInfo = test_environment.get_info().get_database_info()
-        instance: TestInstanceInfo = database_info.get_instances()[0]
+        instance: TestInstanceInfo = test_environment.get_writer()
         db_name: str = database_info.get_default_db_name()
         user: str = database_info.get_username()
         password: str = database_info.get_password()
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} connect_timeout=60 topology_refresh_ms=10".format(
+        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4}".format(
             instance.get_host(), instance.get_port(), db_name, user, password)
 
         return connect_params
