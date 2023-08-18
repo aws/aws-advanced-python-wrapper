@@ -111,13 +111,12 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
-    @pytest.mark.skip
     def test_fail_from_reader_to_writer(self, test_environment: TestEnvironment,
                                         test_driver: TestDriver, conn_utils, proxied_props, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         instance: TestInstanceInfo = test_environment.get_proxy_instances()[1]
         writer_id: str = test_environment.get_proxy_writer().get_instance_id()
-
+        proxied_props["plugins"] = "failover,host_monitoring"
         with AwsWrapperConnection.connect(
                 conn_utils.get_proxy_conn_string(instance.get_host()),
                 target_driver_connect, **proxied_props) as aws_conn:
