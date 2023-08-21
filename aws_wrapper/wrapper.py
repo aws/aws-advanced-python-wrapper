@@ -57,7 +57,8 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         self._plugin_manager.execute(
             self.target_connection,
             "Connection.set_read_only",
-            lambda: self._plugin_service.target_driver_dialect.set_read_only(self.target_connection, read_only))
+            lambda: self._plugin_service.target_driver_dialect.set_read_only(self.target_connection, read_only),
+            read_only)
 
     @property
     def autocommit(self):
@@ -77,7 +78,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit_setter",
-            lambda: setattr(self.target_connection, "autocommit", autocommit))
+            lambda: setattr(self.target_connection, "autocommit", autocommit), autocommit)
 
     @staticmethod
     def connect(
