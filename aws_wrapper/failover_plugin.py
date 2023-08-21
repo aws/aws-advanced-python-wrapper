@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_wrapper.aurora_stale_dns import AuroraStaleDnsHelper
+
 if TYPE_CHECKING:
     from aws_wrapper.failover_result import ReaderFailoverResult, WriterFailoverResult
     from aws_wrapper.pep249 import Connection
@@ -67,6 +69,8 @@ class FailoverPlugin(Plugin):
         self._last_exception: Optional[Exception] = None
         self._rds_utils = RdsUtils()
         self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
+        self._stale_dns_helper: AuroraStaleDnsHelper
+
         FailoverPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
     def init_host_provider(
@@ -155,7 +159,8 @@ class FailoverPlugin(Plugin):
             properties: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
-        return self._connect_internal(host, properties, is_initial_connection, connect_func)
+        return self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
+                                                              connect_func)
 
     def force_connect(
             self,
@@ -163,19 +168,8 @@ class FailoverPlugin(Plugin):
             properties: Properties,
             is_initial_connection: bool,
             force_connect_func: Callable) -> Connection:
-        return self._connect_internal(host, properties, is_initial_connection, force_connect_func)
-
-    def _connect_internal(
-            self,
-            host: HostInfo,
-            properties: Properties,
-            is_initial_connection: bool,
-            connect_func: Callable) -> Connection:
-        # TODO: replace with call to self._stale_dns_helper.get_verified_connection
-        conn: Connection = connect_func()
-        if is_initial_connection:
-            self._plugin_service.refresh_host_list(conn)
-        return conn
+        return self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
+                                                              force_connect_func)
 
     def _update_topology(self, force_update: bool):
         if not self._is_failover_enabled():

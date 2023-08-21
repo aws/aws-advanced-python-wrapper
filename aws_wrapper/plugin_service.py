@@ -17,6 +17,8 @@ from __future__ import annotations
 from contextlib import closing
 from typing import TYPE_CHECKING
 
+from aws_wrapper.aurora_stale_dns import AuroraStaleDnsPluginFactory
+
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin import Plugin, PluginFactory
@@ -437,7 +439,8 @@ class PluginManager(CanReleaseResources):
         "aurora_host_list": AuroraHostListPluginFactory,
         "host_monitoring": HostMonitoringPluginFactory,
         "failover": FailoverPluginFactory,
-        "read_write_splitting": ReadWriteSplittingPluginFactory
+        "read_write_splitting": ReadWriteSplittingPluginFactory,
+        "auroraStaleDns": AuroraStaleDnsPluginFactory
     }
 
     def __init__(
