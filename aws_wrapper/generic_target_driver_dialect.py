@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 class TargetDriverDialect(ABC):
     _dialect_code: str = TargetDriverDialectCodes.GENERIC
     _network_bound_methods: Set[str] = {"*"}
+    _read_only: bool = False
 
     @property
     def dialect_code(self) -> str:
@@ -37,6 +38,12 @@ class TargetDriverDialect(ABC):
     @property
     def network_bound_methods(self) -> Set[str]:
         return self._network_bound_methods
+
+    def is_read_only(self, conn: Connection) -> bool:
+        return self._read_only
+
+    def set_read_only(self, conn: Connection, read_only: bool):
+        self._read_only = read_only
 
     @abstractmethod
     def is_dialect(self, conn: Callable) -> bool:

@@ -75,3 +75,31 @@ def test_is_in_transaction(mock_conn):
     del mock_conn.info.transaction_status
     with pytest.raises(AwsWrapperError):
         dialect.is_in_transaction(mock_conn)
+
+
+def test_read_only(mock_conn):
+    dialect = MySQLTargetDriverDialect()
+    assert not dialect.is_read_only(mock_conn)
+
+    dialect.set_read_only(mock_conn, True)
+    assert dialect.is_read_only(mock_conn)
+
+    dialect.set_read_only(mock_conn, False)
+    assert not dialect.is_read_only(mock_conn)
+
+    mock_conn.read_only = False
+    dialect = PgTargetDriverDialect()
+
+    assert dialect.is_read_only(mock_conn) is False
+
+    dialect.set_read_only(mock_conn, True)
+    assert dialect.is_read_only(mock_conn)
+
+    dialect.set_read_only(mock_conn, False)
+    assert not dialect.is_read_only(mock_conn)
+
+    del mock_conn.read_only
+    with pytest.raises(AwsWrapperError):
+        dialect.is_read_only(mock_conn)
+    with pytest.raises(AwsWrapperError):
+        dialect.set_read_only(mock_conn, True)

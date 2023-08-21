@@ -76,3 +76,17 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
             "TargetDriverDialect.InvalidTargetAttribute",
             "Psycopg",
             "transaction_status"))
+
+    def is_read_only(self, conn: Connection) -> bool:
+        if hasattr(conn, "read_only"):
+            return conn.read_only
+
+        raise AwsWrapperError(
+            Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "Psycopg", "read_only"))
+
+    def set_read_only(self, conn: Connection, read_only: bool):
+        if hasattr(conn, "read_only"):
+            conn.read_only = read_only
+        else:
+            raise AwsWrapperError(
+                Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "Psycopg", "read_only"))

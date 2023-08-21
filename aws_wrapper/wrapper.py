@@ -46,6 +46,20 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         return self._plugin_service.target_driver_dialect.is_closed(self.target_connection)
 
     @property
+    def read_only(self) -> bool:
+        return self._plugin_manager.execute(
+            self.target_connection,
+            "Connection.is_read_only",
+            lambda: self._plugin_service.target_driver_dialect.is_read_only(self.target_connection))
+
+    @read_only.setter
+    def read_only(self, read_only: bool):
+        self._plugin_manager.execute(
+            self.target_connection,
+            "Connection.set_read_only",
+            lambda: self._plugin_service.target_driver_dialect.set_read_only(self.target_connection, read_only))
+
+    @property
     def autocommit(self):
         if not hasattr(self.target_connection, "autocommit"):
             raise AwsWrapperError(Messages.get_formatted("Wrapper.NotImplemented", "autocommit"))
