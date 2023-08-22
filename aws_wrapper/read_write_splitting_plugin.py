@@ -51,9 +51,15 @@ class ReadWriteSplittingPlugin(Plugin):
         self._reader_connection: Optional[Connection] = None
         self._reader_host_info: Optional[HostInfo] = None
         self._in_read_write_split: bool = False
+
+        self._reader_selector_strategy: str = ""
         strategy = WrapperProperties.READER_HOST_SELECTOR_STRATEGY.get(self._properties)
-        self._reader_selector_strategy: str = strategy \
-            if strategy is not None else WrapperProperties.READER_HOST_SELECTOR_STRATEGY.default_value
+        if strategy is not None:
+            self._reader_selector_strategy = strategy
+        else:
+            default_strategy = WrapperProperties.READER_HOST_SELECTOR_STRATEGY.default_value
+            if default_strategy is not None:
+                self._reader_selector_strategy = default_strategy
 
     @property
     def subscribed_methods(self) -> Set[str]:
