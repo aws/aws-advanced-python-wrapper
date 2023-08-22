@@ -346,7 +346,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             host_info.add_alias(host.as_aliases())
 
     def is_static_host_list_provider(self) -> bool:
-        return type(self._host_list_provider) == type(StaticHostListProvider)
+        return self._host_list_provider is StaticHostListProvider
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         return self._exception_manager.is_network_exception(dialect=self.dialect, error=error, sql_state=sql_state)
