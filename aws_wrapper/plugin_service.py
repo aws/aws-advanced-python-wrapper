@@ -283,7 +283,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return plugin_manager.get_host_info_by_strategy(role, strategy)
 
     def get_host_role(self, connection: Optional[Connection] = None):
-        ...
+        return self._host_list_provider.get_host_role(connection)
 
     def refresh_host_list(self, connection: Optional[Connection] = None):
         connection = self.current_connection if connection is None else connection
@@ -346,7 +346,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             host_info.add_alias(host.as_aliases())
 
     def is_static_host_list_provider(self) -> bool:
-        return isinstance(self._host_list_provider, StaticHostListProvider)
+        return type(self._host_list_provider) == type(StaticHostListProvider)
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         return self._exception_manager.is_network_exception(dialect=self.dialect, error=error, sql_state=sql_state)
