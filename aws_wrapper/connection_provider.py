@@ -129,3 +129,7 @@ class DriverConnectionProvider(ConnectionProvider):
             f"Connecting to {host_info.host} with properties: {PropertiesUtils.log_properties(prepared_properties)}")
 
         return self._connect_func(**prepared_properties)
+
+
+class PooledConnectionProvider(ConnectionProvider, CanReleaseResources):
+    ...
