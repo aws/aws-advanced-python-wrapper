@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+
 if TYPE_CHECKING:
     from boto3 import Session
     from aws_wrapper.hostinfo import HostInfo
@@ -65,11 +67,24 @@ class AwsSecretsManagerPlugin(Plugin):
 
         self._secret_key: Tuple = (secret_id, region)
 
-    def connect(self, host_info: HostInfo, props: Properties, initial: bool, connect_func: Callable) -> Connection:
+    def connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
         return self._connect(props, connect_func)
 
-    def force_connect(self, host_info: HostInfo, props: Properties, initial: bool,
-                      force_connect_func: Callable) -> Connection:
+    def force_connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            force_connect_func: Callable) -> Connection:
         return self._connect(props, force_connect_func)
 
     def _connect(self, props: Properties, connect_func: Callable) -> Connection:

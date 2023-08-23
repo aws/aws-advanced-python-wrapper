@@ -49,7 +49,12 @@ class ConnectionProvider(Protocol):
     def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
         ...
 
-    def connect(self, host_info: HostInfo, properties: Properties) -> Connection:
+    def connect(
+            self,
+            target_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            properties: Properties) -> Connection:
         ...
 
 
@@ -111,10 +116,6 @@ class ConnectionProviderManager:
 class DriverConnectionProvider(ConnectionProvider):
     _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector()}
 
-    def __init__(self, connect_func: Callable, target_driver_dialect: TargetDriverDialect):
-        self._connect_func = connect_func
-        self._target_driver_dialect = target_driver_dialect
-
     def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
         return True
 
@@ -129,12 +130,17 @@ class DriverConnectionProvider(ConnectionProvider):
         else:
             return host_selector.get_host(hosts, role)
 
-    def connect(self, host_info: HostInfo, properties: Properties) -> Connection:
-        prepared_properties = self._target_driver_dialect.prepare_connect_info(host_info, properties)
+    def connect(
+            self,
+            target_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            properties: Properties) -> Connection:
+        prepared_properties = target_driver_dialect.prepare_connect_info(host_info, properties)
         logger.debug(
             f"Connecting to {host_info.host} with properties: {PropertiesUtils.log_properties(prepared_properties)}")
 
-        return self._connect_func(**prepared_properties)
+        return target_func(**prepared_properties)
 
 
 class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources):
@@ -187,10 +193,15 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
                 num_connections += queue_pool.checkedout()
         return num_connections
 
-    def connect(self, host_info: HostInfo, properties: Properties):
+    def connect(
+            self,
+            target_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            properties: Properties):
         queue_pool: QueuePool = SqlAlchemyPooledConnectionProvider._database_pools.compute_if_absent(
             PoolKey(host_info.url, self._get_extra_key(host_info, properties)),
-            lambda _: self._create_pool(host_info, properties),
+            lambda _: self._create_pool(target_func, target_driver_dialect, host_info, properties),
             SqlAlchemyPooledConnectionProvider._POOL_EXPIRATION_CHECK_NS
         )
 
@@ -209,12 +220,17 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         #  error warning the user.
         return user if user is not None else ""
 
-    def _create_pool(self, host_info: HostInfo, props: Properties):
+    def _create_pool(
+            self,
+            target_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties):
         kwargs = self._pool_configurator(host_info, props)
-        prepared_properties = self._target_driver_dialect.prepare_connect_info(host_info, props)
+        prepared_properties = target_driver_dialect.prepare_connect_info(host_info, props)
 
         def _get_connection():
-            return self._connect_func(**prepared_properties)
+            return target_func(**prepared_properties)
 
         kwargs["creator"] = _get_connection
         return pool.QueuePool(**kwargs)

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+
 if TYPE_CHECKING:
     from aws_wrapper.failover_result import ReaderFailoverResult, WriterFailoverResult
     from aws_wrapper.pep249 import Connection
@@ -170,21 +172,25 @@ class FailoverPlugin(Plugin):
 
     def connect(
             self,
-            host: HostInfo,
-            properties: Properties,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
-        return self._connect_internal(host, properties, is_initial_connection, connect_func)
+        return self._connect(host_info, props, is_initial_connection, connect_func)
 
     def force_connect(
             self,
-            host: HostInfo,
-            properties: Properties,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
             is_initial_connection: bool,
             force_connect_func: Callable) -> Connection:
-        return self._connect_internal(host, properties, is_initial_connection, force_connect_func)
+        return self._connect(host_info, props, is_initial_connection, force_connect_func)
 
-    def _connect_internal(
+    def _connect(
             self,
             host: HostInfo,
             properties: Properties,

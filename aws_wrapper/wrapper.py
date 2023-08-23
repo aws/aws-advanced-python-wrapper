@@ -103,11 +103,11 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         target_driver_dialect_manager: TargetDriverDialectManager = TargetDriverDialectManager()
         target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
-        plugin_service = PluginServiceImpl(container, props, target_driver_dialect)
+        plugin_service = PluginServiceImpl(container, props, target_func, target_driver_dialect)
         plugin_manager: PluginManager = PluginManager(
             container,
             props,
-            DriverConnectionProvider(target_func, target_driver_dialect))
+            DriverConnectionProvider())
         plugin_service.host_list_provider = AuroraHostListProvider(plugin_service, props)
 
         plugin_manager.init_host_provider(props, plugin_service)

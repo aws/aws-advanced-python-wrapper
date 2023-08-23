@@ -180,6 +180,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             self,
             container: PluginServiceManagerContainer,
             props: Properties,
+            target_func: Callable,
             target_driver_dialect: TargetDriverDialect):
         self._container = container
         self._container.plugin_service = self
@@ -194,6 +195,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
         self._dialect_provider = DialectManager()
+        self._target_func = target_func
         self._target_driver_dialect = target_driver_dialect
         self._dialect = self._dialect_provider.get_dialect(target_driver_dialect.dialect_code, props)
 
@@ -315,7 +317,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def connect(self, host_info: HostInfo, props: Properties) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
-        return plugin_manager.connect(host_info, props, self.current_connection is None)
+        return plugin_manager.connect(
+            self._target_func, self._target_driver_dialect, host_info, props, self.current_connection is None)
 
     def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Optional[Event]) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -539,11 +542,16 @@ class PluginManager(CanReleaseResources):
         return lambda plugin_func, target_driver_func: \
             plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func))
 
-    def connect(self, host_info: Optional[HostInfo], props: Properties, is_initial: bool) \
-            -> Connection:
+    def connect(
+            self,
+            target_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: Optional[HostInfo],
+            props: Properties,
+            is_initial: bool) -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._CONNECT_METHOD,
-            lambda plugin, func: plugin.connect(host_info, props, is_initial, func),
+            lambda plugin, func: plugin.connect(target_func, target_driver_dialect, host_info, props, is_initial, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
             lambda: None)
 

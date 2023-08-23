@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from aws_wrapper.default_plugin import DefaultPlugin
+from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
 from aws_wrapper.iam_plugin import IamAuthPlugin
 from aws_wrapper.plugin import Plugin
 
@@ -280,8 +281,14 @@ class TestPlugin(Plugin):
     def subscribed_methods(self) -> Set[str]:
         return {"*"}
 
-    def connect(self, host_info: HostInfo, props: Properties,
-                initial: bool, connect_func: Callable) -> Connection:
+    def connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
         self._calls.append(type(self).__name__ + ":before connect")
         if self._connection is not None:
             result = self._connection
