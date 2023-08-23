@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import time
-from typing import Generic, TypeVar, Callable
+from typing import Generic, TypeVar, Callable, ItemsView
 
 from aws_wrapper.utils.atomic import AtomicInt
 from aws_wrapper.utils.concurrent import ConcurrentDict
@@ -39,6 +39,12 @@ class SlidingExpirationCache(Generic[K, V]):
 
     def __len__(self):
         return len(self._cdict)
+
+    def set_cleanup_interval_ns(self, interval_ns):
+        self._cleanup_interval_ns = interval_ns
+
+    def items(self) -> ItemsView:
+        return self._cdict.items()
 
     def compute_if_absent(self, key: K, mapping_func: Callable, item_expiration_ns: int) -> V:
         self._cleanup()
@@ -85,9 +91,6 @@ class SlidingExpirationCache(Generic[K, V]):
         keys = [key for key, _ in self._cdict.items()]
         for key in keys:
             self._remove_if_expired(key)
-
-    def set_cleanup_interval_ns(self, interval_ns):
-        self._cleanup_interval_ns = interval_ns
 
 
 class CacheItem(Generic[V]):
