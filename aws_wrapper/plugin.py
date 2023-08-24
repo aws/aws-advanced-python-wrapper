@@ -16,9 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, runtime_checkable
 
-from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
-
 if TYPE_CHECKING:
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.hostinfo import HostInfo, HostRole
     from aws_wrapper.pep249 import Connection

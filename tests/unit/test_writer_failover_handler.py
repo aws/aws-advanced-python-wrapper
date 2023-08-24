@@ -342,8 +342,8 @@ def test_failed_to_connect_failover_timeout(plugin_service_mock, reader_failover
     plugin_service_mock.set_availability.assert_has_calls(expected)
     plugin_service_mock.force_refresh_host_list.assert_called()
 
-    # Confirm we timed out after 5 seconds (plus an extra 1.5 seconds for breathing room)
-    assert elapsed_time < 6.5
+    # Confirm we timed out after 5 seconds (plus some extra time for breathing room)
+    assert elapsed_time < 6.1
 
 
 def test_failed_to_connect_task_a_exception_task_b_writer_exception(plugin_service_mock, reader_failover_mock, reader_a_connection_mock,

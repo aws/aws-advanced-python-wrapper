@@ -15,7 +15,6 @@
 from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
-from aws_wrapper.connection_provider import DriverConnectionProvider
 from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
 from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.pep249 import Connection, Cursor, Error
@@ -104,10 +103,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
         plugin_service = PluginServiceImpl(container, props, target_func, target_driver_dialect)
-        plugin_manager: PluginManager = PluginManager(
-            container,
-            props,
-            DriverConnectionProvider())
+        plugin_manager: PluginManager = PluginManager(container, props)
         plugin_service.host_list_provider = AuroraHostListProvider(plugin_service, props)
 
         plugin_manager.init_host_provider(props, plugin_service)
@@ -117,7 +113,8 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         if plugin_service.current_connection is not None:
             return AwsWrapperConnection(plugin_service, plugin_manager)
 
-        conn = plugin_manager.connect(plugin_service.initial_connection_host_info, props, True)
+        conn = plugin_manager.connect(
+            target_func, target_driver_dialect, plugin_service.initial_connection_host_info, props, True)
 
         if not conn:
             raise AwsWrapperError(Messages.get("ConnectionWrapper.ConnectionNotOpen"))

@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin import Plugin, PluginFactory
-    from aws_wrapper.connection_provider import ConnectionProvider
     from threading import Event
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
 
@@ -457,11 +456,7 @@ class PluginManager(CanReleaseResources):
         "stale_dns": StaleDnsPluginFactory
     }
 
-    def __init__(
-            self,
-            container: PluginServiceManagerContainer,
-            props: Properties,
-            default_conn_provider: ConnectionProvider):
+    def __init__(self, container: PluginServiceManagerContainer, props: Properties):
         self._props: Properties = props
         self._plugins: List[Plugin] = []
         self._function_cache: Dict[str, Callable] = {}
@@ -474,7 +469,7 @@ class PluginManager(CanReleaseResources):
             requested_plugins = self._DEFAULT_PLUGINS
 
         if requested_plugins == "":
-            self._plugins.append(DefaultPlugin(self._container.plugin_service, default_conn_provider))
+            self._plugins.append(DefaultPlugin(self._container.plugin_service))
             return
 
         plugin_list: List[str] = requested_plugins.split(",")
@@ -486,7 +481,7 @@ class PluginManager(CanReleaseResources):
             plugin: Plugin = factory.get_instance(self._container.plugin_service, props)
             self._plugins.append(plugin)
 
-        self._plugins.append(DefaultPlugin(self._container.plugin_service, default_conn_provider))
+        self._plugins.append(DefaultPlugin(self._container.plugin_service))
 
     @property
     def num_plugins(self) -> int:

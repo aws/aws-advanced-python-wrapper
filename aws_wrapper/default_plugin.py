@@ -16,9 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
-
 if TYPE_CHECKING:
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.pep249 import Connection
@@ -38,9 +37,9 @@ from aws_wrapper.utils.properties import Properties, PropertiesUtils
 class DefaultPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
 
-    def __init__(self, plugin_service: PluginService, default_conn_provider: ConnectionProvider):
+    def __init__(self, plugin_service: PluginService):
         self._plugin_service: PluginService = plugin_service
-        self._connection_provider_manager = ConnectionProviderManager(default_conn_provider)
+        self._connection_provider_manager = ConnectionProviderManager()
 
     def connect(
             self,
@@ -79,7 +78,12 @@ class DefaultPlugin(Plugin):
             force_connect_func: Callable) -> Connection:
         target_driver_props = copy.copy(props)
         PropertiesUtils.remove_wrapper_props(target_driver_props)
-        return self._connect(host_info, target_driver_props, self._connection_provider_manager.default_provider)
+        return self._connect(
+            target_driver_func,
+            target_driver_dialect,
+            host_info,
+            target_driver_props,
+            self._connection_provider_manager.default_provider)
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
         result = execute_func()

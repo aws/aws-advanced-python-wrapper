@@ -16,21 +16,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
-
-from aws_wrapper.default_plugin import DefaultPlugin
-from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
-from aws_wrapper.iam_plugin import IamAuthPlugin
-from aws_wrapper.plugin import Plugin
-
 if TYPE_CHECKING:
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.pep249 import Connection
 
+import pytest
 from typing import Any, Callable, Dict, List, Optional, Set
-from unittest.mock import patch
 
+from aws_wrapper.default_plugin import DefaultPlugin
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.iam_plugin import IamAuthPlugin
+from aws_wrapper.plugin import Plugin
 from aws_wrapper.plugin_service import PluginManager
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
@@ -62,44 +59,44 @@ def default_conn_provider(mocker):
     return mocker.MagicMock()
 
 
-def test_execute_call_a(mock_conn):
+def test_execute_call_a(mocker, mock_conn):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    with patch.object(PluginManager, "__init__", lambda w, x, y, z: None):
-        manager = PluginManager(None, None, None)
-        manager._plugins = plugins
-        manager._function_cache = {}
+    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
 
-    with patch.object(manager, '_make_pipeline', wraps=manager._make_pipeline) as make_pipeline_func:
-        result = manager.execute(mock_conn, "test_call_a", lambda: _target_call(calls), *args)
+    make_pipeline_func = mocker.patch.object(manager, '_make_pipeline', wraps=manager._make_pipeline)
+    result = manager.execute(mock_conn, "test_call_a", lambda: _target_call(calls), *args)
 
-        make_pipeline_func.assert_called_once_with("test_call_a")
-        assert result == "result_value"
-        assert len(calls) == 7
-        assert calls[0] == "TestPluginOne:before execute"
-        assert calls[1] == "TestPluginTwo:before execute"
-        assert calls[2] == "TestPluginThree:before execute"
-        assert calls[3] == "target_call"
-        assert calls[4] == "TestPluginThree:after execute"
-        assert calls[5] == "TestPluginTwo:after execute"
-        assert calls[6] == "TestPluginOne:after execute"
+    make_pipeline_func.assert_called_once_with("test_call_a")
+    assert result == "result_value"
+    assert len(calls) == 7
+    assert calls[0] == "TestPluginOne:before execute"
+    assert calls[1] == "TestPluginTwo:before execute"
+    assert calls[2] == "TestPluginThree:before execute"
+    assert calls[3] == "target_call"
+    assert calls[4] == "TestPluginThree:after execute"
+    assert calls[5] == "TestPluginTwo:after execute"
+    assert calls[6] == "TestPluginOne:after execute"
 
-        calls.clear()
-        result = manager.execute(mock_conn, "test_call_a", lambda: _target_call(calls), *args)
+    calls.clear()
+    result = manager.execute(mock_conn, "test_call_a", lambda: _target_call(calls), *args)
 
-        # The first execute call should cache the pipeline
-        make_pipeline_func.assert_called_once_with("test_call_a")
-        assert result == "result_value"
-        assert len(calls) == 7
-        assert calls[0] == "TestPluginOne:before execute"
-        assert calls[1] == "TestPluginTwo:before execute"
-        assert calls[2] == "TestPluginThree:before execute"
-        assert calls[3] == "target_call"
-        assert calls[4] == "TestPluginThree:after execute"
-        assert calls[5] == "TestPluginTwo:after execute"
-        assert calls[6] == "TestPluginOne:after execute"
+    # The first execute call should cache the pipeline
+    make_pipeline_func.assert_called_once_with("test_call_a")
+    assert result == "result_value"
+    assert len(calls) == 7
+    assert calls[0] == "TestPluginOne:before execute"
+    assert calls[1] == "TestPluginTwo:before execute"
+    assert calls[2] == "TestPluginThree:before execute"
+    assert calls[3] == "target_call"
+    assert calls[4] == "TestPluginThree:after execute"
+    assert calls[5] == "TestPluginTwo:after execute"
+    assert calls[6] == "TestPluginOne:after execute"
 
 
 def _target_call(calls: List[str]):
@@ -107,15 +104,15 @@ def _target_call(calls: List[str]):
     return "result_value"
 
 
-def test_execute_call_b():
+def test_execute_call_b(mocker):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    with patch.object(PluginManager, "__init__", lambda w, x, y, z: None):
-        manager = PluginManager(None, None, None)
-        manager._plugins = plugins
-        manager._function_cache = {}
+    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
 
     result = manager.execute(mock_conn, "test_call_b", lambda: _target_call(calls), *args)
 
@@ -128,15 +125,15 @@ def test_execute_call_b():
     assert calls[4] == "TestPluginOne:after execute"
 
 
-def test_execute_call_c():
+def test_execute_call_c(mocker):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    with patch.object(PluginManager, "__init__", lambda w, x, y, z: None):
-        manager = PluginManager(None, None, None)
-        manager._plugins = plugins
-        manager._function_cache = {}
+    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
 
     result = manager.execute(mock_conn, "test_call_c", lambda: _target_call(calls), *args)
 
@@ -147,17 +144,17 @@ def test_execute_call_c():
     assert calls[2] == "TestPluginOne:after execute"
 
 
-def test_connect():
+def test_connect(mocker, mock_conn):
     calls = []
 
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls, mock_conn)]
 
-    with patch.object(PluginManager, "__init__", lambda w, x, y, z: None):
-        manager = PluginManager(None, None, None)
-        manager._plugins = plugins
-        manager._function_cache = {}
+    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
 
-    result = manager.connect(HostInfo("localhost"), Properties(), True)
+    result = manager.connect(mocker.MagicMock(), mocker.MagicMock(), HostInfo("localhost"), Properties(), True)
 
     assert result == mock_conn
     assert len(calls) == 4
@@ -167,18 +164,19 @@ def test_connect():
     assert calls[3] == "TestPluginOne:after connect"
 
 
-def test_exception_before_connect():
+def test_exception_before_connect(mocker):
     calls = []
     plugins = \
         [TestPluginOne(calls), TestPluginTwo(calls), TestPluginRaisesError(calls, True), TestPluginThree(calls)]
 
-    with patch.object(PluginManager, "__init__", lambda w, x, y, z: None):
-        manager = PluginManager(None, None, None)
-        manager._plugins = plugins
-        manager._function_cache = {}
+    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
 
     with pytest.raises(AwsWrapperError):
-        result = manager.connect(HostInfo("localhost"), Properties(), True)
+        result = manager.connect(
+            mocker.MagicMock(), mocker.MagicMock(), HostInfo("localhost"), Properties(), True)
         assert result is None
 
     assert len(calls) == 2
@@ -186,18 +184,19 @@ def test_exception_before_connect():
     assert calls[1] == "TestPluginRaisesError:before connect"
 
 
-def test_exception_after_connect():
+def test_exception_after_connect(mocker):
     calls = []
     plugins = \
         [TestPluginOne(calls), TestPluginTwo(calls), TestPluginRaisesError(calls, False), TestPluginThree(calls)]
 
-    with patch.object(PluginManager, "__init__", lambda w, x, y, z: None):
-        manager = PluginManager(None, None, None)
-        manager._plugins = plugins
-        manager._function_cache = {}
+    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
 
     with pytest.raises(AwsWrapperError):
-        result = manager.connect(HostInfo("localhost"), Properties(), True)
+        result = manager.connect(
+            mocker.MagicMock(), mocker.MagicMock(), HostInfo("localhost"), Properties(), True)
         assert result is None
 
     assert len(calls) == 5
@@ -208,10 +207,10 @@ def test_exception_after_connect():
     assert calls[4] == "TestPluginRaisesError:after connect"
 
 
-def test_no_plugins(container, default_conn_provider):
+def test_no_plugins(container):
     props = Properties(plugins="")
 
-    manager = PluginManager(container, props, default_conn_provider)
+    manager = PluginManager(container, props)
 
     assert 1 == manager.num_plugins
 
@@ -219,7 +218,7 @@ def test_no_plugins(container, default_conn_provider):
 def test_plugin_setting(container, default_conn_provider):
     props = Properties(plugins="iam,iam")
 
-    manager = PluginManager(container, props, default_conn_provider)
+    manager = PluginManager(container, props)
 
     assert 3 == manager.num_plugins
     assert isinstance(manager._plugins[0], IamAuthPlugin)
@@ -227,14 +226,14 @@ def test_plugin_setting(container, default_conn_provider):
     assert isinstance(manager._plugins[2], DefaultPlugin)
 
 
-def test_notify_connection_changed():
+def test_notify_connection_changed(mocker):
     calls = []
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    with patch.object(PluginManager, "__init__", lambda w, x, y, z: None):
-        manager = PluginManager(None, None, None)
-        manager._plugins = plugins
-        manager._function_cache = {}
+    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
 
     old_connection_suggestion = manager.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
 
@@ -253,14 +252,14 @@ def test_notify_connection_changed():
     assert old_connection_suggestion == OldConnectionSuggestedAction.NO_OPINION
 
 
-def test_notify_host_list_changed():
+def test_notify_host_list_changed(mocker):
     calls = []
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    with patch.object(PluginManager, "__init__", lambda w, x, y, z: None):
-        manager = PluginManager(None, None, None)
-        manager._plugins = plugins
-        manager._function_cache = {}
+    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
 
     manager.notify_host_list_changed(
         {"host-1": {HostEvent.CONVERTED_TO_READER}, "host-2": {HostEvent.CONVERTED_TO_WRITER}})
@@ -349,8 +348,14 @@ class TestPluginRaisesError(TestPlugin):
         super().__init__(calls)
         self._throw_before_call = throw_before_call
 
-    def connect(self, host_info: HostInfo, props: Properties,
-                initial: bool, connect_func: Callable) -> Connection:
+    def connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
         self._calls.append(type(self).__name__ + ":before connect")
         if self._throw_before_call:
             raise AwsWrapperError()

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import time
-from typing import Generic, TypeVar, Callable, ItemsView
+from typing import Callable, Generic, ItemsView, KeysView, Optional, TypeVar
 
 from aws_wrapper.utils.atomic import AtomicInt
 from aws_wrapper.utils.concurrent import ConcurrentDict
@@ -28,8 +28,8 @@ class SlidingExpirationCache(Generic[K, V]):
     def __init__(
             self,
             cleanup_interval_ns: int = 10 * 60_000_000_000,  # 10 minutes
-            should_dispose_func: Callable = None,
-            item_disposal_func: Callable = None):
+            should_dispose_func: Optional[Callable] = None,
+            item_disposal_func: Optional[Callable] = None):
         self._cleanup_interval_ns = cleanup_interval_ns
         self._should_dispose_func = should_dispose_func
         self._item_disposal_func = item_disposal_func
@@ -43,16 +43,19 @@ class SlidingExpirationCache(Generic[K, V]):
     def set_cleanup_interval_ns(self, interval_ns):
         self._cleanup_interval_ns = interval_ns
 
+    def keys(self) -> KeysView:
+        return self._cdict.keys()
+
     def items(self) -> ItemsView:
         return self._cdict.items()
 
-    def compute_if_absent(self, key: K, mapping_func: Callable, item_expiration_ns: int) -> V:
+    def compute_if_absent(self, key: K, mapping_func: Callable, item_expiration_ns: int) -> Optional[V]:
         self._cleanup()
         cache_item = self._cdict.compute_if_absent(
             key, lambda k: CacheItem(mapping_func(k), time.perf_counter_ns() + item_expiration_ns))
-        return cache_item.update_expiration(item_expiration_ns).item
+        return None if cache_item is None else cache_item.update_expiration(item_expiration_ns).item
 
-    def get(self, key: K) -> V:
+    def get(self, key: K) -> Optional[V]:
         self._cleanup()
         cache_item = self._cdict.get(key)
         return cache_item.item if cache_item is not None else None

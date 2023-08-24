@@ -16,7 +16,8 @@ from __future__ import annotations
 
 from logging import getLogger
 from threading import Lock
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Protocol, ClassVar, Tuple
+from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, List, Optional,
+                    Protocol, Tuple)
 
 from sqlalchemy import QueuePool, pool
 
@@ -33,7 +34,8 @@ from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostselector import HostSelector, RandomHostSelector
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.utils.messages import Messages
-from aws_wrapper.utils.properties import Properties, PropertiesUtils, WrapperProperties
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
 
 logger = getLogger(__name__)
 
@@ -58,11 +60,41 @@ class ConnectionProvider(Protocol):
         ...
 
 
+class DriverConnectionProvider(ConnectionProvider):
+    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector()}
+
+    def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
+        return True
+
+    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
+        return strategy in self._accepted_strategies
+
+    def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
+        host_selector: Optional[HostSelector] = self._accepted_strategies.get(strategy)
+        if not host_selector:
+            raise AwsWrapperError(
+                Messages.get_formatted("DriverConnectionProvider.UnsupportedStrategy", strategy))
+        else:
+            return host_selector.get_host(hosts, role)
+
+    def connect(
+            self,
+            target_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            properties: Properties) -> Connection:
+        prepared_properties = target_driver_dialect.prepare_connect_info(host_info, properties)
+        logger.debug(
+            f"Connecting to {host_info.host} with properties: {PropertiesUtils.log_properties(prepared_properties)}")
+
+        return target_func(**prepared_properties)
+
+
 class ConnectionProviderManager:
     _lock: Lock = Lock()
     _conn_provider: Optional[ConnectionProvider] = None
 
-    def __init__(self, default_provider: ConnectionProvider):
+    def __init__(self, default_provider: ConnectionProvider = DriverConnectionProvider()):
         self._default_provider: ConnectionProvider = default_provider
 
     @property
@@ -113,36 +145,6 @@ class ConnectionProviderManager:
                     ConnectionProviderManager._conn_provider.release_resources()
 
 
-class DriverConnectionProvider(ConnectionProvider):
-    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector()}
-
-    def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
-        return True
-
-    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return strategy in self._accepted_strategies
-
-    def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
-        host_selector: Optional[HostSelector] = self._accepted_strategies.get(strategy)
-        if not host_selector:
-            raise AwsWrapperError(
-                Messages.get_formatted("DriverConnectionProvider.UnsupportedStrategy", strategy))
-        else:
-            return host_selector.get_host(hosts, role)
-
-    def connect(
-            self,
-            target_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
-            host_info: HostInfo,
-            properties: Properties) -> Connection:
-        prepared_properties = target_driver_dialect.prepare_connect_info(host_info, properties)
-        logger.debug(
-            f"Connecting to {host_info.host} with properties: {PropertiesUtils.log_properties(prepared_properties)}")
-
-        return target_func(**prepared_properties)
-
-
 class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources):
     _POOL_EXPIRATION_CHECK_NS: ClassVar[int] = 30 * 60_000_000_000  # 30 minutes
     _rds_utils: ClassVar[RdsUtils] = RdsUtils()
@@ -153,8 +155,8 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
 
     def __init__(
             self,
-            pool_configurator: Callable,
-            pool_mapping: Callable = None,
+            pool_configurator: Optional[Callable] = None,
+            pool_mapping: Optional[Callable] = None,
             pool_expiration_check_ns: int = -1,
             pool_cleanup_interval_ns: int = -1):
         self._pool_configurator = pool_configurator
@@ -166,17 +168,29 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         if pool_cleanup_interval_ns > -1:
             SqlAlchemyPooledConnectionProvider._database_pools.set_cleanup_interval_ns(pool_cleanup_interval_ns)
 
+    @property
+    def num_pools(self):
+        return len(self._database_pools)
+
+    @property
+    def pool_urls(self):
+        return {pool_key.url for pool_key, _ in self._database_pools.items()}
+
+    def keys(self):
+        return self._database_pools.keys()
+
     def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
         url_type = SqlAlchemyPooledConnectionProvider._rds_utils.identify_rds_type(host_info.host)
         return RdsUrlType.RDS_INSTANCE == url_type
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return strategy == "leastConnections"
+        return strategy == "least_connections"
 
     def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
-        if strategy != "leastConnections":
-            raise RuntimeError(Messages.get_formatted("ConnectionProvider.UnsupportedHostSelectorStrategy"),
-                               strategy, SqlAlchemyPooledConnectionProvider.__class__.__name__)
+        if strategy != "least_connections":
+            raise AwsWrapperError(Messages.get_formatted(
+                "ConnectionProvider.UnsupportedHostSelectorStrategy",
+                strategy, SqlAlchemyPooledConnectionProvider.__class__.__name__))
 
         valid_hosts = [host for host in hosts if host.role == role]
         valid_hosts.sort(key=lambda host: self._num_connections(host))
@@ -188,9 +202,9 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
 
     def _num_connections(self, host_info: HostInfo) -> int:
         num_connections = 0
-        for pool_key, queue_pool in SqlAlchemyPooledConnectionProvider._database_pools.items():
+        for pool_key, cache_item in SqlAlchemyPooledConnectionProvider._database_pools.items():
             if pool_key.url == host_info.url:
-                num_connections += queue_pool.checkedout()
+                num_connections += cache_item.item.checkedout()
         return num_connections
 
     def connect(
@@ -199,11 +213,14 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             target_driver_dialect: TargetDriverDialect,
             host_info: HostInfo,
             properties: Properties):
-        queue_pool: QueuePool = SqlAlchemyPooledConnectionProvider._database_pools.compute_if_absent(
+        queue_pool: Optional[QueuePool] = SqlAlchemyPooledConnectionProvider._database_pools.compute_if_absent(
             PoolKey(host_info.url, self._get_extra_key(host_info, properties)),
             lambda _: self._create_pool(target_func, target_driver_dialect, host_info, properties),
             SqlAlchemyPooledConnectionProvider._POOL_EXPIRATION_CHECK_NS
         )
+
+        if queue_pool is None:
+            raise AwsWrapperError(Messages.get_formatted("SqlAlchemyPooledConnectionProvider.NullPool", host_info.url))
 
         return queue_pool.connect()
 
@@ -226,28 +243,30 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             target_driver_dialect: TargetDriverDialect,
             host_info: HostInfo,
             props: Properties):
-        kwargs = self._pool_configurator(host_info, props)
+        kwargs = dict() if self._pool_configurator is None else self._pool_configurator(host_info, props)
         prepared_properties = target_driver_dialect.prepare_connect_info(host_info, props)
+        kwargs["creator"] = self._get_connection_func(target_func, prepared_properties)
+        return self._create_sql_alchemy_pool(**kwargs)
 
-        def _get_connection():
-            return target_func(**prepared_properties)
+    def _get_connection_func(self, target_connect_func: Callable, props: Properties):
+        return lambda: target_connect_func(props)
 
-        kwargs["creator"] = _get_connection
+    def _create_sql_alchemy_pool(self, **kwargs):
         return pool.QueuePool(**kwargs)
 
     def release_resources(self):
-        for _, queue_pool in SqlAlchemyPooledConnectionProvider._database_pools.items():
-            queue_pool.dispose()
+        for _, cache_item in SqlAlchemyPooledConnectionProvider._database_pools.items():
+            cache_item.item.dispose()
         SqlAlchemyPooledConnectionProvider._database_pools.clear()
 
 
 class PoolKey:
-    def __init__(self, url: str, extra_key: str):
+    def __init__(self, url: str, extra_key: Optional[str] = None):
         self._url = url
         self._extra_key = extra_key
 
     def __eq__(self, other):
-        if type(other) == type(self):
+        if isinstance(other, type(self)):
             return self.__members() == other.__members()
         else:
             return False
@@ -255,7 +274,7 @@ class PoolKey:
     def __hash__(self):
         return hash(self.__members())
 
-    def __members(self) -> Tuple[str, str]:
+    def __members(self) -> Tuple[str, Optional[str]]:
         return self._url, self._extra_key
 
     @property

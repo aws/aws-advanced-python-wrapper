@@ -12,9 +12,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from collections.abc import ItemsView
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import ItemsView
+
 from threading import Lock
-from typing import Callable, Generic, List, Optional, TypeVar
+from typing import Callable, Generic, KeysView, List, Optional, TypeVar
 
 K = TypeVar('K')
 V = TypeVar('V')
@@ -86,6 +92,9 @@ class ConcurrentDict(Generic[K, V]):
             for key, value in self._dict.items():
                 if predicate(key, value):
                     apply(key, value)
+
+    def keys(self) -> KeysView:
+        return self._dict.keys()
 
     def items(self) -> ItemsView:
         return self._dict.items()

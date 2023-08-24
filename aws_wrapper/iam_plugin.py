@@ -16,13 +16,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import boto3
-
-from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
-from aws_wrapper.plugin import Plugin, PluginFactory
-
 if TYPE_CHECKING:
     from boto3 import Session
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
@@ -31,7 +27,10 @@ from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Callable, Dict, Optional, Set
 
+import boto3
+
 from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
