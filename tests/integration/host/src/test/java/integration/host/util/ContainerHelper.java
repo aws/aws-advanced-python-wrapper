@@ -191,7 +191,7 @@ public class ContainerHelper {
                   builder -> appendExtraCommandsToBuilder.apply(
                       builder
                           .from(testContainerImageName)
-                          .run("apk", "add", "curl")
+                          .run("apk", "add", "curl", "gcc", "libc-dev", "libffi-dev")
                           .run("mkdir", "app")
                           .workDir("/app")
                           .run("curl", "-sSL", "https://install.python-poetry.org", "--output", "/app/poetry.py")
