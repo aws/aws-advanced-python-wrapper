@@ -41,7 +41,7 @@ public class TestRunner {
      File reportFolder = new File("../container/reports");
      if (reportFolder.exists()) {
        File mergeReportsScript = new File("./scripts/merge_reports.py");
-       ProcessBuilder processBuilder = new ProcessBuilder("python", mergeReportsScript.getAbsolutePath());
+       ProcessBuilder processBuilder = new ProcessBuilder("python3", mergeReportsScript.getAbsolutePath());
        Process process = processBuilder.start();
        int exitCode = process.waitFor();
        assertEquals(0, exitCode, "An error occurred while attempting to run merge_reports.py");
