@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from tests.integration.container.utils.test_environment import TestEnvironment
+from .test_environment import TestEnvironment
 
 
 class ConnectionUtils:

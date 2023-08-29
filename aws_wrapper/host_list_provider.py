@@ -373,6 +373,9 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         if connection is None:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole"))
 
+        target_driver_dialect = self._host_list_provider_service.target_driver_dialect
+        initial_transaction_status: bool = target_driver_dialect.is_in_transaction(connection)
+
         try:
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
@@ -380,6 +383,9 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
                 cursor_execute_func_with_timeout(topology_aware_dialect.is_reader_query)
                 result = cursor.fetchone()
+                if not initial_transaction_status and target_driver_dialect.is_in_transaction(connection):
+                    # this condition is True when autocommit is False and the query started a new transaction.
+                    connection.commit()
                 if result:
                     is_reader = result[0]
                     return HostRole.READER if is_reader else HostRole.WRITER

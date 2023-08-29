@@ -26,7 +26,8 @@ if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.utils.properties import Properties
 
-from aws_wrapper.errors import FailoverError, ReadWriteSplittingError
+from aws_wrapper.errors import (AwsWrapperError, FailoverError,
+                                ReadWriteSplittingError)
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
@@ -134,10 +135,11 @@ class ReadWriteSplittingPlugin(Plugin):
                 logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.FailoverExceptionWhileExecutingCommand",
                                                     method_name))
                 self._close_idle_connections()
+                raise ex
             else:
-                logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.ExceptionWhileExecutingCommand",
-                                                    method_name))
-            raise ex
+                msg = Messages.get_formatted("ReadWriteSplittingPlugin.ExceptionWhileExecutingCommand", method_name)
+                logger.debug(msg)
+                raise AwsWrapperError(msg) from ex
 
     def _update_internal_connection_info(self):
         current_conn = self._plugin_service.current_connection

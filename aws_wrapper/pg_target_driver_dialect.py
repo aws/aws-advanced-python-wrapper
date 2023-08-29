@@ -79,6 +79,8 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
 
     def is_read_only(self, conn: Connection) -> bool:
         if hasattr(conn, "read_only"):
+            if conn.read_only is None:
+                return False
             return conn.read_only
 
         raise AwsWrapperError(
