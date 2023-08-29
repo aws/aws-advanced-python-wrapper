@@ -26,8 +26,7 @@ if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.utils.properties import Properties
 
-from aws_wrapper.errors import (AwsWrapperError, FailoverError,
-                                ReadWriteSplittingError)
+from aws_wrapper.errors import FailoverError, ReadWriteSplittingError
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
