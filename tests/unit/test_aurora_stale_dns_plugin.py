@@ -62,7 +62,7 @@ def initial_conn_mock(mocker):
 
 @pytest.fixture
 def cluster_host():
-    return HostInfo("my-cluster.cluster-XYZ.rds.amazonaws.com")
+    return HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com")
 
 
 def test_get_verified_connection__is_writer_cluster_dns_false(plugin_service_mock, default_properties, cluster_host, initial_conn_mock,
@@ -106,9 +106,9 @@ def test_get_verified_connection__is_read_only_true(plugin_service_mock, default
     plugin_service_mock.connect.assert_not_called()
 
 
-def test_get_verified_connection__valid_writer_rds_cluster_dns_true(plugin_service_mock, default_properties, initial_conn_mock, connect_func_mock):
+def test_get_verified_connection__writer_rds_cluster_dns_true(plugin_service_mock, default_properties, initial_conn_mock, connect_func_mock, cluster_host):
     helper = AuroraStaleDnsHelper(plugin_service_mock)
-    host_info: HostInfo = HostInfo("")
+    host_info: HostInfo = cluster_host
     connect_func_mock.return_value = initial_conn_mock
     helper._rds_helper.is_writer_cluster_dns = MagicMock(return_value=True)
     helper._rds_helper.is_rds_cluster_dns = MagicMock(return_value=True)
@@ -122,9 +122,9 @@ def test_get_verified_connection__valid_writer_rds_cluster_dns_true(plugin_servi
 
 
 def test_get_verified_connection__writer_host_address_none(plugin_service_mock, default_properties, initial_conn_mock,
-                                                           connect_func_mock):
+                                                           connect_func_mock, cluster_host):
     helper = AuroraStaleDnsHelper(plugin_service_mock)
-    host_info: HostInfo = HostInfo("")
+    host_info: HostInfo = cluster_host
     connect_func_mock.return_value = initial_conn_mock
     helper.writer_host_address = None
     helper.writer_host_info = HostInfo("writer_host")
@@ -137,9 +137,9 @@ def test_get_verified_connection__writer_host_address_none(plugin_service_mock, 
     assert return_conn == initial_conn_mock
 
 
-def test_get_verified_connection__writer_host_info_not_none(plugin_service_mock, default_properties, initial_conn_mock, connect_func_mock):
+def test_get_verified_connection__writer_host_info_not_none(plugin_service_mock, default_properties, initial_conn_mock, connect_func_mock, cluster_host):
     helper = AuroraStaleDnsHelper(plugin_service_mock)
-    host_info: HostInfo = HostInfo("")
+    host_info: HostInfo = cluster_host
     connect_func_mock.return_value = initial_conn_mock
     helper._rds_helper.is_writer_cluster_dns = MagicMock(return_value=True)
     helper.writer_host_info = host_info
@@ -153,10 +153,10 @@ def test_get_verified_connection__writer_host_info_not_none(plugin_service_mock,
 
 
 def test_get_verified_connection__writer_host_address_equals_cluster_inet_address(plugin_service_mock, default_properties, initial_conn_mock,
-                                                                                  connect_func_mock):
+                                                                                  connect_func_mock, cluster_host):
     helper = AuroraStaleDnsHelper(plugin_service_mock)
-    host_info: HostInfo = HostInfo("")
-    writer_host_address: HostInfo = HostInfo("writer")
+    host_info: HostInfo = HostInfo('0.0.0.0')
+    writer_host_address: HostInfo = HostInfo("writer_host")
     connect_func_mock.return_value = initial_conn_mock
     helper._rds_helper.is_writer_cluster_dns = MagicMock(return_value=True)
     helper.writer_host_info = host_info
@@ -169,9 +169,9 @@ def test_get_verified_connection__writer_host_address_equals_cluster_inet_addres
 
 
 def test_get_verified_connection__writer_host_address_not_equals_cluster_inet_address(plugin_service_mock, default_properties, initial_conn_mock,
-                                                                                      connect_func_mock):
+                                                                                      connect_func_mock, cluster_host):
     helper = AuroraStaleDnsHelper(plugin_service_mock)
-    host_info: HostInfo = HostInfo("")
+    host_info: HostInfo = cluster_host
     connect_func_mock.return_value = initial_conn_mock
     helper._rds_helper.is_writer_cluster_dns = MagicMock(return_value=True)
     helper.writer_host_info = host_info
