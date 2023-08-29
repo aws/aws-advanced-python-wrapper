@@ -16,12 +16,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from aws_wrapper.aurora_stale_dns import AuroraStaleDnsHelper
-
 if TYPE_CHECKING:
     from aws_wrapper.failover_result import ReaderFailoverResult, WriterFailoverResult
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
+    from aws_wrapper.aurora_stale_dns import AuroraStaleDnsHelper
+
 
 from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Set
