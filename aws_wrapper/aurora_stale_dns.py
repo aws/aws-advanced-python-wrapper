@@ -21,16 +21,17 @@ from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
 from aws_wrapper.dialect import TopologyAwareDatabaseDialect
-from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.utils import LogUtils
 
 if TYPE_CHECKING:
     from aws_wrapper.host_list_provider import HostListProviderService
-    from aws_wrapper.hostinfo import HostInfo, HostRole
+    from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
+    from aws_wrapper.utils.notifications import HostEvent
     from aws_wrapper.utils.properties import Properties
 
+from aws_wrapper.hostinfo import HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.rdsutils import RdsUtils
@@ -58,7 +59,7 @@ class AuroraStaleDnsHelper:
         self._plugin_service = plugin_service
         self._rds_helper = RdsUtils()
         self.writer_host_info: Optional[HostInfo] = None
-        self.writer_host_address: str = ""
+        self.writer_host_address: Optional[str] = None
 
     def get_verified_connection(self, is_initial_connection: bool, host_list_provider_service: HostListProviderService, host_info: HostInfo,
                                 props: Properties, connect_func: Callable) -> Connection:
@@ -67,24 +68,24 @@ class AuroraStaleDnsHelper:
 
         conn: Connection = connect_func()
 
-        cluster_inet_address: str = ""
+        cluster_inet_address: Optional[str] = None
         try:
             cluster_inet_address = socket.gethostbyname(host_info.host)
         except Exception:
             pass
 
-        host_inet_address: str = cluster_inet_address
+        host_inet_address: Optional[str] = cluster_inet_address
 
         logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.ClusterEndpointDns", host_inet_address))
 
-        if cluster_inet_address == "":
+        if cluster_inet_address is None:
             return conn
 
-        query: str = ""
+        query: Optional[str] = None
         if isinstance(self._plugin_service.dialect, TopologyAwareDatabaseDialect):
             query = self._plugin_service.dialect.is_reader_query
 
-        if query == "" or self.is_read_only(conn, query):
+        if query is None or self.is_read_only(conn, query):
             self._plugin_service.force_refresh_host_list(conn)
             self._plugin_service.refresh_host_list(conn)
 
@@ -92,6 +93,8 @@ class AuroraStaleDnsHelper:
 
         if self.writer_host_info is None:
             writer_candidate: Optional[HostInfo] = self.get_writer()
+            if writer_candidate is not None and self._rds_helper.is_rds_cluster_dns(writer_candidate.host):
+                return conn
 
             self.writer_host_info = writer_candidate
 
@@ -100,7 +103,7 @@ class AuroraStaleDnsHelper:
         if self.writer_host_info is None:
             return conn
 
-        if self.writer_host_address == "":
+        if self.writer_host_address is None:
             try:
                 self.writer_host_address = socket.gethostbyname(self.writer_host_info.host)
             except Exception:
@@ -108,7 +111,7 @@ class AuroraStaleDnsHelper:
 
         logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.WriterInetAddress", self.writer_host_address))
 
-        if self.writer_host_address == "":
+        if self.writer_host_address is None:
             return conn
 
         if not self.writer_host_address == cluster_inet_address:
