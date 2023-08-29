@@ -321,7 +321,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Optional[Event]) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
-        return plugin_manager.force_connect(host_info, props, self.current_connection is None)
+        return plugin_manager.force_connect(
+            self._target_func, self._target_driver_dialect, host_info, props, self.current_connection is None)
 
     def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
         ...
@@ -543,18 +544,25 @@ class PluginManager(CanReleaseResources):
             target_driver_dialect: TargetDriverDialect,
             host_info: Optional[HostInfo],
             props: Properties,
-            is_initial: bool) -> Connection:
+            is_initial_connection: bool) -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._CONNECT_METHOD,
-            lambda plugin, func: plugin.connect(target_func, target_driver_dialect, host_info, props, is_initial, func),
+            lambda plugin, func: plugin.connect(
+                target_func, target_driver_dialect, host_info, props, is_initial_connection, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
             lambda: None)
 
-    def force_connect(self, host_info: HostInfo, props: Properties, is_initial: bool) \
-            -> Connection:
+    def force_connect(
+            self,
+            target_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: Optional[HostInfo],
+            props: Properties,
+            is_initial_connection: bool) -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._FORCE_CONNECT_METHOD,
-            lambda plugin, func: plugin.force_connect(host_info, props, is_initial, func),
+            lambda plugin, func: plugin.force_connect(
+                target_func, target_driver_dialect, host_info, props, is_initial_connection, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
             lambda: None)
 

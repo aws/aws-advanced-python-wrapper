@@ -14,21 +14,18 @@
 
 from __future__ import annotations
 
-from logging import getLogger
-from threading import Lock
 from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, List, Optional,
                     Protocol, Tuple)
-
-from sqlalchemy import QueuePool, pool
-
-from aws_wrapper.utils.rds_url_type import RdsUrlType
-from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.sliding_expiration_cache import SlidingExpirationCache
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo, HostRole
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.target_driver_dialect import TargetDriverDialect
+
+from logging import getLogger
+from threading import Lock
+
+from sqlalchemy import QueuePool, pool
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostselector import HostSelector, RandomHostSelector
@@ -36,6 +33,9 @@ from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
+from aws_wrapper.utils.rds_url_type import RdsUrlType
+from aws_wrapper.utils.rdsutils import RdsUtils
+from aws_wrapper.utils.sliding_expiration_cache import SlidingExpirationCache
 
 logger = getLogger(__name__)
 
@@ -71,11 +71,11 @@ class DriverConnectionProvider(ConnectionProvider):
 
     def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
         host_selector: Optional[HostSelector] = self._accepted_strategies.get(strategy)
-        if not host_selector:
-            raise AwsWrapperError(
-                Messages.get_formatted("DriverConnectionProvider.UnsupportedStrategy", strategy))
-        else:
+        if host_selector is not None:
             return host_selector.get_host(hosts, role)
+
+        raise AwsWrapperError(
+            Messages.get_formatted("DriverConnectionProvider.UnsupportedStrategy", strategy))
 
     def connect(
             self,
@@ -138,6 +138,12 @@ class ConnectionProviderManager:
         return self._default_provider.get_host_info_by_strategy(hosts, role, strategy)
 
     @staticmethod
+    def reset_provider():
+        if ConnectionProviderManager._conn_provider is not None:
+            with ConnectionProviderManager._lock:
+                ConnectionProviderManager._conn_provider = None
+
+    @staticmethod
     def release_resources():
         if ConnectionProviderManager._conn_provider is not None:
             with ConnectionProviderManager._lock:
@@ -147,6 +153,7 @@ class ConnectionProviderManager:
 
 class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources):
     _POOL_EXPIRATION_CHECK_NS: ClassVar[int] = 30 * 60_000_000_000  # 30 minutes
+    _LEAST_CONNECTIONS: ClassVar[str] = "least_connections"
     _rds_utils: ClassVar[RdsUtils] = RdsUtils()
     _database_pools: ClassVar[SlidingExpirationCache[PoolKey, QueuePool]] = SlidingExpirationCache(
         should_dispose_func=lambda queue_pool: queue_pool.checkedout() == 0,
@@ -184,10 +191,10 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         return RdsUrlType.RDS_INSTANCE == url_type
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return strategy == "least_connections"
+        return strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS
 
     def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
-        if strategy != "least_connections":
+        if strategy != SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS:
             raise AwsWrapperError(Messages.get_formatted(
                 "ConnectionProvider.UnsupportedHostSelectorStrategy",
                 strategy, SqlAlchemyPooledConnectionProvider.__class__.__name__))
@@ -249,7 +256,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         return self._create_sql_alchemy_pool(**kwargs)
 
     def _get_connection_func(self, target_connect_func: Callable, props: Properties):
-        return lambda: target_connect_func(props)
+        return lambda: target_connect_func(**props)
 
     def _create_sql_alchemy_pool(self, **kwargs):
         return pool.QueuePool(**kwargs)

@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-import time
+from time import perf_counter_ns
 from typing import Callable, Generic, ItemsView, KeysView, Optional, TypeVar
 
 from aws_wrapper.utils.atomic import AtomicInt
@@ -35,7 +35,7 @@ class SlidingExpirationCache(Generic[K, V]):
         self._item_disposal_func = item_disposal_func
 
         self._cdict: ConcurrentDict[K, CacheItem[V]] = ConcurrentDict()
-        self._cleanup_time_ns: AtomicInt = AtomicInt(time.perf_counter_ns() + self._cleanup_interval_ns)
+        self._cleanup_time_ns: AtomicInt = AtomicInt(perf_counter_ns() + self._cleanup_interval_ns)
 
     def __len__(self):
         return len(self._cdict)
@@ -52,7 +52,7 @@ class SlidingExpirationCache(Generic[K, V]):
     def compute_if_absent(self, key: K, mapping_func: Callable, item_expiration_ns: int) -> Optional[V]:
         self._cleanup()
         cache_item = self._cdict.compute_if_absent(
-            key, lambda k: CacheItem(mapping_func(k), time.perf_counter_ns() + item_expiration_ns))
+            key, lambda k: CacheItem(mapping_func(k), perf_counter_ns() + item_expiration_ns))
         return None if cache_item is None else cache_item.update_expiration(item_expiration_ns).item
 
     def get(self, key: K) -> Optional[V]:
@@ -76,8 +76,8 @@ class SlidingExpirationCache(Generic[K, V]):
 
     def _should_cleanup_item(self, cache_item: CacheItem) -> bool:
         if self._should_dispose_func is not None:
-            return time.perf_counter_ns() > cache_item.expiration_time and self._should_dispose_func(cache_item.item)
-        return time.perf_counter_ns() > cache_item.expiration_time
+            return perf_counter_ns() > cache_item.expiration_time and self._should_dispose_func(cache_item.item)
+        return perf_counter_ns() > cache_item.expiration_time
 
     def clear(self):
         for _, cache_item in self._cdict.items():
@@ -86,7 +86,7 @@ class SlidingExpirationCache(Generic[K, V]):
         self._cdict.clear()
 
     def _cleanup(self):
-        current_time = time.perf_counter_ns()
+        current_time = perf_counter_ns()
         if self._cleanup_time_ns.get() > current_time:
             return
 
@@ -105,5 +105,5 @@ class CacheItem(Generic[V]):
         return f"CacheItem [item={str(self.item)}, expiration_time={self.expiration_time}]"
 
     def update_expiration(self, expiration_interval_ns: int) -> CacheItem:
-        self.expiration_time = time.perf_counter_ns() + expiration_interval_ns
+        self.expiration_time = perf_counter_ns() + expiration_interval_ns
         return self

@@ -15,6 +15,8 @@
 from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
+from sqlalchemy import PoolProxiedConnection
+
 from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
 from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.pep249 import Connection, Cursor, Error
@@ -61,23 +63,35 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     @property
     def autocommit(self):
-        if not hasattr(self.target_connection, "autocommit"):
+        if isinstance(self.target_connection, PoolProxiedConnection) \
+                and hasattr(self.target_connection, "driver_connection"):
+            driver_connection = self.target_connection.driver_connection
+        else:
+            driver_connection = self.target_connection
+
+        if not hasattr(driver_connection, "autocommit"):
             raise AwsWrapperError(Messages.get_formatted("Wrapper.NotImplemented", "autocommit"))
 
         return self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit",
-            lambda: self.target_connection.autocommit)
+            lambda: driver_connection.autocommit)
 
     @autocommit.setter
     def autocommit(self, autocommit: bool):
-        if not hasattr(self.target_connection, "autocommit"):
+        if isinstance(self.target_connection, PoolProxiedConnection) \
+                and hasattr(self.target_connection, "driver_connection"):
+            driver_connection = self.target_connection.driver_connection
+        else:
+            driver_connection = self.target_connection
+
+        if not hasattr(driver_connection, "autocommit"):
             raise AwsWrapperError(Messages.get_formatted("Wrapper.NotImplemented", "autocommit"))
 
         self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit_setter",
-            lambda: setattr(self.target_connection, "autocommit", autocommit), autocommit)
+            lambda: setattr(driver_connection, "autocommit", autocommit), autocommit)
 
     @staticmethod
     def connect(
