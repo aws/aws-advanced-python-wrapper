@@ -135,11 +135,10 @@ class ReadWriteSplittingPlugin(Plugin):
                 logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.FailoverExceptionWhileExecutingCommand",
                                                     method_name))
                 self._close_idle_connections()
-                raise ex
             else:
-                msg = Messages.get_formatted("ReadWriteSplittingPlugin.ExceptionWhileExecutingCommand", method_name)
-                logger.debug(msg)
-                raise AwsWrapperError(msg) from ex
+                logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.ExceptionWhileExecutingCommand",
+                                                    method_name))
+            raise ex
 
     def _update_internal_connection_info(self):
         current_conn = self._plugin_service.current_connection
