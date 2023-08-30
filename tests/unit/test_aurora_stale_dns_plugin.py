@@ -35,6 +35,7 @@ def plugin_service_mock(mocker):
 def conn_mock(mocker):
     return mocker.MagicMock()
 
+
 @pytest.fixture
 def host_list_provider_mock(mocker):
     return mocker.MagicMock()
