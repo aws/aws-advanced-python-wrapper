@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from aws_wrapper.aurora_stale_dns import AuroraStaleDnsHelper
+from aws_wrapper.aurora_stale_dns_plugin import AuroraStaleDnsHelper
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.utils.properties import Properties
 
@@ -164,10 +164,10 @@ def test_get_verified_connection__writer_host_address_equals_cluster_inet_addres
     connect_func_mock.return_value = initial_conn_mock
     target.writer_host_info = cluster_host
 
-    return_conn = target.get_verified_connection(False, host_list_provider_mock, cluster_host, default_properties, connect_func_mock)
+    return_conn = target.get_verified_connection(True, host_list_provider_mock, cluster_host, default_properties, connect_func_mock)
 
-    assert return_conn != initial_conn_mock
-    plugin_service_mock.connect.assert_called_once()
+    assert return_conn == initial_conn_mock
+    plugin_service_mock.connect.assert_not_called()
 
 
 def test_get_verified_connection__writer_host_address_not_equals_cluster_inet_address(plugin_service_mock, default_properties, initial_conn_mock,

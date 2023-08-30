@@ -50,6 +50,70 @@ class NodeChangeOptions(Enum):
     NODE_DELETED = auto()
 
 
+class AuroraStaleDnsPlugin(Plugin):
+
+    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
+                                     "connect",
+                                     "force_connect",
+                                     "notify_connection_changed"}
+
+    def __init__(self, plugin_service: PluginService, properties: Properties) -> None:
+        self._plugin_service = plugin_service
+        self._rds_helper = AuroraStaleDnsHelper(self._plugin_service)
+
+        AuroraStaleDnsPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
+
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return self._SUBSCRIBED_METHODS
+
+    def connect(self,
+                host: HostInfo,
+                properties: Properties,
+                is_initial_connection: bool,
+                connect_func: Callable) -> Connection:
+        return self._rds_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
+                                                        connect_func)
+
+    def force_connect(
+            self,
+            host: HostInfo,
+            properties: Properties,
+            is_initial_connection: bool,
+            force_connect_func: Callable) -> Connection:
+        return self._rds_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
+                                                        force_connect_func)
+
+    def execute(self, target: type, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+        try:
+            self._plugin_service.refresh_host_list()
+        except Exception:
+            pass
+
+        return execute_func()
+
+    def init_host_provider(
+            self,
+            properties: Properties,
+            host_list_provider_service: HostListProviderService,
+            init_host_provider_func: Callable):
+
+        self._host_list_provider_service = host_list_provider_service
+
+        if self._host_list_provider_service.is_static_host_list_provider():
+            raise Exception(Messages.get_formatted("AuroraStaleDnsPlugin.RequireDynamicProvider"))
+
+        init_host_provider_func()
+
+    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
+        self._rds_helper.notify_node_list_changed(changes)
+
+
+class AuroraStaleDnsPluginFactory(PluginFactory):
+    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+        return AuroraStaleDnsPlugin(plugin_service, props)
+
+
 class AuroraStaleDnsHelper:
     RETRIES: int = 3
 
@@ -155,67 +219,3 @@ class AuroraStaleDnsHelper:
                     return False
 
         return False
-
-
-class AuroraStaleDnsPlugin(Plugin):
-
-    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
-                                     "connect",
-                                     "force_connect",
-                                     "notify_connection_changed"}
-
-    def __init__(self, plugin_service: PluginService, properties: Properties) -> None:
-        self._plugin_service = plugin_service
-        self._rds_helper = AuroraStaleDnsHelper(self._plugin_service)
-
-        AuroraStaleDnsPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
-
-    @property
-    def subscribed_methods(self) -> Set[str]:
-        return self._SUBSCRIBED_METHODS
-
-    def connect(self,
-                host: HostInfo,
-                properties: Properties,
-                is_initial_connection: bool,
-                connect_func: Callable) -> Connection:
-        return self._rds_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
-                                                        connect_func)
-
-    def force_connect(
-            self,
-            host: HostInfo,
-            properties: Properties,
-            is_initial_connection: bool,
-            force_connect_func: Callable) -> Connection:
-        return self._rds_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
-                                                        force_connect_func)
-
-    def execute(self, target: type, method_name: str, execute_func: Callable, *args: tuple) -> Any:
-        try:
-            self._plugin_service.refresh_host_list()
-        except Exception:
-            pass
-
-        return execute_func()
-
-    def init_host_provider(
-            self,
-            properties: Properties,
-            host_list_provider_service: HostListProviderService,
-            init_host_provider_func: Callable):
-
-        self._host_list_provider_service = host_list_provider_service
-
-        if self._host_list_provider_service.is_static_host_list_provider():
-            raise Exception(Messages.get_formatted("AuroraStaleDnsPlugin.RequireDynamicProvider"))
-
-        init_host_provider_func()
-
-    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        self._rds_helper.notify_node_list_changed(changes)
-
-
-class AuroraStaleDnsPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return AuroraStaleDnsPlugin(plugin_service, props)

@@ -31,7 +31,7 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
 
 from aws_wrapper.aurora_connection_tracker_plugin import \
     AuroraConnectionTrackerPluginFactory
-from aws_wrapper.aurora_stale_dns import AuroraStaleDnsPluginFactory
+from aws_wrapper.aurora_stale_dns_plugin import AuroraStaleDnsPluginFactory
 from aws_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
 from aws_wrapper.default_plugin import DefaultPlugin
