@@ -99,14 +99,14 @@ def test_get_verified_connection__is_read_only_true(plugin_service_mock, default
     return_conn = helper.get_verified_connection(True, host_list_provider_mock, host_info, default_properties, connect_func_mock)
 
     connect_func_mock.assert_called()
-    plugin_service_mock.force_refresh_host_list.assert_called()
     plugin_service_mock.refresh_host_list.assert_called_once()
 
     assert return_conn == initial_conn_mock
     plugin_service_mock.connect.assert_not_called()
 
 
-def test_get_verified_connection__writer_rds_cluster_dns_true(plugin_service_mock, default_properties, initial_conn_mock, connect_func_mock, cluster_host):
+def test_get_verified_connection__writer_rds_cluster_dns_true(plugin_service_mock, default_properties, initial_conn_mock, connect_func_mock,
+                                                              cluster_host):
     helper = AuroraStaleDnsHelper(plugin_service_mock)
     host_info: HostInfo = cluster_host
     connect_func_mock.return_value = initial_conn_mock
@@ -137,7 +137,8 @@ def test_get_verified_connection__writer_host_address_none(plugin_service_mock, 
     assert return_conn == initial_conn_mock
 
 
-def test_get_verified_connection__writer_host_info_not_none(plugin_service_mock, default_properties, initial_conn_mock, connect_func_mock, cluster_host):
+def test_get_verified_connection__writer_host_info_not_none(plugin_service_mock, default_properties, initial_conn_mock, connect_func_mock,
+                                                            cluster_host):
     helper = AuroraStaleDnsHelper(plugin_service_mock)
     host_info: HostInfo = cluster_host
     connect_func_mock.return_value = initial_conn_mock
@@ -198,7 +199,6 @@ def test_get_verified_connection__initial_connection_writer_host_address_equals_
     return_conn = helper.get_verified_connection(True, host_list_provider_mock, host_info, default_properties, connect_func_mock)
 
     connect_func_mock.assert_called()
-    plugin_service_mock.force_refresh_host_list.assert_called()
     plugin_service_mock.refresh_host_list.assert_called_once()
 
     plugin_service_mock.connect.assert_called_once()

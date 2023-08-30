@@ -20,7 +20,6 @@ from enum import Enum, auto
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
-from aws_wrapper.dialect import TopologyAwareDatabaseDialect
 from aws_wrapper.utils.utils import LogUtils
 
 if TYPE_CHECKING:
@@ -76,17 +75,14 @@ class AuroraStaleDnsHelper:
 
         host_inet_address: Optional[str] = cluster_inet_address
 
-        logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.ClusterEndpointDns", host_inet_address))
+        logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.ClusterEndpointDns", host_info.host, host_inet_address))
 
         if cluster_inet_address is None:
             return conn
 
-        query: Optional[str] = None
-        if isinstance(self._plugin_service.dialect, TopologyAwareDatabaseDialect):
-            query = self._plugin_service.dialect.is_reader_query
-
-        if query is None or self.is_read_only(conn, query):
+        if self._plugin_service.get_host_role(conn) == HostRole.READER:
             self._plugin_service.force_refresh_host_list(conn)
+        else:
             self._plugin_service.refresh_host_list(conn)
 
         logger.debug(LogUtils.log_topology(self._plugin_service.hosts))

@@ -440,7 +440,7 @@ class PluginManager(CanReleaseResources):
         "host_monitoring": HostMonitoringPluginFactory,
         "failover": FailoverPluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,
-        "auroraStaleDns": AuroraStaleDnsPluginFactory
+        "aurora_stale_dns": AuroraStaleDnsPluginFactory
     }
 
     def __init__(
