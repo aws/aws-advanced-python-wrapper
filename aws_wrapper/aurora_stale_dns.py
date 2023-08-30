@@ -20,8 +20,6 @@ from enum import Enum, auto
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
-from aws_wrapper.utils.utils import LogUtils
-
 if TYPE_CHECKING:
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.hostinfo import HostInfo
@@ -34,6 +32,7 @@ from aws_wrapper.hostinfo import HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.rdsutils import RdsUtils
+from aws_wrapper.utils.utils import LogUtils
 
 logger = getLogger(__name__)
 

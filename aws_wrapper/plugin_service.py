@@ -17,8 +17,6 @@ from __future__ import annotations
 from contextlib import closing
 from typing import TYPE_CHECKING
 
-from aws_wrapper.aurora_stale_dns import AuroraStaleDnsPluginFactory
-
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin import Plugin, PluginFactory
@@ -33,6 +31,7 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
 
 from aws_wrapper.aurora_connection_tracker_plugin import \
     AuroraConnectionTrackerPluginFactory
+from aws_wrapper.aurora_stale_dns import AuroraStaleDnsPluginFactory
 from aws_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
 from aws_wrapper.default_plugin import DefaultPlugin
