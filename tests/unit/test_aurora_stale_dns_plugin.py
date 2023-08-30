@@ -13,8 +13,8 @@
 #  limitations under the License.
 
 from __future__ import annotations
-import socket
 
+import socket
 from unittest.mock import MagicMock
 
 import pytest
