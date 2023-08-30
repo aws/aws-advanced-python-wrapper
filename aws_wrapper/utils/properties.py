@@ -40,6 +40,13 @@ class WrapperProperty:
         val = props.get(self.name)
         return int(val) if val else -1
 
+    def get_float(self, props: Properties) -> float:
+        if self.default_value:
+            return float(props.get(self.name, self.default_value))
+
+        val = props.get(self.name)
+        return float(val) if val else -1
+
     def get_bool(self, props: Properties) -> bool:
         if not self.default_value:
             value = props.get(self.name)
@@ -118,12 +125,36 @@ class WrapperProperties:
         "60000")
 
     # Failover
-    ENABLE_FAILOVER = WrapperProperty("enable_failover",
-                                      "Enable/disable cluster aware failover logic",
-                                      "True")
-    FAILOVER_MODE = WrapperProperty("failover_mode",
-                                    "Decide which node role (writer, reader, or either) to connect to during failover",
-                                    None)
+    ENABLE_FAILOVER = WrapperProperty(
+        "enable_failover",
+        "Enable/disable cluster aware failover logic",
+        "True")
+    FAILOVER_MODE = WrapperProperty(
+        "failover_mode",
+        "Decide which node role (writer, reader, or either) to connect to during failover",
+        None)
+    FAILOVER_TIMEOUT_SEC = WrapperProperty(
+        "failover_timeout_sec",
+        "Maximum allowed time in seconds for the failover process.",
+        "300"  # 5 minutes
+    )
+    FAILOVER_CLUSTER_TOPOLOGY_REFRESH_RATE_SEC = WrapperProperty(
+        "failover_cluster_topology_refresh_rate_sec",
+        """Cluster topology refresh rate in seconds during a writer failover process.
+        During the writer failover process,
+        cluster topology may be refreshed at a faster pace than normal to speed up discovery of the newly promoted writer.""",
+        "2"
+    )
+    FAILOVER_WRITER_RECONNECT_INTERVAL_SEC = WrapperProperty(
+        "failover_writer_reconnect_interval_sec",
+        "Interval of time in seconds to wait between attempts to reconnect to a failed writer during a writer failover process.",
+        "2"
+    )
+    FAILOVER_READER_CONNECT_TIMEOUT_SEC = WrapperProperty(
+        "failover_reader_connect_timeout_sec",
+        "Reader connection attempt timeout in seconds during a reader failover process.",
+        "300"  # 5 minutes
+    )
 
     # Target Driver Dialect
     TARGET_DRIVER_DIALECT = WrapperProperty(

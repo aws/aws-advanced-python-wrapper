@@ -31,6 +31,10 @@ class TransactionResolutionUnknownError(FailoverError):
     __module__ = "aws_wrapper"
 
 
+class FailoverFailedError(FailoverError):
+    __module__ = "aws_wrapper"
+
+
 class FailoverSuccessError(FailoverError):
     __module__ = "aws_wrapper"
 

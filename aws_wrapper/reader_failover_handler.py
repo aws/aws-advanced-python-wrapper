@@ -55,8 +55,8 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             self,
             plugin_service: PluginService,
             properties: Properties,
-            max_timeout_sec: int = 60,
-            timeout_sec: int = 30):
+            max_timeout_sec: float = 60,
+            timeout_sec: float = 30):
         self._plugin_service = plugin_service
         self._properties = properties
         self._max_failover_timeout_sec = max_timeout_sec

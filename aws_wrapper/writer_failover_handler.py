@@ -58,9 +58,9 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             plugin_service: PluginService,
             reader_failover_handler: ReaderFailoverHandler,
             initial_connection_properties: Properties,
-            max_timeout_sec: int = 60,
-            read_topology_interval_sec: int = 5,
-            reconnect_writer_interval_sec: int = 5):
+            max_timeout_sec: float = 60,
+            read_topology_interval_sec: float = 5,
+            reconnect_writer_interval_sec: float = 5):
         self._plugin_service = plugin_service
         self._reader_failover_handler = reader_failover_handler
         self._initial_connection_properties = initial_connection_properties
@@ -154,8 +154,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 else:
                     success = self.is_current_host_writer(latest_topology, initial_writer_host)
 
-                self._plugin_service.set_availability(initial_writer_host.as_aliases(), HostAvailability.AVAILABLE)
-
+            self._plugin_service.set_availability(initial_writer_host.as_aliases(), HostAvailability.AVAILABLE)
             return WriterFailoverResult(success, False, latest_topology, conn if success else None, "TaskA", None)
 
         except Exception as ex:
