@@ -238,6 +238,10 @@ class PropertiesUtils:
                 if attr_val.name not in persisting_properties:
                     props.pop(attr_val.name, None)
 
+        monitor_prop_keys = [key for key in props if key.startswith("monitoring-")]
+        for key in monitor_prop_keys:
+            props.pop(key, None)
+
     @staticmethod
     def get_url(props: Properties) -> str:
         host = props.get("host")

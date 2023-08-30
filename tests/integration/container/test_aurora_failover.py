@@ -42,7 +42,7 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 
 @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
 @enable_on_num_instances(min_instances=2)
-@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
 class TestAuroraFailover:
     IDLE_CONNECTIONS_NUM: int = 5
     logger = getLogger(__name__)

@@ -37,7 +37,7 @@ from tests.integration.container.utils.driver_helper import DriverHelper
 
 
 @enable_on_features([TestEnvironmentFeatures.IAM])
-@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
 class TestAwsIamAuthentication:
     def test_iam_wrong_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
