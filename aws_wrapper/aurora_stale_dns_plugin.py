@@ -128,6 +128,7 @@ class AuroraStaleDnsHelper:
     def notify_node_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         if self.writer_host_info is None:
             return
+
         msg = "Changes: "
         for key in changes:
             msg += f"\n\t[{key}]: {changes[key]}"
