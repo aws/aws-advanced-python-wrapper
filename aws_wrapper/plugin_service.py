@@ -31,7 +31,6 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
 
 from aws_wrapper.aurora_connection_tracker_plugin import \
     AuroraConnectionTrackerPluginFactory
-from aws_wrapper.aurora_stale_dns_plugin import AuroraStaleDnsPluginFactory
 from aws_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
 from aws_wrapper.default_plugin import DefaultPlugin
@@ -52,6 +51,7 @@ from aws_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.read_write_splitting_plugin import \
     ReadWriteSplittingPluginFactory
+from aws_wrapper.stale_dns_plugin import StaleDnsPluginFactory
 from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
@@ -439,7 +439,7 @@ class PluginManager(CanReleaseResources):
         "host_monitoring": HostMonitoringPluginFactory,
         "failover": FailoverPluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,
-        "aurora_stale_dns": AuroraStaleDnsPluginFactory
+        "stale_dns": StaleDnsPluginFactory
     }
 
     def __init__(

@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.aurora_stale_dns_plugin import AuroraStaleDnsHelper
+    from aws_wrapper.stale_dns_plugin import StaleDnsHelper
     from aws_wrapper.failover_result import ReaderFailoverResult, WriterFailoverResult
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
@@ -68,7 +68,7 @@ class FailoverPlugin(Plugin):
         self._last_exception: Optional[Exception] = None
         self._rds_utils = RdsUtils()
         self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
-        self._stale_dns_helper: AuroraStaleDnsHelper
+        self._stale_dns_helper: StaleDnsHelper = StaleDnsHelper(plugin_service)
 
         FailoverPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import socket
 from contextlib import closing
-from enum import Enum, auto
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
@@ -25,39 +24,26 @@ if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
-    from aws_wrapper.utils.notifications import HostEvent
     from aws_wrapper.utils.properties import Properties
 
 from aws_wrapper.hostinfo import HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
+from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.utils import LogUtils
 
 logger = getLogger(__name__)
 
 
-class NodeChangeOptions(Enum):
-    HOSTNAME = auto()
-    PROMOTED_TO_WRITER = auto()
-    PROMOTED_TO_READER = auto()
-    WENT_UP = auto()
-    WENT_DOWN = auto()
-    CONNECTION_OBJECT_CHANGED = auto()
-    INITIAL_CONNECTION = auto()
-    NODE_ADDED = auto()
-    NODE_CHANGED = auto()
-    NODE_DELETED = auto()
-
-
-class AuroraStaleDnsHelper:
+class StaleDnsHelper:
     RETRIES: int = 3
 
     def __init__(self, plugin_service: PluginService) -> None:
         self._plugin_service = plugin_service
         self._rds_helper = RdsUtils()
-        self.writer_host_info: Optional[HostInfo] = None
-        self.writer_host_address: Optional[str] = None
+        self._writer_host_info: Optional[HostInfo] = None
+        self._writer_host_address: Optional[str] = None
 
     def get_verified_connection(self, is_initial_connection: bool, host_list_provider_service: HostListProviderService, host_info: HostInfo,
                                 props: Properties, connect_func: Callable) -> Connection:
@@ -74,7 +60,7 @@ class AuroraStaleDnsHelper:
 
         host_inet_address: Optional[str] = cluster_inet_address
 
-        logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.ClusterEndpointDns", host_info.host, host_inet_address))
+        logger.debug(Messages.get_formatted("StaleDnsHelper.ClusterEndpointDns", host_info.host, host_inet_address))
 
         if cluster_inet_address is None:
             return conn
@@ -86,35 +72,35 @@ class AuroraStaleDnsHelper:
 
         logger.debug(LogUtils.log_topology(self._plugin_service.hosts))
 
-        if self.writer_host_info is None:
-            writer_candidate: Optional[HostInfo] = self.get_writer()
+        if self._writer_host_info is None:
+            writer_candidate: Optional[HostInfo] = self._get_writer()
             if writer_candidate is not None and self._rds_helper.is_rds_cluster_dns(writer_candidate.host):
                 return conn
 
-            self.writer_host_info = writer_candidate
+            self._writer_host_info = writer_candidate
 
-        logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.WriterHostSpec", self.writer_host_info))
+        logger.debug(Messages.get_formatted("StaleDnsHelper.WriterHostSpec", self._writer_host_info))
 
-        if self.writer_host_info is None:
+        if self._writer_host_info is None:
             return conn
 
-        if self.writer_host_address is None:
+        if self._writer_host_address is None:
             try:
-                self.writer_host_address = socket.gethostbyname(self.writer_host_info.host)
+                self._writer_host_address = socket.gethostbyname(self._writer_host_info.host)
             except Exception:
                 pass
 
-        logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.WriterInetAddress", self.writer_host_address))
+        logger.debug(Messages.get_formatted("StaleDnsHelper.WriterInetAddress", self._writer_host_address))
 
-        if self.writer_host_address is None:
+        if self._writer_host_address is None:
             return conn
 
-        if not self.writer_host_address == cluster_inet_address:
-            logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.StaleDnsDetected", self.writer_host_info))
+        if self._writer_host_address != cluster_inet_address:
+            logger.debug(Messages.get_formatted("StaleDnsHelper.StaleDnsDetected", self._writer_host_info))
 
-            writer_conn: Connection = self._plugin_service.connect(self.writer_host_info, props)
+            writer_conn: Connection = self._plugin_service.connect(self._writer_host_info, props)
             if is_initial_connection:
-                host_list_provider_service.initial_connection_host_info = self.writer_host_info
+                host_list_provider_service.initial_connection_host_info = self._writer_host_info
 
             if conn is not None:
                 try:
@@ -126,19 +112,16 @@ class AuroraStaleDnsHelper:
         return conn
 
     def notify_node_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        if self.writer_host_info is None:
+        if self._writer_host_info is None:
             return
 
-        msg = "Changes: "
-        for key in changes:
-            msg += f"\n\t[{key}]: {changes[key]}"
-        logger.debug(msg)
-        if key == self.writer_host_info.url and NodeChangeOptions.PROMOTED_TO_READER in changes[key]:
+        writer_changes = changes.get(self._writer_host_info.url, None)
+        if writer_changes is not None and HostEvent.CONVERTED_TO_READER in writer_changes:
             logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.Reset"))
-            self.writer_host_info = None
-            self.writer_host_address = ""
+            self._writer_host_info = None
+            self._writer_host_address = None
 
-    def get_writer(self) -> Optional[HostInfo]:
+    def _get_writer(self) -> Optional[HostInfo]:
         for host in self._plugin_service.hosts:
             if host.role == HostRole.WRITER:
                 return host
@@ -158,18 +141,18 @@ class AuroraStaleDnsHelper:
         return False
 
 
-class AuroraStaleDnsPlugin(Plugin):
+class StaleDnsPlugin(Plugin):
 
     _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
                                      "connect",
                                      "force_connect",
-                                     "notify_connection_changed"}
+                                     "notify_host_list_changed"}
 
-    def __init__(self, plugin_service: PluginService, properties: Properties) -> None:
+    def __init__(self, plugin_service: PluginService) -> None:
         self._plugin_service = plugin_service
-        self._rds_helper = AuroraStaleDnsHelper(self._plugin_service)
+        self._stale_dns_helper = StaleDnsHelper(self._plugin_service)
 
-        AuroraStaleDnsPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
+        StaleDnsPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -180,8 +163,7 @@ class AuroraStaleDnsPlugin(Plugin):
                 properties: Properties,
                 is_initial_connection: bool,
                 connect_func: Callable) -> Connection:
-        return self._rds_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
-                                                        connect_func)
+        return self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties, connect_func)
 
     def force_connect(
             self,
@@ -189,8 +171,8 @@ class AuroraStaleDnsPlugin(Plugin):
             properties: Properties,
             is_initial_connection: bool,
             force_connect_func: Callable) -> Connection:
-        return self._rds_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
-                                                        force_connect_func)
+        return self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
+                                                              force_connect_func)
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: tuple) -> Any:
         try:
@@ -208,15 +190,15 @@ class AuroraStaleDnsPlugin(Plugin):
 
         self._host_list_provider_service = host_list_provider_service
 
-        if self._host_list_provider_service.is_static_host_list_provider():
-            raise Exception(Messages.get_formatted("AuroraStaleDnsPlugin.RequireDynamicProvider"))
-
         init_host_provider_func()
 
+        if self._host_list_provider_service.is_static_host_list_provider():
+            raise Exception(Messages.get_formatted("StaleDnsPlugin.RequireDynamicProvider"))
+
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        self._rds_helper.notify_node_list_changed(changes)
+        self._stale_dns_helper.notify_host_list_changed(changes)
 
 
-class AuroraStaleDnsPluginFactory(PluginFactory):
+class StaleDnsPluginFactory(PluginFactory):
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return AuroraStaleDnsPlugin(plugin_service, props)
+        return StaleDnsPlugin(plugin_service, props)
