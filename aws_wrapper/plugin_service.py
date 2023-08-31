@@ -32,6 +32,7 @@ from aws_wrapper.aurora_connection_tracker_plugin import \
     AuroraConnectionTrackerPluginFactory
 from aws_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
+from aws_wrapper.connection_provider import ConnectionProviderManager
 from aws_wrapper.default_plugin import DefaultPlugin
 from aws_wrapper.dialect import (Dialect, DialectManager,
                                  TopologyAwareDatabaseDialect)
@@ -463,6 +464,7 @@ class PluginManager(CanReleaseResources):
         self._function_cache: Dict[str, Callable] = {}
         self._container = container
         self._container.plugin_manager = self
+        self._connection_provider_manager = ConnectionProviderManager()
 
         requested_plugins = WrapperProperties.PLUGINS.get(props)
 
@@ -470,7 +472,7 @@ class PluginManager(CanReleaseResources):
             requested_plugins = self._DEFAULT_PLUGINS
 
         if requested_plugins == "":
-            self._plugins.append(DefaultPlugin(self._container.plugin_service))
+            self._plugins.append(DefaultPlugin(self._container.plugin_service, self._connection_provider_manager))
             return
 
         plugin_list: List[str] = requested_plugins.split(",")
@@ -482,11 +484,15 @@ class PluginManager(CanReleaseResources):
             plugin: Plugin = factory.get_instance(self._container.plugin_service, props)
             self._plugins.append(plugin)
 
-        self._plugins.append(DefaultPlugin(self._container.plugin_service))
+        self._plugins.append(DefaultPlugin(self._container.plugin_service, self._connection_provider_manager))
 
     @property
     def num_plugins(self) -> int:
         return len(self._plugins)
+
+    @property
+    def connection_provider_manager(self) -> ConnectionProviderManager:
+        return self._connection_provider_manager
 
     def execute(self, target: object, method_name: str, target_driver_func: Callable, *args) -> Any:
         return self._execute_with_subscribed_plugins(

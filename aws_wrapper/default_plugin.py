@@ -17,6 +17,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from aws_wrapper.connection_provider import (ConnectionProvider,
+                                                 ConnectionProviderManager)
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.plugin_service import PluginService
@@ -25,8 +27,6 @@ if TYPE_CHECKING:
 import copy
 from typing import Any, Callable, Set
 
-from aws_wrapper.connection_provider import (ConnectionProvider,
-                                             ConnectionProviderManager)
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.plugin import Plugin
@@ -37,9 +37,9 @@ from aws_wrapper.utils.properties import Properties, PropertiesUtils
 class DefaultPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
 
-    def __init__(self, plugin_service: PluginService):
+    def __init__(self, plugin_service: PluginService, connection_provider_manager: ConnectionProviderManager):
         self._plugin_service: PluginService = plugin_service
-        self._connection_provider_manager = ConnectionProviderManager()
+        self._connection_provider_manager = connection_provider_manager
 
     def connect(
             self,
