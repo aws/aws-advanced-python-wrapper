@@ -111,7 +111,7 @@ class StaleDnsHelper:
 
         return conn
 
-    def notify_node_list_changed(self, changes: Dict[str, Set[HostEvent]]):
+    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         if self._writer_host_info is None:
             return
 
@@ -126,19 +126,6 @@ class StaleDnsHelper:
             if host.role == HostRole.WRITER:
                 return host
         return None
-
-    def is_read_only(self, conn: Connection, query: str) -> bool:
-        for _ in range(self.RETRIES):
-            try:
-                with closing(conn.cursor()) as aws_cursor:
-                    aws_cursor.execute('SELECT 1 FROM pg_proc LIMIT 1')
-                    if aws_cursor.fetchone() is not None:
-                        return True
-            except Exception as ex:
-                if not self._plugin_service.is_network_exception(ex):
-                    return False
-
-        return False
 
 
 class StaleDnsPlugin(Plugin):
@@ -201,4 +188,4 @@ class StaleDnsPlugin(Plugin):
 
 class StaleDnsPluginFactory(PluginFactory):
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return StaleDnsPlugin(plugin_service, props)
+        return StaleDnsPlugin(plugin_service)
