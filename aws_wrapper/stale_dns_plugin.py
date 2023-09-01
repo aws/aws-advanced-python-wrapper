@@ -54,7 +54,7 @@ class StaleDnsHelper:
         cluster_inet_address: Optional[str] = None
         try:
             cluster_inet_address = socket.gethostbyname(host_info.host)
-        except Exception:
+        except socket.gaierror:
             pass
 
         host_inet_address: Optional[str] = cluster_inet_address
@@ -65,6 +65,9 @@ class StaleDnsHelper:
             return conn
 
         if self._plugin_service.get_host_role(conn) == HostRole.READER:
+            # This if-statement is only reached if the connection url is a writer cluster endpoint.
+            # If the new connection resolves to a reader instance, this means the topology is outdated.
+            # Force refresh to update the topology.
             self._plugin_service.force_refresh_host_list(conn)
         else:
             self._plugin_service.refresh_host_list(conn)
