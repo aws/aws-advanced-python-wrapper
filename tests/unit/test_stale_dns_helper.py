@@ -15,11 +15,13 @@
 from __future__ import annotations
 
 import socket
+from typing import Dict, Set
 
 import pytest
 
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.stale_dns_plugin import StaleDnsHelper
+from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties
 
 
@@ -85,13 +87,13 @@ def cluster_host_list(writer_cluster, reader_a, reader_b):
 
 
 @pytest.fixture
-def reader_host_list(reader_a, reader_b):
-    return [reader_a, reader_b]
+def instance_host_list(writer_instance, reader_a, reader_b):
+    return [writer_instance, reader_a, reader_b]
 
 
 @pytest.fixture
-def instance_host_list(writer_instance, reader_a, reader_b):
-    return [writer_instance, reader_a, reader_b]
+def reader_host_list(reader_a, reader_b):
+    return [reader_a, reader_b]
 
 
 def test_get_verified_connection__is_writer_cluster_dns_false(plugin_service_mock, host_list_provider_mock, default_properties, initial_conn_mock,
@@ -230,3 +232,15 @@ def test_get_verified_connection__initial_connection_writer_host_address_not_equ
     initial_conn_mock.close.assert_called_once()
     assert return_conn != initial_conn_mock
     assert target._writer_host_info == host_list_provider_mock.initial_connection_host_info
+
+
+def test_notify_host_list_changed(plugin_service_mock, writer_instance):
+    target = StaleDnsHelper(plugin_service_mock)
+    target._writer_host_info = writer_instance
+    host_info_url = target._writer_host_info.url
+    changes: Dict[str, Set[HostEvent]] = {host_info_url: [HostEvent.CONVERTED_TO_READER]}
+
+    target.notify_host_list_changed(changes)
+
+    assert target._writer_host_info is None
+    assert target._writer_host_address is None

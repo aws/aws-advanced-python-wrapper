@@ -17,7 +17,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.stale_dns_plugin import StaleDnsHelper
     from aws_wrapper.failover_result import ReaderFailoverResult, WriterFailoverResult
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
@@ -36,6 +35,8 @@ from aws_wrapper.pep249 import Error
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)
+from aws_wrapper.stale_dns_plugin import StaleDnsHelper
+
 from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent

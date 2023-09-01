@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import socket
-from contextlib import closing
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
@@ -111,13 +110,13 @@ class StaleDnsHelper:
 
         return conn
 
-    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
+    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]) -> None:
         if self._writer_host_info is None:
             return
 
         writer_changes = changes.get(self._writer_host_info.url, None)
         if writer_changes is not None and HostEvent.CONVERTED_TO_READER in writer_changes:
-            logger.debug(Messages.get_formatted("AuroraStaleDnsHelper.Reset"))
+            logger.debug(Messages.get_formatted("StaleDnsHelper.Reset"))
             self._writer_host_info = None
             self._writer_host_address = None
 
