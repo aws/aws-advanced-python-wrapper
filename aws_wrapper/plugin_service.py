@@ -51,6 +51,7 @@ from aws_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.read_write_splitting_plugin import \
     ReadWriteSplittingPluginFactory
+from aws_wrapper.stale_dns_plugin import StaleDnsPluginFactory
 from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
@@ -437,7 +438,8 @@ class PluginManager(CanReleaseResources):
         "aurora_host_list": AuroraHostListPluginFactory,
         "host_monitoring": HostMonitoringPluginFactory,
         "failover": FailoverPluginFactory,
-        "read_write_splitting": ReadWriteSplittingPluginFactory
+        "read_write_splitting": ReadWriteSplittingPluginFactory,
+        "stale_dns": StaleDnsPluginFactory
     }
 
     def __init__(

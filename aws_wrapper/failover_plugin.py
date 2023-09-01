@@ -35,6 +35,7 @@ from aws_wrapper.pep249 import Error
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)
+from aws_wrapper.stale_dns_plugin import StaleDnsHelper
 from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
@@ -67,6 +68,8 @@ class FailoverPlugin(Plugin):
         self._last_exception: Optional[Exception] = None
         self._rds_utils = RdsUtils()
         self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
+        self._stale_dns_helper: StaleDnsHelper = StaleDnsHelper(plugin_service)
+
         FailoverPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
     def init_host_provider(
@@ -171,8 +174,8 @@ class FailoverPlugin(Plugin):
             properties: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
-        # TODO: replace with call to self._stale_dns_helper.get_verified_connection
-        conn: Connection = connect_func()
+        conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
+                                                                          connect_func)
         if is_initial_connection:
             self._plugin_service.refresh_host_list(conn)
         return conn
