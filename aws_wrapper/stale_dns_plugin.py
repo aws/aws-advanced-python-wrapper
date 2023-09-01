@@ -89,7 +89,7 @@ class StaleDnsHelper:
         if self._writer_host_address is None:
             try:
                 self._writer_host_address = socket.gethostbyname(self._writer_host_info.host)
-            except Exception:
+            except socket.gaierror:
                 pass
 
         logger.debug(Messages.get_formatted("StaleDnsHelper.WriterInetAddress", self._writer_host_address))
