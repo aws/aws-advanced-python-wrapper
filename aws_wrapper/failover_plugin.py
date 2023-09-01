@@ -36,7 +36,6 @@ from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)
 from aws_wrapper.stale_dns_plugin import StaleDnsHelper
-
 from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
