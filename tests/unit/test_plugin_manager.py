@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from aws_wrapper.default_plugin import DefaultPlugin
-from aws_wrapper.dummy_plugin import DummyPlugin
+from aws_wrapper.iam_plugin import IamAuthPlugin
 from aws_wrapper.plugin import Plugin
 
 if TYPE_CHECKING:
@@ -216,13 +216,13 @@ def test_no_plugins(container, default_conn_provider):
 
 
 def test_plugin_setting(container, default_conn_provider):
-    props = Properties(plugins="dummy,dummy")
+    props = Properties(plugins="iam,iam")
 
     manager = PluginManager(container, props, default_conn_provider)
 
     assert 3 == manager.num_plugins
-    assert isinstance(manager._plugins[0], DummyPlugin)
-    assert isinstance(manager._plugins[1], DummyPlugin)
+    assert isinstance(manager._plugins[0], IamAuthPlugin)
+    assert isinstance(manager._plugins[1], IamAuthPlugin)
     assert isinstance(manager._plugins[2], DefaultPlugin)
 
 

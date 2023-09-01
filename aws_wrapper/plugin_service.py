@@ -36,7 +36,6 @@ from aws_wrapper.aws_secrets_manager_plugin import \
 from aws_wrapper.default_plugin import DefaultPlugin
 from aws_wrapper.dialect import (Dialect, DialectManager,
                                  TopologyAwareDatabaseDialect)
-from aws_wrapper.dummy_plugin import DummyPluginFactory
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
 from aws_wrapper.failover_plugin import FailoverPluginFactory
@@ -431,7 +430,6 @@ class PluginManager(CanReleaseResources):
     _DEFAULT_PLUGINS = ""
 
     _PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
-        "dummy": DummyPluginFactory,
         "iam": IamAuthPluginFactory,
         "aws_secrets_manager": AwsSecretsManagerPluginFactory,
         "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
