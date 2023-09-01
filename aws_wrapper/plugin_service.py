@@ -145,10 +145,10 @@ class PluginService(ExceptionHandler, Protocol):
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         ...
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str):
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
         ...
 
-    def get_host_role(self, connection: Optional[Connection] = None):
+    def get_host_role(self, connection: Optional[Connection] = None) -> HostRole:
         ...
 
     def refresh_host_list(self, connection: Optional[Connection] = None):
@@ -166,7 +166,7 @@ class PluginService(ExceptionHandler, Protocol):
     def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
         ...
 
-    def identify_connection(self, connection: Optional[Connection] = None):
+    def identify_connection(self, connection: Optional[Connection] = None) -> Optional[HostInfo]:
         ...
 
     def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
@@ -210,8 +210,22 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._current_connection
 
     def set_current_connection(self, connection: Optional[Connection], host_info: Optional[HostInfo]):
+        old_connection = self._current_connection
         self._current_connection = connection
         self._current_host_info = host_info
+
+        if old_connection is None:
+            self._container.plugin_manager.notify_connection_changed({ConnectionEvent.INITIAL_CONNECTION})
+        elif old_connection != connection:
+            self.update_in_transaction()
+            old_connection_suggested_action = \
+                self._container.plugin_manager.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
+            if old_connection_suggested_action != OldConnectionSuggestedAction.PRESERVE \
+                    and not self.target_driver_dialect.is_closed(old_connection):
+                try:
+                    old_connection.close()
+                except Exception:
+                    pass
 
     @property
     def current_host_info(self) -> Optional[HostInfo]:
@@ -282,7 +296,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.get_host_info_by_strategy(role, strategy)
 
-    def get_host_role(self, connection: Optional[Connection] = None):
+    def get_host_role(self, connection: Optional[Connection] = None) -> HostRole:
         return self._host_list_provider.get_host_role(connection)
 
     def refresh_host_list(self, connection: Optional[Connection] = None):
@@ -593,9 +607,13 @@ class PluginManager(CanReleaseResources):
                 or self._GET_HOST_INFO_BY_STRATEGY_METHOD in plugin_subscribed_methods
 
             if is_subscribed:
-                host: HostInfo = plugin.get_host_info_by_strategy(role, strategy)
-                if host is not None:
-                    return host
+                try:
+                    host: HostInfo = plugin.get_host_info_by_strategy(role, strategy)
+                    if host is not None:
+                        return host
+                except NotImplementedError:
+                    # This plugin does not support the requested strategy, ignore exception and try the next plugin
+                    pass
         return None
 
     def init_host_provider(self, props: Properties, host_list_provider_service: HostListProviderService):

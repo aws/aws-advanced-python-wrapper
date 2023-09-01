@@ -52,7 +52,7 @@ class TestReadWriteSplitting:
     @pytest.fixture(scope='class')
     def props_with_failover(self):
         return {
-            "plugins": "aurora_host_list, read_write_splitting, failover", "connect_timeout": 10, "autocommit": True}
+            "plugins": "read_write_splitting, failover, host_monitoring", "connect_timeout": 10, "autocommit": True}
 
     @pytest.fixture(scope='class')
     def proxied_props(self, props):
@@ -315,7 +315,8 @@ class TestReadWriteSplitting:
         assert writer_id != reader_id
 
         instances = test_environment.get_instances()
-        other_reader_id = next((instance_id for instance_id in instances[1:] if id != reader_id), None)
+        other_reader_id = next((
+            instance.get_instance_id() for instance in instances[1:] if instance.get_instance_id() != reader_id), None)
         if other_reader_id is None:
             pytest.fail("Could not acquire alternate reader ID")
 
