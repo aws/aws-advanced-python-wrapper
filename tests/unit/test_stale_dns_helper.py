@@ -68,7 +68,7 @@ def writer_instance():
 
 @pytest.fixture
 def reader_cluster():
-    return HostInfo("my-cluster.cluster-XYZ.us-west-2.rds.amazonaws.com", 1234, HostAvailability.AVAILABLE, HostRole.READER)
+    return HostInfo("my-cluster.cluster-ro-XYZ.us-west-2.rds.amazonaws.com", 1234, HostAvailability.AVAILABLE, HostRole.READER)
 
 
 @pytest.fixture
