@@ -277,12 +277,13 @@ class ReadWriteSplittingPlugin(Plugin):
         conn_attempts = len(self._plugin_service.hosts) * 2
         for _ in range(conn_attempts):
             host = self._plugin_service.get_host_info_by_strategy(HostRole.READER, self._reader_selector_strategy)
-            try:
-                conn = self._plugin_service.connect(host, self._properties)
-                reader_host = host
-                break
-            except Exception:
-                logger.warning(Messages.get_formatted("ReadWriteSplittingPlugin.FailedToConnectToReader", host.url))
+            if host is not None:
+                try:
+                    conn = self._plugin_service.connect(host, self._properties)
+                    reader_host = host
+                    break
+                except Exception:
+                    logger.warning(Messages.get_formatted("ReadWriteSplittingPlugin.FailedToConnectToReader", host.url))
 
         if conn is None or reader_host is None:
             self._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.NoReadersAvailable"))
