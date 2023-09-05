@@ -19,6 +19,7 @@ from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
 if TYPE_CHECKING:
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
@@ -147,21 +148,27 @@ class StaleDnsPlugin(Plugin):
     def subscribed_methods(self) -> Set[str]:
         return self._SUBSCRIBED_METHODS
 
-    def connect(self,
-                host: HostInfo,
-                properties: Properties,
-                is_initial_connection: bool,
-                connect_func: Callable) -> Connection:
-        return self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties, connect_func)
+    def connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
+        return self._stale_dns_helper.get_verified_connection(
+            is_initial_connection, self._host_list_provider_service, host_info, props, connect_func)
 
     def force_connect(
             self,
-            host: HostInfo,
-            properties: Properties,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
             is_initial_connection: bool,
             force_connect_func: Callable) -> Connection:
-        return self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
-                                                              force_connect_func)
+        return self._stale_dns_helper.get_verified_connection(
+            is_initial_connection, self._host_list_provider_service, host_info, props, force_connect_func)
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: tuple) -> Any:
         try:

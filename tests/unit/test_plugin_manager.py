@@ -20,8 +20,9 @@ if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.pep249 import Connection
 
-import pytest
 from typing import Any, Callable, Dict, List, Optional, Set
+
+import pytest
 
 from aws_wrapper.default_plugin import DefaultPlugin
 from aws_wrapper.errors import AwsWrapperError
