@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Callable, Set
+from typing import TYPE_CHECKING, Any, Callable, Set
 
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
@@ -31,6 +31,12 @@ class TargetDriverDialect(ABC):
     _dialect_code: str = TargetDriverDialectCodes.GENERIC
     _network_bound_methods: Set[str] = {"*"}
     _read_only: bool = False
+    _autocommit: bool = False
+    _driver_name: str = "Generic"
+
+    @property
+    def driver_name(self):
+        return self._driver_name
 
     @property
     def dialect_code(self) -> str:
@@ -45,6 +51,12 @@ class TargetDriverDialect(ABC):
 
     def set_read_only(self, conn: Connection, read_only: bool):
         self._read_only = read_only
+
+    def get_autocommit(self, conn: Connection) -> bool:
+        return self._autocommit
+
+    def set_autocommit(self, conn: Connection, autocommit: bool):
+        self._autocommit = autocommit
 
     @abstractmethod
     def is_dialect(self, conn: Callable) -> bool:
@@ -64,6 +76,18 @@ class TargetDriverDialect(ABC):
 
     @abstractmethod
     def is_in_transaction(self, conn: Connection) -> bool:
+        pass
+
+    @abstractmethod
+    def get_connection_from_obj(self, obj: object) -> Any:
+        pass
+
+    @abstractmethod
+    def unwrap_connection(self, conn_obj: object) -> Any:
+        pass
+
+    @abstractmethod
+    def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         pass
 
 
@@ -84,11 +108,24 @@ class GenericTargetDriverDialect(TargetDriverDialect):
         return prop_copy
 
     def is_closed(self, conn: Connection) -> bool:
-        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", "Generic Driver", "is_closed"))
+        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_closed"))
 
     def abort_connection(self, conn: Connection):
-        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", "Generic Driver", "abort_connection"))
+        raise UnsupportedOperationError(
+            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "abort_connection"))
 
     def is_in_transaction(self, conn: Connection) -> bool:
-        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", "Generic Driver",
-                                                               "is_in_transaction"))
+        raise UnsupportedOperationError(
+            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_in_transaction"))
+
+    def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
+        return
+
+    def get_connection_from_obj(self, obj: object) -> Any:
+        if hasattr(obj, "connection"):
+            return obj.connection
+
+        return None
+
+    def unwrap_connection(self, conn_obj: object) -> Any:
+        return conn_obj

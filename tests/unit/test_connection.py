@@ -17,6 +17,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import psycopg
+
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
 
@@ -28,9 +30,9 @@ from aws_wrapper.wrapper import AwsWrapperConnection
 
 def test_connection_basic():
     conninfo: str = "host=localhost dbname=postgres user=postgres password=qwerty wrapper_target_driver_dialect=psycopg"
-    connection_mock: Connection = MagicMock()
+    connection_mock: Connection = MagicMock(spec=psycopg.Connection)
     container_mock = MagicMock()
-    connection_mock.connect.return_value = MagicMock()
+    connection_mock.connect.return_value = MagicMock(spec=psycopg.Connection)
 
     with patch.object(PluginServiceManagerContainer, "__new__", container_mock), \
             patch.object(PluginServiceImpl, "refresh_host_list"), \

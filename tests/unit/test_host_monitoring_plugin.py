@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
+import psycopg
 import pytest
 
 from aws_wrapper.errors import AwsWrapperError
@@ -31,7 +31,7 @@ def mock_plugin_service(mocker):
 
 @pytest.fixture
 def mock_conn(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

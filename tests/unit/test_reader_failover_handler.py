@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import call
 
+import psycopg
 import pytest
 
 if TYPE_CHECKING:
@@ -33,7 +34,7 @@ from aws_wrapper.utils.properties import Properties
 
 @pytest.fixture
 def connection_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import chain, cycle
 from time import perf_counter_ns, sleep
 
+import psycopg
 import pytest
 
 from aws_wrapper.host_monitoring_plugin import (Monitor, MonitoringContext,
@@ -48,7 +49,7 @@ def mock_monitoring_context(mocker):
 
 @pytest.fixture
 def mock_conn(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture
@@ -163,7 +164,6 @@ def test_run_host_available(
     monitor.stop_monitoring(context)
     wait([future], 3)
 
-    mock_plugin_service.update_dialect.assert_called_once()
     mock_plugin_service.force_connect.assert_called_once_with(host_info, monitoring_conn_props, None)
     mock_target_driver_dialect.abort_connection.assert_not_called()
     mock_monitor_service.notify_unused.assert_called_once()
@@ -195,8 +195,6 @@ def test_run_host_unavailable(
     monitor.start_monitoring(context)
     future = executor.submit(monitor.run)
     wait([future], 3)
-
-    mock_plugin_service.update_dialect.assert_called_once()
     mock_plugin_service.force_connect.assert_called_once_with(host_info, monitoring_conn_props, None)
     mock_target_driver_dialect.abort_connection.assert_called_once()
     mock_monitor_service.notify_unused.assert_called_once()

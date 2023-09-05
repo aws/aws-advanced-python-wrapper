@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import psycopg
 import pytest
 
 from aws_wrapper.errors import (FailoverSuccessError,
@@ -47,7 +48,7 @@ def plugin_service_mock(mocker):
 
 @pytest.fixture
 def conn_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

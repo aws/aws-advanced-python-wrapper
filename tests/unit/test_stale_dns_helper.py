@@ -17,6 +17,7 @@ from __future__ import annotations
 import socket
 from typing import Dict, Set
 
+import psycopg
 import pytest
 
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
@@ -33,7 +34,7 @@ def plugin_service_mock(mocker):
 
 @pytest.fixture
 def conn_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

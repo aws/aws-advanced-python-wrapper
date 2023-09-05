@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
+import psycopg
 import pytest
 
 from aws_wrapper.connection_provider import (
@@ -24,7 +24,7 @@ from aws_wrapper.utils.sliding_expiration_cache import SlidingExpirationCache
 
 @pytest.fixture
 def mock_conn(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

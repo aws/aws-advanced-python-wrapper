@@ -26,7 +26,8 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.utils.properties import Properties
 
-from aws_wrapper.errors import FailoverError, ReadWriteSplittingError
+from aws_wrapper.errors import (AwsWrapperError, FailoverError,
+                                ReadWriteSplittingError)
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
@@ -128,6 +129,14 @@ class ReadWriteSplittingPlugin(Plugin):
         return OldConnectionSuggestedAction.NO_OPINION
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any) -> Any:
+        target_driver_dialect = self._plugin_service.target_driver_dialect
+        conn: Optional[Connection] = target_driver_dialect.get_connection_from_obj(target)
+        current_conn: Optional[Connection] = target_driver_dialect.unwrap_connection(self._plugin_service.current_connection)
+
+        if conn is not None and conn != current_conn:
+            msg = Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target)
+            raise AwsWrapperError(msg)
+
         if method_name == "Connection.set_read_only" and args is not None and len(args) > 0:
             self._switch_connection_if_required(args[0])
 
@@ -301,7 +310,11 @@ class ReadWriteSplittingPlugin(Plugin):
         logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.SwitchedFromWriterToReader", reader_host.url))
 
     def _transfer_session_state(self, conn: Connection):
-        ...  # TODO: Figure out what state information needs to be transferred
+        from_conn: Optional[Connection] = self._plugin_service.current_connection
+        if from_conn is None or conn is None:
+            return
+
+        self._plugin_service.target_driver_dialect.transfer_session_state(from_conn, conn)
 
     def _close_connection_if_idle(self, internal_conn: Connection):
         current_conn = self._plugin_service.current_connection
