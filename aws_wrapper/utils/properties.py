@@ -54,7 +54,7 @@ class WrapperProperty:
 class WrapperProperties:
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
 
-    PLUGINS = WrapperProperty("plugins", "Comma separated list of connection plugin codes", "dummy")
+    PLUGINS = WrapperProperty("plugins", "Comma separated list of connection plugin codes", "aurora_connection_tracker,failover,host_monitoring")
     USER = WrapperProperty("user", "Driver user name")
     PASSWORD = WrapperProperty("password", "Driver password")
     DATABASE = WrapperProperty("database", "Driver database name")
