@@ -486,7 +486,7 @@ class TestReadWriteSplitting:
         provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
         ConnectionProviderManager.set_connection_provider(provider)
 
-        WrapperProperties.FAILOVER_TIMEOUT_MS.set(proxied_failover_props, "1000")
+        WrapperProperties.FAILOVER_TIMEOUT_SEC.set(proxied_failover_props, "1")
         WrapperProperties.FAILURE_DETECTION_TIME_MS.set(proxied_failover_props, "1000")
         WrapperProperties.FAILURE_DETECTION_COUNT.set(proxied_failover_props, "1")
 

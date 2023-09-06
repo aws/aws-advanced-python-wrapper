@@ -238,11 +238,10 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             return self._pool_mapping(host_info, props)
 
         # Otherwise use default map key
-        user = props[WrapperProperties.USER.name]
-        # TODO: Should we raise an error if the user is None? If we return "", the final key will just be the URL.
-        #  Connections would probably be shared between users in this case, so I think it would make sense to raise an
-        #  error warning the user.
-        return user if user is not None else ""
+        user = props.get(WrapperProperties.USER.name, None)
+        if user is None or user == "":
+            raise AwsWrapperError(Messages.get("SqlAlchemyPooledConnectionProvider.UnableToCreateDefaultKey"))
+        return user
 
     def _create_pool(
             self,
