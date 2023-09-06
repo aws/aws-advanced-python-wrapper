@@ -15,8 +15,9 @@
 from __future__ import annotations
 
 from inspect import signature
-from typing import TYPE_CHECKING, Callable, Set
+from typing import TYPE_CHECKING, Any, Callable, Set
 
+import psycopg
 from sqlalchemy import PoolProxiedConnection
 
 if TYPE_CHECKING:
@@ -113,3 +114,13 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
         else:
             raise AwsWrapperError(
                 Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "Psycopg", "read_only"))
+
+    def get_connection_from_obj(self, obj: object) -> Any:
+        if isinstance(obj, psycopg.Connection):
+            return obj
+
+        if isinstance(obj, psycopg.Cursor):
+            if hasattr(obj, "connection"):
+                return obj.connection
+
+        return None
