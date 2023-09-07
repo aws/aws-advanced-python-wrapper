@@ -21,7 +21,7 @@ pep8-naming = "^0.13.3"
 
 [tool.poetry.group.test.dependencies]
 boto3 = "^1.27.1"
-coverage = "^7.3.0"
+coverage = "^7.3.1"
 debugpy = "^1.6.7"
 pydevd-pycharm = "^232.8660.197"
 pytest = "^7.3.2"
