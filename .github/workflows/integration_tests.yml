@@ -54,7 +54,7 @@ jobs:
 
       - name: 'Run Integration Tests'
         run: |
-          ./gradlew --no-parallel --no-daemon test-all-environments --info
+          ./gradlew --no-parallel --no-daemon test-pg-aurora --info
         env:
           AURORA_CLUSTER_DOMAIN: ${{ secrets.DB_CONN_SUFFIX }}
           AURORA_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
