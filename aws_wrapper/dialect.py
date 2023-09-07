@@ -335,8 +335,8 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
     _topology_query = ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
                        "CPU, COALESCE(REPLICA_LAG_IN_MSEC, 0), LAST_UPDATE_TIMESTAMP "
                        "FROM aurora_replica_status() "
-                       "WHERE EXTRACT(EPOCH FROM(NOW() - LAST_UPDATE_TIMESTAMP)) <= 300 "
-                       "OR SESSION_ID = 'MASTER_SESSION_ID' ")
+                       "WHERE EXTRACT(EPOCH FROM(NOW() - LAST_UPDATE_TIMESTAMP)) <= 300 OR SESSION_ID = 'MASTER_SESSION_ID' "
+                       "OR LAST_UPDATE_TIMESTAMP IS NULL")
 
     _host_id_query = "SELECT aurora_db_instance_identifier()"
     _is_reader_query = "SELECT pg_is_in_recovery()"
