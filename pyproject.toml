@@ -9,7 +9,7 @@ license = "Apache-2.0"
 [tool.poetry.dependencies]
 python = "^3.8.1"
 resourcebundle = "^2.1.0"
-boto3 = "^1.28.35"
+boto3 = "^1.28.42"
 isort = "^5.12.0"
 
 [tool.poetry.group.dev.dependencies]
