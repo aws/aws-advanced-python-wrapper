@@ -47,7 +47,7 @@ class TestAuroraConnectivity:
     def props(self):
         user = TestEnvironment.get_current().get_database_info().get_username()
         password = TestEnvironment.get_current().get_database_info().get_password()
-        return {"plugins": "efm",  "user": user, "password": password, "connect_timeout": 10}
+        return {"plugins": "host_monitoring",  "user": user, "password": password, "connect_timeout": 10}
 
     def test_wrapper_connection_reader_cluster_with_efm_enabled(
             self, test_driver: TestDriver, props, conn_utils):
