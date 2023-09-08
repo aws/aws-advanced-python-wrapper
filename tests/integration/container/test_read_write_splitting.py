@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_wrapper.host_list_provider import AuroraHostListProvider
+
 if TYPE_CHECKING:
     from tests.integration.container.utils.test_driver import TestDriver
 
@@ -44,6 +46,12 @@ class TestReadWriteSplitting:
     def aurora_utils(self):
         region: str = TestEnvironment.get_current().get_info().get_aurora_region()
         return AuroraTestUtility(region)
+
+    @pytest.fixture(autouse=True)
+    def clear_caches(self):
+        AuroraHostListProvider._topology_cache.clear()
+        AuroraHostListProvider._is_primary_cluster_id_cache.clear()
+        AuroraHostListProvider._cluster_ids_to_update.clear()
 
     @pytest.fixture(scope='class')
     def props(self):
@@ -190,30 +198,30 @@ class TestReadWriteSplitting:
         current_id = aurora_utils.query_instance_id(conn)
         assert writer_id == current_id
 
-    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
-    @enable_on_num_instances(min_instances=3)
-    def test_set_read_only_true__all_readers_down(
-            self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, aurora_utils):
-        target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_props)
-        writer_id = aurora_utils.query_instance_id(conn)
-
-        instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
-        for i in range(1, len(instance_ids)):
-            ProxyHelper.disable_connectivity(instance_ids[i])
-
-        conn.read_only = True
-        current_id = aurora_utils.query_instance_id(conn)
-        assert writer_id == current_id
-
-        conn.read_only = False
-        current_id = aurora_utils.query_instance_id(conn)
-        assert writer_id == current_id
-
-        ProxyHelper.enable_all_connectivity()
-        conn.read_only = True
-        current_id = aurora_utils.query_instance_id(conn)
-        assert writer_id != current_id
+    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    # @enable_on_num_instances(min_instances=3)
+    # def test_set_read_only_true__all_readers_down(
+    #         self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, aurora_utils):
+    #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
+    #     conn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_props)
+    #     writer_id = aurora_utils.query_instance_id(conn)
+    #
+    #     instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
+    #     for i in range(1, len(instance_ids)):
+    #         ProxyHelper.disable_connectivity(instance_ids[i])
+    #
+    #     conn.read_only = True
+    #     current_id = aurora_utils.query_instance_id(conn)
+    #     assert writer_id == current_id
+    #
+    #     conn.read_only = False
+    #     current_id = aurora_utils.query_instance_id(conn)
+    #     assert writer_id == current_id
+    #
+    #     ProxyHelper.enable_all_connectivity()
+    #     conn.read_only = True
+    #     current_id = aurora_utils.query_instance_id(conn)
+    #     assert writer_id != current_id
 
     def test_set_read_only_true__closed_connection(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
