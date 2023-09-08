@@ -48,14 +48,6 @@ class Warning(Exception):
 class Error(Exception):
     __module__ = "aws_wrapper"
 
-    def __init__(
-            self,
-            sqlstate: str = None,
-            *args: Any
-    ):
-        super().__init__(*args)
-        self._sqlstate: str = sqlstate
-
 
 class InterfaceError(Error):
     __module__ = "aws_wrapper"
