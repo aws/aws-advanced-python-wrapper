@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Protocol, Set
 
+from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
@@ -75,7 +76,7 @@ class Plugin(ABC):
         return False
 
     def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
-        raise NotImplementedError(Messages.get_formatted("Plugin.UnsupportedMethod", "get_host_info_by_strategy"))
+        raise UnsupportedOperationError(Messages.get_formatted("Plugin.UnsupportedMethod", "get_host_info_by_strategy"))
 
     def init_host_provider(
             self,

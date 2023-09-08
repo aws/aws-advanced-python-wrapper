@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Callable, Set
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
 
-from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.generic_target_driver_dialect import \
     GenericTargetDriverDialect
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
@@ -56,9 +56,9 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
         return not is_connected_func()
 
     def abort_connection(self, conn: Connection):
-        raise NotImplementedError(
+        raise UnsupportedOperationError(
             Messages.get_formatted(
-                "TargetDriverDialect.UnImplementedError",
+                "TargetDriverDialect.UnsupportedOperationError",
                 "MySQL Connector Python",
                 "abort_connection"))
 

@@ -16,6 +16,7 @@ from typing import Callable, Optional
 
 import psycopg
 
+from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.utils.messages import Messages
 from .test_driver import TestDriver
 from .test_environment import TestEnvironment
@@ -35,4 +36,4 @@ class DriverHelper:
         if d == TestDriver.PG:
             return psycopg.Connection.connect
         else:
-            raise NotImplementedError(d)
+            raise UnsupportedOperationError(d)
