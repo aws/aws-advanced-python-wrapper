@@ -52,8 +52,8 @@ class TestBasicConnectivity:
         conn = target_driver_connect(conn_utils.get_conn_string())
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
-        records = cursor.fetchall()
-        assert len(records) == 1
+        result = cursor.fetchone()
+        assert 1 == result[0]
 
         conn.close()
 
@@ -62,8 +62,8 @@ class TestBasicConnectivity:
         conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect)
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
-        records = cursor.fetchall()
-        assert len(records) == 1
+        result = cursor.fetchone()
+        assert 1 == result[0]
 
         conn.close()
 
@@ -73,8 +73,8 @@ class TestBasicConnectivity:
         conn = target_driver_connect(conn_utils.get_proxy_conn_string())
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
-        records = cursor.fetchall()
-        assert len(records) == 1
+        result = cursor.fetchone()
+        assert 1 == result[0]
 
         conn.close()
 
@@ -84,8 +84,8 @@ class TestBasicConnectivity:
         conn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
-        records = cursor.fetchall()
-        assert len(records) == 1
+        result = cursor.fetchone()
+        assert 1 == result[0]
 
         conn.close()
 
