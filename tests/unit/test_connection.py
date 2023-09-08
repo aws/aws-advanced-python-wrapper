@@ -36,9 +36,7 @@ def test_connection_basic():
             patch.object(PluginServiceImpl, "refresh_host_list"), \
             patch.object(PluginServiceImpl, "current_connection", None), \
             patch.object(PluginServiceImpl, "initial_connection_host_info", HostInfo("localhost")):
-        AwsWrapperConnection.connect(
-            conninfo,
-            connection_mock.connect)
+        AwsWrapperConnection.connect(connection_mock.connect, conninfo)
 
         connection_mock.connect.assert_called_with(host="localhost", dbname="postgres", user="postgres",
                                                    password="qwerty")

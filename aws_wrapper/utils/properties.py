@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.utils.messages import Messages
@@ -142,7 +142,7 @@ class WrapperProperties:
 class PropertiesUtils:
 
     @staticmethod
-    def parse_properties(conn_info: str, **kwargs: Union[None, int, str]) -> Properties:
+    def parse_properties(conn_info: str, **kwargs: Any) -> Properties:
         props: Properties
         if conn_info == "":
             props = Properties()

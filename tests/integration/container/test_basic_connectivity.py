@@ -43,7 +43,7 @@ class TestBasicConnectivity:
 
     def test_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        awsconn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect)
+        awsconn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string())
         awscursor = awsconn.cursor()
         awscursor.execute("SELECT 1")
         records = awscursor.fetchall()
@@ -65,7 +65,7 @@ class TestBasicConnectivity:
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_proxied_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        awsconn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
+        awsconn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_proxy_conn_string())
         awscursor = awsconn.cursor()
         awscursor.execute("SELECT 1")
         records = awscursor.fetchall()
@@ -82,7 +82,7 @@ class TestBasicConnectivity:
         ProxyHelper.disable_connectivity(instance.get_instance_id())
 
         try:
-            AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
+            AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_proxy_conn_string())
 
             # Should not be here since proxy is blocking db connectivity
             assert False

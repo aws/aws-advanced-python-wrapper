@@ -48,7 +48,7 @@ class TestAwsIamAuthentication:
         })
 
         with pytest.raises(AwsWrapperError):
-            AwsWrapperConnection.connect(connect_params, target_driver_connect)
+            AwsWrapperConnection.connect(target_driver_connect, connect_params)
 
     def test_iam_no_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -57,7 +57,7 @@ class TestAwsIamAuthentication:
         })
 
         with pytest.raises(AwsWrapperError):
-            AwsWrapperConnection.connect(connect_params, target_driver_connect)
+            AwsWrapperConnection.connect(target_driver_connect, connect_params)
 
     def test_iam_using_ip_address(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -109,7 +109,7 @@ class TestAwsIamAuthentication:
         return gethostbyname(hostname)
 
     def validate_connection(self, target_driver_connect: Callable, connect_params: str):
-        with AwsWrapperConnection.connect(connect_params, target_driver_connect) as conn, \
+        with AwsWrapperConnection.connect(target_driver_connect, connect_params) as conn, \
                 conn.cursor() as cursor:
             cursor.execute("SELECT now()")
             records = cursor.fetchall()

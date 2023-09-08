@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
@@ -82,11 +84,10 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     @staticmethod
     def connect(
+            target: Union[str, Callable],
             conninfo: str = "",
-            target: Union[None, str, Callable] = None,
-            **kwargs: Union[None, int, str]
-    ) -> "AwsWrapperConnection":
-        if not target:
+            **kwargs: Any) -> AwsWrapperConnection:
+        if target is None or target == "":
             raise Error(Messages.get("Wrapper.RequiredTargetDriver"))
 
         # TODO: fix target str parsing functionality
@@ -130,7 +131,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         self._plugin_manager.execute(self.target_connection, "Connection.close",
                                      lambda: self.target_connection.close())
 
-    def cursor(self, **kwargs: Union[None, int, str]) -> "AwsWrapperCursor":
+    def cursor(self, **kwargs: Any) -> AwsWrapperCursor:
         _cursor = self.target_connection.cursor(**kwargs)
         return AwsWrapperCursor(self, self._plugin_manager, _cursor)
 
@@ -170,7 +171,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def __del__(self):
         self.release_resources()
 
-    def __enter__(self: "AwsWrapperConnection") -> "AwsWrapperConnection":
+    def __enter__(self: AwsWrapperConnection) -> AwsWrapperConnection:
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -211,15 +212,15 @@ class AwsWrapperCursor(Cursor):
         self._plugin_manager.execute(self.target_cursor, "Cursor.close",
                                      lambda: self.target_cursor.close())
 
-    def callproc(self, **kwargs: Union[None, int, str]):
+    def callproc(self, **kwargs: Any):
         return self._plugin_manager.execute(self.target_cursor, "Cursor.callproc",
                                             lambda: self.target_cursor.callproc(**kwargs))
 
     def execute(
             self,
             query: str,
-            **kwargs: Union[None, int, str]
-    ) -> "AwsWrapperCursor":
+            **kwargs: Any
+    ) -> AwsWrapperCursor:
         try:
             return self._plugin_manager.execute(self.target_cursor, "Cursor.execute",
                                                 lambda: self.target_cursor.execute(query, **kwargs), query, kwargs)
@@ -230,7 +231,7 @@ class AwsWrapperCursor(Cursor):
     def executemany(
             self,
             query: str,
-            **kwargs: Union[None, int, str]
+            **kwargs: Any
     ) -> None:
         self._plugin_manager.execute(self.target_cursor, "Cursor.executemany",
                                      lambda: self.target_cursor.executemany(query, **kwargs))
@@ -262,7 +263,7 @@ class AwsWrapperCursor(Cursor):
         return self._plugin_manager.execute(self.target_cursor, "Cursor.setoutputsize",
                                             lambda: self.target_cursor.setoutputsize(size, column))
 
-    def __enter__(self: "AwsWrapperCursor") -> "AwsWrapperCursor":
+    def __enter__(self: AwsWrapperCursor) -> AwsWrapperCursor:
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
