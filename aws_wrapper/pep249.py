@@ -33,7 +33,7 @@ aws_wrapper -- PEP249 base classes
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Union
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -94,9 +94,9 @@ class Connection:
 
     @staticmethod
     def connect(
+            target: Union[str, Callable],
             conninfo: str = "",
-            **kwargs
-    ) -> Any:
+            **kwargs: Any) -> Connection:
         ...
 
     def close(self) -> None:

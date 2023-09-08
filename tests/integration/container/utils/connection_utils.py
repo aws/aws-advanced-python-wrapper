@@ -14,8 +14,9 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
+from .driver_helper import DriverHelper
 from .test_environment import TestEnvironment
 
 
@@ -53,9 +54,19 @@ class ConnectionUtils:
     def reader_cluster_host(self) -> str:
         return TestEnvironment.get_current().get_database_info().get_cluster_read_only_endpoint()
 
-    def get_conn_string(self, host: Optional[str] = None) -> str:
+    def get_connect_params(
+            self,
+            host: Optional[str] = None,
+            port: Optional[int] = None,
+            user: Optional[str] = None,
+            password: Optional[str] = None,
+            dbname: Optional[str] = None) -> Dict[str, Any]:
         host = self.writer_host if host is None else host
-        return f"host={host} port={self.port} dbname={self.dbname} user={self.user} password={self.password}"
+        port = self.port if port is None else port
+        user = self.user if user is None else user
+        password = self.password if password is None else password
+        dbname = self.dbname if dbname is None else dbname
+        return DriverHelper.get_connect_params(host, port, user, password, dbname)
 
     @property
     def proxy_port(self) -> int:
@@ -73,6 +84,16 @@ class ConnectionUtils:
     def proxy_reader_cluster_host(self) -> str:
         return TestEnvironment.get_current().get_proxy_database_info().get_cluster_read_only_endpoint()
 
-    def get_proxy_conn_string(self, host: Optional[str] = None):
+    def get_proxy_connect_params(
+            self,
+            host: Optional[str] = None,
+            port: Optional[int] = None,
+            user: Optional[str] = None,
+            password: Optional[str] = None,
+            dbname: Optional[str] = None) -> Dict[str, Any]:
         host = self.proxy_writer_host if host is None else host
-        return f"host={host} port={self.proxy_port} dbname={self.dbname} user={self.user} password={self.password}"
+        port = self.proxy_port if port is None else port
+        user = self.user if user is None else user
+        password = self.password if password is None else password
+        dbname = self.dbname if dbname is None else dbname
+        return DriverHelper.get_connect_params(host, port, user, password, dbname)

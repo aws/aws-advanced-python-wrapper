@@ -89,7 +89,7 @@ class TestReadWriteSplitting:
     def test_connect_to_writer__switch_read_only(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
         writer_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -117,7 +117,7 @@ class TestReadWriteSplitting:
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         reader_instance = test_environment.get_instances()[1]
         conn = AwsWrapperConnection.connect(
-            conn_utils.get_conn_string(reader_instance.get_host()), target_driver_connect, **props)
+            target_driver_connect, **conn_utils.get_connect_params(reader_instance.get_host()), **props)
         reader_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -132,7 +132,7 @@ class TestReadWriteSplitting:
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         conn = AwsWrapperConnection.connect(
-            conn_utils.get_conn_string(conn_utils.reader_cluster_host), target_driver_connect, **props)
+            target_driver_connect, **conn_utils.get_connect_params(conn_utils.reader_cluster_host), **props)
         reader_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -146,7 +146,7 @@ class TestReadWriteSplitting:
     def test_set_read_only_false__read_only_transaction(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
         writer_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -170,7 +170,7 @@ class TestReadWriteSplitting:
     def test_set_read_only_false_in_transaction(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
         writer_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -194,7 +194,7 @@ class TestReadWriteSplitting:
     def test_set_read_only_true_in_transaction(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
         writer_id = aurora_utils.query_instance_id(conn)
 
         cursor = conn.cursor()
@@ -213,7 +213,7 @@ class TestReadWriteSplitting:
     # def test_set_read_only_true__all_readers_down(
     #         self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, aurora_utils):
     #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
-    #     conn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_props)
+    #     conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_props)
     #     writer_id = aurora_utils.query_instance_id(conn)
     #
     #     instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
@@ -236,7 +236,7 @@ class TestReadWriteSplitting:
     def test_set_read_only_true__closed_connection(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
         conn.close()
 
         with pytest.raises(AwsWrapperError):
@@ -280,7 +280,6 @@ class TestReadWriteSplitting:
     #     current_id = aurora_utils.query_instance_id(conn)
     #     assert reader_id == current_id
 
-    # TODO: Enable test when we resolve the query timeout issue for topology query
     # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED, TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     # @enable_on_num_instances(min_instances=3)
     # def test_failover_to_new_writer__switch_read_only(
@@ -288,7 +287,7 @@ class TestReadWriteSplitting:
     #         proxied_failover_props, conn_utils, aurora_utils):
     #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
     #     conn = AwsWrapperConnection.connect(
-    #         conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_failover_props)
+    #         target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_props_with_failover)
     #     original_writer_id = aurora_utils.query_instance_id(conn)
     #
     #     instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]

@@ -196,20 +196,20 @@ class AuroraTestUtility:
 
     def _open_connection(self, instance_info: TestInstanceInfo) -> Any:
 
-        test_environment: TestEnvironment = TestEnvironment.get_current()
-        database_engine: DatabaseEngine = test_environment.get_engine()
+        env: TestEnvironment = TestEnvironment.get_current()
+        database_engine: DatabaseEngine = env.get_engine()
         test_driver = self._get_driver_for_database_engine(database_engine)
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
 
-        db_name: str = test_environment.get_database_info().get_default_db_name()
-        user: str = test_environment.get_database_info().get_username()
-        password: str = test_environment.get_database_info().get_password()
-        # TODO: connection params should be driver specific
-        connect_params: str = "host={0} port={1} dbname={2} user={3} password={4} connect_timeout=3".format(
-            instance_info.get_host(), instance_info.get_port(), db_name, user, password)
+        user = env.get_database_info().get_username()
+        password = env.get_database_info().get_password()
+        db = env.get_database_info().get_default_db_name()
 
-        conn = target_driver_connect(connect_params)
+        conn_params = DriverHelper.get_connect_params(
+            instance_info.get_host(), instance_info.get_port(), user, password, db, test_driver)
+
+        conn = target_driver_connect(**conn_params, connect_timeout=3)
         return conn
 
     def _get_topology_sql(self, database_engine: DatabaseEngine) -> str:
