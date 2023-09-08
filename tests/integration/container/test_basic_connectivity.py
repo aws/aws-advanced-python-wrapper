@@ -16,20 +16,36 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .utils.test_environment_features import TestEnvironmentFeatures
+import pytest
+
+from tests.integration.container.utils.aurora_test_utility import \
+    AuroraTestUtility
+from tests.integration.container.utils.database_engine_deployment import \
+    DatabaseEngineDeployment
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
-    from .utils.test_environment import TestEnvironment
     from .utils.test_instance_info import TestInstanceInfo
 
 from aws_wrapper.wrapper import AwsWrapperConnection
-from .utils.conditions import enable_on_features
+from .utils.conditions import (disable_on_features, enable_on_deployment,
+                               enable_on_features, enable_on_num_instances)
 from .utils.driver_helper import DriverHelper
 from .utils.proxy_helper import ProxyHelper
+from .utils.test_environment import TestEnvironment
+from .utils.test_environment_features import TestEnvironmentFeatures
 
 
 class TestBasicConnectivity:
+
+    @pytest.fixture(scope='class')
+    def aurora_utils(self):
+        region: str = TestEnvironment.get_current().get_info().get_aurora_region()
+        return AuroraTestUtility(region)
+
+    @pytest.fixture(scope='class')
+    def props(self):
+        return {"plugins": "host_monitoring", "connect_timeout": 10}
 
     def test_direct_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -43,13 +59,13 @@ class TestBasicConnectivity:
 
     def test_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        awsconn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect)
-        awscursor = awsconn.cursor()
-        awscursor.execute("SELECT 1")
-        records = awscursor.fetchall()
+        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        records = cursor.fetchall()
         assert len(records) == 1
 
-        awsconn.close()
+        conn.close()
 
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_proxied_direct_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
@@ -65,13 +81,13 @@ class TestBasicConnectivity:
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_proxied_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        awsconn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
-        awscursor = awsconn.cursor()
-        awscursor.execute("SELECT 1")
-        records = awscursor.fetchall()
+        conn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        records = cursor.fetchall()
         assert len(records) == 1
 
-        awsconn.close()
+        conn.close()
 
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_proxied_wrapper_connection_failed(
@@ -90,3 +106,18 @@ class TestBasicConnectivity:
         except Exception:
             # That is expected exception. Test pass.
             assert True
+
+    @enable_on_num_instances(min_instances=2)
+    @enable_on_deployment(DatabaseEngineDeployment.AURORA)
+    @disable_on_features([TestEnvironmentFeatures.PERFORMANCE])
+    def test_wrapper_connection_reader_cluster_with_efm_enabled(
+            self, test_driver: TestDriver, props, conn_utils):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        conn = AwsWrapperConnection.connect(
+            conn_utils.get_conn_string(conn_utils.reader_cluster_host), target_driver_connect, **props)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+        assert 1 == result[0]
+
+        conn.close()
