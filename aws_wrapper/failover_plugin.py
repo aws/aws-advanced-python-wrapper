@@ -26,12 +26,12 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from psycopg import OperationalError
 
-from aws_wrapper.errors import (AwsWrapperError, FailoverSuccessError,
+from aws_wrapper.errors import (AwsWrapperError, FailoverFailedError,
+                                FailoverSuccessError,
                                 TransactionResolutionUnknownError)
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
                                             HostListProviderService)
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
-from aws_wrapper.pep249 import Error
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)
@@ -60,7 +60,16 @@ class FailoverPlugin(Plugin):
         self._host_list_provider_service: HostListProviderService
         self._reader_failover_handler: ReaderFailoverHandler
         self._writer_failover_handler: WriterFailoverHandler
+
         self._enable_failover_setting = WrapperProperties.ENABLE_FAILOVER.get_bool(self._properties)
+        self._failover_timeout_sec = WrapperProperties.FAILOVER_TIMEOUT_SEC.get_float(self._properties)
+        self._failover_cluster_topology_refresh_rate_sec = WrapperProperties.FAILOVER_CLUSTER_TOPOLOGY_REFRESH_RATE_SEC.get_float(
+            self._properties)
+        self._failover_writer_reconnect_interval_sec = WrapperProperties.FAILOVER_WRITER_RECONNECT_INTERVAL_SEC.get_float(
+            self._properties)
+        self._failover_reader_connect_timeout_sec = WrapperProperties.FAILOVER_READER_CONNECT_TIMEOUT_SEC.get_float(
+            self._properties)
+
         self._failover_mode: FailoverMode
         self._is_in_transaction: bool = False
         self._is_closed: bool = False
@@ -86,9 +95,14 @@ class FailoverPlugin(Plugin):
             self._host_list_provider_service.host_list_provider = \
                 AuroraHostListProvider(self._host_list_provider_service, properties)
 
-        self._reader_failover_handler = ReaderFailoverHandlerImpl(self._plugin_service, self._properties)
+        self._reader_failover_handler = ReaderFailoverHandlerImpl(self._plugin_service, self._properties,
+                                                                  self._failover_timeout_sec,
+                                                                  self._failover_reader_connect_timeout_sec)
         self._writer_failover_handler = WriterFailoverHandlerImpl(self._plugin_service, self._reader_failover_handler,
-                                                                  self._properties)
+                                                                  self._properties,
+                                                                  self._failover_timeout_sec,
+                                                                  self._failover_cluster_topology_refresh_rate_sec,
+                                                                  self._failover_writer_reconnect_interval_sec)
 
         init_host_provider_func()
 
@@ -176,7 +190,9 @@ class FailoverPlugin(Plugin):
             properties: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
-        conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
+        conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection,
+                                                                          self._host_list_provider_service, host,
+                                                                          properties,
                                                                           connect_func)
         if is_initial_connection:
             self._plugin_service.refresh_host_list(conn)
@@ -226,7 +242,7 @@ class FailoverPlugin(Plugin):
         result: ReaderFailoverResult = self._reader_failover_handler.failover(self._plugin_service.hosts, failed_host)
 
         if result is None or not result.is_connected:
-            raise Error(Messages.get("Failover.UnableToConnectToReader"))
+            raise FailoverFailedError(Messages.get("Failover.UnableToConnectToReader"))
         else:
             if result.exception is not None:
                 raise result.exception
@@ -248,7 +264,7 @@ class FailoverPlugin(Plugin):
         if result is not None and result.exception is not None:
             raise result.exception
         elif result is None or not result.is_connected:
-            raise Error(Messages.get("Failover.UnableToConnectToWriter"))
+            raise FailoverFailedError(Messages.get("Failover.UnableToConnectToWriter"))
 
         writer_host = self._get_writer(result.topology)
         self._plugin_service.set_current_connection(result.new_connection, writer_host)
