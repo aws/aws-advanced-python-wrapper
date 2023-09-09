@@ -83,7 +83,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             future = executor.submit(self._internal_failover_task, current_topology, current_host)
 
             try:
-                result = future.result(timeout=self._max_failover_timeout_sec / 1000)
+                result = future.result(timeout=self._max_failover_timeout_sec)
                 if result is None:
                     result = ReaderFailoverHandlerImpl.failed_reader_failover_result
             except TimeoutError:
@@ -150,7 +150,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
                 futures.append(executor.submit(self.attempt_connection, hosts[i + 1]))
 
             try:
-                for future in as_completed(futures, timeout=self.timeout_sec / 1000):
+                for future in as_completed(futures, timeout=self.timeout_sec):
                     result = future.result()
                     if result.is_connected or result.exception is not None:
                         return result

@@ -132,9 +132,9 @@ def test_reconnect_to_writer_task_b_reader_exception(
         plugin_service_mock,
         reader_failover_mock,
         default_properties,
-        5_000,
-        2_000,
-        2_000)
+        5,
+        2,
+        2)
     result: WriterFailoverResult = target.failover(topology)
 
     assert result.is_connected
@@ -180,9 +180,9 @@ def test_reconnect_to_writer_slow_task_b(
         plugin_service_mock,
         reader_failover_mock,
         default_properties,
-        60_000,
-        5_000,
-        5_000)
+        60,
+        5,
+        5)
     result: WriterFailoverResult = target.failover(topology)
 
     assert result.is_connected
@@ -217,9 +217,9 @@ def test_reconnect_to_writer_task_b_defers(
         plugin_service_mock,
         reader_failover_mock,
         default_properties,
-        60_000,
-        2_000,
-        2_000)
+        60,
+        2,
+        2)
     result: WriterFailoverResult = target.failover(topology)
 
     assert result.is_connected
@@ -263,9 +263,9 @@ def test_connect_to_new_writer_slow_task_a(
         plugin_service_mock,
         reader_failover_mock,
         default_properties,
-        60_000,
-        2_000,
-        2_000)
+        60,
+        2,
+        2)
     result: WriterFailoverResult = target.failover(topology)
 
     assert result.is_connected
@@ -311,9 +311,9 @@ def test_connect_to_new_writer_task_a_defers(
         plugin_service_mock,
         reader_failover_mock,
         default_properties,
-        60_000,
-        5_000,
-        5_000)
+        60,
+        5,
+        5)
     result: WriterFailoverResult = target.failover(topology)
 
     assert result.is_connected
@@ -367,9 +367,9 @@ def test_failed_to_connect_failover_timeout(
         plugin_service_mock,
         reader_failover_mock,
         default_properties,
-        5_000,
-        2_000,
-        2_000)
+        5,
+        2,
+        2)
     start_time = time()
     result: WriterFailoverResult = target.failover(topology)
     end_time = time()
@@ -413,9 +413,9 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(
         plugin_service_mock,
         reader_failover_mock,
         default_properties,
-        5_000,
-        2_000,
-        2_000)
+        5,
+        2,
+        2)
     result: WriterFailoverResult = target.failover(topology)
 
     assert not result.is_connected
