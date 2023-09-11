@@ -177,6 +177,9 @@ class PluginService(ExceptionHandler, Protocol):
     def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
         ...
 
+    def get_connection_provider_manager(self) -> ConnectionProviderManager:
+        ...
+
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
@@ -394,6 +397,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         return self._exception_manager.is_login_exception(dialect=self.dialect, error=error, sql_state=sql_state)
+
+    def get_connection_provider_manager(self) -> ConnectionProviderManager:
+        return self._container.plugin_manager.connection_provider_manager
 
     def _update_host_availability(self, hosts: Tuple[HostInfo, ...]):
         for host in hosts:

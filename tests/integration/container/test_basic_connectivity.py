@@ -36,6 +36,7 @@ from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
 
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
 class TestBasicConnectivity:
 
     @pytest.fixture(scope='class')

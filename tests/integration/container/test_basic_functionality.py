@@ -32,17 +32,19 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from aws_wrapper import AwsWrapperConnection
-from tests.integration.container.utils.aurora_test_utility import \
-    AuroraTestUtility
-
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
 
+from aws_wrapper import AwsWrapperConnection
+from tests.integration.container.utils.aurora_test_utility import \
+    AuroraTestUtility
+from .utils.conditions import disable_on_features
 from .utils.driver_helper import DriverHelper
 from .utils.test_environment import TestEnvironment
+from .utils.test_environment_features import TestEnvironmentFeatures
 
 
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
 class TestBasicFunctionality:
 
     @pytest.fixture(scope='class')

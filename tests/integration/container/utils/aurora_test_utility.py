@@ -15,16 +15,16 @@
 from __future__ import annotations
 
 import typing
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 
 import pytest
 
 if TYPE_CHECKING:
     from .test_database_info import TestDatabaseInfo
-    from .test_instance_info import TestInstanceInfo
 
 import socket
 import timeit
+from datetime import datetime, timedelta
 from logging import getLogger
 from time import perf_counter_ns, sleep
 from typing import Any, List, Optional
@@ -38,6 +38,7 @@ from .database_engine import DatabaseEngine
 from .driver_helper import DriverHelper
 from .test_driver import TestDriver
 from .test_environment import TestEnvironment
+from .test_instance_info import TestInstanceInfo
 
 
 class AuroraTestUtility:
@@ -49,10 +50,67 @@ class AuroraTestUtility:
         config = Config(region_name=region)
         self._client = boto3.client('rds', config=config)
 
-    def wait_until_cluster_has_right_state(self, cluster_id: str) -> None:
+    def get_db_instance(self, instance_id: str) -> Optional[Dict[str, Any]]:
+        filters = [{'Name': "db-instance-id", 'Values': [f"{instance_id}"]}]
+        response = self._client.describe_db_instances(DBInstanceIdentifier=instance_id,
+                                                      Filters=filters)
+        instances = response.get("DBInstances")
+        if instances is None or len(instances) == 0:
+            return None
+        return instances[0]
+
+    def does_db_instance_exist(self, instance_id: str) -> bool:
+        try:
+            instance = self.get_db_instance(instance_id)
+            return instance is not None
+        except self._client.exceptions.DBInstanceNotFoundFault:
+            return False
+
+    def create_db_instance(self, instance_id: str) -> TestInstanceInfo:
+        environment = TestEnvironment.get_current()
+
+        if self.does_db_instance_exist(instance_id):
+            self.delete_db_instance(instance_id)
+
+        self._client.create_db_instance(
+            DBClusterIdentifier=environment.get_info().get_aurora_cluster_name(),
+            DBInstanceIdentifier=instance_id,
+            DBInstanceClass="db.r5.large",
+            Engine=self.get_aurora_engine_name(environment.get_engine()),
+            PubliclyAccessible=True)
+
+        instance = self.wait_until_instance_has_desired_status(instance_id, 15, "available")
+        if instance is None:
+            raise Exception(Messages.get_formatted("AuroraTestUtility.CreateDBInstanceFailed", instance_id))
+
+        return TestInstanceInfo(instance)
+
+    def delete_db_instance(self, instance_id: str):
+        self._client.delete_db_instance(DBInstanceIdentifier=instance_id)
+        self.wait_until_instance_has_desired_status(instance_id, 15, "deleted")
+
+    def wait_until_instance_has_desired_status(
+            self, instance_id: str, wait_time_mins: float, desired_status: str) -> Optional[Dict[str, Any]]:
+        stop_time = datetime.now() + timedelta(minutes=wait_time_mins)
+        while datetime.now() <= stop_time:
+            try:
+                instance = self.get_db_instance(instance_id)
+                if instance is not None and instance.get("DBInstanceStatus") == desired_status:
+                    return instance
+            except self._client.exceptions.DBInstanceNotFoundFault:
+                if desired_status == "deleted":
+                    return None
+            except Exception:
+                pass
+            sleep(1)
+
+        raise InterruptedError(Messages.get_formatted(
+            "AuroraTestUtility.InstanceDescriptionTimeout", instance_id, desired_status, wait_time_mins))
+
+    def wait_until_cluster_has_desired_status(self, cluster_id: str, desired_status: str) -> None:
         cluster_info = self.get_db_cluster(cluster_id)
         status = cluster_info.get("Status")
-        while status != "available":
+        while status != desired_status:
             sleep(1)
             cluster_info = self.get_db_cluster(cluster_id)
             status = cluster_info.get("Status")
@@ -100,7 +158,7 @@ class AuroraTestUtility:
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_aurora_cluster_name()
 
-        self.wait_until_cluster_has_right_state(cluster_id)
+        self.wait_until_cluster_has_desired_status(cluster_id, "available")
 
         remaining_attempts = 10
         while remaining_attempts > 0:
@@ -248,13 +306,23 @@ class AuroraTestUtility:
                     sleep(1)
             assert success
 
-    def create_user(self, conn, username, password):
+    @staticmethod
+    def create_user(conn, username, password):
         engine = TestEnvironment.get_current().get_engine()
         if engine == DatabaseEngine.PG:
             sql = f"CREATE USER {username} WITH PASSWORD '{password}'"
         elif engine == DatabaseEngine.MYSQL:
             sql = f"CREATE USER {username} IDENTIFIED BY '{password}'"
         else:
-            raise RuntimeError(Messages.get_formatted("AuroraTestUtility.DetectedEngineInvalid", engine.value))
+            raise RuntimeError(Messages.get_formatted("AuroraTestUtility.InvalidDatabaseEngine", engine.value))
         cursor = conn.cursor()
         cursor.execute(sql)
+
+    @staticmethod
+    def get_aurora_engine_name(engine: DatabaseEngine):
+        if engine == DatabaseEngine.PG:
+            return "aurora-postgresql"
+        elif engine == DatabaseEngine.MYSQL:
+            return "aurora-mysql"
+
+        raise RuntimeError(Messages.get_formatted("AuroraTestUtility.InvalidDatabaseEngine", engine.value))
