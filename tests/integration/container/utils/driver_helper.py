@@ -36,4 +36,4 @@ class DriverHelper:
         if d == TestDriver.PG:
             return psycopg.Connection.connect
         else:
-            raise UnsupportedOperationError(str(d))
+            raise UnsupportedOperationError(d.value)

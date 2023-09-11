@@ -214,7 +214,7 @@ class TestEnvironment:
             disabled_by_feature = TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS in features
 
         else:
-            raise UnsupportedOperationError(str(test_driver))
+            raise UnsupportedOperationError(test_driver)
 
         if disabled_by_feature or (not driver_compatible_to_database_engine):
             return False
