@@ -84,23 +84,28 @@ class WrapperProperties:
         pattern will be automatically created for AWS RDS clusters.""")
 
     IAM_HOST = WrapperProperty("iam_host", "Overrides the host that is used to generate the IAM token")
-    IAM_DEFAULT_PORT = WrapperProperty("iam_default_port",
-                                       "Overrides default port that is used to generate the IAM token")
+    IAM_DEFAULT_PORT = WrapperProperty(
+        "iam_default_port",
+        "Overrides default port that is used to generate the IAM token")
     IAM_REGION = WrapperProperty("iam_region", "Overrides AWS region that is used to generate the IAM token")
-    IAM_EXPIRATION = WrapperProperty("iam_expiration", "IAM token cache expiration in seconds",
-                                     str(_DEFAULT_TOKEN_EXPIRATION_SEC))
-    SECRETS_MANAGER_SECRET_ID = WrapperProperty("secrets_manager_secret_id",
-                                                "The name or the ARN of the secret to retrieve.")
-    SECRETS_MANAGER_REGION = WrapperProperty("secrets_manager_region", "The region of the secret to retrieve.",
-                                             "us-east-1")
+    IAM_EXPIRATION = WrapperProperty(
+        "iam_expiration",
+        "IAM token cache expiration in seconds",
+        str(_DEFAULT_TOKEN_EXPIRATION_SEC))
+    SECRETS_MANAGER_SECRET_ID = WrapperProperty(
+        "secrets_manager_secret_id",
+        "The name or the ARN of the secret to retrieve.")
+    SECRETS_MANAGER_REGION = WrapperProperty(
+        "secrets_manager_region",
+        "The region of the secret to retrieve.",
+        "us-east-1")
     DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect.")
-    AUXILIARY_QUERY_TIMEOUT_SEC = WrapperProperty("auxiliary_query_timeout_sec",
-                                                  """Network timeout, in seconds, used for auxiliary queries to the database.
-                                                  This timeout applies to queries executed by the wrapper driver to
-                                                  gain info about the connected database.
-                                                  It does not apply to queries requested by the driver client.
-                                                  """,
-                                                  "5")
+    AUXILIARY_QUERY_TIMEOUT_SEC = WrapperProperty(
+        "auxiliary_query_timeout_sec",
+        """Network timeout, in seconds, used for auxiliary queries to the database.
+        This timeout applies to queries executed by the wrapper driver to gain info about the connected database.
+        It does not apply to queries requested by the driver client.""",
+        "5")
 
     # HostMonitoringPlugin
     FAILURE_DETECTION_ENABLED = WrapperProperty(

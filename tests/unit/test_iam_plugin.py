@@ -89,16 +89,20 @@ def pg_properties():
 
 
 @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_pg_connect_valid_token_in_cache(mock_plugin_service, mock_session, mock_func, mock_client):
+def test_pg_connect_valid_token_in_cache(mocker, mock_plugin_service, mock_session, mock_func, mock_client):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     initial_token = TokenInfo(_TEST_TOKEN, datetime.now() + timedelta(minutes=5))
     _token_cache[_PG_CACHE_KEY] = initial_token
 
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service,
                                                  mock_session)
-    target_plugin.connect(host_info=_PG_HOST_INFO, props=test_props,
-                          initial=False,
-                          connect_func=mock_func)
+    target_plugin.connect(
+        target_driver_func=mocker.MagicMock(),
+        target_driver_dialect=mocker.MagicMock(),
+        host_info=_PG_HOST_INFO,
+        props=test_props,
+        is_initial_connection=False,
+        connect_func=mock_func)
 
     mock_client.generate_db_auth_token.assert_not_called()
 
@@ -109,8 +113,8 @@ def test_pg_connect_valid_token_in_cache(mock_plugin_service, mock_session, mock
 
 
 @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_pg_connect_with_invalid_port_fall_backs_to_host_port(mock_plugin_service, mock_session, mock_func,
-                                                              mock_client):
+def test_pg_connect_with_invalid_port_fall_backs_to_host_port(
+        mocker, mock_plugin_service, mock_session, mock_func, mock_client):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     invalid_port = "0"
     test_props[WrapperProperties.IAM_DEFAULT_PORT.name] = invalid_port
@@ -120,9 +124,13 @@ def test_pg_connect_with_invalid_port_fall_backs_to_host_port(mock_plugin_servic
 
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service,
                                                  mock_session)
-    target_plugin.connect(host_info=_PG_HOST_INFO_WITH_PORT, props=test_props,
-                          initial=False,
-                          connect_func=mock_func)
+    target_plugin.connect(
+        target_driver_func=mocker.MagicMock(),
+        target_driver_dialect=mocker.MagicMock(),
+        host_info=_PG_HOST_INFO_WITH_PORT,
+        props=test_props,
+        is_initial_connection=False,
+        connect_func=mock_func)
 
     mock_client.generate_db_auth_token.assert_called_with(
         DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
@@ -139,8 +147,8 @@ def test_pg_connect_with_invalid_port_fall_backs_to_host_port(mock_plugin_servic
 
 
 @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(mock_plugin_service, mock_session,
-                                                                               mock_func, mock_client):
+def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(
+        mocker, mock_plugin_service, mock_session, mock_func, mock_client):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     expected_default_pg_port = 5432
     invalid_port = "0"
@@ -151,9 +159,13 @@ def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(m
 
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service,
                                                  mock_session)
-    target_plugin.connect(host_info=_PG_HOST_INFO, props=test_props,
-                          initial=False,
-                          connect_func=mock_func)
+    target_plugin.connect(
+        target_driver_func=mocker.MagicMock(),
+        target_driver_dialect=mocker.MagicMock(),
+        host_info=_PG_HOST_INFO,
+        props=test_props,
+        is_initial_connection=False,
+        connect_func=mock_func)
 
     mock_client.generate_db_auth_token.assert_called_with(
         DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
@@ -171,7 +183,7 @@ def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(m
 
 
 @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_connect_expired_token_in_cache(mock_plugin_service, mock_session, mock_func, mock_client):
+def test_connect_expired_token_in_cache(mocker, mock_plugin_service, mock_session, mock_func, mock_client):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     initial_token = TokenInfo(_TEST_TOKEN, datetime.now() - timedelta(minutes=5))
     _token_cache[_PG_CACHE_KEY] = initial_token
@@ -179,7 +191,14 @@ def test_connect_expired_token_in_cache(mock_plugin_service, mock_session, mock_
     mock_func.side_effect = Exception("generic exception")
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
     with pytest.raises(Exception):
-        target_plugin.connect(host_info=_PG_HOST_INFO, props=test_props, initial=False, connect_func=mock_func)
+        target_plugin.connect(
+            target_driver_func=mocker.MagicMock(),
+            target_driver_dialect=mocker.MagicMock(),
+            host_info=_PG_HOST_INFO,
+            props=test_props,
+            is_initial_connection=False,
+            connect_func=mock_func)
+
     mock_client.generate_db_auth_token.assert_called_with(
         DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
         Port=5432,
@@ -193,12 +212,16 @@ def test_connect_expired_token_in_cache(mock_plugin_service, mock_session, mock_
 
 
 @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_connect_empty_cache(mock_plugin_service, mock_connection, mock_session, mock_func, mock_client):
+def test_connect_empty_cache(mocker, mock_plugin_service, mock_connection, mock_session, mock_func, mock_client):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
-    actual_connection = target_plugin.connect(host_info=_PG_HOST_INFO, props=test_props,
-                                              initial=False,
-                                              connect_func=mock_func)
+    actual_connection = target_plugin.connect(
+        target_driver_func=mocker.MagicMock(),
+        target_driver_dialect=mocker.MagicMock(),
+        host_info=_PG_HOST_INFO,
+        props=test_props,
+        is_initial_connection=False,
+        connect_func=mock_func)
 
     mock_client.generate_db_auth_token.assert_called_with(
         DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
@@ -213,7 +236,7 @@ def test_connect_empty_cache(mock_plugin_service, mock_connection, mock_session,
 
 
 @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_connect_with_specified_port(mock_plugin_service, mock_session, mock_func, mock_client):
+def test_connect_with_specified_port(mocker, mock_plugin_service, mock_session, mock_func, mock_client):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     cache_key_with_new_port: str = "us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:1234:postgresqlUser"
     initial_token = TokenInfo(f"{_TEST_TOKEN}:1234", datetime.now() + timedelta(minutes=5))
@@ -223,9 +246,13 @@ def test_connect_with_specified_port(mock_plugin_service, mock_session, mock_fun
     assert test_props.get("password") is None
 
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
-    target_plugin.connect(host_info=_PG_HOST_INFO_WITH_PORT, props=test_props,
-                          initial=False,
-                          connect_func=mock_func)
+    target_plugin.connect(
+        target_driver_func=mocker.MagicMock(),
+        target_driver_dialect=mocker.MagicMock(),
+        host_info=_PG_HOST_INFO_WITH_PORT,
+        props=test_props,
+        is_initial_connection=False,
+        connect_func=mock_func)
 
     mock_client.generate_db_auth_token.assert_not_called()
 
@@ -240,7 +267,7 @@ def test_connect_with_specified_port(mock_plugin_service, mock_session, mock_fun
 
 
 @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_connect_with_specified_iam_default_port(mock_plugin_service, mock_session, mock_func, mock_client):
+def test_connect_with_specified_iam_default_port(mocker, mock_plugin_service, mock_session, mock_func, mock_client):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     iam_default_port: str = "9999"
     test_props[WrapperProperties.IAM_DEFAULT_PORT.name] = iam_default_port
@@ -252,9 +279,13 @@ def test_connect_with_specified_iam_default_port(mock_plugin_service, mock_sessi
     assert test_props.get("password") is None
 
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
-    target_plugin.connect(host_info=_PG_HOST_INFO_WITH_PORT, props=test_props,
-                          initial=False,
-                          connect_func=mock_func)
+    target_plugin.connect(
+        target_driver_func=mocker.MagicMock(),
+        target_driver_dialect=mocker.MagicMock(),
+        host_info=_PG_HOST_INFO_WITH_PORT,
+        props=test_props,
+        is_initial_connection=False,
+        connect_func=mock_func)
 
     mock_client.generate_db_auth_token.assert_not_called()
 
@@ -269,7 +300,7 @@ def test_connect_with_specified_iam_default_port(mock_plugin_service, mock_sessi
 
 
 @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_connect_with_specified_region(mock_plugin_service, mock_session, mock_func, mock_client):
+def test_connect_with_specified_region(mocker, mock_plugin_service, mock_session, mock_func, mock_client):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     iam_region: str = "us-east-1"
 
@@ -285,9 +316,13 @@ def test_connect_with_specified_region(mock_plugin_service, mock_session, mock_f
 
     mock_client.generate_db_auth_token.return_value = f"{_TEST_TOKEN}:{iam_region}"
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
-    target_plugin.connect(host_info=HostInfo("pg.testdb.us-east-2.rds.amazonaws.com"), props=test_props,
-                          initial=False,
-                          connect_func=mock_func)
+    target_plugin.connect(
+        target_driver_func=mocker.MagicMock(),
+        target_driver_dialect=mocker.MagicMock(),
+        host_info=HostInfo("pg.testdb.us-east-2.rds.amazonaws.com"),
+        props=test_props,
+        is_initial_connection=False,
+        connect_func=mock_func)
 
     mock_session.client.assert_called_with(
         "rds",
@@ -308,7 +343,7 @@ def test_connect_with_specified_region(mock_plugin_service, mock_session, mock_f
 
 
 @patch("aws_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_connect_with_specified_host(mock_plugin_service, mock_session, mock_func, mock_client):
+def test_connect_with_specified_host(mocker, mock_plugin_service, mock_session, mock_func, mock_client):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     iam_host: str = "foo.testdb.us-east-2.rds.amazonaws.com"
 
@@ -319,9 +354,13 @@ def test_connect_with_specified_host(mock_plugin_service, mock_session, mock_fun
 
     mock_client.generate_db_auth_token.return_value = f"{_TEST_TOKEN}:{iam_host}"
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
-    target_plugin.connect(host_info=HostInfo("pg.testdb.us-east-2.rds.amazonaws.com"), props=test_props,
-                          initial=False,
-                          connect_func=mock_func)
+    target_plugin.connect(
+        target_driver_func=mocker.MagicMock(),
+        target_driver_dialect=mocker.MagicMock(),
+        host_info=HostInfo("pg.testdb.us-east-2.rds.amazonaws.com"),
+        props=test_props,
+        is_initial_connection=False,
+        connect_func=mock_func)
 
     mock_client.generate_db_auth_token.assert_called_with(
         DBHostname=iam_host,

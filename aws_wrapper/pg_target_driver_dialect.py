@@ -17,6 +17,8 @@ from __future__ import annotations
 from inspect import signature
 from typing import TYPE_CHECKING, Callable, Set
 
+from sqlalchemy import PoolProxiedConnection
+
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
 
@@ -51,6 +53,11 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
         return PgTargetDriverDialect.TARGET_DRIVER in str(signature(conn))
 
     def is_closed(self, conn: Connection) -> bool:
+        if isinstance(conn, PoolProxiedConnection) and hasattr(conn, "driver_connection"):
+            conn = conn.driver_connection
+            if conn is None:
+                return True
+
         if hasattr(conn, "closed"):
             return conn.closed
 
@@ -67,7 +74,11 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
         cancel_func()
 
     def is_in_transaction(self, conn: Connection) -> bool:
-        # Psycopg3
+        if isinstance(conn, PoolProxiedConnection) and hasattr(conn, "driver_connection"):
+            conn = conn.driver_connection
+            if conn is None:
+                return False
+
         if hasattr(conn, "info") and hasattr(conn.info, "transaction_status"):
             status: int = conn.info.transaction_status
             return status == self.PSYCOPG_ACTIVE_TRANSACTION_STATUS or status == self.PSYCOPG_IN_TRANSACTION_STATUS
@@ -78,6 +89,11 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
             "transaction_status"))
 
     def is_read_only(self, conn: Connection) -> bool:
+        if isinstance(conn, PoolProxiedConnection) and hasattr(conn, "driver_connection"):
+            conn = conn.driver_connection
+            if conn is None:
+                return False
+
         if hasattr(conn, "read_only"):
             if conn.read_only is None:
                 return False
@@ -87,6 +103,11 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
             Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "Psycopg", "read_only"))
 
     def set_read_only(self, conn: Connection, read_only: bool):
+        if isinstance(conn, PoolProxiedConnection) and hasattr(conn, "driver_connection"):
+            conn = conn.driver_connection
+            if conn is None:
+                raise AwsWrapperError(Messages.get("PgTargetDriverDialect.SetReadOnlyOnNullConnection"))
+
         if hasattr(conn, "read_only"):
             conn.read_only = read_only
         else:

@@ -20,10 +20,10 @@ from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set
 
 if TYPE_CHECKING:
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
-    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.utils.properties import Properties
 
 from aws_wrapper.errors import FailoverError, ReadWriteSplittingError
@@ -75,6 +75,8 @@ class ReadWriteSplittingPlugin(Plugin):
 
     def connect(
             self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -88,6 +90,8 @@ class ReadWriteSplittingPlugin(Plugin):
 
     def force_connect(
             self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,

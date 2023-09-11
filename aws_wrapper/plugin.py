@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, runtime_checkable
 
 if TYPE_CHECKING:
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.hostinfo import HostInfo, HostRole
     from aws_wrapper.pep249 import Connection
@@ -38,12 +39,24 @@ class Plugin(ABC):
     def subscribed_methods(self) -> Set[str]:
         pass
 
-    def connect(self, host_info: HostInfo, props: Properties,
-                initial: bool, connect_func: Callable) -> Connection:
+    def connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
         return connect_func()
 
-    def force_connect(self, host_info: HostInfo, props: Properties,
-                      initial: bool, force_connect_func: Callable) -> Connection:
+    def force_connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            force_connect_func: Callable) -> Connection:
         return force_connect_func()
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any) -> Any:

@@ -65,12 +65,24 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
     def subscribed_methods(self) -> Set[str]:
         return HostMonitoringPlugin._SUBSCRIBED_METHODS
 
-    def connect(self, host_info: HostInfo, props: Properties,
-                initial: bool, connect_func: Callable) -> Connection:
+    def connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
         return self._connect(host_info, connect_func)
 
-    def force_connect(self, host_info: HostInfo, props: Properties,
-                      initial: bool, force_connect_func: Callable) -> Connection:
+    def force_connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            force_connect_func: Callable) -> Connection:
         return self._connect(host_info, force_connect_func)
 
     def _connect(self, host_info: HostInfo, connect_func: Callable) -> Connection:

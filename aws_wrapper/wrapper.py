@@ -15,7 +15,8 @@
 from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
-from aws_wrapper.connection_provider import DriverConnectionProvider
+from sqlalchemy import PoolProxiedConnection
+
 from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
 from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.pep249 import Connection, Cursor, Error
@@ -62,23 +63,35 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     @property
     def autocommit(self):
-        if not hasattr(self.target_connection, "autocommit"):
+        if isinstance(self.target_connection, PoolProxiedConnection) \
+                and hasattr(self.target_connection, "driver_connection"):
+            driver_connection = self.target_connection.driver_connection
+        else:
+            driver_connection = self.target_connection
+
+        if not hasattr(driver_connection, "autocommit"):
             raise AwsWrapperError(Messages.get_formatted("Wrapper.NotImplemented", "autocommit"))
 
         return self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit",
-            lambda: self.target_connection.autocommit)
+            lambda: driver_connection.autocommit)
 
     @autocommit.setter
     def autocommit(self, autocommit: bool):
-        if not hasattr(self.target_connection, "autocommit"):
+        if isinstance(self.target_connection, PoolProxiedConnection) \
+                and hasattr(self.target_connection, "driver_connection"):
+            driver_connection = self.target_connection.driver_connection
+        else:
+            driver_connection = self.target_connection
+
+        if not hasattr(driver_connection, "autocommit"):
             raise AwsWrapperError(Messages.get_formatted("Wrapper.NotImplemented", "autocommit"))
 
         self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit_setter",
-            lambda: setattr(self.target_connection, "autocommit", autocommit), autocommit)
+            lambda: setattr(driver_connection, "autocommit", autocommit), autocommit)
 
     @staticmethod
     def connect(
@@ -103,11 +116,8 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         target_driver_dialect_manager: TargetDriverDialectManager = TargetDriverDialectManager()
         target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
-        plugin_service = PluginServiceImpl(container, props, target_driver_dialect)
-        plugin_manager: PluginManager = PluginManager(
-            container,
-            props,
-            DriverConnectionProvider(target_func, target_driver_dialect))
+        plugin_service = PluginServiceImpl(container, props, target_func, target_driver_dialect)
+        plugin_manager: PluginManager = PluginManager(container, props)
         plugin_service.host_list_provider = AuroraHostListProvider(plugin_service, props)
 
         plugin_manager.init_host_provider(props, plugin_service)
@@ -117,7 +127,8 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         if plugin_service.current_connection is not None:
             return AwsWrapperConnection(plugin_service, plugin_manager)
 
-        conn = plugin_manager.connect(plugin_service.initial_connection_host_info, props, True)
+        conn = plugin_manager.connect(
+            target_func, target_driver_dialect, plugin_service.initial_connection_host_info, props, True)
 
         if not conn:
             raise AwsWrapperError(Messages.get("ConnectionWrapper.ConnectionNotOpen"))

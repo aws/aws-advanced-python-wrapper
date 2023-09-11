@@ -23,7 +23,8 @@ if TYPE_CHECKING:
 
 from typing import List, Optional, Protocol
 
-from psycopg.errors import (InvalidAuthorizationSpecification, InvalidPassword,
+from psycopg.errors import (ConnectionTimeout,
+                            InvalidAuthorizationSpecification, InvalidPassword,
                             OperationalError)
 
 
@@ -58,7 +59,7 @@ class PgExceptionHandler(ExceptionHandler):
     _CONNECTION_FAILED = "connection failed"
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        if isinstance(error, QueryTimeoutError):
+        if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
             return True
 
         if sql_state:

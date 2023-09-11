@@ -130,8 +130,8 @@ def test_failover_timeout(plugin_service_mock, connection_mock, default_properti
     assert result.connection is None
     assert result.new_host is None
 
-    # Confirm we timed out after 5 seconds (plus an extra 2 seconds for breathing room)
-    assert duration < 7
+    # Confirm we timed out after 5 seconds (plus some extra time for breathing room)
+    assert duration < 6.1
 
 
 def test_failover_null_or_empty_host_list(plugin_service_mock, connection_mock, default_properties, default_hosts):

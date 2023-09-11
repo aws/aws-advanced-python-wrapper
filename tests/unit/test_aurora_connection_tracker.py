@@ -76,7 +76,8 @@ def props():
     return Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
 
 
-def test_track_new_instance_connection(mock_plugin_service, mock_rds_utils, mock_tracker, mock_cursor, mock_callable):
+def test_track_new_instance_connection(
+        mocker, mock_plugin_service, mock_rds_utils, mock_tracker, mock_cursor, mock_callable):
     host_info: HostInfo = HostInfo("instance1")
     mock_plugin_service.hosts = [host_info]
     mock_plugin_service.current_host_info = host_info
@@ -86,12 +87,14 @@ def test_track_new_instance_connection(mock_plugin_service, mock_rds_utils, mock
     plugin: AuroraConnectionTrackerPlugin = AuroraConnectionTrackerPlugin(mock_plugin_service, Properties(),
                                                                           mock_rds_utils, mock_tracker)
 
-    conn: Connection = plugin.connect(host_info, Properties(), True, mock_callable)
+    conn: Connection = plugin.connect(
+        mocker.MagicMock(), mocker.MagicMock(), host_info, Properties(), True, mock_callable)
     assert mock_conn == conn
     mock_tracker.populate_opened_connection_queue(host_info, mock_conn)
     assert 0 == len(host_info.aliases)
 
-    conn = plugin.connect(host_info, Properties(), False, mock_callable)
+    conn = plugin.connect(
+        mocker.MagicMock(), mocker.MagicMock(), host_info, Properties(), False, mock_callable)
     assert mock_conn == conn
     mock_tracker.populate_opened_connection_queue(host_info, mock_conn)
     assert 0 == len(host_info.aliases)

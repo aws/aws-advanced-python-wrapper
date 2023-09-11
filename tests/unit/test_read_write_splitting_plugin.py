@@ -276,14 +276,16 @@ def test_notify_connection_change(plugin_service_mock):
     assert plugin._writer_connection == writer_conn_mock
 
 
-def test_connect_non_initial_connection(plugin_service_mock, connect_func_mock, host_list_provider_service_mock):
+def test_connect_non_initial_connection(
+        mocker, plugin_service_mock, connect_func_mock, host_list_provider_service_mock):
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
     plugin._host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = writer_conn_mock
     plugin._reader_connection = None
 
     connect_func_mock.return_value = writer_conn_mock
-    conn = plugin.connect(writer_host, default_props, False, connect_func_mock)
+    conn = plugin.connect(
+        mocker.MagicMock(), mocker.MagicMock(), writer_host, default_props, False, connect_func_mock)
 
     assert conn == writer_conn_mock
 
@@ -291,7 +293,7 @@ def test_connect_non_initial_connection(plugin_service_mock, connect_func_mock, 
     host_list_provider_service_mock.initial_connection_host_info.assert_not_called()
 
 
-def test_connect_incorrect_host_role(plugin_service_mock, connect_func_mock, host_list_provider_service_mock):
+def test_connect_incorrect_host_role(mocker, plugin_service_mock, connect_func_mock, host_list_provider_service_mock):
     reader_host_incorrect_role = HostInfo(host="instance-4", role=HostRole.WRITER)
 
     def get_host_role_side_effect(conn):
@@ -307,7 +309,8 @@ def test_connect_incorrect_host_role(plugin_service_mock, connect_func_mock, hos
     plugin._host_list_provider_service = host_list_provider_service_mock
 
     connect_func_mock.return_value = reader_conn_mock
-    conn = plugin.connect(writer_host, default_props, True, connect_func_mock)
+    conn = plugin.connect(
+        mocker.MagicMock(), mocker.MagicMock(), writer_host, default_props, True, connect_func_mock)
 
     assert conn == reader_conn_mock
     connect_func_mock.assert_called()
@@ -318,7 +321,7 @@ def test_connect_incorrect_host_role(plugin_service_mock, connect_func_mock, hos
     assert updated_host.role == HostRole.READER
 
 
-def test_connect_error_updating_host(plugin_service_mock, connect_func_mock, host_list_provider_service_mock):
+def test_connect_error_updating_host(mocker, plugin_service_mock, connect_func_mock, host_list_provider_service_mock):
     def get_host_role_side_effect(conn):
         if conn == reader_conn_mock:
             return None
@@ -333,6 +336,7 @@ def test_connect_error_updating_host(plugin_service_mock, connect_func_mock, hos
     connect_func_mock.return_value = reader_conn_mock
 
     with pytest.raises(Error):
-        plugin.connect(writer_host, default_props, True, connect_func_mock)
+        plugin.connect(
+            mocker.MagicMock(), mocker.MagicMock(), writer_host, default_props, True, connect_func_mock)
 
     host_list_provider_service_mock.initial_connection_host_info.assert_not_called()

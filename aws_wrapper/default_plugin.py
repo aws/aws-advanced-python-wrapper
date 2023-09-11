@@ -17,6 +17,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from aws_wrapper.connection_provider import (ConnectionProvider,
+                                                 ConnectionProviderManager)
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.pep249 import Connection
@@ -24,8 +27,6 @@ if TYPE_CHECKING:
 import copy
 from typing import Any, Callable, Set
 
-from aws_wrapper.connection_provider import (ConnectionProvider,
-                                             ConnectionProviderManager)
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.plugin import Plugin
@@ -36,30 +37,53 @@ from aws_wrapper.utils.properties import Properties, PropertiesUtils
 class DefaultPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
 
-    def __init__(self, plugin_service: PluginService, default_conn_provider: ConnectionProvider):
+    def __init__(self, plugin_service: PluginService, connection_provider_manager: ConnectionProviderManager):
         self._plugin_service: PluginService = plugin_service
-        self._connection_provider_manager = ConnectionProviderManager(default_conn_provider)
+        self._connection_provider_manager = connection_provider_manager
 
-    def connect(self, host_info: HostInfo, props: Properties,
-                initial: bool, connect_func: Callable) -> Any:
+    def connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
         target_driver_props = copy.copy(props)
         PropertiesUtils.remove_wrapper_props(target_driver_props)
         connection_provider: ConnectionProvider = \
             self._connection_provider_manager.get_connection_provider(host_info, target_driver_props)
-        result = self._connect(host_info, target_driver_props, connection_provider)
+        result = self._connect(target_driver_func, target_driver_dialect, host_info, target_driver_props, connection_provider)
         return result
 
-    def _connect(self, host_info: HostInfo, props: Properties, conn_provider: ConnectionProvider) -> Connection:
-        conn = conn_provider.connect(host_info, props)
+    def _connect(
+            self,
+            target_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            conn_provider: ConnectionProvider) -> Connection:
+        conn = conn_provider.connect(target_func, target_driver_dialect, host_info, props)
         self._plugin_service.set_availability(host_info.all_aliases, HostAvailability.AVAILABLE)
         self._plugin_service.update_dialect(conn)
         return conn
 
-    def force_connect(self, host_info: HostInfo, props: Properties,
-                      initial: bool, force_connect_func: Callable) -> Connection:
+    def force_connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            force_connect_func: Callable) -> Connection:
         target_driver_props = copy.copy(props)
         PropertiesUtils.remove_wrapper_props(target_driver_props)
-        return self._connect(host_info, target_driver_props, self._connection_provider_manager.default_provider)
+        return self._connect(
+            target_driver_func,
+            target_driver_dialect,
+            host_info,
+            target_driver_props,
+            self._connection_provider_manager.default_provider)
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
         result = execute_func()

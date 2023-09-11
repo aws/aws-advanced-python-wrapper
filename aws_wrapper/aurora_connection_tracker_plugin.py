@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 from aws_wrapper.errors import FailoverError
 
 if TYPE_CHECKING:
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.pep249 import Connection
 
@@ -161,11 +162,24 @@ class AuroraConnectionTrackerPlugin(Plugin):
         self._rds_utils = rds_utils
         self._tracker = tracker
 
-    def connect(self, host_info: HostInfo, props: Properties, initial: bool, connect_func: Callable) -> Any:
+    def connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
         return self._connect(host_info, connect_func)
 
-    def force_connect(self, host_info: HostInfo, props: Properties, initial: bool,
-                      force_connect_func: Callable) -> Connection:
+    def force_connect(
+            self,
+            target_driver_func: Callable,
+            target_driver_dialect: TargetDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            force_connect_func: Callable) -> Connection:
         return self._connect(host_info, force_connect_func)
 
     def _connect(self, host_info: HostInfo, connect_func: Callable):

@@ -158,7 +158,8 @@ def test_connect(mocker, plugin, host_info, props, mock_conn, mock_plugin_servic
     mock_connect_func = mocker.MagicMock()
     mock_connect_func.return_value = mock_conn
 
-    connection = plugin.connect(host_info, props, True, mock_connect_func)
+    connection = plugin.connect(
+        mocker.MagicMock(), mocker.MagicMock(), host_info, props, True, mock_connect_func)
     mock_plugin_service.fill_aliases.assert_called_once()
     assert mock_conn == connection
 

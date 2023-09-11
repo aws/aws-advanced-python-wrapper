@@ -60,7 +60,7 @@ def reset_provider():
 
 def test_provider_accepts_all_host_infos(connection_mock, mock_target_driver_dialect):
     connection_mock.connect.return_value = "Test"
-    connection_provider = DriverConnectionProvider(connection_mock.connect, mock_target_driver_dialect)
+    connection_provider = DriverConnectionProvider()
 
     host_info = HostInfo("localhost")
     properties = Properties()
@@ -72,7 +72,7 @@ def test_provider_accepts_all_host_infos(connection_mock, mock_target_driver_dia
 
 def test_provider_accepts_random_strategy(connection_mock, mock_target_driver_dialect):
     connection_mock.connect.return_value = "Test"
-    connection_provider = DriverConnectionProvider(connection_mock.connect, mock_target_driver_dialect)
+    connection_provider = DriverConnectionProvider()
 
     assert connection_provider.accepts_strategy(HostRole.READER, "random") is True
     assert connection_provider.accepts_strategy(HostRole.READER, "other") is False
@@ -80,7 +80,7 @@ def test_provider_accepts_random_strategy(connection_mock, mock_target_driver_di
 
 def test_provider_returns_host_info(connection_mock, mock_target_driver_dialect):
     connection_mock.connect.return_value = "Test"
-    connection_provider = DriverConnectionProvider(connection_mock.connect, mock_target_driver_dialect)
+    connection_provider = DriverConnectionProvider()
 
     host_info_list = [HostInfo("localhost", role=HostRole.WRITER), HostInfo("other", role=HostRole.READER)]
     host_info = connection_provider.get_host_info_by_strategy(host_info_list, HostRole.WRITER, "random")
@@ -94,9 +94,9 @@ def test_provider_returns_connection(connection_mock, mock_target_driver_dialect
 
     connection_mock.connect.return_value = "Test"
     mock_target_driver_dialect.prepare_connect_info.return_value = {"test_prop": 5, "host": "localhost", "port": "1234"}
-    connection_provider = DriverConnectionProvider(connection_mock.connect, mock_target_driver_dialect)
+    connection_provider = DriverConnectionProvider()
 
-    connection_provider.connect(host_info, properties)
+    connection_provider.connect(connection_mock.connect, mock_target_driver_dialect, host_info, properties)
 
     mock_target_driver_dialect.prepare_connect_info.assert_called_with(host_info, properties)
     connection_mock.connect.assert_called_with(test_prop=5, host="localhost", port="1234")

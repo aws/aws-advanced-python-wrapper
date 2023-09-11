@@ -115,6 +115,18 @@ def test_clear(test_dict):
     assert test_dict.get(2) is None
 
 
+def test_remove(test_dict):
+    test_dict.put_if_absent(1, "a")
+    test_dict.put_if_absent(2, "b")
+    assert "a" == test_dict.get(1)
+    assert "b" == test_dict.get(2)
+
+    result = test_dict.remove(1)
+    assert "a" == result
+    assert test_dict.get(1) is None
+    assert "b" == test_dict.get(2)
+
+
 def test_remove_if(test_dict):
     test_dict.put_if_absent(1, [1, 2])
     test_dict.put_if_absent(2, [2, 3])

@@ -245,3 +245,15 @@ class AuroraTestUtility:
                 except Exception:
                     sleep(1)
             assert success
+
+    def create_user(self, conn, username, password):
+        engine = TestEnvironment.get_current().get_engine()
+        if engine == DatabaseEngine.PG:
+            sql = f"CREATE USER {username} WITH PASSWORD '{password}'"
+        elif engine == DatabaseEngine.MYSQL:
+            sql = f"CREATE USER {username} IDENTIFIED BY '{password}'"
+        else:
+            raise RuntimeError(
+                f"[AuroraTestUtility] create_user was called but the detected engine is not valid: {engine.value}")
+        cursor = conn.cursor()
+        cursor.execute(sql)

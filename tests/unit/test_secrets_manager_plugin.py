@@ -114,7 +114,8 @@ class TestAwsSecretsManagerPlugin(TestCase):
                                                                          self._properties,
                                                                          self._mock_session)
 
-        target_plugin.connect(self._TEST_HOST_INFO, self._properties, True, self._mock_func)
+        target_plugin.connect(
+            MagicMock(), MagicMock(), self._TEST_HOST_INFO, self._properties, True, self._mock_func)
         assert 1 == len(self._secrets_cache)
         self._mock_client.get_secret_value.assert_not_called()
         self._mock_func.assert_called_once()
@@ -129,7 +130,8 @@ class TestAwsSecretsManagerPlugin(TestCase):
                                                                          self._properties,
                                                                          self._mock_session)
 
-        target_plugin.connect(self._TEST_HOST_INFO, self._properties, True, self._mock_func)
+        target_plugin.connect(
+            MagicMock(), MagicMock(), self._TEST_HOST_INFO, self._properties, True, self._mock_func)
 
         assert 1 == len(self._secrets_cache)
         self._mock_client.get_secret_value.assert_called_once()
@@ -167,6 +169,8 @@ class TestAwsSecretsManagerPlugin(TestCase):
 
         self.assertRaises(AwsWrapperError,
                           target_plugin.connect,
+                          MagicMock(),
+                          MagicMock(),
                           self._TEST_HOST_INFO,
                           self._properties,
                           True,
@@ -182,6 +186,8 @@ class TestAwsSecretsManagerPlugin(TestCase):
 
         self.assertRaises(AwsWrapperError,
                           target_plugin.connect,
+                          MagicMock(),
+                          MagicMock(),
                           self._TEST_HOST_INFO,
                           self._properties,
                           True,
@@ -202,7 +208,8 @@ class TestAwsSecretsManagerPlugin(TestCase):
             props,
             self._mock_session)
 
-        target_plugin.connect(self._TEST_HOST_INFO, props, True, self._mock_func)
+        target_plugin.connect(
+            MagicMock(), MagicMock(), self._TEST_HOST_INFO, props, True, self._mock_func)
 
         self._mock_session.client.assert_called_with('secretsmanager', region_name=region)
         self._mock_client.get_secret_value.assert_called_with(SecretId=arn)
@@ -224,7 +231,8 @@ class TestAwsSecretsManagerPlugin(TestCase):
             props,
             self._mock_session)
 
-        target_plugin.connect(self._TEST_HOST_INFO, props, True, self._mock_func)
+        target_plugin.connect(
+            MagicMock(), MagicMock(), self._TEST_HOST_INFO, props, True, self._mock_func)
 
         # The region specified in `secretsManagerRegion` should override the region parsed from ARN.
         self._mock_session.client.assert_called_with('secretsmanager', region_name=expected_region)
