@@ -22,7 +22,7 @@ SQLAlchemy = "^2.0.20"
 [tool.poetry.group.test.dependencies]
 boto3 = "^1.27.1"
 coverage = "^7.3.0"
-debugpy = "^1.6.7"
+debugpy = "^1.7.0"
 pydevd-pycharm = "^232.8660.197"
 pytest = "^7.4.2"
 pytest-mock = "^3.11.1"
