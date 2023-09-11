@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional
 
 from toxiproxy import Toxiproxy  # type: ignore
 
+from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.utils.messages import Messages
 from .database_engine import DatabaseEngine
 from .proxy_info import ProxyInfo
@@ -213,7 +214,7 @@ class TestEnvironment:
             disabled_by_feature = TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS in features
 
         else:
-            raise NotImplementedError(test_driver)
+            raise UnsupportedOperationError(test_driver.value)
 
         if disabled_by_feature or (not driver_compatible_to_database_engine):
             return False

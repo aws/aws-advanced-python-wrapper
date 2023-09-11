@@ -32,6 +32,7 @@ from typing import Any, List, Optional
 import boto3
 from botocore.config import Config
 
+from aws_wrapper.errors import UnsupportedOperationError
 from .database_engine import DatabaseEngine
 from .driver_helper import DriverHelper
 from .test_driver import TestDriver
@@ -139,7 +140,7 @@ class AuroraTestUtility:
         elif database_engine == DatabaseEngine.PG:
             return "SELECT aurora_db_instance_identifier()"
         else:
-            raise NotImplementedError(database_engine)
+            raise UnsupportedOperationError(database_engine.value)
 
     def query_instance_id(
             self,
@@ -218,7 +219,7 @@ class AuroraTestUtility:
             return "SELECT SERVER_ID, SESSION_ID FROM aurora_replica_status() \
                 ORDER BY CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN 0 ELSE 1 END"
         else:
-            raise NotImplementedError(database_engine)
+            raise UnsupportedOperationError(database_engine.value)
 
     def _get_driver_for_database_engine(self, database_engine: DatabaseEngine) -> TestDriver:
         if database_engine == DatabaseEngine.MYSQL:
@@ -228,7 +229,7 @@ class AuroraTestUtility:
         elif database_engine == DatabaseEngine.PG:
             return TestDriver.PG
         else:
-            raise NotImplementedError(database_engine)
+            raise UnsupportedOperationError(database_engine.value)
 
     def make_sure_instances_up(self, instances: List[str]) -> None:
         database_info: TestDatabaseInfo = TestEnvironment.get_current().get_database_info()

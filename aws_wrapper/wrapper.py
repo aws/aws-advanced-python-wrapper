@@ -17,7 +17,8 @@ from typing import Any, Callable, Iterator, List, Optional, Union
 
 from sqlalchemy import PoolProxiedConnection
 
-from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
+from aws_wrapper.errors import (AwsWrapperError, FailoverSuccessError,
+                                UnsupportedOperationError)
 from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugin import CanReleaseResources
@@ -70,7 +71,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
             driver_connection = self.target_connection
 
         if not hasattr(driver_connection, "autocommit"):
-            raise AwsWrapperError(Messages.get_formatted("Wrapper.NotImplemented", "autocommit"))
+            raise UnsupportedOperationError(Messages.get_formatted("Wrapper.UnsupportedAttribute", "autocommit"))
 
         return self._plugin_manager.execute(
             self.target_connection,
@@ -86,7 +87,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
             driver_connection = self.target_connection
 
         if not hasattr(driver_connection, "autocommit"):
-            raise AwsWrapperError(Messages.get_formatted("Wrapper.NotImplemented", "autocommit"))
+            raise UnsupportedOperationError(Messages.get_formatted("Wrapper.UnsupportedAttribute", "autocommit"))
 
         self._plugin_manager.execute(
             self.target_connection,

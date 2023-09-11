@@ -17,6 +17,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable, Set
 
+from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
@@ -83,10 +84,11 @@ class GenericTargetDriverDialect(TargetDriverDialect):
         return prop_copy
 
     def is_closed(self, conn: Connection) -> bool:
-        raise NotImplementedError(Messages.get_formatted("TargetDriverDialect.UnImplementedError", "is_closed"))
+        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", "Generic Driver", "is_closed"))
 
     def abort_connection(self, conn: Connection):
-        raise NotImplementedError(Messages.get_formatted("TargetDriverDialect.UnImplementedError", "abort_connection"))
+        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", "Generic Driver", "abort_connection"))
 
     def is_in_transaction(self, conn: Connection) -> bool:
-        raise NotImplementedError(Messages.get_formatted("TargetDriverDialect.UnImplementedError", "is_in_transaction"))
+        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", "Generic Driver",
+                                                               "is_in_transaction"))

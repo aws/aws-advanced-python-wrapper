@@ -36,7 +36,7 @@ from aws_wrapper.connection_provider import ConnectionProviderManager
 from aws_wrapper.default_plugin import DefaultPlugin
 from aws_wrapper.dialect import (Dialect, DialectManager,
                                  TopologyAwareDatabaseDialect)
-from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
 from aws_wrapper.failover_plugin import FailoverPluginFactory
 from aws_wrapper.host_list_provider import (AuroraHostListPluginFactory,
@@ -628,7 +628,7 @@ class PluginManager(CanReleaseResources):
                     host: HostInfo = plugin.get_host_info_by_strategy(role, strategy)
                     if host is not None:
                         return host
-                except NotImplementedError:
+                except UnsupportedOperationError:
                     # This plugin does not support the requested strategy, ignore exception and try the next plugin
                     pass
         return None
