@@ -437,13 +437,6 @@ class Monitor:
     def _check_host_status(self, host_check_timeout_ms: int) -> HostStatus:
         start_ns = perf_counter_ns()
         try:
-            dialect = self._plugin_service.dialect
-            if dialect is None:
-                self._plugin_service.update_dialect()
-                dialect = self._plugin_service.dialect
-                if dialect is None:
-                    raise AwsWrapperError(Messages.get("Monitor.NullDialect"))
-
             target_driver_dialect = self._plugin_service.target_driver_dialect
             if self._monitoring_conn is None or target_driver_dialect.is_closed(self._monitoring_conn):
                 props_copy: Properties = copy(self._props)
@@ -607,13 +600,6 @@ class MonitorService:
             self._cached_monitor_aliases = host_aliases
         else:
             monitor = self._cached_monitor
-
-        dialect = self._plugin_service.dialect
-        if dialect is None:
-            self._plugin_service.update_dialect()
-            dialect = self._plugin_service.dialect
-            if dialect is None:
-                raise AwsWrapperError(Messages.get("MonitorService.NullDialect"))
 
         context = MonitoringContext(
             monitor, conn, self._plugin_service.target_driver_dialect, failure_detection_time_ms,

@@ -27,11 +27,6 @@ def mock_conn(mocker):
 
 
 @pytest.fixture
-def mock_dialect(mocker):
-    return mocker.MagicMock()
-
-
-@pytest.fixture
 def mock_plugin_service(mocker):
     return mocker.MagicMock()
 
@@ -73,9 +68,8 @@ def monitor_service_with_container(mock_plugin_service, thread_container):
 
 
 @pytest.fixture(autouse=True)
-def setup_teardown(mocker, mock_thread_container, mock_plugin_service, mock_dialect, mock_monitor):
+def setup_teardown(mocker, mock_thread_container, mock_plugin_service, mock_monitor):
     mock_thread_container.get_or_create_monitor.return_value = mock_monitor
-    mock_plugin_service.dialect = mock_dialect
     mocker.patch("aws_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
 
     yield
@@ -85,21 +79,16 @@ def setup_teardown(mocker, mock_thread_container, mock_plugin_service, mock_dial
 
 
 def test_start_monitoring(
-        mocker,
         monitor_service_mocked_container,
         mock_plugin_service,
         mock_monitor,
         mock_conn,
-        mock_dialect,
         mock_thread_container):
-    mock_dialect_property = mocker.PropertyMock(side_effect=[None, mock_dialect])
-    type(mock_plugin_service).dialect = mock_dialect_property
     aliases = frozenset({"instance-1"})
 
     monitor_service_mocked_container.start_monitoring(
         mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
-    mock_plugin_service.update_dialect.assert_called_once()
     mock_monitor.start_monitoring.assert_called_once()
     assert mock_monitor == monitor_service_mocked_container._cached_monitor
     assert aliases == monitor_service_mocked_container._cached_monitor_aliases
@@ -139,11 +128,6 @@ def test_start_monitoring__errors(monitor_service_mocked_container, mock_conn, m
     with pytest.raises(AwsWrapperError):
         monitor_service_mocked_container.start_monitoring(
             mock_conn, frozenset(), HostInfo("instance-1"), Properties(), 5000, 1000, 3)
-
-    mock_plugin_service.dialect = None
-    with pytest.raises(AwsWrapperError):
-        monitor_service_mocked_container.start_monitoring(
-            mock_conn, frozenset({"instance-1"}), HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
 
 def test_stop_monitoring(monitor_service_with_container, mock_monitor, mock_conn):

@@ -35,7 +35,7 @@ from aws_wrapper.aws_secrets_manager_plugin import \
 from aws_wrapper.connection_provider import ConnectionProviderManager
 from aws_wrapper.default_plugin import DefaultPlugin
 from aws_wrapper.dialect import (Dialect, DialectManager,
-                                 TopologyAwareDatabaseDialect)
+                                 TopologyAwareDatabaseDialect, UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
 from aws_wrapper.failover_plugin import FailoverPluginFactory
@@ -258,7 +258,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._target_driver_dialect
 
     @property
-    def dialect(self) -> Optional[Dialect]:
+    def dialect(self) -> Dialect:
         return self._dialect
 
     @property
@@ -350,7 +350,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         try:
             with closing(connection.cursor()) as cursor:
-                if self.dialect is not None:
+                if not isinstance(self.dialect, UnknownDialect):
                     cursor.execute(self.dialect.host_alias_query)
                     for row in cursor.fetchall():
                         host_info.add_alias(row[0])

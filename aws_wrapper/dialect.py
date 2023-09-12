@@ -411,9 +411,9 @@ class DialectManager(DialectProvider):
     def __init__(self, rds_helper: Optional[RdsUtils] = None, custom_dialect: Optional[Dialect] = None) -> None:
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
         self._can_update: bool = False
-        self._dialect: Optional[Dialect] = None
+        self._dialect: Dialect = UnknownDialect()
+        self._dialect_code: DialectCode = DialectCode.UNKNOWN
         self._custom_dialect: Optional[Dialect] = custom_dialect if custom_dialect else None
-        self._dialect_code: Optional[DialectCode] = None
         self._known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
         self._known_dialects_by_code: Dict[DialectCode, Dialect] = {DialectCode.MYSQL: MysqlDialect(),
                                                                     DialectCode.PG: PgDialect(),
@@ -438,9 +438,8 @@ class DialectManager(DialectProvider):
     def reset_endpoint_cache(self):
         self._known_endpoint_dialects.clear()
 
-    def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[Dialect]:
+    def get_dialect(self, driver_dialect: str, props: Properties) -> Dialect:
         self._can_update = False
-        self._dialect = None
 
         if self._custom_dialect is not None:
             self._dialect_code = DialectCode.CUSTOM
@@ -472,17 +471,17 @@ class DialectManager(DialectProvider):
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCode.AURORA_MYSQL
-                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_MYSQL)
+                self._dialect = self._known_dialects_by_code[DialectCode.AURORA_MYSQL]
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
                 self._dialect_code = DialectCode.RDS_MYSQL
-                self._dialect = self._known_dialects_by_code.get(DialectCode.RDS_MYSQL)
+                self._dialect = self._known_dialects_by_code[DialectCode.RDS_MYSQL]
                 self._log_current_dialect()
                 return self._dialect
             self._can_update = True
             self._dialect_code = DialectCode.MYSQL
-            self._dialect = self._known_dialects_by_code.get(DialectCode.MYSQL)
+            self._dialect = self._known_dialects_by_code[DialectCode.MYSQL]
             self._log_current_dialect()
             return self._dialect
 
@@ -490,17 +489,17 @@ class DialectManager(DialectProvider):
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCode.AURORA_PG
-                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_PG)
+                self._dialect = self._known_dialects_by_code[DialectCode.AURORA_PG]
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
                 self._dialect_code = DialectCode.RDS_PG
-                self._dialect = self._known_dialects_by_code.get(DialectCode.RDS_PG)
+                self._dialect = self._known_dialects_by_code[DialectCode.RDS_PG]
                 self._log_current_dialect()
                 return self._dialect
             self._can_update = True
             self._dialect_code = DialectCode.PG
-            self._dialect = self._known_dialects_by_code.get(DialectCode.PG)
+            self._dialect = self._known_dialects_by_code[DialectCode.PG]
             self._log_current_dialect()
             return self._dialect
 
@@ -510,17 +509,17 @@ class DialectManager(DialectProvider):
                 # Aurora MariaDB doesn't exist.
                 # If this is a cluster endpoint then user is trying to connect to AMS via the MariaDB driver.
                 self._dialect_code = DialectCode.AURORA_MYSQL
-                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_MYSQL)
+                self._dialect = self._known_dialects_by_code[DialectCode.AURORA_MYSQL]
                 return self._dialect
             self._can_update = True
             self._dialect_code = DialectCode.MARIADB
-            self._dialect = self._known_dialects_by_code.get(DialectCode.MARIADB)
+            self._dialect = self._known_dialects_by_code[DialectCode.MARIADB]
             self._log_current_dialect()
             return self._dialect
 
         self._can_update = True
         self._dialect_code = DialectCode.UNKNOWN
-        self._dialect = self._known_dialects_by_code.get(DialectCode.UNKNOWN)
+        self._dialect = self._known_dialects_by_code[DialectCode.UNKNOWN]
         self._log_current_dialect()
         return self._dialect
 
@@ -535,7 +534,7 @@ class DialectManager(DialectProvider):
         return TargetDriverType.CUSTOM
 
     def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection,
-                          driver_dialect: TargetDriverDialect) -> Optional[Dialect]:
+                          driver_dialect: TargetDriverDialect) -> Dialect:
         if not self._can_update:
             self._log_current_dialect()
             return self._dialect
@@ -566,7 +565,7 @@ class DialectManager(DialectProvider):
                 self._log_current_dialect()
                 return self._dialect
 
-        if self._dialect_code is None or self._dialect == DialectCode.UNKNOWN:
+        if self._dialect_code is None or self._dialect_code == DialectCode.UNKNOWN:
             raise AwsWrapperError(Messages.get("DialectManager.UnknownDialect"))
 
         self._can_update = False
