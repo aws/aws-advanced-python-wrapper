@@ -36,8 +36,7 @@ public class TestRunner {
     }
   }
 
-//   TODO: uncomment once the pytest-html release candidate becomes official 
-//    to see if the consolidated report started working again
+//   TODO: investigate and fix the consolidated report, which stopped working when we upgraded pytest-html to 4.0.1
 //   @AfterAll
 //   public static void cleanup() throws IOException, InterruptedException {
 //     File reportFolder = new File("../container/reports");
