@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Set
+from typing import TYPE_CHECKING, Callable, Set
 
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
@@ -66,10 +66,6 @@ class TargetDriverDialect(ABC):
     def is_in_transaction(self, conn: Connection) -> bool:
         pass
 
-    @abstractmethod
-    def get_connection_from_obj(self, obj: object) -> Any:
-        pass
-
 
 class GenericTargetDriverDialect(TargetDriverDialect):
 
@@ -96,9 +92,3 @@ class GenericTargetDriverDialect(TargetDriverDialect):
     def is_in_transaction(self, conn: Connection) -> bool:
         raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", "Generic Driver",
                                                                "is_in_transaction"))
-
-    def get_connection_from_obj(self, obj: object) -> Any:
-        if hasattr(obj, "connection"):
-            return obj.connection
-
-        return None

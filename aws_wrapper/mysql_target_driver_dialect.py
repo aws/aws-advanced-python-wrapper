@@ -15,14 +15,10 @@
 from __future__ import annotations
 
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Callable, Set
-
-from mysql.connector.cursor_cext import CMySQLCursor
+from typing import TYPE_CHECKING, Callable, Set
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
-
-from mysql.connector import MySQLConnection
 
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.generic_target_driver_dialect import \
@@ -73,13 +69,3 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
         raise AwsWrapperError(
             Messages.get_formatted("TargetDriverDialect.InvalidTargetAttribute", "MySQL Connector Python",
                                    "in_transaction"))
-
-    def get_connection_from_obj(self, obj: object) -> Any:
-        if isinstance(obj, MySQLConnection):
-            return obj
-
-        if isinstance(obj, CMySQLCursor):
-            if hasattr(obj, "_cnx"):
-                return obj._cnx
-
-        return None
