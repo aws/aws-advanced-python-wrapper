@@ -22,7 +22,6 @@ import pytest
 if TYPE_CHECKING:
     from .test_database_info import TestDatabaseInfo
     from .test_instance_info import TestInstanceInfo
-    from aws_wrapper.pep249 import Cursor
 
 import socket
 import timeit
@@ -127,13 +126,11 @@ class AuroraTestUtility:
             self,
             conn,
             exception_cls,
-            cursor: Optional[Cursor] = None,
             database_engine: Optional[DatabaseEngine] = None) -> None:
         if database_engine is None:
             database_engine = TestEnvironment.get_current().get_engine()
         with pytest.raises(exception_cls):
-            if cursor is None:
-                cursor = conn.cursor()
+            cursor = conn.cursor()
             cursor.execute(self._get_instance_id_sql(database_engine))
             cursor.fetchone()
 
@@ -148,13 +145,11 @@ class AuroraTestUtility:
     def query_instance_id(
             self,
             conn,
-            cursor: Optional[Cursor] = None,
             database_engine: Optional[DatabaseEngine] = None) -> str:
         if database_engine is None:
             database_engine = TestEnvironment.get_current().get_engine()
 
-        if cursor is None:
-            cursor = conn.cursor()
+        cursor = conn.cursor()
         cursor.execute(self._get_instance_id_sql(database_engine))
         record = cursor.fetchone()
         return record[0]

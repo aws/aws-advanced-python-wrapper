@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, List
 
 import pytest
 
-from aws_wrapper.errors import (AwsWrapperError, FailoverSuccessError,
+from aws_wrapper.errors import (FailoverSuccessError,
                                 TransactionResolutionUnknownError)
 from aws_wrapper.utils.properties import WrapperProperties
 from .utils.conditions import enable_on_features, enable_on_num_instances
@@ -29,8 +29,6 @@ if TYPE_CHECKING:
     from .utils.test_instance_info import TestInstanceInfo
     from .utils.test_driver import TestDriver
     from .utils.test_database_info import TestDatabaseInfo
-    from aws_wrapper.pep249 import Cursor
-
 
 from logging import getLogger
 
@@ -109,27 +107,6 @@ class TestAuroraFailover:
             current_connection_id = aurora_utility.query_instance_id(aws_conn)
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
-
-    def test_using_old_cursor_after_failover(self,
-                                             test_environment: TestEnvironment,
-                                             test_driver: TestDriver,
-                                             props, conn_utils,
-                                             aurora_utility):
-        target_driver_connect = DriverHelper.get_connect_func(test_driver)
-
-        with AwsWrapperConnection.connect(self._init_default_props(test_environment), target_driver_connect,
-                                          **props) as aws_conn:
-            # Enable autocommit, otherwise each select statement will start a valid transaction.
-            aws_conn.autocommit = True
-            cursor: Cursor = aws_conn.cursor()
-            current_connection_id = aurora_utility.query_instance_id(aws_conn, cursor)
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
-
-            # crash instance1 and nominate a new writer
-            aurora_utility.failover_cluster_and_wait_until_writer_changed()
-
-            # Ensure we can't execute methods against an old Cursor.
-            aurora_utility.assert_first_query_throws(aws_conn, AwsWrapperError, cursor)
 
     @pytest.mark.skip
     def test_fail_from_reader_to_writer(self, test_environment: TestEnvironment,

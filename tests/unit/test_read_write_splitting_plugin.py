@@ -251,7 +251,6 @@ def test_execute_failover_to_new_writer(plugin_service_mock, writer_conn_mock):
         raise FailoverSuccessError
 
     plugin_service_mock.current_connection = new_writer_conn_mock
-    plugin_service_mock.target_driver_dialect.get_connection_from_obj.return_value = None
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
     plugin._host_list_provider_service = host_list_provider_service_mock

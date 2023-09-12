@@ -63,7 +63,7 @@ logger = getLogger(__name__)
 
 class PluginServiceManagerContainer:
     @property
-    def plugin_service(self) -> PluginService:
+    def plugin_service(self):
         return self._plugin_service
 
     @plugin_service.setter
@@ -71,7 +71,7 @@ class PluginServiceManagerContainer:
         self._plugin_service = value
 
     @property
-    def plugin_manager(self) -> PluginManager:
+    def plugin_manager(self):
         return self._plugin_manager
 
     @plugin_manager.setter
@@ -495,13 +495,6 @@ class PluginManager(CanReleaseResources):
         return self._connection_provider_manager
 
     def execute(self, target: object, method_name: str, target_driver_func: Callable, *args) -> Any:
-        conn: Optional[Connection] = (self._container.plugin_service
-                                      .target_driver_dialect.get_connection_from_obj(target))
-
-        if conn is not None and conn != self._container.plugin_service.current_connection:
-            msg = Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target)
-            raise AwsWrapperError(msg)
-
         return self._execute_with_subscribed_plugins(
             method_name,
             # next_plugin_func is defined later in make_pipeline

@@ -56,35 +56,17 @@ def container(mocker):
 
 
 @pytest.fixture
-def mock_plugin_service(mocker):
-    return mocker.MagicMock()
-
-
-@pytest.fixture
-def mock_target_driver_dialect(mocker):
-    return mocker.MagicMock()
-
-
-@pytest.fixture
 def default_conn_provider(mocker):
     return mocker.MagicMock()
 
 
-@pytest.fixture(autouse=True)
-def setup(mock_conn, container, mock_plugin_service, mock_target_driver_dialect):
-    container.plugin_service.current_connection = mock_conn
-    container.plugin_service.target_driver_dialect.get_connection_from_obj.return_value = mock_conn
-
-
-def test_execute_call_a(mocker, mock_conn, container, mock_target_driver_dialect):
+def test_execute_call_a(mocker, mock_conn):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
     mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
-    container.plugin_service.return_value = mock_plugin_service
-    manager._container = container
     manager._plugins = plugins
     manager._function_cache = {}
 
@@ -123,14 +105,13 @@ def _target_call(calls: List[str]):
     return "result_value"
 
 
-def test_execute_call_b(mocker, container, mock_target_driver_dialect):
+def test_execute_call_b(mocker):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
     mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
-    manager._container = container
     manager._plugins = plugins
     manager._function_cache = {}
 
@@ -145,14 +126,13 @@ def test_execute_call_b(mocker, container, mock_target_driver_dialect):
     assert calls[4] == "TestPluginOne:after execute"
 
 
-def test_execute_call_c(mocker, container, mock_target_driver_dialect):
+def test_execute_call_c(mocker):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
     mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
-    manager._container = container
     manager._plugins = plugins
     manager._function_cache = {}
 
@@ -165,20 +145,7 @@ def test_execute_call_c(mocker, container, mock_target_driver_dialect):
     assert calls[2] == "TestPluginOne:after execute"
 
 
-def test_execute_against_old_target(mocker, container, mock_target_driver_dialect):
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
-    manager._container = container
-    manager._plugins = ""
-    manager._function_cache = {}
-
-    # Set current connection to a new connection object
-    container.plugin_service.current_connection = mocker.MagicMock()
-    with pytest.raises(AwsWrapperError):
-        manager.execute(mock_conn, "test_execute", lambda: _target_call([]))
-
-
-def test_connect(mocker, container, mock_conn, mock_target_driver_dialect):
+def test_connect(mocker, mock_conn):
     calls = []
 
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls, mock_conn)]
@@ -187,7 +154,6 @@ def test_connect(mocker, container, mock_conn, mock_target_driver_dialect):
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
     manager._function_cache = {}
-    manager._container = container
 
     result = manager.connect(mocker.MagicMock(), mocker.MagicMock(), HostInfo("localhost"), Properties(), True)
 
@@ -199,7 +165,7 @@ def test_connect(mocker, container, mock_conn, mock_target_driver_dialect):
     assert calls[3] == "TestPluginOne:after connect"
 
 
-def test_exception_before_connect(mocker, container):
+def test_exception_before_connect(mocker):
     calls = []
     plugins = \
         [TestPluginOne(calls), TestPluginTwo(calls), TestPluginRaisesError(calls, True), TestPluginThree(calls)]
@@ -208,7 +174,6 @@ def test_exception_before_connect(mocker, container):
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
     manager._function_cache = {}
-    manager._container = container
 
     with pytest.raises(AwsWrapperError):
         result = manager.connect(
@@ -220,7 +185,7 @@ def test_exception_before_connect(mocker, container):
     assert calls[1] == "TestPluginRaisesError:before connect"
 
 
-def test_exception_after_connect(mocker, container):
+def test_exception_after_connect(mocker):
     calls = []
     plugins = \
         [TestPluginOne(calls), TestPluginTwo(calls), TestPluginRaisesError(calls, False), TestPluginThree(calls)]
@@ -229,7 +194,6 @@ def test_exception_after_connect(mocker, container):
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
     manager._function_cache = {}
-    manager._container = container
 
     with pytest.raises(AwsWrapperError):
         result = manager.connect(
