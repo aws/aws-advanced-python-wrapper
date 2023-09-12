@@ -36,28 +36,29 @@ public class TestRunner {
     }
   }
 
-  @AfterAll
-  public static void cleanup() throws IOException, InterruptedException {
-    File reportFolder = new File("../container/reports");
-    if (reportFolder.exists()) {
-      File mergeReportsScript = new File("./scripts/merge_reports.py");
-      ProcessBuilder processBuilder = new ProcessBuilder("python3", mergeReportsScript.getAbsolutePath());
-      Process process = processBuilder.start();
-      int exitCode = process.waitFor();
-      assertEquals(0, exitCode, "An error occurred while attempting to run merge_reports.py");
-
-      // Delete individual reports in favor of consolidated report
-      File[] files = reportFolder.listFiles();
-      if (files != null) {
-        for (File f: files) {
-          if (!f.getName().equals("integration_tests.html") && !f.getName().equals("assets")) {
-            f.delete();
-          }
-        }
-      }
-      reportFolder.delete();
-    }
-  }
+//   TODO: investigate and fix the consolidated report, which stopped working when we upgraded pytest-html to 4.0.1
+//   @AfterAll
+//   public static void cleanup() throws IOException, InterruptedException {
+//     File reportFolder = new File("../container/reports");
+//     if (reportFolder.exists()) {
+//       File mergeReportsScript = new File("./scripts/merge_reports.py");
+//       ProcessBuilder processBuilder = new ProcessBuilder("python3", mergeReportsScript.getAbsolutePath());
+//       Process process = processBuilder.start();
+//       int exitCode = process.waitFor();
+//       assertEquals(0, exitCode, "An error occurred while attempting to run merge_reports.py");
+//
+//       // Delete individual reports in favor of consolidated report
+//       File[] files = reportFolder.listFiles();
+//       if (files != null) {
+//         for (File f: files) {
+//           if (!f.getName().equals("integration_tests.html") && !f.getName().equals("assets")) {
+//             f.delete();
+//           }
+//         }
+//       }
+//       reportFolder.delete();
+//     }
+//   }
 
   @TestTemplate
   public void runTests(TestEnvironmentRequest testEnvironmentRequest) throws Exception {
