@@ -27,8 +27,7 @@ from sqlalchemy import PoolProxiedConnection
 from aws_wrapper import AwsWrapperConnection
 from aws_wrapper.connection_provider import (
     ConnectionProviderManager, SqlAlchemyPooledConnectionProvider)
-from aws_wrapper.errors import (AwsWrapperError, FailoverFailedError,
-                                FailoverSuccessError,
+from aws_wrapper.errors import (AwsWrapperError, FailoverSuccessError,
                                 TransactionResolutionUnknownError)
 from aws_wrapper.utils.properties import WrapperProperties
 from tests.integration.container.utils.aurora_test_utility import \
