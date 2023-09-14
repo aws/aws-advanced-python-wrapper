@@ -92,7 +92,6 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
             raise Error(Messages.get("Wrapper.ConnectMethod"))
         target_func: Callable = target
 
-        # TODO: parse *args into properties
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
         logger.debug(PropertiesUtils.log_properties(props, "Connection Properties: "))
 
