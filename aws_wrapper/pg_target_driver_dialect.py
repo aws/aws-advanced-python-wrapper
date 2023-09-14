@@ -91,8 +91,9 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     def set_read_only(self, conn: Connection, read_only: bool):
         if isinstance(conn, psycopg.Connection):
             conn.read_only = read_only
-        else:
-            raise UnsupportedOperationError(
+            return
+
+        raise UnsupportedOperationError(
                 Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "read_only"))
 
     def get_autocommit(self, conn: Connection) -> bool:
@@ -105,6 +106,7 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     def set_autocommit(self, conn: Connection, autocommit: bool):
         if isinstance(conn, psycopg.Connection):
             conn.autocommit = autocommit
+            return
 
         raise UnsupportedOperationError(
             Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))

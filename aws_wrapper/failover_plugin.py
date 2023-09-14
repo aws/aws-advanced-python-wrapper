@@ -219,7 +219,7 @@ class FailoverPlugin(Plugin):
             self._plugin_service.refresh_host_list()
 
     def _transfer_session_state(self, from_conn: Connection, to_conn: Connection):
-        if from_conn is None or to_conn is None:
+        if from_conn is None or self._plugin_service.target_driver_dialect.is_closed(from_conn) or to_conn is None:
             return
 
         self._plugin_service.target_driver_dialect.transfer_session_state(from_conn, to_conn)

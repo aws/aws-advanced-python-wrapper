@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.target_driver_dialect import TargetDriverDialectManager
 
-
 from abc import abstractmethod
 from logging import getLogger
 from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
@@ -517,7 +516,7 @@ class PluginManager(CanReleaseResources):
         conn: Optional[Connection] = target_driver_dialect.get_connection_from_obj(target)
         current_conn: Optional[Connection] = target_driver_dialect.unwrap_connection(plugin_service.current_connection)
 
-        if conn is not None and conn != current_conn:
+        if conn is not None and conn != current_conn and method_name != "Connection.close" and method_name != "Cursor.close":
             msg = Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target)
             raise AwsWrapperError(msg)
 

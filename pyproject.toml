@@ -18,6 +18,9 @@ flake8-type-checking = "^2.4.1"
 isort = "^5.12.0"
 pep8-naming = "^0.13.3"
 SQLAlchemy = "^2.0.20"
+psycopg = "^3.1.9"
+psycopg-binary = "^3.1.9"
+mysql-connector-python = "^8.1.0"
 
 [tool.poetry.group.test.dependencies]
 boto3 = "^1.27.1"
@@ -32,11 +35,11 @@ toxiproxy-python = "^0.1.1"
 parameterized = "^0.9.0"
 psycopg = "^3.1.9"
 psycopg-binary = "^3.1.9"
-mysql-connector-python = "8.1.0"
+mysql-connector-python = "^8.1.0"
 
 [tool.isort]
-sections="FUTURE,STDLIB,THIRDPARTY,FIRSTPARTY,LOCALFOLDER"
-no_lines_before="LOCALFOLDER"
+sections = "FUTURE,STDLIB,THIRDPARTY,FIRSTPARTY,LOCALFOLDER"
+no_lines_before = "LOCALFOLDER"
 
 [build-system]
 requires = ["poetry-core"]
@@ -44,7 +47,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 filterwarnings = [
-	'ignore:cache could not write path',
-	'ignore:could not create cache path'
+    'ignore:cache could not write path',
+    'ignore:could not create cache path'
 ]
 
