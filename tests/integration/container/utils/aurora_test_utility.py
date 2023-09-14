@@ -33,6 +33,7 @@ import boto3
 from botocore.config import Config
 
 from aws_wrapper.errors import UnsupportedOperationError
+from aws_wrapper.utils.messages import Messages
 from .database_engine import DatabaseEngine
 from .driver_helper import DriverHelper
 from .test_driver import TestDriver
@@ -82,7 +83,7 @@ class AuroraTestUtility:
             # if writer is not changed, try triggering failover again
             remaining_attempts -= 1
             if remaining_attempts == 0:
-                raise Exception("Failover cluster request was not successful.")
+                raise Exception(Messages.get_formatted("AuroraTestUtility.FailoverRequestNotSuccessful"))
             self.failover_cluster(cluster_id)
 
         # Failover has finished, wait for DNS to be updated so cluster endpoint resolves to the new writer instance.
@@ -162,7 +163,7 @@ class AuroraTestUtility:
         for m in members:
             if m.get("DBInstanceIdentifier") == instance_id:
                 return typing.cast('bool', m.get("IsClusterWriter"))
-        raise Exception("Cannot find cluster member whose db instance identifier is " + instance_id)
+        raise Exception(Messages.get_formatted("AuroraTestUtility.ClusterMemberNotFound", instance_id))
 
     def get_cluster_writer_instance_id(self, cluster_id: Optional[str] = None) -> str:
         if cluster_id is None:
@@ -172,7 +173,7 @@ class AuroraTestUtility:
         for m in members:
             if typing.cast('bool', m.get("IsClusterWriter")):
                 return typing.cast('str', m.get("DBInstanceIdentifier"))
-        raise Exception("Cannot find writer instance for cluster " + cluster_id)
+        raise Exception(Messages.get_formatted("AuroraTestUtility.WriterInstanceNotFound", cluster_id))
 
     def get_aurora_instance_ids(self) -> List[str]:
 
@@ -254,7 +255,6 @@ class AuroraTestUtility:
         elif engine == DatabaseEngine.MYSQL:
             sql = f"CREATE USER {username} IDENTIFIED BY '{password}'"
         else:
-            raise RuntimeError(
-                f"[AuroraTestUtility] create_user was called but the detected engine is not valid: {engine.value}")
+            raise RuntimeError(Messages.get_formatted("AuroraTestUtility.DetectedEngineInvalid", engine.value))
         cursor = conn.cursor()
         cursor.execute(sql)

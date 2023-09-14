@@ -283,7 +283,7 @@ class RdsPgDialect(PgDialect):
                 for row in aws_cursor:
                     rds_tools = bool(row[0])
                     aurora_utils = bool(row[1])
-                    logger.debug(f"rds_tools: {rds_tools}, aurora_utils: {aurora_utils}")
+                    logger.debug(Messages.get_formatted("RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils)))
                     if rds_tools and not aurora_utils:
                         return True
 
@@ -353,13 +353,13 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
                 aws_cursor.execute(self._extensions_sql)
                 row = aws_cursor.fetchone()
                 if row and bool(row[0]):
-                    logger.debug("has_extensions: True")
+                    logger.debug(Messages.get("AuroraPgDialect.HasExtensionsTrue"))
                     has_extensions = True
 
             with closing(conn.cursor()) as aws_cursor:
                 aws_cursor.execute(self._has_topology_sql)
                 if aws_cursor.fetchone() is not None:
-                    logger.debug("has_topology: True")
+                    logger.debug(Messages.get("AuroraPgDialect.HasTopologyTrue"))
                     has_topology = True
 
             return has_extensions and has_topology
@@ -464,7 +464,7 @@ class DialectManager(DialectProvider):
                 self._log_current_dialect()
                 return dialect
             else:
-                raise AwsWrapperError(Messages.get_formatted("Dialect.UnknownDialectCode", str(dialect_code)))
+                raise AwsWrapperError(Messages.get_formatted("DialectManager.UnknownDialectCode", str(dialect_code)))
 
         host: str = props["host"]
         target_driver_type: TargetDriverType = self._get_target_driver_type(driver_dialect)
@@ -579,4 +579,4 @@ class DialectManager(DialectProvider):
 
     def _log_current_dialect(self):
         dialect_class = "<null>" if self._dialect is None else type(self._dialect).__name__
-        logger.debug(f"Current dialect: {self._dialect_code}, {dialect_class}, can_update: {self._can_update}")
+        logger.debug(Messages.get_formatted("DialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update))
