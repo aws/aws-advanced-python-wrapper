@@ -170,7 +170,7 @@ class StaleDnsPlugin(Plugin):
         return self._stale_dns_helper.get_verified_connection(
             is_initial_connection, self._host_list_provider_service, host_info, props, force_connect_func)
 
-    def execute(self, target: type, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+    def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         try:
             self._plugin_service.refresh_host_list()
         except Exception:

@@ -87,7 +87,7 @@ class DefaultPlugin(Plugin):
             target_driver_props,
             self._connection_provider_manager.default_provider)
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         result = execute_func()
         if method_name != DefaultPlugin._CLOSE_METHOD and self._plugin_service.current_connection is not None:
             self._plugin_service.update_in_transaction()

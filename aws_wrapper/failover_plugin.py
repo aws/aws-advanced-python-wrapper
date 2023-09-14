@@ -124,7 +124,7 @@ class FailoverPlugin(Plugin):
     def subscribed_methods(self) -> Set[str]:
         return self._SUBSCRIBED_METHODS
 
-    def execute(self, target: type, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+    def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         self._is_in_transaction = self._plugin_service.is_in_transaction
 
         if not self._enable_failover_setting or self._can_direct_execute(method_name):

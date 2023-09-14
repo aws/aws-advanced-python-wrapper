@@ -78,7 +78,8 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def connect(
             conninfo: str = "",
             target: Union[None, str, Callable] = None,
-            **kwargs: Union[None, int, str]
+            *args: Any,
+            **kwargs: Any
     ) -> "AwsWrapperConnection":
         if not target:
             raise Error(Messages.get("Wrapper.RequiredTargetDriver"))
@@ -91,6 +92,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
             raise Error(Messages.get("Wrapper.ConnectMethod"))
         target_func: Callable = target
 
+        # TODO: parse *args into properties
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
         logger.debug(PropertiesUtils.log_properties(props, "Connection Properties: "))
 
@@ -122,10 +124,10 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         self._plugin_manager.execute(self.target_connection, "Connection.close",
                                      lambda: self.target_connection.close())
 
-    def cursor(self, **kwargs: Union[None, int, str]) -> "AwsWrapperCursor":
+    def cursor(self, *args: Any, **kwargs: Any) -> "AwsWrapperCursor":
         _cursor = self._plugin_manager.execute(self.target_connection, "Connection.cursor",
-                                               lambda: self.target_connection.cursor(**kwargs),
-                                               kwargs)
+                                               lambda: self.target_connection.cursor(*args, **kwargs),
+                                               *args, **kwargs)
         return AwsWrapperCursor(self, self._plugin_service, self._plugin_manager, _cursor)
 
     def commit(self) -> None:
@@ -169,7 +171,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.close",
-                                     lambda: self.target_connection.close())
+                                     lambda: self.target_connection.close(), exc_type, exc_val, exc_tb)
 
 
 class AwsWrapperCursor(Cursor):
@@ -211,32 +213,33 @@ class AwsWrapperCursor(Cursor):
         self._plugin_manager.execute(self.target_cursor, "Cursor.close",
                                      lambda: self.target_cursor.close())
 
-    def callproc(self, **kwargs: Union[None, int, str]):
+    def callproc(self, *args: Any, **kwargs: Any):
         return self._plugin_manager.execute(self.target_cursor, "Cursor.callproc",
-                                            lambda: self.target_cursor.callproc(**kwargs), kwargs)
+                                            lambda: self.target_cursor.callproc(**kwargs))
 
     def execute(
             self,
-            query: str,
-            **kwargs: Union[None, int, str]
+            *args: Any,
+            **kwargs: Any
     ) -> "AwsWrapperCursor":
         driver_dialect = self._plugin_service.target_driver_dialect
         try:
             return self._plugin_manager.execute(
                 self.target_cursor,
                 "Cursor.execute",
-                lambda: driver_dialect.execute(self.connection, self._target_cursor, query, **kwargs), query, kwargs)
+                lambda: driver_dialect.execute(
+                    self.connection, self._target_cursor, *args, **kwargs), *args, **kwargs)
         except FailoverSuccessError as e:
             self._target_cursor = self.connection.target_connection.cursor()
             raise e
 
     def executemany(
             self,
-            query: str,
-            **kwargs: Union[None, int, str]
+            *args: Any,
+            **kwargs: Any
     ) -> None:
         self._plugin_manager.execute(self.target_cursor, "Cursor.executemany",
-                                     lambda: self.target_cursor.executemany(query, **kwargs), query, kwargs)
+                                     lambda: self.target_cursor.executemany(query, **kwargs))
 
     def nextset(self) -> bool:
         return self._plugin_manager.execute(self.target_cursor, "Cursor.nextset",

@@ -94,7 +94,7 @@ class Connection:
 
     @staticmethod
     def connect(
-            conninfo: str = "",
+            *args,
             **kwargs
     ) -> Any:
         ...
@@ -103,7 +103,7 @@ class Connection:
         ...
 
     # TODO: check parameters
-    def cursor(self, **kwargs) -> Cursor:
+    def cursor(self, *args, **kwargs) -> Cursor:
         ...
 
     def commit(self) -> None:
@@ -158,13 +158,12 @@ class Cursor:
     def close(self) -> None:
         ...
 
-    def callproc(self, **kwargs):
+    def callproc(self, *args, **kwargs):
         ...
 
-    # TODO: check parameters
     def execute(
             self,
-            query: str,
+            *args,
             **kwargs
     ) -> Cursor:
         ...
@@ -172,7 +171,7 @@ class Cursor:
     # TODO: check parameters
     def executemany(
             self,
-            query: str,
+            *args,
             **kwargs
     ) -> None:
         ...

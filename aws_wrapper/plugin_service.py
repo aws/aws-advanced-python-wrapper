@@ -510,7 +510,7 @@ class PluginManager(CanReleaseResources):
     def get_current_connection_provider(self, host_info: HostInfo, properties: Properties):
         return self.connection_provider_manager.get_connection_provider(host_info, properties)
 
-    def execute(self, target: object, method_name: str, target_driver_func: Callable, *args) -> Any:
+    def execute(self, target: object, method_name: str, target_driver_func: Callable, *args, **kwargs) -> Any:
         plugin_service = self._container.plugin_service
         target_driver_dialect = plugin_service.target_driver_dialect
         conn: Optional[Connection] = target_driver_dialect.get_connection_from_obj(target)
@@ -519,11 +519,10 @@ class PluginManager(CanReleaseResources):
         if conn is not None and conn != current_conn and method_name != "Connection.close" and method_name != "Cursor.close":
             msg = Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target)
             raise AwsWrapperError(msg)
-
         return self._execute_with_subscribed_plugins(
             method_name,
             # next_plugin_func is defined later in make_pipeline
-            lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args),
+            lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args, **kwargs),
             target_driver_func)
 
     def _execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):

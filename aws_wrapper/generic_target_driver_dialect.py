@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Set, Union
+from typing import TYPE_CHECKING, Any, Callable, Set
 
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
@@ -88,7 +88,7 @@ class TargetDriverDialect(ABC):
         pass
 
     @abstractmethod
-    def execute(self, conn: Connection, cursor: Cursor, query: str, **kwargs: Union[None, int, str]):
+    def execute(self, conn: Connection, cursor: Cursor, query: str, *args: Any, **kwargs: Any):
         pass
 
     @abstractmethod
@@ -132,8 +132,8 @@ class GenericTargetDriverDialect(TargetDriverDialect):
             Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_in_transaction"))
 
     def execute(
-            self, conn: Connection, cursor: Cursor, query: str, **kwargs: Union[None, int, str]) -> Cursor:
-        return cursor.execute(query, **kwargs)
+            self, conn: Connection, cursor: Cursor, *args, **kwargs: Any) -> Cursor:
+        return cursor.execute(*args, **kwargs)
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         return

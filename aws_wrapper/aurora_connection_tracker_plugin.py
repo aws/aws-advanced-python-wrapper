@@ -197,7 +197,7 @@ class AuroraConnectionTrackerPlugin(Plugin):
 
         return conn
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: tuple) -> Any:
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         if self._current_writer is None or self._need_update_current_writer:
             self._current_writer = self._get_writer(self._plugin_service.hosts)
             self._need_update_current_writer = False
