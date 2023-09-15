@@ -54,6 +54,11 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
 
     def __init__(self, plugin_service, props):
+        dialect: TargetDriverDialect = plugin_service.target_driver_dialect
+        if not dialect.supports_socket_timeout() and not dialect.supports_tcp_keepalive():
+            raise AwsWrapperError(Messages.get_formatted(
+                "HostMonitoringPlugin.QueryTimeoutNotSupported", type(dialect).__name__))
+
         self._props: Properties = props
         self._plugin_service: PluginService = plugin_service
         self._monitoring_host_info: Optional[HostInfo] = None

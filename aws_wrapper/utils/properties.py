@@ -61,10 +61,29 @@ class WrapperProperty:
 class WrapperProperties:
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
 
-    PLUGINS = WrapperProperty("plugins", "Comma separated list of connection plugin codes", "aurora_connection_tracker,failover,host_monitoring")
+    PLUGINS = WrapperProperty(
+        "plugins",
+        "Comma separated list of connection plugin codes",
+        "aurora_connection_tracker,failover,host_monitoring")
     USER = WrapperProperty("user", "Driver user name")
     PASSWORD = WrapperProperty("password", "Driver password")
     DATABASE = WrapperProperty("database", "Driver database name")
+
+    CONNECT_TIMEOUT_SEC = WrapperProperty(
+        "connect_timeout",
+        "Max number of seconds to wait for a connection to be established before timing out")
+    SOCKET_TIMEOUT_SEC = WrapperProperty(
+        "socket_timeout",
+        "Max number of seconds to wait for a SQL query to complete before timing out")
+    TCP_KEEPALIVE = WrapperProperty(
+        "tcp_keepalive", "Enable TCP keepalive functionality")
+    TCP_KEEPALIVE_TIME_SEC = WrapperProperty(
+        "tcp_keepalive_time", "Number of seconds to wait before sending an initial keepalive probe")
+    TCP_KEEPALIVE_INTERVAL_SEC = WrapperProperty(
+        "tcp_keepalive_interval",
+        "Number of seconds to wait before sending additional keepalive probes after the initial probe has been sent")
+    TCP_KEEPALIVE_PROBES = WrapperProperty(
+        "tcp_keepalive_probes", "Number of keepalive probes to send before concluding that the connection is invalid")
 
     # AuroraHostListProvider
     TOPOLOGY_REFRESH_MS = WrapperProperty(

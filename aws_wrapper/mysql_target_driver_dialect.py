@@ -14,13 +14,15 @@
 
 from __future__ import annotations
 
-from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Set
 
 from mysql.connector.cursor_cext import CMySQLCursor
 
 if TYPE_CHECKING:
+    from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
+
+from inspect import signature
 
 from mysql.connector import CMySQLConnection, MySQLConnection
 
@@ -29,6 +31,8 @@ from aws_wrapper.generic_target_driver_dialect import \
     GenericTargetDriverDialect
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
 
 
 class MySQLTargetDriverDialect(GenericTargetDriverDialect):
@@ -49,8 +53,8 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
         "Cursor.fetchall",
     }
 
-    def is_dialect(self, conn: Callable) -> bool:
-        return MySQLTargetDriverDialect.TARGET_DRIVER_CODE in str(signature(conn))
+    def is_dialect(self, connect_func: Callable) -> bool:
+        return MySQLTargetDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, CMySQLConnection):
@@ -68,6 +72,7 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     def set_autocommit(self, conn: Connection, autocommit: bool):
         if isinstance(conn, CMySQLConnection):
             conn.autocommit = autocommit
+            return
 
         raise UnsupportedOperationError(
             Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
@@ -99,3 +104,20 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         if isinstance(from_conn, CMySQLConnection) and isinstance(to_conn, CMySQLConnection):
             to_conn.autocommit = from_conn.autocommit
+
+    def prepare_connect_info(self, host_info: HostInfo, original_props: Properties) -> Properties:
+        driver_props: Properties = Properties(original_props.copy())
+        PropertiesUtils.remove_wrapper_props(driver_props)
+
+        driver_props["host"] = host_info.host
+        if host_info.is_port_specified():
+            driver_props["port"] = str(host_info.port)
+
+        connect_timeout = WrapperProperties.CONNECT_TIMEOUT_SEC.get(original_props)
+        if connect_timeout is not None:
+            driver_props["connect_timeout"] = connect_timeout
+
+        return driver_props
+
+    def supports_connect_timeout(self) -> bool:
+        return True

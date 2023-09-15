@@ -82,7 +82,7 @@ class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
             if conn is None:
-                raise AwsWrapperError(Messages.get("PgTargetDriverDialect.SetReadOnlyOnNullConnection"))
+                raise AwsWrapperError(Messages.get("SqlAlchemyDriverDialect.SetReadOnlyOnNullConnection"))
 
         return self._underlying_driver.is_read_only(conn)
 

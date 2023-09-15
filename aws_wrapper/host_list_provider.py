@@ -490,7 +490,7 @@ class AuroraHostListPlugin(Plugin):
         elif not isinstance(provider, AuroraHostListProvider):
             raise AwsWrapperError(Messages.get_formatted(
                 "AuroraHostListPlugin.ProviderAlreadySet",
-                provider.__class__.__name__))
+                type(provider).__name__))
 
         init_host_provider_func()
 

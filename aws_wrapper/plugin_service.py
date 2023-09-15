@@ -374,7 +374,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         host = self.identify_connection(connection)
         if host:
-            host_info.add_alias(host.as_aliases())
+            host_info.add_alias(*host.as_aliases())
 
     def is_static_host_list_provider(self) -> bool:
         return self._host_list_provider is StaticHostListProvider

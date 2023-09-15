@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Set
+from typing import TYPE_CHECKING, Any, Callable, Set, Union
 
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
@@ -24,7 +24,7 @@ from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
-    from aws_wrapper.pep249 import Connection
+    from aws_wrapper.pep249 import Connection, Cursor
 
 
 class TargetDriverDialect(ABC):
@@ -58,8 +58,17 @@ class TargetDriverDialect(ABC):
     def set_autocommit(self, conn: Connection, autocommit: bool):
         self._autocommit = autocommit
 
+    def supports_connect_timeout(self) -> bool:
+        return False
+
+    def supports_socket_timeout(self) -> bool:
+        return False
+
+    def supports_tcp_keepalive(self) -> bool:
+        return False
+
     @abstractmethod
-    def is_dialect(self, conn: Callable) -> bool:
+    def is_dialect(self, connect_func: Callable) -> bool:
         pass
 
     @abstractmethod
@@ -79,6 +88,10 @@ class TargetDriverDialect(ABC):
         pass
 
     @abstractmethod
+    def execute(self, conn: Connection, cursor: Cursor, query: str, **kwargs: Union[None, int, str]):
+        pass
+
+    @abstractmethod
     def get_connection_from_obj(self, obj: object) -> Any:
         pass
 
@@ -93,7 +106,7 @@ class TargetDriverDialect(ABC):
 
 class GenericTargetDriverDialect(TargetDriverDialect):
 
-    def is_dialect(self, conn: Callable) -> bool:
+    def is_dialect(self, connect_func: Callable) -> bool:
         return True
 
     def prepare_connect_info(self, host_info: HostInfo, props: Properties) -> Properties:
@@ -117,6 +130,10 @@ class GenericTargetDriverDialect(TargetDriverDialect):
     def is_in_transaction(self, conn: Connection) -> bool:
         raise UnsupportedOperationError(
             Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_in_transaction"))
+
+    def execute(
+            self, conn: Connection, cursor: Cursor, query: str, **kwargs: Union[None, int, str]) -> Cursor:
+        return cursor.execute(query, **kwargs)
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         return

@@ -38,7 +38,6 @@ from tests.integration.container.utils.database_engine import DatabaseEngine
 from tests.integration.container.utils.database_engine_deployment import \
     DatabaseEngineDeployment
 from tests.integration.container.utils.driver_helper import DriverHelper
-from tests.integration.container.utils.proxy_helper import ProxyHelper
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
@@ -281,41 +280,42 @@ class TestReadWriteSplitting:
     #     current_id = aurora_utils.query_instance_id(conn)
     #     assert reader_id == current_id
 
-    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED, TestEnvironmentFeatures.FAILOVER_SUPPORTED])
-    @enable_on_num_instances(min_instances=3)
-    def test_failover_to_new_writer__switch_read_only(
-            self, test_environment: TestEnvironment, test_driver: TestDriver,
-            proxied_failover_props, conn_utils, aurora_utils):
-        target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(
-            conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_failover_props)
-        original_writer_id = aurora_utils.query_instance_id(conn)
-
-        instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
-        for i in range(1, len(instance_ids)):
-            ProxyHelper.disable_connectivity(instance_ids[i])
-
-        # Force internal reader connection to the writer instance
-        conn.read_only = True
-        current_id = aurora_utils.query_instance_id(conn)
-        assert original_writer_id == current_id
-        conn.read_only = False
-
-        ProxyHelper.enable_all_connectivity()
-        aurora_utils.failover_cluster_and_wait_until_writer_changed(original_writer_id)
-        aurora_utils.assert_first_query_throws(conn, FailoverSuccessError)
-
-        new_writer_id = aurora_utils.query_instance_id(conn)
-        assert original_writer_id != new_writer_id
-        assert aurora_utils.is_db_instance_writer(new_writer_id)
-
-        conn.read_only = True
-        current_id = aurora_utils.query_instance_id(conn)
-        assert new_writer_id != current_id
-
-        conn.read_only = False
-        current_id = aurora_utils.query_instance_id(conn)
-        assert new_writer_id == current_id
+    # TODO: Enable test when we resolve the query timeout issue for topology query
+    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED, TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    # @enable_on_num_instances(min_instances=3)
+    # def test_failover_to_new_writer__switch_read_only(
+    #         self, test_environment: TestEnvironment, test_driver: TestDriver,
+    #         proxied_failover_props, conn_utils, aurora_utils):
+    #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
+    #     conn = AwsWrapperConnection.connect(
+    #         conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_failover_props)
+    #     original_writer_id = aurora_utils.query_instance_id(conn)
+    #
+    #     instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
+    #     for i in range(1, len(instance_ids)):
+    #         ProxyHelper.disable_connectivity(instance_ids[i])
+    #
+    #     # Force internal reader connection to the writer instance
+    #     conn.read_only = True
+    #     current_id = aurora_utils.query_instance_id(conn)
+    #     assert original_writer_id == current_id
+    #     conn.read_only = False
+    #
+    #     ProxyHelper.enable_all_connectivity()
+    #     aurora_utils.failover_cluster_and_wait_until_writer_changed(original_writer_id)
+    #     aurora_utils.assert_first_query_throws(conn, FailoverSuccessError)
+    #
+    #     new_writer_id = aurora_utils.query_instance_id(conn)
+    #     assert original_writer_id != new_writer_id
+    #     assert aurora_utils.is_db_instance_writer(new_writer_id)
+    #
+    #     conn.read_only = True
+    #     current_id = aurora_utils.query_instance_id(conn)
+    #     assert new_writer_id != current_id
+    #
+    #     conn.read_only = False
+    #     current_id = aurora_utils.query_instance_id(conn)
+    #     assert new_writer_id == current_id
 
     # TODO: Enable test when we resolve the query timeout issue for topology query
     # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])

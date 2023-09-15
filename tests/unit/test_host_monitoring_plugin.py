@@ -23,9 +23,19 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 
 @pytest.fixture
-def mock_plugin_service(mocker):
+def mock_driver_dialect(mocker):
+    driver_dialect_mock = mocker.MagicMock()
+    driver_dialect_mock.supports_socket_timeout.return_value = True
+    driver_dialect_mock.is_closed.return_value = True
+    return driver_dialect_mock
+
+
+@pytest.fixture
+def mock_plugin_service(mocker, mock_driver_dialect, mock_conn, host_info):
     service_mock = mocker.MagicMock()
-    service_mock.network_bound_methods = {"*"}
+    service_mock.current_connection = mock_conn
+    service_mock.current_host_info = host_info
+    type(service_mock).target_driver_dialect = mocker.PropertyMock(return_value=mock_driver_dialect)
     return service_mock
 
 
@@ -35,23 +45,22 @@ def mock_conn(mocker):
 
 
 @pytest.fixture
-def mock_target_driver_dialect(mocker):
-    return mocker.MagicMock()
-
-
-@pytest.fixture
 def mock_execute_func(mocker):
     return mocker.MagicMock()
 
 
 @pytest.fixture
 def mock_context(mocker):
-    return mocker.MagicMock()
+    context_mock = mocker.MagicMock()
+    context_mock.is_host_unavailable.return_value = False
+    return context_mock
 
 
 @pytest.fixture
-def mock_monitor_service(mocker):
-    return mocker.MagicMock()
+def mock_monitor_service(mocker, mock_context):
+    monitor_service_mock = mocker.MagicMock()
+    monitor_service_mock.start_monitoring.return_value = mock_context
+    return monitor_service_mock
 
 
 @pytest.fixture
@@ -69,27 +78,18 @@ def plugin(mock_plugin_service, props, mock_monitor_service):
     return init_plugin(mock_plugin_service, props, mock_monitor_service)
 
 
-@pytest.fixture(autouse=True)
-def mock_default_behavior(
-        mock_plugin_service,
-        mock_conn,
-        host_info,
-        mock_context,
-        mock_monitor_service,
-        mock_target_driver_dialect
-):
-    mock_plugin_service.current_connection = mock_conn
-    mock_plugin_service.current_host_info = host_info
-    mock_plugin_service.target_driver_dialect = mock_target_driver_dialect
-    mock_target_driver_dialect.is_closed.return_value = True
-    mock_monitor_service.start_monitoring.return_value = mock_context
-    mock_context.is_host_unavailable.return_value = False
-
-
 def init_plugin(plugin_service, props, mock_monitor_service):
     plugin = HostMonitoringPlugin(plugin_service, props)
     plugin._monitor_service = mock_monitor_service
     return plugin
+
+
+def test_init_no_query_timeout(mock_plugin_service, mock_driver_dialect, props):
+    mock_driver_dialect.supports_socket_timeout.return_value = False
+    mock_driver_dialect.supports_tcp_keepalive.return_value = False
+
+    with pytest.raises(AwsWrapperError):
+        HostMonitoringPlugin(mock_plugin_service, props)
 
 
 def test_execute_null_connection_info(
@@ -135,10 +135,10 @@ def test_execute_monitoring_enabled(mocker, plugin, mock_monitor_service, mock_e
 
 
 def test_execute_cleanup__error_checking_connection_status(
-        mocker, plugin, mock_monitor_service, mock_context, mock_conn, mock_target_driver_dialect):
+        mocker, plugin, mock_monitor_service, mock_execute_func, mock_context, mock_conn, mock_driver_dialect):
     mock_context.is_host_unavailable.return_value = True
     expected_exception = Error("Error checking connection status")
-    mock_target_driver_dialect.is_closed.side_effect = expected_exception
+    mock_driver_dialect.is_closed.side_effect = expected_exception
 
     with pytest.raises(Error) as exc_info:
         plugin.execute(mocker.MagicMock(), "Cursor.execute", mock_execute_func, "SELECT 1")
@@ -146,9 +146,9 @@ def test_execute_cleanup__error_checking_connection_status(
 
 
 def test_execute_cleanup__connection_not_closed(
-        mocker, plugin, mock_monitor_service, mock_context, mock_conn, mock_execute_func, mock_target_driver_dialect):
+        mocker, plugin, mock_monitor_service, mock_context, mock_conn, mock_execute_func, mock_driver_dialect):
     mock_context.is_host_unavailable.return_value = True
-    mock_target_driver_dialect.is_closed.return_value = False
+    mock_driver_dialect.is_closed.return_value = False
 
     with pytest.raises(AwsWrapperError):
         plugin.execute(mocker.MagicMock(), "Cursor.execute", mock_execute_func, "SELECT 1")
