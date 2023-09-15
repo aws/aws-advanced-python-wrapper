@@ -14,18 +14,22 @@
 
 from __future__ import annotations
 
-from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Set
 
 import psycopg
 
 if TYPE_CHECKING:
+    from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
+
+from inspect import signature
 
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.target_driver_dialect import GenericTargetDriverDialect
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
 
 
 class PgTargetDriverDialect(GenericTargetDriverDialect):
@@ -52,8 +56,8 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
         "Connection.transaction_isolation_setter"
     }
 
-    def is_dialect(self, conn: Callable) -> bool:
-        return PgTargetDriverDialect.TARGET_DRIVER_CODE in str(signature(conn))
+    def is_dialect(self, connect_func: Callable) -> bool:
+        return PgTargetDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
@@ -123,3 +127,39 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
 
         if isinstance(obj, psycopg.Cursor):
             return obj.connection
+
+    def prepare_connect_info(self, host_info: HostInfo, original_props: Properties) -> Properties:
+        driver_props: Properties = Properties(original_props.copy())
+        PropertiesUtils.remove_wrapper_props(driver_props)
+
+        driver_props["host"] = host_info.host
+        if host_info.is_port_specified():
+            driver_props["port"] = str(host_info.port)
+
+        connect_timeout = WrapperProperties.CONNECT_TIMEOUT_SEC.get(original_props)
+        if connect_timeout is not None:
+            driver_props["connect_timeout"] = connect_timeout
+
+        keepalive = WrapperProperties.TCP_KEEPALIVE.get(original_props)
+        if keepalive is not None:
+            driver_props["keepalives"] = keepalive
+
+        keepalive_time = WrapperProperties.TCP_KEEPALIVE_TIME_SEC.get(original_props)
+        if keepalive_time is not None:
+            driver_props["keepalives_idle"] = keepalive_time
+
+        keepalive_interval = WrapperProperties.TCP_KEEPALIVE_INTERVAL_SEC.get(original_props)
+        if keepalive_interval is not None:
+            driver_props["keepalives_interval"] = keepalive_interval
+
+        keepalive_probes = WrapperProperties.TCP_KEEPALIVE_PROBES.get(original_props)
+        if keepalive_probes is not None:
+            driver_props["keepalives_count"] = keepalive_probes
+
+        return driver_props
+
+    def supports_connect_timeout(self) -> bool:
+        return True
+
+    def supports_tcp_keepalive(self) -> bool:
+        return True
