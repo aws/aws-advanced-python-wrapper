@@ -17,6 +17,7 @@ from threading import Barrier
 from time import sleep
 from typing import FrozenSet, List
 
+import psycopg
 import pytest
 
 from aws_wrapper.host_monitoring_plugin import (MonitoringContext,
@@ -29,7 +30,7 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 @pytest.fixture
 def mock_conn(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

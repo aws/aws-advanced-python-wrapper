@@ -15,6 +15,7 @@
 import time
 from datetime import datetime, timedelta
 
+import psycopg
 import pytest
 
 from aws_wrapper.dialect import Dialect
@@ -56,7 +57,7 @@ def mock_hanging_behavior(mock_provider_service, mock_conn, mock_cursor):
 
 @pytest.fixture
 def mock_conn(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

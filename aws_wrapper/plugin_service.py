@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin import Plugin, PluginFactory
     from threading import Event
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.target_driver_dialect import TargetDriverDialectManager
 
 from abc import abstractmethod
 from logging import getLogger
@@ -32,7 +33,8 @@ from aws_wrapper.aurora_connection_tracker_plugin import \
     AuroraConnectionTrackerPluginFactory
 from aws_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
-from aws_wrapper.connection_provider import ConnectionProviderManager
+from aws_wrapper.connection_provider import (ConnectionProvider,
+                                             ConnectionProviderManager)
 from aws_wrapper.default_plugin import DefaultPlugin
 from aws_wrapper.dialect import (Dialect, DialectManager,
                                  TopologyAwareDatabaseDialect)
@@ -63,7 +65,7 @@ logger = getLogger(__name__)
 
 class PluginServiceManagerContainer:
     @property
-    def plugin_service(self):
+    def plugin_service(self) -> PluginService:
         return self._plugin_service
 
     @plugin_service.setter
@@ -71,7 +73,7 @@ class PluginServiceManagerContainer:
         self._plugin_service = value
 
     @property
-    def plugin_manager(self):
+    def plugin_manager(self) -> PluginManager:
         return self._plugin_manager
 
     @plugin_manager.setter
@@ -142,6 +144,9 @@ class PluginService(ExceptionHandler, Protocol):
     def update_dialect(self, connection: Optional[Connection] = None):
         ...
 
+    def update_driver_dialect(self, connection_provider: ConnectionProvider):
+        ...
+
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         ...
 
@@ -181,6 +186,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             container: PluginServiceManagerContainer,
             props: Properties,
             target_func: Callable,
+            target_driver_dialect_manager: TargetDriverDialectManager,
             target_driver_dialect: TargetDriverDialect):
         self._container = container
         self._container.plugin_service = self
@@ -196,6 +202,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._is_in_transaction: bool = False
         self._dialect_provider = DialectManager()
         self._target_func = target_func
+        self._target_driver_dialect_manager = target_driver_dialect_manager
         self._target_driver_dialect = target_driver_dialect
         self._dialect = self._dialect_provider.get_dialect(target_driver_dialect.dialect_code, props)
 
@@ -280,6 +287,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return method_name in self.network_bound_methods
 
     def update_dialect(self, connection: Optional[Connection] = None):
+        # Updates both database dialects as well as driver dialect
+
         connection = self.current_connection if connection is None else connection
         if connection is None:
             raise AwsWrapperError(Messages.get("PluginServiceImpl.UpdateDialectNullConnection"))
@@ -289,6 +298,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 self._initial_connection_host_info,
                 connection,
                 self.target_driver_dialect)
+
+    def update_driver_dialect(self, connection_provider: ConnectionProvider):
+        self._target_driver_dialect = self._target_driver_dialect_manager.get_pool_connection_driver_dialect(connection_provider,
+                                                                                                             self._target_driver_dialect)
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -494,7 +507,19 @@ class PluginManager(CanReleaseResources):
     def connection_provider_manager(self) -> ConnectionProviderManager:
         return self._connection_provider_manager
 
+    def get_current_connection_provider(self, host_info: HostInfo, properties: Properties):
+        return self.connection_provider_manager.get_connection_provider(host_info, properties)
+
     def execute(self, target: object, method_name: str, target_driver_func: Callable, *args) -> Any:
+        plugin_service = self._container.plugin_service
+        target_driver_dialect = plugin_service.target_driver_dialect
+        conn: Optional[Connection] = target_driver_dialect.get_connection_from_obj(target)
+        current_conn: Optional[Connection] = target_driver_dialect.unwrap_connection(plugin_service.current_connection)
+
+        if conn is not None and conn != current_conn and method_name != "Connection.close" and method_name != "Cursor.close":
+            msg = Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target)
+            raise AwsWrapperError(msg)
+
         return self._execute_with_subscribed_plugins(
             method_name,
             # next_plugin_func is defined later in make_pipeline

@@ -36,6 +36,7 @@ from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 class DefaultPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
+    _CLOSE_METHOD = "Connection.close"
 
     def __init__(self, plugin_service: PluginService, connection_provider_manager: ConnectionProviderManager):
         self._plugin_service: PluginService = plugin_service
@@ -65,6 +66,7 @@ class DefaultPlugin(Plugin):
             conn_provider: ConnectionProvider) -> Connection:
         conn = conn_provider.connect(target_func, target_driver_dialect, host_info, props)
         self._plugin_service.set_availability(host_info.all_aliases, HostAvailability.AVAILABLE)
+        self._plugin_service.update_driver_dialect(conn_provider)
         self._plugin_service.update_dialect(conn)
         return conn
 
@@ -87,7 +89,7 @@ class DefaultPlugin(Plugin):
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
         result = execute_func()
-        if self._plugin_service.current_connection is not None:
+        if method_name != DefaultPlugin._CLOSE_METHOD and self._plugin_service.current_connection is not None:
             self._plugin_service.update_in_transaction()
 
         return result

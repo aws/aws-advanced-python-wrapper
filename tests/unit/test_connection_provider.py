@@ -11,8 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
-
+import psycopg
 import pytest
 
 from aws_wrapper.connection_provider import (ConnectionProviderManager,
@@ -23,7 +22,7 @@ from aws_wrapper.utils.properties import Properties
 
 @pytest.fixture
 def connection_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

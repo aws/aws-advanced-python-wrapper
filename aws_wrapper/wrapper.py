@@ -15,10 +15,7 @@
 from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
-from sqlalchemy import PoolProxiedConnection
-
-from aws_wrapper.errors import (AwsWrapperError, FailoverSuccessError,
-                                UnsupportedOperationError)
+from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
 from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugin import CanReleaseResources
@@ -64,35 +61,18 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     @property
     def autocommit(self):
-        if isinstance(self.target_connection, PoolProxiedConnection) \
-                and hasattr(self.target_connection, "driver_connection"):
-            driver_connection = self.target_connection.driver_connection
-        else:
-            driver_connection = self.target_connection
-
-        if not hasattr(driver_connection, "autocommit"):
-            raise UnsupportedOperationError(Messages.get_formatted("Wrapper.UnsupportedAttribute", "autocommit"))
-
         return self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit",
-            lambda: driver_connection.autocommit)
+            lambda: self._plugin_service.target_driver_dialect.get_autocommit(self.target_connection))
 
     @autocommit.setter
     def autocommit(self, autocommit: bool):
-        if isinstance(self.target_connection, PoolProxiedConnection) \
-                and hasattr(self.target_connection, "driver_connection"):
-            driver_connection = self.target_connection.driver_connection
-        else:
-            driver_connection = self.target_connection
-
-        if not hasattr(driver_connection, "autocommit"):
-            raise UnsupportedOperationError(Messages.get_formatted("Wrapper.UnsupportedAttribute", "autocommit"))
-
         self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit_setter",
-            lambda: setattr(driver_connection, "autocommit", autocommit), autocommit)
+            lambda: self._plugin_service.target_driver_dialect.set_autocommit(self.target_connection, autocommit),
+            autocommit)
 
     @staticmethod
     def connect(
@@ -117,7 +97,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         target_driver_dialect_manager: TargetDriverDialectManager = TargetDriverDialectManager()
         target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
-        plugin_service = PluginServiceImpl(container, props, target_func, target_driver_dialect)
+        plugin_service = PluginServiceImpl(container, props, target_func, target_driver_dialect_manager, target_driver_dialect)
         plugin_manager: PluginManager = PluginManager(container, props)
         plugin_service.host_list_provider = AuroraHostListProvider(plugin_service, props)
 
@@ -143,7 +123,9 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
                                      lambda: self.target_connection.close())
 
     def cursor(self, **kwargs: Union[None, int, str]) -> "AwsWrapperCursor":
-        _cursor = self.target_connection.cursor(**kwargs)
+        _cursor = self._plugin_manager.execute(self.target_connection, "Connection.cursor",
+                                               lambda: self.target_connection.cursor(**kwargs),
+                                               kwargs)
         return AwsWrapperCursor(self, self._plugin_manager, _cursor)
 
     def commit(self) -> None:
@@ -156,7 +138,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     def tpc_begin(self, xid: Any) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.tpc_begin",
-                                     lambda: self.target_connection.tpc_begin(xid))
+                                     lambda: self.target_connection.tpc_begin(xid), xid)
 
     def tpc_prepare(self) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.tpc_prepare",
@@ -164,11 +146,11 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     def tpc_commit(self, xid: Any = None) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.tpc_commit",
-                                     lambda: self.target_connection.tpc_commit(xid))
+                                     lambda: self.target_connection.tpc_commit(xid), xid)
 
     def tpc_rollback(self, xid: Any = None) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.tpc_rollback",
-                                     lambda: self.target_connection.tpc_rollback(xid))
+                                     lambda: self.target_connection.tpc_rollback(xid), xid)
 
     def tpc_recover(self) -> Any:
         return self._plugin_manager.execute(self.target_connection, "Connection.tpc_recover",
@@ -225,7 +207,7 @@ class AwsWrapperCursor(Cursor):
 
     def callproc(self, **kwargs: Union[None, int, str]):
         return self._plugin_manager.execute(self.target_cursor, "Cursor.callproc",
-                                            lambda: self.target_cursor.callproc(**kwargs))
+                                            lambda: self.target_cursor.callproc(**kwargs), kwargs)
 
     def execute(
             self,
@@ -245,7 +227,7 @@ class AwsWrapperCursor(Cursor):
             **kwargs: Union[None, int, str]
     ) -> None:
         self._plugin_manager.execute(self.target_cursor, "Cursor.executemany",
-                                     lambda: self.target_cursor.executemany(query, **kwargs))
+                                     lambda: self.target_cursor.executemany(query, **kwargs), query, kwargs)
 
     def nextset(self) -> bool:
         return self._plugin_manager.execute(self.target_cursor, "Cursor.nextset",
@@ -257,7 +239,7 @@ class AwsWrapperCursor(Cursor):
 
     def fetchmany(self, size: int = 0) -> List[Any]:
         return self._plugin_manager.execute(self.target_cursor, "Cursor.fetchmany",
-                                            lambda: self.target_cursor.fetchmany(size))
+                                            lambda: self.target_cursor.fetchmany(size), size)
 
     def fetchall(self) -> List[Any]:
         return self._plugin_manager.execute(self.target_cursor, "Cursor.fetchall",
@@ -268,11 +250,11 @@ class AwsWrapperCursor(Cursor):
 
     def setinputsizes(self, sizes: Any) -> None:
         return self._plugin_manager.execute(self.target_cursor, "Cursor.setinputsizes",
-                                            lambda: self.target_cursor.setinputsizes(sizes))
+                                            lambda: self.target_cursor.setinputsizes(sizes), sizes)
 
     def setoutputsize(self, size: Any, column: Optional[int] = None) -> None:
         return self._plugin_manager.execute(self.target_cursor, "Cursor.setoutputsize",
-                                            lambda: self.target_cursor.setoutputsize(size, column))
+                                            lambda: self.target_cursor.setoutputsize(size, column), size, column)
 
     def __enter__(self: "AwsWrapperCursor") -> "AwsWrapperCursor":
         return self

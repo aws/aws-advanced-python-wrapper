@@ -14,6 +14,7 @@
 
 from typing import List
 
+import psycopg
 import pytest
 
 from aws_wrapper.errors import FailoverSuccessError
@@ -45,22 +46,22 @@ def changes_mock(mocker):
 
 @pytest.fixture
 def reader_conn_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture
 def writer_conn_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture
 def closed_writer_conn_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture
 def new_writer_conn_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture
@@ -69,12 +70,15 @@ def connect_func_mock(mocker):
 
 
 @pytest.fixture
-def target_driver_dialect_mock(mocker):
+def target_driver_dialect_mock(mocker, writer_conn_mock):
     def is_closed_side_effect(conn):
         return conn == closed_writer_conn_mock
 
     target_driver_dialect_mock = mocker.MagicMock()
     target_driver_dialect_mock.is_closed.side_effect = is_closed_side_effect
+    target_driver_dialect_mock.get_connection_from_obj.return_value = writer_conn_mock
+    target_driver_dialect_mock.unwrap_connection.return_value = writer_conn_mock
+
     return target_driver_dialect_mock
 
 

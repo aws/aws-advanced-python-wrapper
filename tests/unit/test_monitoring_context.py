@@ -14,6 +14,7 @@
 
 from time import perf_counter_ns
 
+import psycopg
 import pytest
 
 from aws_wrapper.errors import AwsWrapperError
@@ -27,7 +28,7 @@ def mock_monitor(mocker):
 
 @pytest.fixture
 def mock_conn(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

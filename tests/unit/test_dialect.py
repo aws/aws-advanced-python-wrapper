@@ -14,6 +14,7 @@
 
 from unittest.mock import patch
 
+import psycopg
 import pytest
 
 from aws_wrapper.dialect import (AuroraMysqlDialect, AuroraPgDialect,
@@ -28,7 +29,7 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 @pytest.fixture
 def mock_conn(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture

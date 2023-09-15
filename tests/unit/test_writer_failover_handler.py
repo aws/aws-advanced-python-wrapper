@@ -18,6 +18,7 @@ from itertools import chain, cycle
 from typing import TYPE_CHECKING
 from unittest.mock import call
 
+import psycopg
 import pytest
 
 from aws_wrapper.errors import FailoverError
@@ -52,17 +53,17 @@ def writer_failover_mock(mocker):
 
 @pytest.fixture
 def writer_connection_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture
 def new_writer_connection_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture
 def reader_a_connection_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture
@@ -151,7 +152,6 @@ def test_reconnect_to_writer_slow_task_b(
         mocker, plugin_service_mock, reader_failover_mock, writer_connection_mock, new_writer_connection_mock,
         reader_a_connection_mock, default_properties, new_writer_host, writer, reader_a, reader_b, topology,
         new_topology):
-
     exception = Exception("Test Exception")
     expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
                 call(writer.as_aliases(), HostAvailability.AVAILABLE)]
@@ -195,7 +195,6 @@ def test_reconnect_to_writer_slow_task_b(
 def test_reconnect_to_writer_task_b_defers(
         plugin_service_mock, reader_failover_mock, writer_connection_mock, reader_a_connection_mock, default_properties,
         writer, reader_a, reader_b, topology):
-
     exception = Exception("Test Exception")
 
     def force_connect_side_effect(host_info, _, __) -> Connection:

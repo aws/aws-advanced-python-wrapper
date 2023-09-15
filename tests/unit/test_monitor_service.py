@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
+import psycopg
 import pytest
 
 from aws_wrapper.errors import AwsWrapperError
@@ -23,7 +23,7 @@ from aws_wrapper.utils.properties import Properties
 
 @pytest.fixture
 def mock_conn(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=psycopg.Connection)
 
 
 @pytest.fixture
@@ -99,7 +99,6 @@ def test_start_monitoring(
     monitor_service_mocked_container.start_monitoring(
         mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
-    mock_plugin_service.update_dialect.assert_called_once()
     mock_monitor.start_monitoring.assert_called_once()
     assert mock_monitor == monitor_service_mocked_container._cached_monitor
     assert aliases == monitor_service_mocked_container._cached_monitor_aliases
@@ -128,7 +127,7 @@ def test_start_monitoring__cached_monitor(
     monitor_service_mocked_container.start_monitoring(
         mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
-    mock_plugin_service.update_dialect.assert_not_called()
+    mock_plugin_service.get_dialect.assert_not_called()
     mock_thread_container.get_or_create_monitor.assert_not_called()
     mock_monitor.start_monitoring.assert_called_once()
     assert mock_monitor == monitor_service_mocked_container._cached_monitor
