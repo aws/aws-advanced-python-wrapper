@@ -109,6 +109,7 @@ class TestAuroraFailover:
             assert current_connection_id != initial_writer_id
 
     @pytest.mark.skip
+    @enable_on_features([TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_fail_from_reader_to_writer(self, test_environment: TestEnvironment,
                                         test_driver: TestDriver, conn_utils, proxied_props, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -256,6 +257,7 @@ class TestAuroraFailover:
         for idle_connection in idle_connections:
             assert idle_connection.is_closed is True
 
+    @enable_on_features([TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_basic_failover_with_efm(self, test_driver: TestDriver,
                                      test_environment: TestEnvironment,
                                      props, conn_utils,

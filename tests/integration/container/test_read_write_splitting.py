@@ -283,7 +283,8 @@ class TestReadWriteSplitting:
     #     assert reader_id == current_id
 
     # TODO: Enable test when we resolve the query timeout issue for topology query
-    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED, TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED, TestEnvironmentFeatures.FAILOVER_SUPPORTED,
+    #                      TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     # @enable_on_num_instances(min_instances=3)
     # def test_failover_to_new_writer__switch_read_only(
     #         self, test_environment: TestEnvironment, test_driver: TestDriver,
@@ -320,7 +321,8 @@ class TestReadWriteSplitting:
     #     assert new_writer_id == current_id
 
     # TODO: Enable test when we resolve the query timeout issue for topology query
-    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+    #                      TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     # @enable_on_num_instances(min_instances=3)
     # def test_failover_to_new_reader__switch_read_only(
     #         self, test_environment: TestEnvironment, test_driver: TestDriver,
@@ -363,7 +365,8 @@ class TestReadWriteSplitting:
     #     assert other_reader_id == current_id
 
     # TODO: Enable test when we resolve the psycopg query timeout issue
-    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+    #                     TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     # @enable_on_num_instances(min_instances=3)
     # def test_failover_reader_to_writer__switch_read_only(
     #         self, test_environment: TestEnvironment, test_driver: TestDriver,
@@ -416,7 +419,8 @@ class TestReadWriteSplitting:
         assert conn1 is not conn2
         assert driver_conn1 is driver_conn2
 
-    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED,
+                         TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_pooled_connection__failover(
             self, test_environment: TestEnvironment, test_driver: TestDriver, aurora_utils, conn_utils, failover_props):
         provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
@@ -451,7 +455,8 @@ class TestReadWriteSplitting:
         # so this should be a new connection even though it is connected to the same instance.
         assert initial_driver_conn is not current_driver_conn
 
-    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED,
+                         TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_pooled_connection__cluster_url_failover(
             self, test_environment: TestEnvironment, test_driver: TestDriver, aurora_utils, conn_utils, failover_props):
         provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
@@ -480,7 +485,8 @@ class TestReadWriteSplitting:
         assert initial_driver_conn is not new_driver_conn
 
     # TODO: Enable test when we resolve the query timeout issue for topology query
-    # @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    # @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+    #                      TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     # def test_pooled_connection__failover_failed(
     #         self, test_environment: TestEnvironment, test_driver: TestDriver,
     #         aurora_utils, conn_utils, proxied_failover_props):
@@ -515,7 +521,8 @@ class TestReadWriteSplitting:
     #     # so this should be a new connection even though it is connected to the same instance.
     #     assert initial_driver_conn is not current_driver_conn
 
-    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED,
+                         TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_pooled_connection__failover_in_transaction(
             self, test_environment: TestEnvironment, test_driver: TestDriver, aurora_utils, conn_utils, failover_props):
         provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
