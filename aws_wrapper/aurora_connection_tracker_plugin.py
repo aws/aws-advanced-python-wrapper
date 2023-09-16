@@ -129,7 +129,7 @@ class OpenedConnectionTracker:
 
             msg += f"\t[{key} : {conn}]"
 
-        return logger.debug(f"Opened Connections Tracked: {msg}")
+        return logger.debug(Messages.get_formatted("OpenedConnectionTracker.OpenedConnectionsTracked", msg))
 
     def _log_connection_set(self, host: str, conn_set: Optional[WeakSet]):
         if conn_set is None or len(conn_set) == 0:
