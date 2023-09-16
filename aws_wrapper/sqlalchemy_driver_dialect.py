@@ -23,10 +23,8 @@ if TYPE_CHECKING:
 
 from sqlalchemy import PoolProxiedConnection
 
-from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.generic_target_driver_dialect import (
     GenericTargetDriverDialect, TargetDriverDialect)
-from aws_wrapper.utils.messages import Messages
 
 
 class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
@@ -43,6 +41,7 @@ class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
     def get_autocommit(self, conn: Connection) -> bool:
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
+
         return self._underlying_driver.get_autocommit(conn)
 
     def set_autocommit(self, conn: Connection, autocommit: bool):
@@ -59,8 +58,6 @@ class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
     def abort_connection(self, conn: Connection):
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
-            if conn is None:
-                return True
 
         return self._underlying_driver.abort_connection(conn)
 
@@ -73,18 +70,14 @@ class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
     def is_read_only(self, conn: Connection) -> bool:
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
-            if conn is None:
-                return False
 
         return self._underlying_driver.is_read_only(conn)
 
     def set_read_only(self, conn: Connection, read_only: bool):
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
-            if conn is None:
-                raise AwsWrapperError(Messages.get("PgTargetDriverDialect.SetReadOnlyOnNullConnection"))
 
-        return self._underlying_driver.is_read_only(conn)
+        return self._underlying_driver.set_read_only(conn, read_only)
 
     def get_connection_from_obj(self, obj: object) -> Any:
         if isinstance(obj, PoolProxiedConnection):

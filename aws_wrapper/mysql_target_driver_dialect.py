@@ -17,6 +17,7 @@ from __future__ import annotations
 from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Set
 
+from mysql.connector.cursor import MySQLCursor
 from mysql.connector.cursor_cext import CMySQLCursor
 
 if TYPE_CHECKING:
@@ -53,20 +54,20 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
         return MySQLTargetDriverDialect.TARGET_DRIVER_CODE in str(signature(conn))
 
     def is_closed(self, conn: Connection) -> bool:
-        if isinstance(conn, CMySQLConnection):
+        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
             return not conn.is_connected()
 
         raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_connected"))
 
     def get_autocommit(self, conn: Connection) -> bool:
-        if isinstance(conn, CMySQLConnection):
+        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
             return conn.autocommit
 
         raise UnsupportedOperationError(
             Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
     def set_autocommit(self, conn: Connection, autocommit: bool):
-        if isinstance(conn, CMySQLConnection):
+        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
             conn.autocommit = autocommit
 
         raise UnsupportedOperationError(
@@ -80,7 +81,7 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
                 "abort_connection"))
 
     def is_in_transaction(self, conn: Connection) -> bool:
-        if isinstance(conn, CMySQLConnection):
+        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
             return bool(conn.in_transaction)
 
         raise UnsupportedOperationError(
@@ -88,14 +89,15 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
                                    "in_transaction"))
 
     def get_connection_from_obj(self, obj: object) -> Any:
-        if isinstance(obj, MySQLConnection) or isinstance(obj, CMySQLConnection):
+        if isinstance(obj, CMySQLConnection) or isinstance(obj, MySQLConnection):
             return obj
 
-        if isinstance(obj, CMySQLCursor):
+        if isinstance(obj, CMySQLCursor) or isinstance(obj, MySQLCursor):
             return obj._cnx
 
         return None
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
-        if isinstance(from_conn, CMySQLConnection) and isinstance(to_conn, CMySQLConnection):
+        if (isinstance(from_conn, CMySQLConnection) or isinstance(from_conn, MySQLConnection)) and (
+                isinstance(to_conn, CMySQLConnection) or isinstance(to_conn, MySQLConnection)):
             to_conn.autocommit = from_conn.autocommit
