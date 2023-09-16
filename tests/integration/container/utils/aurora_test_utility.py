@@ -83,7 +83,7 @@ class AuroraTestUtility:
             # if writer is not changed, try triggering failover again
             remaining_attempts -= 1
             if remaining_attempts == 0:
-                raise Exception(Messages.get_formatted("AuroraTestUtility.FailoverRequestNotSuccessful"))
+                raise Exception(Messages.get("AuroraTestUtility.FailoverRequestNotSuccessful"))
             self.failover_cluster(cluster_id)
 
         # Failover has finished, wait for DNS to be updated so cluster endpoint resolves to the new writer instance.
