@@ -16,6 +16,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.utils.messages import Messages
+
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
@@ -23,10 +26,8 @@ if TYPE_CHECKING:
 
 from sqlalchemy import PoolProxiedConnection
 
-from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.generic_target_driver_dialect import (
     GenericTargetDriverDialect, TargetDriverDialect)
-from aws_wrapper.utils.messages import Messages
 
 
 class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
@@ -43,16 +44,24 @@ class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
     def get_autocommit(self, conn: Connection) -> bool:
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
+            if conn is None:
+                return False
+
         return self._underlying_driver.get_autocommit(conn)
 
     def set_autocommit(self, conn: Connection, autocommit: bool):
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
+            if conn is None:
+                raise AwsWrapperError(Messages.get_formatted("SqlAlchemyDriverDialect.SetReadOnlyOnNullConnection", "autocommit"))
+
         return self._underlying_driver.set_autocommit(conn, autocommit)
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
+            if conn is None:
+                return True
 
         return self._underlying_driver.is_closed(conn)
 
@@ -60,13 +69,15 @@ class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
             if conn is None:
-                return True
+                return
 
         return self._underlying_driver.abort_connection(conn)
 
     def is_in_transaction(self, conn: Connection) -> bool:
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
+            if conn is None:
+                return False
 
         return self._underlying_driver.is_in_transaction(conn)
 
@@ -82,9 +93,9 @@ class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
             if conn is None:
-                raise AwsWrapperError(Messages.get("SqlAlchemyDriverDialect.SetReadOnlyOnNullConnection"))
+                raise AwsWrapperError(Messages.get_formatted("SqlAlchemyDriverDialect.SetReadOnlyOnNullConnection", "readonly"))
 
-        return self._underlying_driver.is_read_only(conn)
+        return self._underlying_driver.set_read_only(conn, read_only)
 
     def get_connection_from_obj(self, obj: object) -> Any:
         if isinstance(obj, PoolProxiedConnection):
