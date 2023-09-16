@@ -204,7 +204,7 @@ class PropertiesUtils:
         else:
             props = Properties(dict(x.split("=") for x in conn_info.split(" ")))
         for key, value in kwargs.items():
-            props[key] = str(value)
+            props[key] = value
         return props
 
     @staticmethod

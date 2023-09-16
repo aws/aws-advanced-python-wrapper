@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import mysql
+
 from aws_wrapper.errors import QueryTimeoutError
 
 if TYPE_CHECKING:
@@ -61,10 +63,13 @@ class PgExceptionHandler(ExceptionHandler):
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
             return True
+        if sql_state is None:
+            error_sql_state = getattr(error, "sqlstate")
+            if error_sql_state is not None:
+                sql_state = error_sql_state
 
-        if sql_state:
-            if sql_state in self._NETWORK_ERRORS:
-                return True
+        if sql_state is not None and sql_state in self._NETWORK_ERRORS:
+            return True
 
         if isinstance(error, OperationalError):
             if len(error.args) == 0:
@@ -81,6 +86,12 @@ class PgExceptionHandler(ExceptionHandler):
             if isinstance(error, InvalidAuthorizationSpecification) or isinstance(error, InvalidPassword):
                 return True
 
+            if sql_state is None and hasattr(error, "sqlstate") and error.sqlstate is not None:
+                sql_state = error.sqlstate
+
+            if sql_state is not None and sql_state in self._ACCESS_ERRORS:
+                return True
+
             if isinstance(error, OperationalError):
                 if len(error.args) == 0:
                     return False
@@ -91,9 +102,61 @@ class PgExceptionHandler(ExceptionHandler):
                         or self._PAM_AUTHENTICATION_FAILED_MSG in error_msg:
                     return True
 
-        if sql_state:
-            if sql_state in self._ACCESS_ERRORS:
+        return False
+
+
+class MySQLExceptionHandler(ExceptionHandler):
+    _PAM_AUTHENTICATION_FAILED_MSG = "PAM authentication failed"
+    _UNAVAILABLE_CONNECTION = "MySQL Connection not available"
+
+    _NETWORK_ERRORS: List[int] = [
+        2001,  # Can't create UNIX socket
+        2002,  # Can't connect to local MySQL server through socket
+        2003,  # Can't connect to MySQL server
+        2004,  # Can't create TCP/IP socket
+        2006,  # MySQL server has gone away
+        2012,  # Error in server handshake
+        2013,  # unexpected error
+        2026,  # SSL connection error
+        2055,  # Lost connection to MySQL server
+    ]
+
+    def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        if isinstance(error, QueryTimeoutError):
+            return True
+
+        if sql_state is None:
+            if hasattr(error, "sqlstate"):
+                error_sql_state = getattr(error, "sqlstate")
+                if error_sql_state is not None:
+                    sql_state = error_sql_state
+
+        if sql_state is not None:
+            if sql_state.startswith("08") or sql_state.startswith("HY"):
+                # Connection exceptions may also be returned as a generic error
+                # e.g. 2013 (HY000): Lost connection to MySQL server during query
                 return True
+
+        if isinstance(error, mysql.connector.errors.OperationalError):
+            if error.errno in self._NETWORK_ERRORS:
+                return True
+            if self._UNAVAILABLE_CONNECTION in error.msg:
+                return True
+
+            if len(error.args) == 1:
+                return self._UNAVAILABLE_CONNECTION in error.args[0]
+
+        return False
+
+    def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        if sql_state is None:
+            if hasattr(error, "sqlstate"):
+                error_sql_state = getattr(error, "sqlstate")
+                if error_sql_state is not None:
+                    sql_state = error_sql_state
+
+        if "28000" == sql_state:
+            return True
 
         return False
 

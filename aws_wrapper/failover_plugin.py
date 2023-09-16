@@ -25,8 +25,6 @@ if TYPE_CHECKING:
 from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from psycopg import OperationalError
-
 from aws_wrapper.errors import (AwsWrapperError, FailoverFailedError,
                                 FailoverSuccessError,
                                 TransactionResolutionUnknownError)
@@ -54,6 +52,16 @@ class FailoverPlugin(Plugin):
                                      "connect",
                                      "force_connect",
                                      "notify_host_list_changed"}
+
+    _METHODS_REQUIRE_UPDATED_TOPOLOGY: Set[str] = {
+        "Connection.commit",
+        "Connection.autocommit",
+        "Connection.autocommit_setter",
+        "Connection.rollback",
+        "Connection.cursor",
+        "Cursor.callproc",
+        "Cursor.execute"
+    }
 
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
@@ -134,7 +142,8 @@ class FailoverPlugin(Plugin):
             self._invalid_invocation_on_closed_connection()
 
         try:
-            self._update_topology(False)
+            if self._requires_update_topology(method_name):
+                self._update_topology(False)
             return execute_func()
         except Exception as ex:
             msg = Messages.get_formatted("FailoverPlugin.DetectedException", str(ex))
@@ -375,9 +384,6 @@ class FailoverPlugin(Plugin):
             logger.debug(Messages.get_formatted("FailoverPlugin.FailoverDisabled"))
             return False
 
-        if isinstance(ex, OperationalError):
-            return True
-
         return self._plugin_service.is_network_exception(ex)
 
     @staticmethod
@@ -401,6 +407,7 @@ class FailoverPlugin(Plugin):
     def _can_direct_execute(method_name):
         # TODO: adjust method names to proper python method names
         return method_name == "Connection.close" or \
+            method_name == "Cursor.close" or \
             method_name == "Connection.abort" or \
             method_name == "Connection.isClosed"
 
@@ -411,6 +418,9 @@ class FailoverPlugin(Plugin):
             method_name == "Connection.getCatalog" or \
             method_name == "Connection.getSchema" or \
             method_name == "Connection.getTransactionIsolation"
+
+    def _requires_update_topology(self, method_name: str):
+        return method_name in FailoverPlugin._METHODS_REQUIRE_UPDATED_TOPOLOGY
 
 
 class FailoverPluginFactory(PluginFactory):

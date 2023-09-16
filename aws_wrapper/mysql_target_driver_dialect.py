@@ -39,6 +39,8 @@ from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
 class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     _driver_name = "MySQL Connector Python"
     TARGET_DRIVER_CODE = "MySQL"
+    AUTH_PLUGIN_PARAM = "auth_plugin"
+    AUTH_METHOD = "mysql_clear_password"
 
     _dialect_code: str = TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
@@ -78,6 +80,10 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
         raise UnsupportedOperationError(
             Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
+    def set_password(self, props: Properties, pwd: str):
+        WrapperProperties.PASSWORD.set(props, pwd)
+        props[MySQLTargetDriverDialect.AUTH_PLUGIN_PARAM] = MySQLTargetDriverDialect.AUTH_METHOD
+
     def abort_connection(self, conn: Connection):
         raise UnsupportedOperationError(
             Messages.get_formatted(
@@ -98,7 +104,11 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
             return obj
 
         if isinstance(obj, CMySQLCursor):
-            return obj._cnx
+            try:
+                if isinstance(obj._cnx, CMySQLConnection) or isinstance(obj._cnx, MySQLConnection):
+                    return obj._cnx
+            except ReferenceError:
+                return None
 
         if isinstance(obj, MySQLCursor):
             return obj._connection

@@ -28,9 +28,6 @@ from .utils.proxy_helper import ProxyHelper
 if TYPE_CHECKING:
     from .utils.test_instance_info import TestInstanceInfo
     from .utils.test_driver import TestDriver
-    from .utils.test_database_info import TestDatabaseInfo
-    from aws_wrapper.pep249 import Cursor
-
 
 from logging import getLogger
 
@@ -141,86 +138,86 @@ class TestAuroraFailover:
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         initial_writer_id = test_environment.get_writer().get_instance_id()
 
-        with AwsWrapperConnection.connect(
-                target_driver_connect, **conn_utils.get_connect_params(), **props) as conn, \
-                conn.cursor() as cursor_1:
-            cursor_1.execute("DROP TABLE IF EXISTS test3_2")
-            cursor_1.execute("CREATE TABLE test3_2 (id int not null primary key, test3_2_field varchar(255) not null)")
+        conn = AwsWrapperConnection.connect(
+            target_driver_connect, **conn_utils.get_connect_params(), **props)
+        cursor_1 = conn.cursor()
+        cursor_1.execute("DROP TABLE IF EXISTS test3_2")
+        cursor_1.execute("CREATE TABLE test3_2 (id int not null primary key, test3_2_field varchar(255) not null)")
+        conn.commit()
+
+        conn.autocommit = False
+
+        with conn.cursor() as cursor_2:
+            cursor_2.execute("INSERT INTO test3_2 VALUES (1, 'test field string 1')")
+
+            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+            with pytest.raises(TransactionResolutionUnknownError):
+                cursor_2.execute("INSERT INTO test3_2 VALUES (2, 'test field string 2')")
+
+        # attempt to query the instance id
+        current_connection_id: str = aurora_utility.query_instance_id(conn)
+
+        # assert that we are connected to the new writer after failover happens
+        assert aurora_utility.is_db_instance_writer(current_connection_id)
+        next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
+
+        assert current_connection_id == next_cluster_writer_id
+        assert initial_writer_id != next_cluster_writer_id
+
+        # cursor_2 can not be used anymore since it's invalid
+
+        with conn.cursor() as cursor_3:
+            cursor_3.execute("SELECT count(*) from test3_2")
+            result = cursor_3.fetchone()
+            assert 0 == int(result[0])
+            cursor_3.execute("DROP TABLE IF EXISTS test3_2")
             conn.commit()
-
-            conn.autocommit = False
-
-            with conn.cursor() as cursor_2:
-                cursor_2.execute("INSERT INTO test3_2 VALUES (1, 'test field string 1')")
-
-                aurora_utility.failover_cluster_and_wait_until_writer_changed()
-
-                with pytest.raises(TransactionResolutionUnknownError):
-                    cursor_2.execute("INSERT INTO test3_2 VALUES (2, 'test field string 2')")
-
-            # attempt to query the instance id
-            current_connection_id: str = aurora_utility.query_instance_id(conn)
-
-            # assert that we are connected to the new writer after failover happens
-            assert aurora_utility.is_db_instance_writer(current_connection_id)
-            next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
-
-            assert current_connection_id == next_cluster_writer_id
-            assert initial_writer_id != next_cluster_writer_id
-
-            # cursor_2 can not be used anymore since it's invalid
-
-            with conn.cursor() as cursor_3:
-                cursor_3.execute("SELECT count(*) from test3_2")
-                result = cursor_3.fetchone()
-                assert 0 == int(result[0])
-                cursor_3.execute("DROP TABLE IF EXISTS test3_2")
-                conn.commit()
 
     def test_writer_fail_within_transaction_start_transaction(
             self, test_driver: TestDriver, test_environment: TestEnvironment, props, conn_utils, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         initial_writer_id = test_environment.get_writer().get_instance_id()
 
-        with AwsWrapperConnection.connect(
-                target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
-            # Enable autocommit, otherwise each select statement will start a valid transaction.
-            conn.autocommit = True
+        conn = AwsWrapperConnection.connect(
+            target_driver_connect, **conn_utils.get_connect_params(), **props)
+        # Enable autocommit, otherwise each select statement will start a valid transaction.
+        conn.autocommit = True
 
-            with conn.cursor() as cursor_1:
-                cursor_1.execute("DROP TABLE IF EXISTS test3_3")
-                cursor_1.execute(
-                    "CREATE TABLE test3_3 (id int not null primary key, test3_3_field varchar(255) not null)")
-                conn.commit()
+        with conn.cursor() as cursor_1:
+            cursor_1.execute("DROP TABLE IF EXISTS test3_3")
+            cursor_1.execute(
+                "CREATE TABLE test3_3 (id int not null primary key, test3_3_field varchar(255) not null)")
+            conn.commit()
 
-                cursor_1.execute("START TRANSACTION")
+            cursor_1.execute("START TRANSACTION")
 
-            with conn.cursor() as cursor_2:
-                cursor_2.execute("INSERT INTO test3_3 VALUES (1, 'test field string 1')")
+        cursor_2 = conn.cursor()
+        cursor_2.execute("INSERT INTO test3_3 VALUES (1, 'test field string 1')")
 
-                aurora_utility.failover_cluster_and_wait_until_writer_changed()
+        aurora_utility.failover_cluster_and_wait_until_writer_changed()
 
-                with pytest.raises(TransactionResolutionUnknownError):
-                    cursor_2.execute("INSERT INTO test3_3 VALUES (2, 'test field string 2')")
+        with pytest.raises(TransactionResolutionUnknownError):
+            cursor_2.execute("INSERT INTO test3_3 VALUES (2, 'test field string 2')")
 
-            # attempt to query the instance id
-            current_connection_id: str = aurora_utility.query_instance_id(conn)
+        # attempt to query the instance id
+        current_connection_id: str = aurora_utility.query_instance_id(conn)
 
-            # assert that we are connected to the new writer after failover happens
-            assert aurora_utility.is_db_instance_writer(current_connection_id)
-            next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
+        # assert that we are connected to the new writer after failover happens
+        assert aurora_utility.is_db_instance_writer(current_connection_id)
+        next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
 
-            assert current_connection_id == next_cluster_writer_id
-            assert initial_writer_id != next_cluster_writer_id
+        assert current_connection_id == next_cluster_writer_id
+        assert initial_writer_id != next_cluster_writer_id
 
-            # cursor_2 can not be used anymore since it's invalid
+        # cursor_2 can not be used anymore since it's invalid
 
-            with conn.cursor() as cursor_3:
-                cursor_3.execute("SELECT count(*) from test3_3")
-                result = cursor_3.fetchone()
-                assert 0 == int(result[0])
-                cursor_3.execute("DROP TABLE IF EXISTS test3_3")
-                conn.commit()
+        with conn.cursor() as cursor_3:
+            cursor_3.execute("SELECT count(*) from test3_3")
+            result = cursor_3.fetchone()
+            assert 0 == int(result[0])
+            cursor_3.execute("DROP TABLE IF EXISTS test3_3")
+            conn.commit()
 
     def test_writer_failover_in_idle_connections(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utility):

@@ -102,7 +102,6 @@ class Connection:
     def close(self) -> None:
         ...
 
-    # TODO: check parameters
     def cursor(self, **kwargs) -> Cursor:
         ...
 
@@ -161,7 +160,6 @@ class Cursor:
     def callproc(self, **kwargs):
         ...
 
-    # TODO: check parameters
     def execute(
             self,
             query: str,
@@ -169,7 +167,6 @@ class Cursor:
     ) -> Cursor:
         ...
 
-    # TODO: check parameters
     def executemany(
             self,
             query: str,

@@ -99,13 +99,13 @@ class IamAuthPlugin(Plugin):
 
         token_info = IamAuthPlugin._token_cache.get(cache_key)
 
-        if token_info and not token_info.is_expired():
+        if token_info is not None and not token_info.is_expired():
             logger.debug(Messages.get_formatted("IamAuthPlugin.UseCachedIamToken", token_info.token))
-            WrapperProperties.PASSWORD.set(props, token_info.token)
+            self._plugin_service.target_driver_dialect.set_password(props, token_info.token)
         else:
             token: str = self._generate_authentication_token(props, host, port, region)
             logger.debug(Messages.get_formatted("IamAuthPlugin.GeneratedNewIamToken", token))
-            WrapperProperties.PASSWORD.set(props, token)
+            self._plugin_service.target_driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
 
@@ -115,7 +115,7 @@ class IamAuthPlugin(Plugin):
         except Exception as e:
             logger.debug(Messages.get_formatted("IamAuthPlugin.ConnectException", e))
 
-            is_cached_token = (token_info and not token_info.is_expired())
+            is_cached_token = (token_info is not None and not token_info.is_expired())
             if not self._plugin_service.is_login_exception(error=e) or not is_cached_token:
                 raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.ConnectException", e)) from e
 
@@ -124,7 +124,7 @@ class IamAuthPlugin(Plugin):
 
             token = self._generate_authentication_token(props, host, port, region)
             logger.debug(Messages.get_formatted("IamAuthPlugin.GeneratedNewIamToken", token))
-            WrapperProperties.PASSWORD.set(props, token)
+            self._plugin_service.target_driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[token] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
 
@@ -179,8 +179,11 @@ class IamAuthPlugin(Plugin):
 
         if host_info.is_port_specified():
             return host_info.port
-        else:
-            return 5432  # TODO: update after implementing the dialect class
+
+        if self._plugin_service.dialect is not None:
+            return self._plugin_service.dialect.default_port
+
+        raise AwsWrapperError(Messages.get("IamAuthPlugin.NoValidPorts"))
 
     def _get_rds_region(self, hostname: Optional[str]) -> str:
         rds_region = self._rds_utils.get_rds_region(hostname) if hostname else None

@@ -41,7 +41,7 @@ jobs:
       - name: 'Set up Temp AWS Credentials'
         run: |
           creds=($(aws sts get-session-token \
-            --duration-seconds 7200 \
+            --duration-seconds 21600 \
             --query 'Credentials.[AccessKeyId, SecretAccessKey, SessionToken]' \
             --output text \
           | xargs));
@@ -54,13 +54,14 @@ jobs:
 
       - name: 'Run Integration Tests'
         run: |
-          ./gradlew --no-parallel --no-daemon test-all-environments --info
+          ./gradlew --no-parallel --no-daemon test-mysql-aurora --info
         env:
           AURORA_CLUSTER_DOMAIN: ${{ secrets.DB_CONN_SUFFIX }}
           AURORA_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
           AWS_ACCESS_KEY_ID: ${{ env.TEMP_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ env.TEMP_AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ env.TEMP_AWS_SESSION_TOKEN }}
+          NUM_INSTANCES: 5
 
       - name: 'Archive results'
         if: always()

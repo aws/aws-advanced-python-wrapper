@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING, Any, Callable, Set, Union
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
-from aws_wrapper.utils.properties import Properties, PropertiesUtils
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
@@ -66,6 +67,10 @@ class TargetDriverDialect(ABC):
 
     def supports_tcp_keepalive(self) -> bool:
         return False
+
+    @abstractmethod
+    def set_password(self, props: Properties, pwd: str):
+        pass
 
     @abstractmethod
     def is_dialect(self, connect_func: Callable) -> bool:
@@ -119,6 +124,9 @@ class GenericTargetDriverDialect(TargetDriverDialect):
 
         PropertiesUtils.remove_wrapper_props(prop_copy)
         return prop_copy
+
+    def set_password(self, props: Properties, pwd: str):
+        WrapperProperties.PASSWORD.set(props, pwd)
 
     def is_closed(self, conn: Connection) -> bool:
         raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_closed"))

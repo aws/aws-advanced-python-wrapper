@@ -69,7 +69,8 @@ def pytest_runtest_setup(item):
 
             try:
                 instances = aurora_utility.get_aurora_instance_ids()
-            except Exception:
+            except Exception as ex:
+                print(ex)
                 instances = list()
 
             sleep(5)

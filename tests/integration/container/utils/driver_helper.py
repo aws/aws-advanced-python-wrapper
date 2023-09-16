@@ -36,7 +36,7 @@ class DriverHelper:
 
         if d == TestDriver.PG:
             return psycopg.Connection.connect
-        elif d == TestDriver.MYSQL:
+        if d == TestDriver.MYSQL:
             return mysql.connector.connect
         else:
             raise UnsupportedOperationError(
@@ -53,8 +53,8 @@ class DriverHelper:
 
         if d == TestDriver.PG:
             return {"host": host, "port": port, "dbname": db, "user": user, "password": password}
-        elif d == TestDriver.MYSQL:
-            return {"host": host, "port": port, "database": db, "user": user, "password": password}
+        if d == TestDriver.MYSQL:
+            return {"host": host, "port": int(port), "database": db, "user": user, "password": password}
         else:
             raise UnsupportedOperationError(
                 Messages.get_formatted("Testing.FunctionNotImplementedForDriver", "get_connection_string", d.value))

@@ -30,7 +30,8 @@ from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
-from .exceptions import ExceptionHandler, PgExceptionHandler
+from .exceptions import (ExceptionHandler, MySQLExceptionHandler,
+                         PgExceptionHandler)
 from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
@@ -149,8 +150,7 @@ class MysqlDialect(Dialect):
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
-        # TODO
-        return None
+        return MySQLExceptionHandler()
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
