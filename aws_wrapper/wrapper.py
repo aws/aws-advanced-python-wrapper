@@ -126,7 +126,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         _cursor = self._plugin_manager.execute(self.target_connection, "Connection.cursor",
                                                lambda: self.target_connection.cursor(**kwargs),
                                                kwargs)
-        return AwsWrapperCursor(self, self._plugin_manager, _cursor)
+        return AwsWrapperCursor(self, self._plugin_service, self._plugin_manager, _cursor)
 
     def commit(self) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.commit",
@@ -175,8 +175,14 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 class AwsWrapperCursor(Cursor):
     __module__ = "aws_wrapper"
 
-    def __init__(self, conn: AwsWrapperConnection, plugin_manager: PluginManager, target_cursor: Cursor):
+    def __init__(
+            self,
+            conn: AwsWrapperConnection,
+            plugin_service: PluginService,
+            plugin_manager: PluginManager,
+            target_cursor: Cursor):
         self._conn: AwsWrapperConnection = conn
+        self._plugin_service: PluginService = plugin_service
         self._plugin_manager: PluginManager = plugin_manager
         self._target_cursor: Cursor = target_cursor
 
@@ -214,9 +220,12 @@ class AwsWrapperCursor(Cursor):
             query: str,
             **kwargs: Union[None, int, str]
     ) -> "AwsWrapperCursor":
+        driver_dialect = self._plugin_service.target_driver_dialect
         try:
-            return self._plugin_manager.execute(self.target_cursor, "Cursor.execute",
-                                                lambda: self.target_cursor.execute(query, **kwargs), query, kwargs)
+            return self._plugin_manager.execute(
+                self.target_cursor,
+                "Cursor.execute",
+                lambda: driver_dialect.execute(self.connection, self._target_cursor, query, **kwargs), query, kwargs)
         except FailoverSuccessError as e:
             self._target_cursor = self.connection.target_connection.cursor()
             raise e

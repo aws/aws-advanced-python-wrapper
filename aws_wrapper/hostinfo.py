@@ -75,7 +75,7 @@ class HostInfo:
     def as_alias(self) -> str:
         return f"{self.host}:{self.port}" if self.is_port_specified() else self.host
 
-    def add_alias(self, *aliases):
+    def add_alias(self, *aliases: str):
         if not aliases:
             return
 
@@ -83,7 +83,7 @@ class HostInfo:
             self._aliases.add(alias)
             self._all_aliases.add(alias)
 
-    def as_aliases(self):
+    def as_aliases(self) -> FrozenSet[str]:
         return frozenset(self.all_aliases)
 
     def remove_alias(self, *kwargs):

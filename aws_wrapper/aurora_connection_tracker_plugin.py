@@ -16,7 +16,8 @@ from __future__ import annotations
 
 from logging import getLogger
 from threading import Thread
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
+from typing import (TYPE_CHECKING, Any, Callable, Dict, FrozenSet, List,
+                    Optional, Set)
 
 from aws_wrapper.errors import FailoverError
 
@@ -45,7 +46,7 @@ class OpenedConnectionTracker:
     _rds_utils = RdsUtils()
 
     def populate_opened_connection_set(self, host_info: HostInfo, conn: Connection):
-        aliases: Set[str] = host_info.as_aliases()
+        aliases: FrozenSet[str] = host_info.as_aliases()
         host: str = host_info.as_alias()
 
         if self._rds_utils.is_rds_instance(host):
@@ -60,7 +61,7 @@ class OpenedConnectionTracker:
 
         self._track_connection(instance_endpoint, conn)
 
-    def invalidate_all_connections(self, host_info: Optional[HostInfo] = None, node: Optional[Set[str]] = None):
+    def invalidate_all_connections(self, host_info: Optional[HostInfo] = None, node: Optional[FrozenSet[str]] = None):
         """Invalidates all opened connections pointing to the same node in a daemon thread.
 
         Parameters:
@@ -69,7 +70,7 @@ class OpenedConnectionTracker:
         """
 
         if host_info:
-            self.invalidate_all_connections(node={host_info.as_alias()})
+            self.invalidate_all_connections(node=frozenset(host_info.as_alias()))
             self.invalidate_all_connections(node=host_info.as_aliases())
             return
 

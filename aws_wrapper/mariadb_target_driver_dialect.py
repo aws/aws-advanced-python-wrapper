@@ -46,8 +46,8 @@ class MariaDBTargetDriverDialect(GenericTargetDriverDialect):
         "Cursor.nextset",
     }
 
-    def is_dialect(self, conn: Callable) -> bool:
-        return MariaDBTargetDriverDialect.TARGET_DRIVER_CODE in str(signature(conn))
+    def is_dialect(self, connect_func: Callable) -> bool:
+        return MariaDBTargetDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
 
     def is_closed(self, conn: Connection) -> bool:
         if hasattr(conn, "open"):
