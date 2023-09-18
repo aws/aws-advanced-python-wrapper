@@ -528,7 +528,6 @@ class PluginManager(CanReleaseResources):
             lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args),
             target_driver_func)
 
-
     def _execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):
         pipeline_func: Optional[Callable] = self._function_cache.get(method_name)
         if pipeline_func is None:

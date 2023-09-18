@@ -220,7 +220,7 @@ class AwsWrapperCursor(Cursor):
             self,
             query: str,
             **kwargs: Union[None, int, str]
-    ) -> "AwsWrapperCursor":
+    ) -> AwsWrapperCursor:
         driver_dialect = self._plugin_service.target_driver_dialect
         try:
             return self._plugin_manager.execute(

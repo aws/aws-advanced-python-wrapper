@@ -140,7 +140,7 @@ class MySQLExceptionHandler(ExceptionHandler):
         if isinstance(error, mysql.connector.errors.OperationalError):
             if error.errno in self._NETWORK_ERRORS:
                 return True
-            if self._UNAVAILABLE_CONNECTION in error.msg:
+            if error.msg is not None and self._UNAVAILABLE_CONNECTION in error.msg:
                 return True
 
             if len(error.args) == 1:
