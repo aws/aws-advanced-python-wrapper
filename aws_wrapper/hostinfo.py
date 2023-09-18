@@ -12,16 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
 from typing import ClassVar, FrozenSet, Optional, Set
 
-
-class HostAvailability(Enum):
-    UNCERTAIN = auto()
-    AVAILABLE = auto()
-    NOT_AVAILABLE = auto()
+from aws_wrapper.host_availability import (HostAvailability,
+                                           HostAvailabilityStrategy)
 
 
 class HostRole(Enum):
@@ -33,18 +30,29 @@ class HostRole(Enum):
 @dataclass(eq=False)
 class HostInfo:
     NO_PORT: ClassVar[int] = -1
+    DEFAULT_WEIGHT = 100
 
-    host: str
-    port: int = NO_PORT
-    availability: HostAvailability = HostAvailability.AVAILABLE
-    role: HostRole = HostRole.WRITER
-    _aliases: Set[str] = field(default_factory=set)
-    _all_aliases: Set[str] = field(default_factory=set)
-    last_update_time: datetime = datetime.now()
-    host_id: Optional[str] = None
+    def __init__(
+            self,
+            host: str,
+            port: int = NO_PORT,
+            role: HostRole = HostRole.WRITER,
+            availability: HostAvailability = HostAvailability.AVAILABLE,
+            host_availability_strategy=HostAvailabilityStrategy(),
+            weight: int = DEFAULT_WEIGHT,
+            host_id: Optional[str] = None,
+            last_update_time: datetime = datetime.now()):
+        self.host = host
+        self.port = port
+        self.role = role
+        self._availability = availability
+        self.host_availability_strategy = host_availability_strategy
+        self.weight = weight,
+        self.host_id = host_id
+        self.last_update_time = last_update_time
 
-    def __post_init__(self):
-        self._all_aliases.add(self.as_alias())
+        self._aliases: Set[str] = set()
+        self._all_aliases: Set[str] = {self.as_alias()}
 
     def __eq__(self, other: object):
         if self is object:
@@ -54,7 +62,7 @@ class HostInfo:
 
         return self.host == other.host \
             and self.port == other.port \
-            and self.availability == other.availability \
+            and self._availability == other._availability \
             and self.role == other.role
 
     @property
@@ -101,3 +109,23 @@ class HostInfo:
 
     def is_port_specified(self) -> bool:
         return self.port != HostInfo.NO_PORT
+
+    def get_availability(self) -> HostAvailability:
+        if self.host_availability_strategy is not None:
+            return self.host_availability_strategy.get_host_availability(self._availability)
+
+        return self._availability
+
+    def get_raw_availability(self) -> HostAvailability:
+        return self._availability
+
+    def set_availability(self, availability: HostAvailability):
+        self._availability = availability
+        if self.host_availability_strategy is not None:
+            self.host_availability_strategy.set_host_availability(availability)
+
+    def get_host_availability_strategy(self):
+        return self.host_availability_strategy
+
+    def set_host_availability_strategy(self, host_availability_strategy):
+        self.host_availability_strategy = host_availability_strategy

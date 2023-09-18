@@ -31,7 +31,8 @@ from psycopg import OperationalError
 from aws_wrapper.errors import (AwsWrapperError, FailoverFailedError,
                                 FailoverSuccessError,
                                 TransactionResolutionUnknownError)
-from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.host_availability import HostAvailability
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)
@@ -138,7 +139,7 @@ class FailoverPlugin(Plugin):
                 self._invalidate_current_connection()
                 if self._plugin_service.current_host_info is not None:
                     self._plugin_service.set_availability(
-                        self._plugin_service.current_host_info.aliases, HostAvailability.NOT_AVAILABLE)
+                        self._plugin_service.current_host_info.aliases, HostAvailability.UNAVAILABLE)
 
                 self._pick_new_connection()
                 self._last_exception = ex
@@ -219,7 +220,7 @@ class FailoverPlugin(Plugin):
 
         self._plugin_service.target_driver_dialect.transfer_session_state(from_conn, to_conn)
 
-    def _failover(self, failed_host: HostInfo):
+    def _failover(self, failed_host: Optional[HostInfo]):
         if self._failover_mode == FailoverMode.STRICT_WRITER:
             self._failover_writer()
         else:
@@ -236,12 +237,15 @@ class FailoverPlugin(Plugin):
             logger.error(error_msg)
             raise FailoverSuccessError(error_msg)
 
-    def _failover_reader(self, failed_host: HostInfo):
+    def _failover_reader(self, failed_host: Optional[HostInfo]):
         logger.debug(Messages.get("FailoverPlugin.StartReaderFailover"))
 
         old_aliases = None
         if self._plugin_service.current_host_info is not None:
             old_aliases = self._plugin_service.current_host_info.aliases
+
+        if failed_host is not None and failed_host.get_raw_availability() != HostAvailability.AVAILABLE:
+            failed_host = None
 
         result: ReaderFailoverResult = self._reader_failover_handler.failover(self._plugin_service.hosts, failed_host)
 

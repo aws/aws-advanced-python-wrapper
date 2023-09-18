@@ -28,7 +28,8 @@ import copy
 from typing import Any, Callable, Set
 
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.host_availability import HostAvailability
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils

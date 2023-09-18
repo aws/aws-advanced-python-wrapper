@@ -41,12 +41,13 @@ from aws_wrapper.dialect import (Dialect, DialectManager,
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
 from aws_wrapper.failover_plugin import FailoverPluginFactory
+from aws_wrapper.host_availability import HostAvailability
 from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
                                             HostListProvider,
                                             HostListProviderService,
                                             StaticHostListProvider)
 from aws_wrapper.host_monitoring_plugin import HostMonitoringPluginFactory
-from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.read_write_splitting_plugin import \
@@ -398,7 +399,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         for host in hosts:
             availability: Optional[HostAvailability] = self._host_availability_expiring_cache.get(host.url)
             if availability:
-                host.availability = availability
+                host.set_availability(availability)
 
     def _update_hosts(self, new_hosts: Tuple[HostInfo, ...]):
         old_hosts_dict = {x.url: x for x in self.hosts}
@@ -434,10 +435,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             elif host_b.role == HostRole.READER:
                 changes.add(HostEvent.CONVERTED_TO_READER)
 
-        if host_a.availability != host_b.availability:
-            if host_b.availability == HostAvailability.AVAILABLE:
+        if host_a.get_availability() != host_b.get_availability():
+            if host_b.get_availability() == HostAvailability.AVAILABLE:
                 changes.add(HostEvent.WENT_UP)
-            elif host_b.availability == HostAvailability.NOT_AVAILABLE:
+            elif host_b.get_availability() == HostAvailability.UNAVAILABLE:
                 changes.add(HostEvent.WENT_DOWN)
 
         if len(changes) > 0:

@@ -179,6 +179,25 @@ class WrapperProperties:
         "Reader connection attempt timeout in seconds during a reader failover process.",
         300)  # 5 minutes
 
+    # Host Availability Strategy
+    DEFAULT_HOST_AVAILABILITY_STRATEGY = WrapperProperty(
+        "default_host_availability_strategy",
+        "An override for specifying the default host availability change strategy.",
+        ""
+    )
+
+    HOST_AVAILABILITY_STRATEGY_MAX_RETRIES = WrapperProperty(
+        "host_availability_strategy_max_retries",
+        "Max number of retries for checking a host's availability.",
+        "5"
+    )
+
+    HOST_AVAILABILITY_STRATEGY_INITIAL_BACKOFF_TIME = WrapperProperty(
+        "host_availability_strategy_initial_backoff_time",
+        "The initial backoff time in seconds.",
+        "30"
+    )
+
     # Target Driver Dialect
     TARGET_DRIVER_DIALECT = WrapperProperty(
         "wrapper_target_driver_dialect",

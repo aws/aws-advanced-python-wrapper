@@ -31,7 +31,9 @@ if TYPE_CHECKING:
 import aws_wrapper.dialect as db_dialect
 from aws_wrapper.errors import (AwsWrapperError, QueryTimeoutError,
                                 UnsupportedOperationError)
-from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.host_availability import (HostAvailability,
+                                           create_host_availability_strategy)
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.messages import Messages
@@ -154,8 +156,11 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             if self._is_initialized:
                 return
 
-            self._initial_host_info: HostInfo = \
-                HostInfo(self._props.get("host"), self._props.get("port", HostInfo.NO_PORT))
+            host_availability_strategy = create_host_availability_strategy(self._props)
+            self._initial_host_info = HostInfo(
+                host=self._props.get("host"),
+                port=self._props.get("port", HostInfo.NO_PORT),
+                host_availability_strategy=host_availability_strategy)
             self._initial_hosts: List[HostInfo] = [self._initial_host_info]
             self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
 
@@ -163,10 +168,12 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             host_pattern = WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(self._props)
             if host_pattern:
                 self._cluster_instance_template = HostInfo(
-                    WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(self._props))
+                    host=WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(self._props),
+                    host_availability_strategy=host_availability_strategy)
             else:
-                self._cluster_instance_template = \
-                    HostInfo(self._rds_utils.get_rds_instance_host_pattern(self._initial_host_info.host))
+                self._cluster_instance_template = HostInfo(
+                    host=self._rds_utils.get_rds_instance_host_pattern(self._initial_host_info.host),
+                    host_availability_strategy=host_availability_strategy)
             self._validate_host_pattern(self._cluster_instance_template.host)
 
             self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._initial_host_info.host)
@@ -348,6 +355,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             host=endpoint,
             port=port,
             availability=HostAvailability.AVAILABLE,
+            host_availability_strategy=create_host_availability_strategy(self._props),
             role=HostRole.WRITER if is_writer else HostRole.READER,
             last_update_time=last_update,
             host_id=host_id)
@@ -433,8 +441,10 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
         if self._is_initialized:
             return
 
-        self._initial_host_info = \
-            HostInfo(self._props.get("host"), self._props.get("port", HostInfo.NO_PORT))
+        self._initial_host_info = HostInfo(
+            host=self._props.get("host"),
+            port=self._props.get("port", HostInfo.NO_PORT),
+            host_availability_strategy=create_host_availability_strategy(self._props))
 
         self._hosts.append(self._initial_host_info)
 

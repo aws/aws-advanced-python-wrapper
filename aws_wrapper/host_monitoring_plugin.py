@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
@@ -31,7 +32,7 @@ from time import perf_counter_ns, sleep
 from typing import Any, Callable, ClassVar, Dict, FrozenSet, Optional, Set
 
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostinfo import HostAvailability, HostInfo
+from aws_wrapper.host_availability import HostAvailability
 from aws_wrapper.plugin import CanReleaseResources, Plugin, PluginFactory
 from aws_wrapper.utils.atomic import AtomicInt
 from aws_wrapper.utils.concurrent import ConcurrentDict
@@ -136,7 +137,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
                     self._monitor_service.stop_monitoring(monitor_context)
                     if monitor_context.is_host_unavailable():
                         self._plugin_service.set_availability(
-                            self._get_monitoring_host_info().all_aliases, HostAvailability.NOT_AVAILABLE)
+                            self._get_monitoring_host_info().all_aliases, HostAvailability.UNAVAILABLE)
 
                         target_driver_dialect = self._plugin_service.target_driver_dialect
                         if target_driver_dialect is not None and not target_driver_dialect.is_closed(connection):

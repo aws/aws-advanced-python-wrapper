@@ -16,9 +16,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from aws_wrapper import LogUtils
-from aws_wrapper.errors import AwsWrapperError
-
 if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.utils.properties import Properties
@@ -32,9 +29,12 @@ from threading import Event
 from time import sleep
 from typing import List, Optional
 
+from aws_wrapper import LogUtils
+from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.failover_result import (ReaderFailoverResult,
                                          WriterFailoverResult)
-from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.host_availability import HostAvailability
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.utils.messages import Messages
 
 logger = getLogger(__name__)
@@ -94,7 +94,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
     def get_result_from_future(self, current_topology: List[HostInfo]) -> WriterFailoverResult:
         writer_host: Optional[HostInfo] = self.get_writer(current_topology)
         if writer_host is not None:
-            self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.NOT_AVAILABLE)
+            self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
             with ThreadPoolExecutor() as executor:
                 try:
@@ -278,7 +278,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 return True
         except Exception:
             if writer_candidate is not None:
-                self._plugin_service.set_availability(writer_candidate.as_aliases(), HostAvailability.NOT_AVAILABLE)
+                self._plugin_service.set_availability(writer_candidate.as_aliases(), HostAvailability.UNAVAILABLE)
 
         return False
 

@@ -31,7 +31,8 @@ from time import sleep
 from typing import List, Optional
 
 from aws_wrapper.failover_result import ReaderFailoverResult
-from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.host_availability import HostAvailability
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
 from aws_wrapper.utils.messages import Messages
 
@@ -40,7 +41,7 @@ logger = getLogger(__name__)
 
 class ReaderFailoverHandler:
     @abstractmethod
-    def failover(self, current_topology: List[HostInfo], current_host: HostInfo) -> ReaderFailoverResult:
+    def failover(self, current_topology: List[HostInfo], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         pass
 
     @abstractmethod
@@ -73,7 +74,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
     def timeout_sec(self, value):
         self._timeout_sec = value
 
-    def failover(self, current_topology: List[HostInfo], current_host: HostInfo) -> ReaderFailoverResult:
+    def failover(self, current_topology: List[HostInfo], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         if current_topology is None or len(current_topology) == 0:
             logger.debug(Messages.get_formatted("ReaderFailoverHandler.InvalidTopology", "failover"))
             return ReaderFailoverHandlerImpl.failed_reader_failover_result
@@ -91,7 +92,8 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
         return result
 
-    def _internal_failover_task(self, topology: List[HostInfo], current_host: HostInfo) -> ReaderFailoverResult:
+    def _internal_failover_task(
+            self, topology: List[HostInfo], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         try:
             while not self._timeout_event.is_set():
                 result = self._failover_internal(topology, current_host)
@@ -118,9 +120,9 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
         return ReaderFailoverHandlerImpl.failed_reader_failover_result
 
-    def _failover_internal(self, hosts: List[HostInfo], current_host: HostInfo) -> ReaderFailoverResult:
+    def _failover_internal(self, hosts: List[HostInfo], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         if current_host is not None:
-            self._plugin_service.set_availability(current_host.all_aliases, HostAvailability.NOT_AVAILABLE)
+            self._plugin_service.set_availability(current_host.all_aliases, HostAvailability.UNAVAILABLE)
 
         hosts_by_priority = ReaderFailoverHandlerImpl.get_hosts_by_priority(hosts, self._strict_reader_failover)
         return self._get_connection_from_host_group(hosts_by_priority)
@@ -173,7 +175,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             return ReaderFailoverResult(conn, True, host, None)
         except Exception as ex:
             logger.debug(Messages.get_formatted("ReaderFailoverHandler.FailedReaderConnection", host.url))
-            self._plugin_service.set_availability(host.all_aliases, HostAvailability.NOT_AVAILABLE)
+            self._plugin_service.set_availability(host.all_aliases, HostAvailability.UNAVAILABLE)
             if not self._plugin_service.is_network_exception(ex):
                 return ReaderFailoverResult(None, False, None, ex)
 
@@ -189,7 +191,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             if host.role == HostRole.WRITER:
                 writer_host = host
                 continue
-            if host.availability == HostAvailability.AVAILABLE:
+            if host.get_raw_availability() == HostAvailability.AVAILABLE:
                 active_readers.append(host)
             else:
                 down_hosts.append(host)
@@ -213,7 +215,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
         for host in hosts:
             if host.role == HostRole.WRITER:
                 continue
-            if host.availability == HostAvailability.AVAILABLE:
+            if host.get_raw_availability() == HostAvailability.AVAILABLE:
                 active_readers.append(host)
             else:
                 down_hosts.append(host)
