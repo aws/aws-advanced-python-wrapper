@@ -54,9 +54,10 @@ class TestBasicFunctionality:
     def props(self):
         return {"plugins": "host_monitoring", "connect_timeout": 10}
 
-    def test_execute__positional_and_keyword_args(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
+    def test_execute__positional_and_keyword_args(
+            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string())
         cursor = conn.cursor()
 
         some_number = 1

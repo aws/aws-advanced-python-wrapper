@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
@@ -76,11 +78,10 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     @staticmethod
     def connect(
-            conninfo: str = "",
             target: Union[None, str, Callable] = None,
+            conninfo: str = "",
             *args: Any,
-            **kwargs: Any
-    ) -> "AwsWrapperConnection":
+            **kwargs: Any) -> AwsWrapperConnection:
         if not target:
             raise Error(Messages.get("Wrapper.RequiredTargetDriver"))
 
@@ -98,7 +99,8 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         target_driver_dialect_manager: TargetDriverDialectManager = TargetDriverDialectManager()
         target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
-        plugin_service = PluginServiceImpl(container, props, target_func, target_driver_dialect_manager, target_driver_dialect)
+        plugin_service = PluginServiceImpl(
+            container, props, target_func, target_driver_dialect_manager, target_driver_dialect)
         plugin_manager: PluginManager = PluginManager(container, props)
         plugin_service.host_list_provider = AuroraHostListProvider(plugin_service, props)
 
@@ -123,7 +125,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         self._plugin_manager.execute(self.target_connection, "Connection.close",
                                      lambda: self.target_connection.close())
 
-    def cursor(self, *args: Any, **kwargs: Any) -> "AwsWrapperCursor":
+    def cursor(self, *args: Any, **kwargs: Any) -> AwsWrapperCursor:
         _cursor = self._plugin_manager.execute(self.target_connection, "Connection.cursor",
                                                lambda: self.target_connection.cursor(*args, **kwargs),
                                                *args, **kwargs)
@@ -165,7 +167,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def __del__(self):
         self.release_resources()
 
-    def __enter__(self: "AwsWrapperConnection") -> "AwsWrapperConnection":
+    def __enter__(self: AwsWrapperConnection) -> AwsWrapperConnection:
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -220,7 +222,7 @@ class AwsWrapperCursor(Cursor):
             self,
             *args: Any,
             **kwargs: Any
-    ) -> "AwsWrapperCursor":
+    ) -> AwsWrapperCursor:
         driver_dialect = self._plugin_service.target_driver_dialect
         try:
             return self._plugin_manager.execute(
@@ -238,7 +240,7 @@ class AwsWrapperCursor(Cursor):
             **kwargs: Any
     ) -> None:
         self._plugin_manager.execute(self.target_cursor, "Cursor.executemany",
-                                     lambda: self.target_cursor.executemany(query, **kwargs))
+                                     lambda: self.target_cursor.executemany(*args, **kwargs))
 
     def nextset(self) -> bool:
         return self._plugin_manager.execute(self.target_cursor, "Cursor.nextset",
@@ -267,7 +269,7 @@ class AwsWrapperCursor(Cursor):
         return self._plugin_manager.execute(self.target_cursor, "Cursor.setoutputsize",
                                             lambda: self.target_cursor.setoutputsize(size, column), size, column)
 
-    def __enter__(self: "AwsWrapperCursor") -> "AwsWrapperCursor":
+    def __enter__(self: AwsWrapperCursor) -> AwsWrapperCursor:
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:

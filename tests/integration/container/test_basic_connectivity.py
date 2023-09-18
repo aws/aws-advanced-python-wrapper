@@ -59,7 +59,7 @@ class TestBasicConnectivity:
 
     def test_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string())
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         result = cursor.fetchone()
@@ -81,7 +81,7 @@ class TestBasicConnectivity:
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_proxied_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_proxy_conn_string())
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         result = cursor.fetchone()
@@ -98,7 +98,7 @@ class TestBasicConnectivity:
         ProxyHelper.disable_connectivity(instance.get_instance_id())
 
         try:
-            AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect)
+            AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_proxy_conn_string())
 
             # Should not be here since proxy is blocking db connectivity
             assert False
@@ -113,8 +113,8 @@ class TestBasicConnectivity:
     def test_wrapper_connection_reader_cluster_with_efm_enabled(
             self, test_driver: TestDriver, props, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(
-            conn_utils.get_conn_string(conn_utils.reader_cluster_host), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect,
+                                            conn_utils.get_conn_string(conn_utils.reader_cluster_host), **props)
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         result = cursor.fetchone()

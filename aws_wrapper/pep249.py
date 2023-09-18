@@ -96,7 +96,7 @@ class Connection:
     def connect(
             *args,
             **kwargs
-    ) -> Any:
+    ) -> Connection:
         ...
 
     def close(self) -> None:
