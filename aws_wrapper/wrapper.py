@@ -216,7 +216,7 @@ class AwsWrapperCursor(Cursor):
 
     def callproc(self, *args: Any, **kwargs: Any):
         return self._plugin_manager.execute(self.target_cursor, "Cursor.callproc",
-                                            lambda: self.target_cursor.callproc(**kwargs))
+                                            lambda: self.target_cursor.callproc(**kwargs), *args, **kwargs)
 
     def execute(
             self,
@@ -229,7 +229,8 @@ class AwsWrapperCursor(Cursor):
                 self.target_cursor,
                 "Cursor.execute",
                 lambda: driver_dialect.execute(
-                    self.connection, self._target_cursor, *args, **kwargs), *args, **kwargs)
+                    self.connection, self._target_cursor, *args, **kwargs),
+                self.connection, self._target_cursor, *args, **kwargs)
         except FailoverSuccessError as e:
             self._target_cursor = self.connection.target_connection.cursor()
             raise e
@@ -240,7 +241,8 @@ class AwsWrapperCursor(Cursor):
             **kwargs: Any
     ) -> None:
         self._plugin_manager.execute(self.target_cursor, "Cursor.executemany",
-                                     lambda: self.target_cursor.executemany(*args, **kwargs))
+                                     lambda: self.target_cursor.executemany(*args, **kwargs),
+                                     *args, **kwargs)
 
     def nextset(self) -> bool:
         return self._plugin_manager.execute(self.target_cursor, "Cursor.nextset",

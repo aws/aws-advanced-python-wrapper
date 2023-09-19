@@ -664,8 +664,8 @@ class TestReadWriteSplitting:
                 # with each pool consisting of just one connection. The total connection count for the
                 # instance should be numOverloadedReaderConnections despite being spread across multiple
                 # pools.
-                conn = AwsWrapperConnection.connect(target_driver_connect,
-                                                    conn_utils.get_conn_string(reader_to_overload.get_host()), **props)
+                conn = AwsWrapperConnection.connect(
+                    target_driver_connect, conn_utils.get_conn_string(reader_to_overload.get_host()), **props)
                 connections.append(conn)
             assert overloaded_reader_connection_count == len(SqlAlchemyPooledConnectionProvider._database_pools)
 

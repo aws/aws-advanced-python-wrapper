@@ -577,8 +577,8 @@ class PluginManager(CanReleaseResources):
             is_initial_connection: bool) -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._CONNECT_METHOD,
-            lambda plugin, func: plugin.connect(target_func, target_driver_dialect, host_info, props,
-                                                is_initial_connection, func),
+            lambda plugin, func: plugin.connect(
+                target_func, target_driver_dialect, host_info, props, is_initial_connection, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
             lambda: None)
 
