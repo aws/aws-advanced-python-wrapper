@@ -11,6 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 from __future__ import annotations
 
 import functools
@@ -31,8 +32,7 @@ def timeout(executor: Executor, timeout_sec):
             future = executor.submit(func, *args, **kwargs)
 
             # raises TimeoutError on timeout
-            result = future.result(timeout=timeout_sec)
-            return result
+            return future.result(timeout=timeout_sec)
 
         return func_wrapper
 
