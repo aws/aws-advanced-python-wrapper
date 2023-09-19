@@ -39,7 +39,6 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.timeout import timeout
 from aws_wrapper.utils.utils import QueueUtils
 
 logger = getLogger(__name__)

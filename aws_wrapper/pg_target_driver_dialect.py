@@ -178,4 +178,3 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
             return execute_with_timeout()
         else:
             return cursor.execute(query, **kwargs)
-
