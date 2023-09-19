@@ -116,8 +116,8 @@ class TestReadWriteSplitting:
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         reader_instance = test_environment.get_instances()[1]
-        conn = AwsWrapperConnection.connect(target_driver_connect,
-                                            conn_utils.get_conn_string(reader_instance.get_host()), **props)
+        conn = AwsWrapperConnection.connect(
+            target_driver_connect, conn_utils.get_conn_string(reader_instance.get_host()), **props)
         reader_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -131,8 +131,8 @@ class TestReadWriteSplitting:
     def test_connect_to_reader_cluster__switch_read_only(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(target_driver_connect,
-                                            conn_utils.get_conn_string(conn_utils.reader_cluster_host), **props)
+        conn = AwsWrapperConnection.connect(
+            target_driver_connect, conn_utils.get_conn_string(conn_utils.reader_cluster_host), **props)
         reader_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -456,9 +456,8 @@ class TestReadWriteSplitting:
         ConnectionProviderManager.set_connection_provider(provider)
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(target_driver_connect,
-                                            conn_utils.get_conn_string(conn_utils.writer_cluster_host),
-                                            **failover_props)
+        conn = AwsWrapperConnection.connect(
+            target_driver_connect, conn_utils.get_conn_string(conn_utils.writer_cluster_host), **failover_props)
         # The internal connection pool should not be used if the connection is established via a cluster URL.
         assert 0 == len(SqlAlchemyPooledConnectionProvider._database_pools)
 
@@ -569,8 +568,8 @@ class TestReadWriteSplitting:
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         try:
-            conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(),
-                                                **privileged_user_props)
+            conn = AwsWrapperConnection.connect(
+                target_driver_connect, conn_utils.get_conn_string(), **privileged_user_props)
             assert isinstance(conn.target_connection, PoolProxiedConnection)
             privileged_driver_conn = conn.target_connection.driver_connection
 
@@ -585,8 +584,8 @@ class TestReadWriteSplitting:
 
             # Validate that the privileged connection established above is not reused and that the new connection is
             # correctly established under the limited user
-            conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(),
-                                                **limited_user_props)
+            conn = AwsWrapperConnection.connect(
+                target_driver_connect, conn_utils.get_conn_string(), **limited_user_props)
             assert isinstance(conn.target_connection, PoolProxiedConnection)
             limited_driver_conn = conn.target_connection.driver_connection
             assert privileged_driver_conn is not limited_driver_conn
@@ -597,11 +596,11 @@ class TestReadWriteSplitting:
                 cursor.execute(f"CREATE DATABASE {limited_user_new_db}")
 
             with pytest.raises(Exception):
-                AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(),
-                                             **wrong_user_right_password_props)
+                AwsWrapperConnection.connect(
+                    target_driver_connect, conn_utils.get_conn_string(), **wrong_user_right_password_props)
         finally:
-            conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(),
-                                                **privileged_user_props)
+            conn = AwsWrapperConnection.connect(
+                target_driver_connect, conn_utils.get_conn_string(), **privileged_user_props)
             cursor = conn.cursor()
             cursor.execute(f"DROP DATABASE IF EXISTS {limited_user_new_db}")
             cursor.execute(f"DROP USER IF EXISTS {limited_user_name}")
