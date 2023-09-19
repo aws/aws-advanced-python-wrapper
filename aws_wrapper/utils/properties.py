@@ -74,24 +74,24 @@ class WrapperProperties:
 
     CONNECT_TIMEOUT_SEC = WrapperProperty(
         "connect_timeout",
-        "Max number of seconds to wait for a connection to be established before timing out")
+        "Max number of seconds to wait for a connection to be established before timing out.")
     SOCKET_TIMEOUT_SEC = WrapperProperty(
         "socket_timeout",
-        "Max number of seconds to wait for a SQL query to complete before timing out")
+        "Max number of seconds to wait for a SQL query to complete before timing out.")
     TCP_KEEPALIVE = WrapperProperty(
-        "tcp_keepalive", "Enable TCP keepalive functionality")
+        "tcp_keepalive", "Enable TCP keepalive functionality.")
     TCP_KEEPALIVE_TIME_SEC = WrapperProperty(
-        "tcp_keepalive_time", "Number of seconds to wait before sending an initial keepalive probe")
+        "tcp_keepalive_time", "Number of seconds to wait before sending an initial keepalive probe.")
     TCP_KEEPALIVE_INTERVAL_SEC = WrapperProperty(
         "tcp_keepalive_interval",
-        "Number of seconds to wait before sending additional keepalive probes after the initial probe has been sent")
+        "Number of seconds to wait before sending additional keepalive probes after the initial probe has been sent.")
     TCP_KEEPALIVE_PROBES = WrapperProperty(
-        "tcp_keepalive_probes", "Number of keepalive probes to send before concluding that the connection is invalid")
+        "tcp_keepalive_probes", "Number of keepalive probes to send before concluding that the connection is invalid.")
 
     # AuroraHostListProvider
     TOPOLOGY_REFRESH_MS = WrapperProperty(
         "topology_refresh_ms",
-        """Cluster topology refresh rate in millis. The cached topology for the cluster will be invalidated after the
+        """Cluster topology refresh rate in milliseconds. The cached topology for the cluster will be invalidated after the
         specified time, after which it will be updated during the next interaction with the connection.""",
         30_000)
     CLUSTER_ID = WrapperProperty(
@@ -105,11 +105,11 @@ class WrapperProperties:
         specified for IP address or custom domain connections to AWS RDS clusters. Otherwise, if unspecified, the
         pattern will be automatically created for AWS RDS clusters.""")
 
-    IAM_HOST = WrapperProperty("iam_host", "Overrides the host that is used to generate the IAM token")
+    IAM_HOST = WrapperProperty("iam_host", "Overrides the host that is used to generate the IAM token.")
     IAM_DEFAULT_PORT = WrapperProperty(
         "iam_default_port",
-        "Overrides default port that is used to generate the IAM token")
-    IAM_REGION = WrapperProperty("iam_region", "Overrides AWS region that is used to generate the IAM token")
+        "Overrides default port that is used to generate the IAM token.")
+    IAM_REGION = WrapperProperty("iam_region", "Overrides AWS region that is used to generate the IAM token.")
     IAM_EXPIRATION = WrapperProperty(
         "iam_expiration",
         "IAM token cache expiration in seconds",
@@ -121,6 +121,7 @@ class WrapperProperties:
         "secrets_manager_region",
         "The region of the secret to retrieve.",
         "us-east-1")
+
     DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect.")
     AUXILIARY_QUERY_TIMEOUT_SEC = WrapperProperty(
         "auxiliary_query_timeout_sec",
@@ -132,7 +133,7 @@ class WrapperProperties:
     # HostMonitoringPlugin
     FAILURE_DETECTION_ENABLED = WrapperProperty(
         "failure_detection_enabled",
-        "Enable failure detection logic in the HostMonitoringPlugin",
+        "Enable failure detection logic in the HostMonitoringPlugin.",
         True)
     FAILURE_DETECTION_TIME_MS = WrapperProperty(
         "failure_detection_time_ms",
@@ -154,11 +155,11 @@ class WrapperProperties:
     # Failover
     ENABLE_FAILOVER = WrapperProperty(
         "enable_failover",
-        "Enable/disable cluster aware failover logic",
+        "Enable/disable cluster-aware failover logic",
         "True")
     FAILOVER_MODE = WrapperProperty(
         "failover_mode",
-        "Decide which node role (writer, reader, or either) to connect to during failover")
+        "Decide which node role (writer, reader, or either) to connect to during failover.")
     FAILOVER_TIMEOUT_SEC = WrapperProperty(
         "failover_timeout_sec",
         "Maximum allowed time in seconds for the failover process.",
@@ -200,7 +201,7 @@ class PropertiesUtils:
         else:
             props = Properties(dict(x.split("=") for x in conn_info.split(" ")))
         for key, value in kwargs.items():
-            props[key] = str(value)
+            props[key] = value
         return props
 
     @staticmethod
