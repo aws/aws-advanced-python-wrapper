@@ -104,7 +104,7 @@ def release_container():
 
 def test_start_monitoring(monitor, mock_monitoring_context):
     current_time = perf_counter_ns()
-    assert 0 == monitor._context_last_used_ns
+    assert 0 != monitor._context_last_used_ns
 
     monitor.start_monitoring(mock_monitoring_context)
     mock_monitoring_context.set_monitor_start_time_ns.assert_called_once()
@@ -114,10 +114,10 @@ def test_start_monitoring(monitor, mock_monitoring_context):
 
 def test_stop_monitoring(monitor, mock_monitoring_context):
     current_time = perf_counter_ns()
-    assert 0 == monitor._context_last_used_ns
+    assert 0 != monitor._context_last_used_ns
 
     monitor.stop_monitoring(None)
-    assert 0 == monitor._context_last_used_ns
+    assert 0 != monitor._context_last_used_ns
 
     monitor.stop_monitoring(mock_monitoring_context)
     assert mock_monitoring_context.is_active is False

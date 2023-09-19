@@ -14,13 +14,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Set
+from concurrent.futures import Executor, ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any, Callable, Set, Union
 
 import psycopg
 
+from aws_wrapper.utils.timeout import timeout
+
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
-    from aws_wrapper.pep249 import Connection
+    from aws_wrapper.pep249 import Connection, Cursor
 
 from inspect import signature
 
@@ -39,6 +42,8 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     # https://www.psycopg.org/psycopg3/docs/api/pq.html#psycopg.pq.TransactionStatus
     PSYCOPG_ACTIVE_TRANSACTION_STATUS = 1
     PSYCOPG_IN_TRANSACTION_STATUS = 2
+
+    __executor: Executor = ThreadPoolExecutor()
 
     _dialect_code: str = TargetDriverDialectCodes.PSYCOPG
     _network_bound_methods: Set[str] = {
@@ -68,7 +73,7 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
 
     def abort_connection(self, conn: Connection):
         if isinstance(conn, psycopg.Connection):
-            conn.cancel()
+            conn.close()
             return
         raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "cancel"))
 
@@ -163,3 +168,13 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
 
     def supports_tcp_keepalive(self) -> bool:
         return True
+
+    def execute(
+            self, conn: Connection, cursor: Cursor, query: str, **kwargs: Union[None, int, str]) -> Cursor:
+        socket_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
+        if socket_timeout is not None:
+            kwargs.pop(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
+            execute_with_timeout = timeout(self.__executor, socket_timeout)(lambda: cursor.execute(query, **kwargs))
+            return execute_with_timeout()
+        else:
+            return cursor.execute(query, **kwargs)

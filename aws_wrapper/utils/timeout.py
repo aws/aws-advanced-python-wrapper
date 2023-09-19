@@ -12,21 +12,28 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 import functools
-from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from concurrent.futures import Executor
 
 
-def timeout(timeout_sec):
+def timeout(executor: Executor, timeout_sec):
     """
     Timeout decorator, timeout in seconds
     """
+
     def timeout_decorator(func):
         @functools.wraps(func)
         def func_wrapper(*args, **kwargs):
-            with ThreadPoolExecutor() as executor:
-                future = executor.submit(func, *args, **kwargs)
+            future = executor.submit(func, *args, **kwargs)
 
-                # raises TimeoutError on timeout
-                return future.result(timeout=timeout_sec)
+            # raises TimeoutError on timeout
+            return future.result(timeout=timeout_sec)
+
         return func_wrapper
+
     return timeout_decorator

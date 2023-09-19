@@ -39,7 +39,6 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.timeout import timeout
 from aws_wrapper.utils.utils import QueueUtils
 
 logger = getLogger(__name__)
@@ -249,6 +248,8 @@ class MonitoringContext:
         if self._connection is None or not self._is_active:
             return
         try:
+            if self._target_dialect.is_closed(self._connection):
+                return
             self._target_dialect.abort_connection(self._connection)
         except Exception as e:
             # log and ignore
@@ -269,7 +270,6 @@ class MonitoringContext:
             self._current_failure_count = 0
             self._unavailable_host_start_time_ns = 0
             self._is_host_unavailable = False
-            logger.debug("MonitorContext.HostAvailable")
             return
 
         self._current_failure_count += 1
@@ -311,7 +311,7 @@ class Monitor:
         self._monitoring_conn: Optional[Connection] = None
         self._is_stopped: Event = Event()
         self._monitor_disposal_time_ms: int = WrapperProperties.MONITOR_DISPOSAL_TIME_MS.get_int(props)
-        self._context_last_used_ns: int = 0
+        self._context_last_used_ns: int = perf_counter_ns()
         self._host_check_timeout_ms: int = Monitor._MIN_HOST_CHECK_TIMEOUT_MS
 
     @dataclass
@@ -471,18 +471,18 @@ class Monitor:
 
     def _is_host_available(self, conn: Connection, timeout_sec: float) -> bool:
         try:
-            check_conn_with_timeout = timeout(timeout_sec)(lambda: self._execute_conn_check(conn))
-            check_conn_with_timeout()
+            self._execute_conn_check(conn, timeout_sec)
             return True
         except TimeoutError:
             return False
 
-    def _execute_conn_check(self, conn: Connection):
+    def _execute_conn_check(self, conn: Connection, timeout_sec: float):
         target_driver_dialect = self._plugin_service.target_driver_dialect
         initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
+        kwargs = {WrapperProperties.SOCKET_TIMEOUT_SEC.name: int(timeout_sec)}  # TODO: extend kwargs types with float
 
         with conn.cursor() as cursor:
-            cursor.execute("SELECT 1")
+            target_driver_dialect.execute(conn, cursor, "SELECT 1", **kwargs)
 
         if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
             conn.commit()

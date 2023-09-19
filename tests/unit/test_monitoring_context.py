@@ -65,6 +65,8 @@ def test_set_monitor_start_time(context, failure_time_ms):
 
 
 def test_abort_connection(context, mock_conn, mock_dialect):
+    mock_dialect.is_closed.return_value = False
+
     context._connection = None
     context._abort_connection()
     mock_dialect.abort_connection.assert_not_called()
@@ -77,6 +79,7 @@ def test_abort_connection(context, mock_conn, mock_dialect):
 
 def test_update_connection_status_abort_connection(
         context, mock_dialect, failure_time_ms, failure_interval_ms, failure_count):
+    mock_dialect.is_closed.return_value = False
     status_check_end_ns = perf_counter_ns()
     status_check_start_ns = status_check_end_ns - (failure_interval_ms * failure_count * 1_000_000) - 1
     monitor_start_ns = status_check_start_ns - (failure_time_ms * 1_000_000)

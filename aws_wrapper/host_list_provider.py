@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import uuid
 from abc import abstractmethod
+from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
@@ -120,6 +121,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     # Maps existing cluster IDs to suggested cluster IDs. This is used to update non-primary cluster IDs to primary
     # cluster IDs so that connections to the same clusters can share topology info.
     _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
+
+    _executor: Executor = ThreadPoolExecutor()
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
@@ -234,7 +237,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
             try:
-                query_for_topology_func_with_timeout = timeout(self._max_timeout)(self._query_for_topology)
+                query_for_topology_func_with_timeout = (
+                    timeout(AuroraHostListProvider._executor, self._max_timeout)(self._query_for_topology))
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
@@ -380,7 +384,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForGetHostRole")
-                cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
+                cursor_execute_func_with_timeout = timeout(
+                    AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
                 cursor_execute_func_with_timeout(topology_aware_dialect.is_reader_query)
                 result = cursor.fetchone()
                 if not initial_transaction_status and target_driver_dialect.is_in_transaction(connection):
@@ -400,7 +405,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 topology_aware_dialect = \
                     self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForIdentifyConnection")
-                cursor_execute_func_with_timeout = timeout(self._max_timeout)(cursor.execute)
+                cursor_execute_func_with_timeout = timeout(
+                    AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
                 cursor_execute_func_with_timeout(topology_aware_dialect.host_id_query)
                 result = cursor.fetchone()
                 if result:
