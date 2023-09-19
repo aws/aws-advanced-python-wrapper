@@ -49,7 +49,7 @@ def dialect():
 
 def test_abort_connection(dialect, mock_conn, mock_invalid_conn):
     dialect.abort_connection(mock_conn)
-    mock_conn.cancel.assert_called_once()
+    mock_conn.close.assert_called_once()
 
     with pytest.raises(AwsWrapperError):
         dialect.abort_connection(mock_invalid_conn)

@@ -480,7 +480,7 @@ class Monitor:
     def _execute_conn_check(self, conn: Connection, timeout_sec: float):
         target_driver_dialect = self._plugin_service.target_driver_dialect
         initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
-        kwargs = {WrapperProperties.SOCKET_TIMEOUT_SEC.name: timeout_sec}
+        kwargs = {WrapperProperties.SOCKET_TIMEOUT_SEC.name: int(timeout_sec)}  # TODO: extend kwargs types with float
 
         with conn.cursor() as cursor:
             target_driver_dialect.execute(conn, cursor, "SELECT 1", **kwargs)
