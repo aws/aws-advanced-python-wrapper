@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Executor, ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Callable, Set, Union
+from typing import TYPE_CHECKING, Any, Callable, Set
 
 import psycopg
 
@@ -169,8 +169,7 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     def supports_tcp_keepalive(self) -> bool:
         return True
 
-    def execute(
-            self, conn: Connection, cursor: Cursor, query: str, **kwargs: Union[None, int, str]) -> Cursor:
+    def execute(self, conn: Connection, cursor: Cursor, query: str, *args: Any, **kwargs: Any) -> Cursor:
         socket_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
         if socket_timeout is not None:
             kwargs.pop(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
