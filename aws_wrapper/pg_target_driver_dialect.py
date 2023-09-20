@@ -173,7 +173,7 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
         socket_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
         if socket_timeout is not None:
             kwargs.pop(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
-            execute_with_timeout = timeout(self.__executor, socket_timeout)(lambda: cursor.execute(query, **kwargs))
+            execute_with_timeout = timeout(self.__executor, socket_timeout)(lambda: cursor.execute(query, *args, **kwargs))
             return execute_with_timeout()
         else:
-            return cursor.execute(query, **kwargs)
+            return cursor.execute(query, *args, **kwargs)

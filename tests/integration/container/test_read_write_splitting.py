@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from aws_wrapper.host_list_provider import AuroraHostListProvider
+from tests.integration.container.utils.proxy_helper import ProxyHelper
 
 if TYPE_CHECKING:
     from tests.integration.container.utils.test_driver import TestDriver
@@ -27,7 +28,8 @@ from sqlalchemy import PoolProxiedConnection
 from aws_wrapper import AwsWrapperConnection
 from aws_wrapper.connection_provider import (
     ConnectionProviderManager, SqlAlchemyPooledConnectionProvider)
-from aws_wrapper.errors import (AwsWrapperError, FailoverSuccessError,
+from aws_wrapper.errors import (AwsWrapperError, FailoverFailedError,
+                                FailoverSuccessError,
                                 TransactionResolutionUnknownError)
 from aws_wrapper.utils.properties import WrapperProperties
 from tests.integration.container.utils.aurora_test_utility import \
@@ -208,30 +210,30 @@ class TestReadWriteSplitting:
         current_id = aurora_utils.query_instance_id(conn)
         assert writer_id == current_id
 
-    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
-    # @enable_on_num_instances(min_instances=3)
-    # def test_set_read_only_true__all_readers_down(
-    #         self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, aurora_utils):
-    #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
-    #     conn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_props)
-    #     writer_id = aurora_utils.query_instance_id(conn)
-    #
-    #     instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
-    #     for i in range(1, len(instance_ids)):
-    #         ProxyHelper.disable_connectivity(instance_ids[i])
-    #
-    #     conn.read_only = True
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id == current_id
-    #
-    #     conn.read_only = False
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id == current_id
-    #
-    #     ProxyHelper.enable_all_connectivity()
-    #     conn.read_only = True
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id != current_id
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    @enable_on_num_instances(min_instances=3)
+    def test_set_read_only_true__all_readers_down(
+            self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, aurora_utils):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_proxy_conn_string(), **proxied_props)
+        writer_id = aurora_utils.query_instance_id(conn)
+
+        instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
+        for i in range(1, len(instance_ids)):
+            ProxyHelper.disable_connectivity(instance_ids[i])
+
+        conn.read_only = True
+        current_id = aurora_utils.query_instance_id(conn)
+        assert writer_id == current_id
+
+        conn.read_only = False
+        current_id = aurora_utils.query_instance_id(conn)
+        assert writer_id == current_id
+
+        ProxyHelper.enable_all_connectivity()
+        conn.read_only = True
+        current_id = aurora_utils.query_instance_id(conn)
+        assert writer_id != current_id
 
     def test_set_read_only_true__closed_connection(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
@@ -242,158 +244,153 @@ class TestReadWriteSplitting:
         with pytest.raises(AwsWrapperError):
             conn.read_only = True
 
-    # TODO: Enable test when we resolve the query timeout issue for topology query
-    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
-    # def test_set_read_only_false__all_instances_down(
-    #         self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, aurora_utils):
-    #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
-    #     conn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_props)
-    #     writer_id = aurora_utils.query_instance_id(conn)
-    #
-    #     conn.read_only = True
-    #     reader_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id != reader_id
-    #
-    #     ProxyHelper.disable_all_connectivity()
-    #     with pytest.raises(AwsWrapperError):
-    #         conn.read_only = False
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    def test_set_read_only_false__all_instances_down(
+            self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, aurora_utils):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_proxy_conn_string(), **proxied_props)
+        writer_id = aurora_utils.query_instance_id(conn)
 
-    # TODO: Enable test when we implement old connection exception handling
-    # def test_execute__old_connection(
-    #         self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
-    #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
-    #     conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
-    #     writer_id = aurora_utils.query_instance_id(conn)
-    #
-    #     old_cursor = conn.cursor()
-    #     old_cursor.execute("SELECT 1")
-    #     conn.read_only = True  # Switch connection internally
-    #     conn.autocommit = False
-    #
-    #     with pytest.raises(AwsWrapperError):
-    #         old_cursor.execute("SELECT 1")
-    #
-    #     reader_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id != reader_id
-    #
-    #     old_cursor.close()
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert reader_id == current_id
+        conn.read_only = True
+        reader_id = aurora_utils.query_instance_id(conn)
+        assert writer_id != reader_id
 
-    # TODO: Enable test when we resolve the query timeout issue for topology query
-    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED, TestEnvironmentFeatures.FAILOVER_SUPPORTED])
-    # @enable_on_num_instances(min_instances=3)
-    # def test_failover_to_new_writer__switch_read_only(
-    #         self, test_environment: TestEnvironment, test_driver: TestDriver,
-    #         proxied_failover_props, conn_utils, aurora_utils):
-    #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
-    #     conn = AwsWrapperConnection.connect(
-    #         conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_failover_props)
-    #     original_writer_id = aurora_utils.query_instance_id(conn)
-    #
-    #     instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
-    #     for i in range(1, len(instance_ids)):
-    #         ProxyHelper.disable_connectivity(instance_ids[i])
-    #
-    #     # Force internal reader connection to the writer instance
-    #     conn.read_only = True
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert original_writer_id == current_id
-    #     conn.read_only = False
-    #
-    #     ProxyHelper.enable_all_connectivity()
-    #     aurora_utils.failover_cluster_and_wait_until_writer_changed(original_writer_id)
-    #     aurora_utils.assert_first_query_throws(conn, FailoverSuccessError)
-    #
-    #     new_writer_id = aurora_utils.query_instance_id(conn)
-    #     assert original_writer_id != new_writer_id
-    #     assert aurora_utils.is_db_instance_writer(new_writer_id)
-    #
-    #     conn.read_only = True
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert new_writer_id != current_id
-    #
-    #     conn.read_only = False
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert new_writer_id == current_id
+        ProxyHelper.disable_all_connectivity()
+        with pytest.raises(AwsWrapperError):
+            conn.read_only = False
 
-    # TODO: Enable test when we resolve the query timeout issue for topology query
-    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
-    # @enable_on_num_instances(min_instances=3)
-    # def test_failover_to_new_reader__switch_read_only(
-    #         self, test_environment: TestEnvironment, test_driver: TestDriver,
-    #         proxied_failover_props, conn_utils, aurora_utils):
-    #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
-    #     props = proxied_failover_props.copy()
-    #     props.update({WrapperProperties.FAILOVER_MODE.name: "reader-or-writer"})
-    #     conn = AwsWrapperConnection.connect(conn_utils.get_proxy_conn_string(), target_driver_connect, **props)
-    #     writer_id = aurora_utils.query_instance_id(conn)
-    #
-    #     conn.read_only = True
-    #     reader_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id != reader_id
-    #
-    #     instances = test_environment.get_instances()
-    #     other_reader_id = next((
-    #         instance.get_instance_id() for instance in instances[1:] if instance.get_instance_id() != reader_id), None)
-    #     if other_reader_id is None:
-    #         pytest.fail("Could not acquire alternate reader ID")
-    #
-    #     # Kill all instances except for one other reader
-    #     for instance in instances:
-    #         instance_id = instance.get_instance_id()
-    #         if instance_id != other_reader_id:
-    #             ProxyHelper.disable_connectivity(instance_id)
-    #
-    #     aurora_utils.assert_first_query_throws(conn, FailoverSuccessError)
-    #     assert not conn.is_closed
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert other_reader_id == current_id
-    #     assert reader_id != current_id
-    #
-    #     ProxyHelper.enable_all_connectivity()
-    #     conn.read_only = False
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id == current_id
-    #
-    #     conn.read_only = True
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert other_reader_id == current_id
+    def test_execute__old_connection(
+            self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
+        writer_id = aurora_utils.query_instance_id(conn)
 
-    # TODO: Enable test when we resolve the psycopg query timeout issue
-    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
-    # @enable_on_num_instances(min_instances=3)
-    # def test_failover_reader_to_writer__switch_read_only(
-    #         self, test_environment: TestEnvironment, test_driver: TestDriver,
-    #         proxied_failover_props, conn_utils, aurora_utils):
-    #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
-    #     conn = AwsWrapperConnection.connect(
-    #         conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_failover_props)
-    #     writer_id = aurora_utils.query_instance_id(conn)
-    #
-    #     conn.read_only = True
-    #     reader_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id != reader_id
-    #
-    #     # Kill all instances except the writer
-    #     for instance in test_environment.get_instances():
-    #         instance_id = instance.get_instance_id()
-    #         if instance_id != writer_id:
-    #             ProxyHelper.disable_connectivity(instance_id)
-    #
-    #     aurora_utils.assert_first_query_throws(conn, FailoverSuccessError)
-    #     assert not conn.is_closed
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id == current_id
-    #
-    #     ProxyHelper.enable_all_connectivity()
-    #     conn.read_only = True
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id != current_id
-    #
-    #     conn.read_only = False
-    #     current_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id == current_id
+        old_cursor = conn.cursor()
+        old_cursor.execute("SELECT 1")
+        conn.read_only = True  # Switch connection internally
+        conn.autocommit = False
+
+        with pytest.raises(AwsWrapperError):
+            old_cursor.execute("SELECT 1")
+
+        reader_id = aurora_utils.query_instance_id(conn)
+        assert writer_id != reader_id
+
+        old_cursor.close()
+        current_id = aurora_utils.query_instance_id(conn)
+        assert reader_id == current_id
+
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED, TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    @enable_on_num_instances(min_instances=3)
+    def test_failover_to_new_writer__switch_read_only(
+            self, test_environment: TestEnvironment, test_driver: TestDriver,
+            proxied_failover_props, conn_utils, aurora_utils):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        conn = AwsWrapperConnection.connect(
+            target_driver_connect, conn_utils.get_proxy_conn_string(), **proxied_failover_props)
+        original_writer_id = aurora_utils.query_instance_id(conn)
+
+        instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
+        for i in range(1, len(instance_ids)):
+            ProxyHelper.disable_connectivity(instance_ids[i])
+
+        # Force internal reader connection to the writer instance
+        conn.read_only = True
+        current_id = aurora_utils.query_instance_id(conn)
+        assert original_writer_id == current_id
+        conn.read_only = False
+
+        ProxyHelper.enable_all_connectivity()
+        aurora_utils.failover_cluster_and_wait_until_writer_changed(original_writer_id)
+        aurora_utils.assert_first_query_throws(conn, FailoverSuccessError)
+
+        new_writer_id = aurora_utils.query_instance_id(conn)
+        assert original_writer_id != new_writer_id
+        assert aurora_utils.is_db_instance_writer(new_writer_id)
+
+        conn.read_only = True
+        current_id = aurora_utils.query_instance_id(conn)
+        assert new_writer_id != current_id
+
+        conn.read_only = False
+        current_id = aurora_utils.query_instance_id(conn)
+        assert new_writer_id == current_id
+
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    @enable_on_num_instances(min_instances=3)
+    def test_failover_to_new_reader__switch_read_only(
+            self, test_environment: TestEnvironment, test_driver: TestDriver,
+            proxied_failover_props, conn_utils, aurora_utils):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        props = proxied_failover_props.copy()
+        props.update({WrapperProperties.FAILOVER_MODE.name: "reader-or-writer"})
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_proxy_conn_string(), **props)
+        writer_id = aurora_utils.query_instance_id(conn)
+
+        conn.read_only = True
+        reader_id = aurora_utils.query_instance_id(conn)
+        assert writer_id != reader_id
+
+        instances = test_environment.get_instances()
+        other_reader_id = next((
+            instance.get_instance_id() for instance in instances[1:] if instance.get_instance_id() != reader_id), None)
+        if other_reader_id is None:
+            pytest.fail("Could not acquire alternate reader ID")
+
+        # Kill all instances except for one other reader
+        for instance in instances:
+            instance_id = instance.get_instance_id()
+            if instance_id != other_reader_id:
+                ProxyHelper.disable_connectivity(instance_id)
+
+        aurora_utils.assert_first_query_throws(conn, FailoverSuccessError)
+        assert not conn.is_closed
+        current_id = aurora_utils.query_instance_id(conn)
+        assert other_reader_id == current_id
+        assert reader_id != current_id
+
+        ProxyHelper.enable_all_connectivity()
+        conn.read_only = False
+        current_id = aurora_utils.query_instance_id(conn)
+        assert writer_id == current_id
+
+        conn.read_only = True
+        current_id = aurora_utils.query_instance_id(conn)
+        assert other_reader_id == current_id
+
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    @enable_on_num_instances(min_instances=3)
+    def test_failover_reader_to_writer__switch_read_only(
+            self, test_environment: TestEnvironment, test_driver: TestDriver,
+            proxied_failover_props, conn_utils, aurora_utils):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        conn = AwsWrapperConnection.connect(
+            target_driver_connect, conn_utils.get_proxy_conn_string(), **proxied_failover_props)
+        writer_id = aurora_utils.query_instance_id(conn)
+
+        conn.read_only = True
+        reader_id = aurora_utils.query_instance_id(conn)
+        assert writer_id != reader_id
+
+        # Kill all instances except the writer
+        for instance in test_environment.get_instances():
+            instance_id = instance.get_instance_id()
+            if instance_id != writer_id:
+                ProxyHelper.disable_connectivity(instance_id)
+
+        aurora_utils.assert_first_query_throws(conn, FailoverSuccessError)
+        assert not conn.is_closed
+        current_id = aurora_utils.query_instance_id(conn)
+        assert writer_id == current_id
+
+        ProxyHelper.enable_all_connectivity()
+        conn.read_only = True
+        current_id = aurora_utils.query_instance_id(conn)
+        assert writer_id != current_id
+
+        conn.read_only = False
+        current_id = aurora_utils.query_instance_id(conn)
+        assert writer_id == current_id
 
     def test_pooled_connection__reuses_cached_connection(
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils, props):
@@ -477,41 +474,40 @@ class TestReadWriteSplitting:
         new_driver_conn = conn.target_connection
         assert initial_driver_conn is not new_driver_conn
 
-    # TODO: Enable test when we resolve the query timeout issue for topology query
-    # @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
-    # def test_pooled_connection__failover_failed(
-    #         self, test_environment: TestEnvironment, test_driver: TestDriver,
-    #         aurora_utils, conn_utils, proxied_failover_props):
-    #     provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
-    #     ConnectionProviderManager.set_connection_provider(provider)
-    #
-    #     WrapperProperties.FAILOVER_TIMEOUT_SEC.set(proxied_failover_props, "1")
-    #     WrapperProperties.FAILURE_DETECTION_TIME_MS.set(proxied_failover_props, "1000")
-    #     WrapperProperties.FAILURE_DETECTION_COUNT.set(proxied_failover_props, "1")
-    #
-    #     target_driver_connect = DriverHelper.get_connect_func(test_driver)
-    #     conn = AwsWrapperConnection.connect(
-    #         conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_failover_props)
-    #     assert isinstance(conn.target_connection, PoolProxiedConnection)
-    #     initial_driver_conn = conn.target_connection.driver_connection
-    #     writer_id = aurora_utils.query_instance_id(conn)
-    #
-    #     ProxyHelper.disable_all_connectivity()
-    #     with pytest.raises(FailoverFailedError):
-    #         aurora_utils.query_instance_id(conn)
-    #
-    #     ProxyHelper.enable_all_connectivity()
-    #     conn = AwsWrapperConnection.connect(
-    #         conn_utils.get_proxy_conn_string(), target_driver_connect, **proxied_failover_props)
-    #
-    #     current_writer_id = aurora_utils.query_instance_id(conn)
-    #     assert writer_id == current_writer_id
-    #
-    #     assert isinstance(conn.target_connection, PoolProxiedConnection)
-    #     current_driver_conn = conn.target_connection.driver_connection
-    #     # The initial connection should have been evicted from the pool when failover occurred,
-    #     # so this should be a new connection even though it is connected to the same instance.
-    #     assert initial_driver_conn is not current_driver_conn
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    def test_pooled_connection__failover_failed(
+            self, test_environment: TestEnvironment, test_driver: TestDriver,
+            aurora_utils, conn_utils, proxied_failover_props):
+        provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
+        ConnectionProviderManager.set_connection_provider(provider)
+
+        WrapperProperties.FAILOVER_TIMEOUT_SEC.set(proxied_failover_props, "1")
+        WrapperProperties.FAILURE_DETECTION_TIME_MS.set(proxied_failover_props, "1000")
+        WrapperProperties.FAILURE_DETECTION_COUNT.set(proxied_failover_props, "1")
+
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        conn = AwsWrapperConnection.connect(
+            target_driver_connect, conn_utils.get_proxy_conn_string(), **proxied_failover_props)
+        assert isinstance(conn.target_connection, PoolProxiedConnection)
+        initial_driver_conn = conn.target_connection.driver_connection
+        writer_id = aurora_utils.query_instance_id(conn)
+
+        ProxyHelper.disable_all_connectivity()
+        with pytest.raises(FailoverFailedError):
+            aurora_utils.query_instance_id(conn)
+
+        ProxyHelper.enable_all_connectivity()
+        conn = AwsWrapperConnection.connect(
+            target_driver_connect, conn_utils.get_proxy_conn_string(), **proxied_failover_props)
+
+        current_writer_id = aurora_utils.query_instance_id(conn)
+        assert writer_id == current_writer_id
+
+        assert isinstance(conn.target_connection, PoolProxiedConnection)
+        current_driver_conn = conn.target_connection.driver_connection
+        # The initial connection should have been evicted from the pool when failover occurred,
+        # so this should be a new connection even though it is connected to the same instance.
+        assert initial_driver_conn is not current_driver_conn
 
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_pooled_connection__failover_in_transaction(
@@ -636,6 +632,7 @@ class TestReadWriteSplitting:
     that new connections are sent to the other readers until their connection count equals that of
     the overloaded reader.
     """
+
     @enable_on_num_instances(min_instances=5)
     def test_pooled_connection__least_connections__pool_mapping(
             self, test_environment: TestEnvironment, test_driver: TestDriver, aurora_utils, conn_utils, props):
