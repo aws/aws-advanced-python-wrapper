@@ -98,7 +98,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
                 self._plugin_service.fill_aliases(conn, host_info)
         return conn
 
-    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any) -> Any:
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         connection = self._plugin_service.current_connection
         if connection is None:
             raise AwsWrapperError(Messages.get_formatted("HostMonitoringPlugin.NullConnection", method_name))

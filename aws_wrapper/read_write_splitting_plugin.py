@@ -128,7 +128,7 @@ class ReadWriteSplittingPlugin(Plugin):
 
         return OldConnectionSuggestedAction.NO_OPINION
 
-    def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any) -> Any:
+    def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         target_driver_dialect = self._plugin_service.target_driver_dialect
         conn: Optional[Connection] = target_driver_dialect.get_connection_from_obj(target)
         current_conn: Optional[Connection] = target_driver_dialect.unwrap_connection(self._plugin_service.current_connection)

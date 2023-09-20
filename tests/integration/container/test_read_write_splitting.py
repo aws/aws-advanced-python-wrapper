@@ -89,7 +89,7 @@ class TestReadWriteSplitting:
     def test_connect_to_writer__switch_read_only(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
         writer_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -117,7 +117,7 @@ class TestReadWriteSplitting:
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         reader_instance = test_environment.get_instances()[1]
         conn = AwsWrapperConnection.connect(
-            conn_utils.get_conn_string(reader_instance.get_host()), target_driver_connect, **props)
+            target_driver_connect, conn_utils.get_conn_string(reader_instance.get_host()), **props)
         reader_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -132,7 +132,7 @@ class TestReadWriteSplitting:
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         conn = AwsWrapperConnection.connect(
-            conn_utils.get_conn_string(conn_utils.reader_cluster_host), target_driver_connect, **props)
+            target_driver_connect, conn_utils.get_conn_string(conn_utils.reader_cluster_host), **props)
         reader_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -146,7 +146,7 @@ class TestReadWriteSplitting:
     def test_set_read_only_false__read_only_transaction(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
         writer_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -170,7 +170,7 @@ class TestReadWriteSplitting:
     def test_set_read_only_false_in_transaction(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
         writer_id = aurora_utils.query_instance_id(conn)
 
         conn.read_only = True
@@ -194,7 +194,7 @@ class TestReadWriteSplitting:
     def test_set_read_only_true_in_transaction(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
         writer_id = aurora_utils.query_instance_id(conn)
 
         cursor = conn.cursor()
@@ -236,7 +236,7 @@ class TestReadWriteSplitting:
     def test_set_read_only_true__closed_connection(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
         conn.close()
 
         with pytest.raises(AwsWrapperError):
@@ -401,12 +401,12 @@ class TestReadWriteSplitting:
         ConnectionProviderManager.set_connection_provider(provider)
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn1 = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn1 = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
         assert isinstance(conn1.target_connection, PoolProxiedConnection)
         driver_conn1 = conn1.target_connection.driver_connection
         conn1.close()
 
-        conn2 = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+        conn2 = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
         assert isinstance(conn2.target_connection, PoolProxiedConnection)
         driver_conn2 = conn2.target_connection.driver_connection
         conn2.close()
@@ -422,7 +422,7 @@ class TestReadWriteSplitting:
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         initial_writer_url = conn_utils.get_conn_string()
-        conn = AwsWrapperConnection.connect(initial_writer_url, target_driver_connect, **failover_props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, initial_writer_url, **failover_props)
         assert isinstance(conn.target_connection, PoolProxiedConnection)
         initial_driver_conn = conn.target_connection.driver_connection
         initial_writer_id = aurora_utils.query_instance_id(conn)
@@ -439,7 +439,7 @@ class TestReadWriteSplitting:
         assert initial_driver_conn is not new_driver_conn
 
         # New connection to the original writer (now a reader)
-        conn = AwsWrapperConnection.connect(initial_writer_url, target_driver_connect, **failover_props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, initial_writer_url, **failover_props)
         current_id = aurora_utils.query_instance_id(conn)
         assert initial_writer_id == current_id
 
@@ -457,7 +457,7 @@ class TestReadWriteSplitting:
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         conn = AwsWrapperConnection.connect(
-            conn_utils.get_conn_string(conn_utils.writer_cluster_host), target_driver_connect, **failover_props)
+            target_driver_connect, conn_utils.get_conn_string(conn_utils.writer_cluster_host), **failover_props)
         # The internal connection pool should not be used if the connection is established via a cluster URL.
         assert 0 == len(SqlAlchemyPooledConnectionProvider._database_pools)
 
@@ -521,7 +521,7 @@ class TestReadWriteSplitting:
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         initial_writer_url = conn_utils.get_conn_string()
-        conn = AwsWrapperConnection.connect(initial_writer_url, target_driver_connect, **failover_props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, initial_writer_url, **failover_props)
         assert isinstance(conn.target_connection, PoolProxiedConnection)
         initial_driver_conn = conn.target_connection.driver_connection
 
@@ -539,7 +539,7 @@ class TestReadWriteSplitting:
         new_driver_conn = conn.target_connection
         assert initial_driver_conn is not new_driver_conn
 
-        conn = AwsWrapperConnection.connect(initial_writer_url, target_driver_connect, **failover_props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, initial_writer_url, **failover_props)
         current_id = aurora_utils.query_instance_id(conn)
         assert initial_writer_id == current_id
 
@@ -569,7 +569,7 @@ class TestReadWriteSplitting:
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         try:
             conn = AwsWrapperConnection.connect(
-                conn_utils.get_conn_string(), target_driver_connect, **privileged_user_props)
+                target_driver_connect, conn_utils.get_conn_string(), **privileged_user_props)
             assert isinstance(conn.target_connection, PoolProxiedConnection)
             privileged_driver_conn = conn.target_connection.driver_connection
 
@@ -585,7 +585,7 @@ class TestReadWriteSplitting:
             # Validate that the privileged connection established above is not reused and that the new connection is
             # correctly established under the limited user
             conn = AwsWrapperConnection.connect(
-                conn_utils.get_conn_string(), target_driver_connect, **limited_user_props)
+                target_driver_connect, conn_utils.get_conn_string(), **limited_user_props)
             assert isinstance(conn.target_connection, PoolProxiedConnection)
             limited_driver_conn = conn.target_connection.driver_connection
             assert privileged_driver_conn is not limited_driver_conn
@@ -597,10 +597,10 @@ class TestReadWriteSplitting:
 
             with pytest.raises(Exception):
                 AwsWrapperConnection.connect(
-                    conn_utils.get_conn_string(), target_driver_connect, **wrong_user_right_password_props)
+                    target_driver_connect, conn_utils.get_conn_string(), **wrong_user_right_password_props)
         finally:
             conn = AwsWrapperConnection.connect(
-                conn_utils.get_conn_string(), target_driver_connect, **privileged_user_props)
+                target_driver_connect, conn_utils.get_conn_string(), **privileged_user_props)
             cursor = conn.cursor()
             cursor.execute(f"DROP DATABASE IF EXISTS {limited_user_new_db}")
             cursor.execute(f"DROP USER IF EXISTS {limited_user_name}")
@@ -620,7 +620,7 @@ class TestReadWriteSplitting:
         try:
             # Assume one writer and [size - 1] readers. Create an internal connection pool for each reader.
             for _ in range(len(instances) - 1):
-                conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+                conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
                 connections.append(conn)
 
                 conn.read_only = True
@@ -664,12 +664,12 @@ class TestReadWriteSplitting:
                 # instance should be numOverloadedReaderConnections despite being spread across multiple
                 # pools.
                 conn = AwsWrapperConnection.connect(
-                    conn_utils.get_conn_string(reader_to_overload.get_host()), target_driver_connect, **props)
+                    target_driver_connect, conn_utils.get_conn_string(reader_to_overload.get_host()), **props)
                 connections.append(conn)
             assert overloaded_reader_connection_count == len(SqlAlchemyPooledConnectionProvider._database_pools)
 
             for _ in range(num_test_connections):
-                conn = AwsWrapperConnection.connect(conn_utils.get_conn_string(), target_driver_connect, **props)
+                conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string(), **props)
                 connections.append(conn)
 
                 conn.read_only = True
