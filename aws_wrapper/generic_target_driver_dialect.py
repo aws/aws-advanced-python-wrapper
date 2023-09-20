@@ -131,8 +131,7 @@ class GenericTargetDriverDialect(TargetDriverDialect):
         raise UnsupportedOperationError(
             Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_in_transaction"))
 
-    def execute(
-            self, conn: Connection, cursor: Cursor, *args, **kwargs: Any) -> Cursor:
+    def execute(self, conn: Connection, cursor: Cursor, query: str, *args: Any, **kwargs: Any) -> Cursor:
         return cursor.execute(*args, **kwargs)
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
