@@ -14,12 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import psycopg
-
-if TYPE_CHECKING:
-    from aws_wrapper.pep249 import Connection
 
 from aws_wrapper import AwsWrapperConnection
 
@@ -31,8 +26,7 @@ if __name__ == "__main__":
             secrets_manager_secret_id="arn:aws:secretsmanager:<Region>:<AccountId>:secret:Secre78tName-6RandomCharacters",
             secrets_manager_region="us-east-2",
             plugins="aws_secrets_manager"
-    ) as awsconn:
-        cursor = awsconn.cursor()
+    ) as awsconn, awsconn.cursor() as cursor:
         cursor.execute("SELECT aurora_db_instance_identifier()")
         for record in cursor.fetchone():
             print(record)
