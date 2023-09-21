@@ -54,6 +54,7 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
         "Connection.set_read_only",
         "Connection.rollback",
         "Connection.cursor",
+        "Cursor.close",
         "Cursor.callproc",
         "Cursor.execute",
         "Cursor.fetchone",

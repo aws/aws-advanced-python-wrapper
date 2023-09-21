@@ -50,6 +50,7 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
         "Connection.rollback",
         "Connection.cursor",
         "Cursor.close",
+        "Cursor.callproc"
         "Cursor.execute",
         "Cursor.fetchone",
         "Cursor.fetchmany",
