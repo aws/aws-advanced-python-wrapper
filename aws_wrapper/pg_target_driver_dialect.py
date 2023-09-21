@@ -49,16 +49,16 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     _network_bound_methods: Set[str] = {
         "Connection.commit",
         "Connection.autocommit",
-        "Connection.autocommit_setter",
+        "Connection.set_autocommit",
+        "Connection.is_read_only",
+        "Connection.set_read_only",
         "Connection.rollback",
         "Connection.cursor",
         "Cursor.callproc",
         "Cursor.execute",
         "Cursor.fetchone",
         "Cursor.fetchmany",
-        "Cursor.fetchall",
-        "Connection.transaction_isolation",
-        "Connection.transaction_isolation_setter"
+        "Cursor.fetchall"
     }
 
     def is_dialect(self, connect_func: Callable) -> bool:
