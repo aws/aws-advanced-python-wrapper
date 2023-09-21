@@ -33,7 +33,7 @@ def get_failover_mode(properties: Properties) -> Optional[FailoverMode]:
         # TODO: reconsider the exact format we expect from the user here
         if mode == "strict_writer":
             return FailoverMode.STRICT_WRITER
-        elif mode == "strict_reader":
+        if mode == "strict_reader":
             return FailoverMode.STRICT_READER
-        else:
-            return FailoverMode.READER_OR_WRITER
+
+        return FailoverMode.READER_OR_WRITER
