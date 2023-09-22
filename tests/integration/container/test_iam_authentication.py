@@ -32,11 +32,12 @@ import pytest
 from aws_wrapper import AwsWrapperConnection
 from aws_wrapper.errors import AwsWrapperError
 from tests.integration.container.utils.conditions import (
-    disable_on_mariadb_driver, enable_on_features)
+    disable_on_features, disable_on_mariadb_driver, enable_on_features)
 from tests.integration.container.utils.driver_helper import DriverHelper
 
 
 @enable_on_features([TestEnvironmentFeatures.IAM])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
 @disable_on_mariadb_driver
 class TestAwsIamAuthentication:
     def test_iam_wrong_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):

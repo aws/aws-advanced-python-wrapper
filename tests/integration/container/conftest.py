@@ -55,8 +55,8 @@ def pytest_runtest_setup(item):
 
     if request.get_database_engine_deployment() == DatabaseEngineDeployment.AURORA:
         aurora_utility = AuroraTestUtility(info.get_aurora_region())
-        aurora_utility.wait_until_cluster_has_right_state(
-            info.get_aurora_cluster_name())
+        aurora_utility.wait_until_cluster_has_desired_status(
+            info.get_aurora_cluster_name(), "available")
 
         # Need to ensure that cluster details through API matches topology fetched through SQL
         # Wait up to 5min

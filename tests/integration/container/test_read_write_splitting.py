@@ -33,7 +33,8 @@ from aws_wrapper.utils.properties import WrapperProperties
 from tests.integration.container.utils.aurora_test_utility import \
     AuroraTestUtility
 from tests.integration.container.utils.conditions import (
-    enable_on_deployment, enable_on_features, enable_on_num_instances)
+    disable_on_features, enable_on_deployment, enable_on_features,
+    enable_on_num_instances)
 from tests.integration.container.utils.database_engine import DatabaseEngine
 from tests.integration.container.utils.database_engine_deployment import \
     DatabaseEngineDeployment
@@ -45,6 +46,7 @@ from tests.integration.container.utils.test_environment_features import \
 
 @enable_on_num_instances(min_instances=2)
 @enable_on_deployment(DatabaseEngineDeployment.AURORA)
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
 class TestReadWriteSplitting:
     @pytest.fixture(scope='class')
     def aurora_utils(self):

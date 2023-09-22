@@ -24,12 +24,23 @@ class TestInstanceInfo:
     _port: int
 
     def __init__(self, instance_info: Dict[str, Any]) -> None:
-        if instance_info is None:
-            return
+        instance_id = instance_info.get("instanceId")
+        host = instance_info.get("host")
+        port = instance_info.get("port")
 
-        self._instance_id = typing.cast('str', instance_info.get("instanceId"))
-        self._host = typing.cast('str', instance_info.get("host"))
-        self._port = typing.cast('int', instance_info.get("port"))
+        if instance_id is None:
+            instance_id = instance_info.get("DBInstanceIdentifier")
+
+        endpoint = instance_info.get("Endpoint")
+        if endpoint is not None:
+            if host is None:
+                host = endpoint.get("Address")
+            if port is None:
+                port = endpoint.get("Port")
+
+        self._instance_id = typing.cast('str', instance_id)
+        self._host = typing.cast('str', host)
+        self._port = typing.cast('int', port)
 
     def get_instance_id(self) -> str:
         return self._instance_id
@@ -39,3 +50,6 @@ class TestInstanceInfo:
 
     def get_port(self) -> int:
         return self._port
+
+    def get_url(self) -> str:
+        return self._host + ':' + str(self._port)

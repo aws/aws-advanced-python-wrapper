@@ -85,6 +85,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
         Boolean.parseBoolean(System.getProperty("exclude-secrets-manager", "false"));
     final boolean excludePython38 = Boolean.parseBoolean(System.getProperty("exclude-python-38", "false"));
     final boolean excludePython311 = Boolean.parseBoolean(System.getProperty("exclude-python-311", "false"));
+    final boolean testAutoscalingOnly = Boolean.parseBoolean(System.getProperty("test-autoscaling", "false"));
 
     if (!excludeDocker) {
       if (numInstances == null || numInstances == 1) {
@@ -100,7 +101,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludePgEngine && !excludePython38) {
           resultContextList.add(
@@ -114,7 +116,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludeMariadbEngine && !excludePython38) {
           resultContextList.add(
@@ -128,7 +131,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludeMysqlEngine && !excludePython311) {
           resultContextList.add(
@@ -142,7 +146,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludePgEngine && !excludePython311) {
           resultContextList.add(
@@ -156,7 +161,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludeMariadbEngine && !excludePython311) {
           resultContextList.add(
@@ -170,7 +176,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
       }
 
@@ -188,7 +195,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludePgEngine && !excludePython38) {
           resultContextList.add(
@@ -202,7 +210,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludeMariadbEngine && !excludePython38) {
           resultContextList.add(
@@ -216,7 +225,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludeMysqlEngine && !excludePython311) {
           resultContextList.add(
@@ -230,7 +240,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludePgEngine && !excludePython311) {
           resultContextList.add(
@@ -244,7 +255,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
         if (!excludeMariadbEngine && !excludePython311) {
           resultContextList.add(
@@ -258,7 +270,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
       }
     }
@@ -282,7 +295,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
 
         if (numInstances == null || numInstances == 2) {
@@ -302,7 +316,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
       }
       if (!excludePgEngine && !excludePython311) {
@@ -323,7 +338,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
 
         if (numInstances == null || numInstances == 2) {
@@ -343,7 +359,8 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null)));
+                      excludeMariadbDriver ? TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS : null,
+                      testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
       }
     }

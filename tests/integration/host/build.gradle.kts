@@ -138,6 +138,20 @@ tasks.register<Test>("test-mysql-aurora") {
     }
 }
 
+tasks.register<Test>("test-autoscaling") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("test-autoscaling", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+    }
+}
+
 // Debug
 
 tasks.register<Test>("debug-all-environments") {
@@ -211,5 +225,19 @@ tasks.register<Test>("debug-mysql-aurora") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-pg-driver", "true")
         systemProperty("exclude-pg-engine", "true")
+    }
+}
+
+tasks.register<Test>("debug-autoscaling") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.debugTests")
+    doFirst {
+        systemProperty("test-autoscaling", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
     }
 }

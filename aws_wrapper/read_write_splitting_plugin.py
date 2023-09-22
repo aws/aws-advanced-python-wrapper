@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.utils.properties import Properties
 
+from aws_wrapper.connection_provider import (
+    ConnectionProviderManager, SqlAlchemyPooledConnectionProvider)
 from aws_wrapper.errors import (AwsWrapperError, FailoverError,
                                 ReadWriteSplittingError)
 from aws_wrapper.hostinfo import HostInfo, HostRole
@@ -51,6 +53,9 @@ class ReadWriteSplittingPlugin(Plugin):
         self._writer_connection: Optional[Connection] = None
         self._reader_connection: Optional[Connection] = None
         self._reader_host_info: Optional[HostInfo] = None
+        self._conn_provider_manager: ConnectionProviderManager = self._plugin_service.get_connection_provider_manager()
+        self._is_reader_conn_from_internal_pool: bool = False
+        self._is_writer_conn_from_internal_pool: bool = False
         self._in_read_write_split: bool = False
 
         self._reader_selector_strategy: str = ""
@@ -174,6 +179,8 @@ class ReadWriteSplittingPlugin(Plugin):
 
     def _get_new_writer_connection(self, writer_host: HostInfo):
         conn = self._plugin_service.connect(writer_host, self._properties)
+        provider = self._conn_provider_manager.get_connection_provider(writer_host, self._properties)
+        self._is_writer_conn_from_internal_pool = isinstance(provider, SqlAlchemyPooledConnectionProvider)
         self._set_writer_connection(conn, writer_host)
         self._switch_current_connection_to(conn, writer_host)
 
@@ -248,6 +255,9 @@ class ReadWriteSplittingPlugin(Plugin):
         elif self._writer_connection is not None:
             self._switch_current_connection_to(self._writer_connection, writer_host)
 
+        if self._is_reader_conn_from_internal_pool:
+            self._close_connection_if_idle(self._reader_connection)
+
         logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.SwitchedFromReaderToWriter", writer_host.url))
 
     def _switch_to_reader_connection(self, hosts: List[HostInfo]):
@@ -275,6 +285,9 @@ class ReadWriteSplittingPlugin(Plugin):
                 self._reader_host_info = None
                 self._initialize_reader_connection(hosts)
 
+        if self._is_writer_conn_from_internal_pool:
+            self._close_connection_if_idle(self._writer_connection)
+
     def _initialize_reader_connection(self, hosts: List[HostInfo]):
         if len(hosts) == 1:
             writer_host = self._get_writer(hosts)
@@ -293,6 +306,8 @@ class ReadWriteSplittingPlugin(Plugin):
             if host is not None:
                 try:
                     conn = self._plugin_service.connect(host, self._properties)
+                    provider = self._conn_provider_manager.get_connection_provider(host, self._properties)
+                    self._is_reader_conn_from_internal_pool = isinstance(provider, SqlAlchemyPooledConnectionProvider)
                     reader_host = host
                     break
                 except Exception:
@@ -316,7 +331,7 @@ class ReadWriteSplittingPlugin(Plugin):
 
         self._plugin_service.target_driver_dialect.transfer_session_state(from_conn, conn)
 
-    def _close_connection_if_idle(self, internal_conn: Connection):
+    def _close_connection_if_idle(self, internal_conn: Optional[Connection]):
         current_conn = self._plugin_service.current_connection
         target_driver_dialect = self._plugin_service.target_driver_dialect
         try:

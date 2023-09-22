@@ -22,7 +22,8 @@ import pytest
 from aws_wrapper.errors import (FailoverSuccessError,
                                 TransactionResolutionUnknownError)
 from aws_wrapper.utils.properties import WrapperProperties
-from .utils.conditions import enable_on_features, enable_on_num_instances
+from .utils.conditions import (disable_on_features, enable_on_features,
+                               enable_on_num_instances)
 from .utils.proxy_helper import ProxyHelper
 
 if TYPE_CHECKING:
@@ -41,6 +42,7 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 
 @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
 @enable_on_num_instances(min_instances=2)
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
 class TestAuroraFailover:
     IDLE_CONNECTIONS_NUM: int = 5
     logger = getLogger(__name__)
