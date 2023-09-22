@@ -226,7 +226,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         )
 
         if queue_pool is None:
-            raise AwsWrapperError(Messages.get_formatted("SqlAlchemyPooledConnectionProvider.NullPool", host_info.url))
+            raise AwsWrapperError(Messages.get_formatted("SqlAlchemyPooledConnectionProvider.PoolNone", host_info.url))
 
         return queue_pool.connect()
 

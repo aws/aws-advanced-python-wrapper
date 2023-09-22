@@ -290,7 +290,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         connection = self.current_connection if connection is None else connection
         if connection is None:
-            raise AwsWrapperError(Messages.get("PluginServiceImpl.UpdateDialectNullConnection"))
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.UpdateDialectConnectionNone"))
 
         original_dialect = self._dialect
         self._dialect = \
@@ -319,7 +319,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def get_host_role(self, connection: Optional[Connection] = None) -> HostRole:
         connection = connection if connection is not None else self.current_connection
         if connection is None:
-            raise AwsWrapperError(Messages.get("PluginServiceImpl.GetHostRoleNullConnection"))
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.GetHostRoleConnectionNone"))
 
         return self._host_list_provider.get_host_role(connection)
 
@@ -561,7 +561,7 @@ class PluginManager(CanReleaseResources):
                     pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
 
         if pipeline_func is None:
-            raise AwsWrapperError(Messages.get("PluginManager.NullPipeline"))
+            raise AwsWrapperError(Messages.get("PluginManager.PipelineNone"))
         else:
             return pipeline_func
 

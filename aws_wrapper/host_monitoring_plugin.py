@@ -101,11 +101,11 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         connection = self._plugin_service.current_connection
         if connection is None:
-            raise AwsWrapperError(Messages.get_formatted("HostMonitoringPlugin.NullConnection", method_name))
+            raise AwsWrapperError(Messages.get_formatted("HostMonitoringPlugin.ConnectionNone", method_name))
 
         host_info = self._plugin_service.current_host_info
         if host_info is None:
-            raise AwsWrapperError(Messages.get_formatted("HostMonitoringPlugin.NullHostInfoForMethod", method_name))
+            raise AwsWrapperError(Messages.get_formatted("HostMonitoringPlugin.HostInfoNoneForMethod", method_name))
 
         is_enabled = WrapperProperties.FAILURE_DETECTION_ENABLED.get_bool(self._props)
         if not is_enabled or not self._plugin_service.is_network_bound_method(method_name):
@@ -162,7 +162,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
         if self._monitoring_host_info is None:
             current_host_info = self._plugin_service.current_host_info
             if current_host_info is None:
-                raise AwsWrapperError("HostMonitoringPlugin.NullHostInfo")
+                raise AwsWrapperError("HostMonitoringPlugin.HostInfoNone")
             self._monitoring_host_info = current_host_info
             rds_type = self._rds_utils.identify_rds_type(self._monitoring_host_info.url)
 
@@ -331,7 +331,7 @@ class Monitor:
 
     def stop_monitoring(self, context: MonitoringContext):
         if context is None:
-            logger.warning(Messages.get("Monitor.NullContext"))
+            logger.warning(Messages.get("Monitor.ContextNone"))
             return
 
         context.is_active = False
@@ -524,7 +524,7 @@ class MonitoringThreadContainer:
 
             supplied_monitor = monitor_supplier()
             if supplied_monitor is None:
-                raise AwsWrapperError(Messages.get("MonitoringThreadContainer.NullMonitorReturnedFromSupplier"))
+                raise AwsWrapperError(Messages.get("MonitoringThreadContainer.SupplierMonitorNone"))
             self._tasks_map.compute_if_absent(supplied_monitor, lambda k: self._executor.submit(supplied_monitor.run))
             return supplied_monitor
 
