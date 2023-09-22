@@ -18,7 +18,7 @@ from abc import abstractmethod
 from contextlib import closing
 from enum import Enum, auto
 from logging import getLogger
-from typing import (TYPE_CHECKING, Dict, Optional, Protocol, Tuple,
+from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple,
                     runtime_checkable)
 
 if TYPE_CHECKING:
@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from .generic_target_driver_dialect import TargetDriverDialect
 
 from aws_wrapper.errors import AwsWrapperError
+from aws_wrapper.host_list_provider import (AuroraHostListProvider,
+                                            ConnectionStringHostListProvider)
 from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
@@ -103,10 +105,6 @@ class Dialect(Protocol):
     def server_version_query(self) -> str:
         ...
 
-    @abstractmethod
-    def is_dialect(self, conn: Connection) -> bool:
-        ...
-
     @property
     @abstractmethod
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -115,6 +113,14 @@ class Dialect(Protocol):
     @property
     @abstractmethod
     def exception_handler(self) -> Optional[ExceptionHandler]:
+        ...
+
+    @abstractmethod
+    def is_dialect(self, conn: Connection) -> bool:
+        ...
+
+    @abstractmethod
+    def get_host_list_provider_supplier(self) -> Callable:
         ...
 
 
@@ -152,6 +158,10 @@ class MysqlDialect(Dialect):
         # TODO
         return None
 
+    @property
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
+        return MysqlDialect._DIALECT_UPDATE_CANDIDATES
+
     def is_dialect(self, conn: Connection) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
@@ -165,9 +175,8 @@ class MysqlDialect(Dialect):
 
         return False
 
-    @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
-        return MysqlDialect._DIALECT_UPDATE_CANDIDATES
+    def get_host_list_provider_supplier(self) -> Callable:
+        return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
 
 class PgDialect(Dialect):
@@ -185,6 +194,14 @@ class PgDialect(Dialect):
     def server_version_query(self) -> str:
         return "SELECT 'version', VERSION()"
 
+    @property
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
+        return PgDialect._DIALECT_UPDATE_CANDIDATES
+
+    @property
+    def exception_handler(self) -> Optional[ExceptionHandler]:
+        return PgExceptionHandler()
+
     def is_dialect(self, conn: Connection) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
@@ -198,13 +215,8 @@ class PgDialect(Dialect):
 
         return False
 
-    @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
-        return PgDialect._DIALECT_UPDATE_CANDIDATES
-
-    @property
-    def exception_handler(self) -> Optional[ExceptionHandler]:
-        return PgExceptionHandler()
+    def get_host_list_provider_supplier(self) -> Callable:
+        return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
 
 class MariaDbDialect(Dialect):
@@ -222,6 +234,15 @@ class MariaDbDialect(Dialect):
     def server_version_query(self) -> str:
         return "SELECT VERSION()"
 
+    @property
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode]]:
+        return MariaDbDialect._DIALECT_UPDATE_CANDIDATES
+
+    @property
+    def exception_handler(self) -> Optional[ExceptionHandler]:
+        # TODO
+        return None
+
     def is_dialect(self, conn: Connection) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
@@ -234,14 +255,8 @@ class MariaDbDialect(Dialect):
 
         return False
 
-    @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode]]:
-        return MariaDbDialect._DIALECT_UPDATE_CANDIDATES
-
-    @property
-    def exception_handler(self) -> Optional[ExceptionHandler]:
-        # TODO
-        return None
+    def get_host_list_provider_supplier(self) -> Callable:
+        return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
 
 class RdsMysqlDialect(MysqlDialect):
@@ -283,7 +298,8 @@ class RdsPgDialect(PgDialect):
                 for row in aws_cursor:
                     rds_tools = bool(row[0])
                     aurora_utils = bool(row[1])
-                    logger.debug(Messages.get_formatted("RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils)))
+                    logger.debug(Messages.get_formatted(
+                        "RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils)))
                     if rds_tools and not aurora_utils:
                         return True
 
@@ -309,6 +325,10 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
 
     _is_reader_query: str = "SELECT @@innodb_read_only"
 
+    @property
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
+        return None
+
     def is_dialect(self, conn: Connection) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
@@ -321,9 +341,8 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
 
         return False
 
-    @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
-        return None
+    def get_host_list_provider_supplier(self) -> Callable:
+        return lambda provider_service, props: AuroraHostListProvider(provider_service, props)
 
 
 class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
@@ -332,11 +351,12 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
     _has_topology_sql: str = "SELECT 1 FROM aurora_replica_status() LIMIT 1"
 
-    _topology_query = ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
-                       "CPU, COALESCE(REPLICA_LAG_IN_MSEC, 0), LAST_UPDATE_TIMESTAMP "
-                       "FROM aurora_replica_status() "
-                       "WHERE EXTRACT(EPOCH FROM(NOW() - LAST_UPDATE_TIMESTAMP)) <= 300 OR SESSION_ID = 'MASTER_SESSION_ID' "
-                       "OR LAST_UPDATE_TIMESTAMP IS NULL")
+    _topology_query = \
+        ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
+         "CPU, COALESCE(REPLICA_LAG_IN_MSEC, 0), LAST_UPDATE_TIMESTAMP "
+         "FROM aurora_replica_status() "
+         "WHERE EXTRACT(EPOCH FROM(NOW() - LAST_UPDATE_TIMESTAMP)) <= 300 OR SESSION_ID = 'MASTER_SESSION_ID' "
+         "OR LAST_UPDATE_TIMESTAMP IS NULL")
 
     _host_id_query = "SELECT aurora_db_instance_identifier()"
     _is_reader_query = "SELECT pg_is_in_recovery()"
@@ -370,6 +390,9 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
         return False
 
+    def get_host_list_provider_supplier(self) -> Callable:
+        return lambda provider_service, props: AuroraHostListProvider(provider_service, props)
+
 
 class UnknownDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCode, ...]] = \
@@ -393,9 +416,6 @@ class UnknownDialect(Dialect):
     def server_version_query(self) -> str:
         return ""
 
-    def is_dialect(self, conn: Connection) -> bool:
-        return False
-
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return UnknownDialect._DIALECT_UPDATE_CANDIDATES
@@ -404,6 +424,12 @@ class UnknownDialect(Dialect):
     def exception_handler(self) -> Optional[ExceptionHandler]:
         return None
 
+    def is_dialect(self, conn: Connection) -> bool:
+        return False
+
+    def get_host_list_provider_supplier(self) -> Callable:
+        return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
+
 
 class DialectManager(DialectProvider):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
@@ -411,9 +437,9 @@ class DialectManager(DialectProvider):
     def __init__(self, rds_helper: Optional[RdsUtils] = None, custom_dialect: Optional[Dialect] = None) -> None:
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
         self._can_update: bool = False
-        self._dialect: Optional[Dialect] = None
+        self._dialect: Dialect = UnknownDialect()
+        self._dialect_code: DialectCode = DialectCode.UNKNOWN
         self._custom_dialect: Optional[Dialect] = custom_dialect if custom_dialect else None
-        self._dialect_code: Optional[DialectCode] = None
         self._known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
         self._known_dialects_by_code: Dict[DialectCode, Dialect] = {DialectCode.MYSQL: MysqlDialect(),
                                                                     DialectCode.PG: PgDialect(),
@@ -438,9 +464,8 @@ class DialectManager(DialectProvider):
     def reset_endpoint_cache(self):
         self._known_endpoint_dialects.clear()
 
-    def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[Dialect]:
+    def get_dialect(self, driver_dialect: str, props: Properties) -> Dialect:
         self._can_update = False
-        self._dialect = None
 
         if self._custom_dialect is not None:
             self._dialect_code = DialectCode.CUSTOM
@@ -472,17 +497,17 @@ class DialectManager(DialectProvider):
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCode.AURORA_MYSQL
-                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_MYSQL)
+                self._dialect = self._known_dialects_by_code[DialectCode.AURORA_MYSQL]
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
                 self._dialect_code = DialectCode.RDS_MYSQL
-                self._dialect = self._known_dialects_by_code.get(DialectCode.RDS_MYSQL)
+                self._dialect = self._known_dialects_by_code[DialectCode.RDS_MYSQL]
                 self._log_current_dialect()
                 return self._dialect
             self._can_update = True
             self._dialect_code = DialectCode.MYSQL
-            self._dialect = self._known_dialects_by_code.get(DialectCode.MYSQL)
+            self._dialect = self._known_dialects_by_code[DialectCode.MYSQL]
             self._log_current_dialect()
             return self._dialect
 
@@ -490,17 +515,17 @@ class DialectManager(DialectProvider):
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCode.AURORA_PG
-                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_PG)
+                self._dialect = self._known_dialects_by_code[DialectCode.AURORA_PG]
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
                 self._dialect_code = DialectCode.RDS_PG
-                self._dialect = self._known_dialects_by_code.get(DialectCode.RDS_PG)
+                self._dialect = self._known_dialects_by_code[DialectCode.RDS_PG]
                 self._log_current_dialect()
                 return self._dialect
             self._can_update = True
             self._dialect_code = DialectCode.PG
-            self._dialect = self._known_dialects_by_code.get(DialectCode.PG)
+            self._dialect = self._known_dialects_by_code[DialectCode.PG]
             self._log_current_dialect()
             return self._dialect
 
@@ -510,17 +535,17 @@ class DialectManager(DialectProvider):
                 # Aurora MariaDB doesn't exist.
                 # If this is a cluster endpoint then user is trying to connect to AMS via the MariaDB driver.
                 self._dialect_code = DialectCode.AURORA_MYSQL
-                self._dialect = self._known_dialects_by_code.get(DialectCode.AURORA_MYSQL)
+                self._dialect = self._known_dialects_by_code[DialectCode.AURORA_MYSQL]
                 return self._dialect
             self._can_update = True
             self._dialect_code = DialectCode.MARIADB
-            self._dialect = self._known_dialects_by_code.get(DialectCode.MARIADB)
+            self._dialect = self._known_dialects_by_code[DialectCode.MARIADB]
             self._log_current_dialect()
             return self._dialect
 
         self._can_update = True
         self._dialect_code = DialectCode.UNKNOWN
-        self._dialect = self._known_dialects_by_code.get(DialectCode.UNKNOWN)
+        self._dialect = self._known_dialects_by_code[DialectCode.UNKNOWN]
         self._log_current_dialect()
         return self._dialect
 
@@ -535,7 +560,7 @@ class DialectManager(DialectProvider):
         return TargetDriverType.CUSTOM
 
     def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection,
-                          driver_dialect: TargetDriverDialect) -> Optional[Dialect]:
+                          driver_dialect: TargetDriverDialect) -> Dialect:
         if not self._can_update:
             self._log_current_dialect()
             return self._dialect
@@ -566,7 +591,7 @@ class DialectManager(DialectProvider):
                 self._log_current_dialect()
                 return self._dialect
 
-        if self._dialect_code is None or self._dialect == DialectCode.UNKNOWN:
+        if self._dialect_code is None or self._dialect_code == DialectCode.UNKNOWN:
             raise AwsWrapperError(Messages.get("DialectManager.UnknownDialect"))
 
         self._can_update = False

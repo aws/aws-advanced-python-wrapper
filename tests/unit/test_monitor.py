@@ -13,7 +13,6 @@
 #  limitations under the License.
 
 from concurrent.futures import ThreadPoolExecutor, wait
-from itertools import chain, cycle
 from time import perf_counter_ns, sleep
 
 import psycopg
@@ -60,17 +59,10 @@ def mock_target_driver_dialect(mocker):
 
 
 @pytest.fixture
-def mock_dialect(mocker):
-    mock_dialect = mocker.MagicMock()
-    return mock_dialect
-
-
-@pytest.fixture
-def mock_plugin_service(mocker, mock_conn, mock_target_driver_dialect, mock_dialect):
+def mock_plugin_service(mocker, mock_conn, mock_target_driver_dialect):
     plugin_service = mocker.MagicMock()
     plugin_service.force_connect.return_value = mock_conn
     plugin_service.target_driver_dialect = mock_target_driver_dialect
-    plugin_service.dialect = mock_dialect
     return plugin_service
 
 
@@ -145,11 +137,8 @@ def test_run_host_available(
         mock_monitor_service,
         mock_plugin_service,
         mock_conn,
-        mock_dialect,
         mock_target_driver_dialect):
     remove_delays()
-    mock_dialect_property = mocker.PropertyMock(side_effect=chain([None], cycle([mock_dialect])))
-    type(mock_plugin_service).dialect = mock_dialect_property
     host_alias = "host-1"
     container = MonitoringThreadContainer()
     container._monitor_map.put_if_absent(host_alias, monitor)
@@ -182,12 +171,8 @@ def test_run_host_unavailable(
         mock_monitor_service,
         mock_plugin_service,
         mock_conn,
-        mock_dialect,
         mock_target_driver_dialect):
     remove_delays()
-    mock_dialect_property = mocker.PropertyMock(side_effect=chain([None], cycle([mock_dialect])))
-    type(mock_plugin_service).dialect = mock_dialect_property
-
     executor = ThreadPoolExecutor()
     context = MonitoringContext(monitor, mock_conn, mock_target_driver_dialect, 30, 10, 3)
 
@@ -195,6 +180,7 @@ def test_run_host_unavailable(
     monitor.start_monitoring(context)
     future = executor.submit(monitor.run)
     wait([future], 3)
+
     mock_plugin_service.force_connect.assert_called_once_with(host_info, monitoring_conn_props, None)
     mock_target_driver_dialect.abort_connection.assert_called_once()
     mock_monitor_service.notify_unused.assert_called_once()

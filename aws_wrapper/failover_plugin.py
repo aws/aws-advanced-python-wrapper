@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from aws_wrapper.failover_result import ReaderFailoverResult, WriterFailoverResult
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
@@ -30,8 +31,6 @@ from psycopg import OperationalError
 from aws_wrapper.errors import (AwsWrapperError, FailoverFailedError,
                                 FailoverSuccessError,
                                 TransactionResolutionUnknownError)
-from aws_wrapper.host_list_provider import (AuroraHostListProvider,
-                                            HostListProviderService)
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
@@ -91,10 +90,6 @@ class FailoverPlugin(Plugin):
         self._host_list_provider_service = host_list_provider_service
         if not self._enable_failover_setting:
             return
-
-        if self._host_list_provider_service.is_static_host_list_provider():
-            self._host_list_provider_service.host_list_provider = \
-                AuroraHostListProvider(self._host_list_provider_service, properties)
 
         self._reader_failover_handler = ReaderFailoverHandlerImpl(self._plugin_service, self._properties,
                                                                   self._failover_timeout_sec,
