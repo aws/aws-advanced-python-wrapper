@@ -22,18 +22,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from logging import getLogger
 from threading import RLock
-from typing import (TYPE_CHECKING, Callable, List, Optional, Protocol, Set,
-                    Tuple, runtime_checkable)
+from typing import (TYPE_CHECKING, List, Optional, Protocol, Tuple,
+                    runtime_checkable)
 
 if TYPE_CHECKING:
-    from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
 
-from aws_wrapper.dialect import Dialect, TopologyAwareDatabaseDialect
-from aws_wrapper.errors import AwsWrapperError, QueryTimeoutError
+import aws_wrapper.dialect as db_dialect
+from aws_wrapper.errors import (AwsWrapperError, QueryTimeoutError,
+                                UnsupportedOperationError)
 from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
-from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.cache_map import CacheMap
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
@@ -52,7 +51,7 @@ class HostListProvider(Protocol):
     def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
         ...
 
-    def get_host_role(self, connection: Optional[Connection]) -> HostRole:
+    def get_host_role(self, connection: Connection) -> HostRole:
         ...
 
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
@@ -82,7 +81,7 @@ class HostListProviderService(Protocol):
 
     @property
     @abstractmethod
-    def dialect(self) -> Optional[Dialect]:
+    def dialect(self) -> db_dialect.Dialect:
         ...
 
     @property
@@ -136,7 +135,12 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._initial_hosts: List[HostInfo] = []
         self._cluster_instance_template: Optional[HostInfo] = None
         self._rds_url_type: Optional[RdsUrlType] = None
-        self._topology_aware_dialect: Optional[TopologyAwareDatabaseDialect] = None
+
+        dialect = self._host_list_provider_service.dialect
+        if not isinstance(dialect, db_dialect.TopologyAwareDatabaseDialect):
+            raise AwsWrapperError(Messages.get_formatted("AuroraHostListProvider.InvalidDialect", dialect))
+        self._dialect: db_dialect.TopologyAwareDatabaseDialect = dialect
+
         self._is_primary_cluster_id: bool = False
         self._is_initialized: bool = False
         self._suggested_cluster_id_refresh_ns: int = 600_000_000_000  # 10 minutes
@@ -205,7 +209,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             logger.error(message)
             raise AwsWrapperError(message)
 
-    def _get_suggested_cluster_id(self, url: str) -> Optional[AuroraHostListProvider.ClusterIdSuggestion]:
+    def _get_suggested_cluster_id(self, url: str) -> Optional[ClusterIdSuggestion]:
         for key, hosts in AuroraHostListProvider._topology_cache.get_dict().items():
             is_primary_cluster_id = \
                 AuroraHostListProvider._is_primary_cluster_id_cache.get_with_default(
@@ -220,8 +224,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     return AuroraHostListProvider.ClusterIdSuggestion(key, is_primary_cluster_id)
         return None
 
-    def _get_topology(self, conn: Optional[Connection], force_update: bool = False) \
-            -> AuroraHostListProvider.FetchTopologyResult:
+    def _get_topology(self, conn: Optional[Connection], force_update: bool = False) -> FetchTopologyResult:
         self._initialize()
 
         suggested_primary_cluster_id = AuroraHostListProvider._cluster_ids_to_update.get(self._cluster_id)
@@ -243,9 +246,9 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 if hosts is not None and len(hosts) > 0:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
                     if self._is_primary_cluster_id and cached_hosts is None:
-                        # This cluster_id is primary and a new entry was just created in the cache. When this happens, we
-                        # check for non-primary cluster IDs associated with the same cluster so that the topology info can
-                        # be shared.
+                        # This cluster_id is primary and a new entry was just created in the cache. When this happens,
+                        # we check for non-primary cluster IDs associated with the same cluster so that the topology
+                        # info can be shared.
                         self._suggest_cluster_id(hosts)
                     return AuroraHostListProvider.FetchTopologyResult(hosts, False)
             except Exception as e:
@@ -279,18 +282,12 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     break
 
     def _query_for_topology(self, conn: Connection) -> Optional[List[HostInfo]]:
-        if not self._topology_aware_dialect:
-            if not isinstance(self._host_list_provider_service.dialect, TopologyAwareDatabaseDialect):
-                logger.warning(Messages.get("AuroraHostListProvider.InvalidDialect"))
-                return None
-            self._topology_aware_dialect = self._host_list_provider_service.dialect
-
         target_driver_dialect = self._host_list_provider_service.target_driver_dialect
         initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
         try:
             with closing(conn.cursor()) as cursor:
-                cursor.execute(self._topology_aware_dialect.topology_query)
+                cursor.execute(self._dialect.topology_query)
                 res = self._process_query_results(cursor)
                 if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
                     # this condition is True when autocommit is False and the query started a new transaction.
@@ -373,20 +370,15 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._hosts = topology.hosts
         return tuple(self._hosts)
 
-    def get_host_role(self, connection: Optional[Connection]) -> HostRole:
-        if connection is None:
-            raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole"))
-
+    def get_host_role(self, connection: Connection) -> HostRole:
         target_driver_dialect = self._host_list_provider_service.target_driver_dialect
         initial_transaction_status: bool = target_driver_dialect.is_in_transaction(connection)
 
         try:
             with closing(connection.cursor()) as cursor:
-                topology_aware_dialect = \
-                    self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForGetHostRole")
                 cursor_execute_func_with_timeout = timeout(
                     AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
-                cursor_execute_func_with_timeout(topology_aware_dialect.is_reader_query)
+                cursor_execute_func_with_timeout(self._dialect.is_reader_query)
                 result = cursor.fetchone()
                 if not initial_transaction_status and target_driver_dialect.is_in_transaction(connection):
                     # this condition is True when autocommit is False and the query started a new transaction.
@@ -403,11 +395,9 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
         try:
             with closing(connection.cursor()) as cursor:
-                topology_aware_dialect = \
-                    self._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForIdentifyConnection")
                 cursor_execute_func_with_timeout = timeout(
                     AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
-                cursor_execute_func_with_timeout(topology_aware_dialect.host_id_query)
+                cursor_execute_func_with_timeout(self._dialect.host_id_query)
                 result = cursor.fetchone()
                 if result:
                     host_id = result[0]
@@ -418,14 +408,6 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         except Error as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection")) from e
         raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
-
-    def _get_topology_aware_dialect(self, exception_msg_id: str) -> TopologyAwareDatabaseDialect:
-        if not self._topology_aware_dialect:
-            dialect = self._host_list_provider_service.dialect
-            if not isinstance(dialect, TopologyAwareDatabaseDialect):
-                raise AwsWrapperError(Messages.get_formatted(exception_msg_id, dialect))
-            self._topology_aware_dialect = dialect
-        return self._topology_aware_dialect
 
     @dataclass()
     class ClusterIdSuggestion:
@@ -467,40 +449,10 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
         self._initialize()
         return tuple(self._hosts)
 
-    def get_host_role(self, connection: Optional[Connection]) -> HostRole:
-        raise AwsWrapperError(Messages.get("ConnectionStringHostListProvider.ErrorDoesNotSupportHostRole"))
+    def get_host_role(self, connection: Connection) -> HostRole:
+        raise UnsupportedOperationError(
+            Messages.get_formatted("ConnectionStringHostListProvider.UnsupportedMethod", "get_host_role"))
 
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
-        raise AwsWrapperError(Messages.get("ConnectionStringHostListProvider.ErrorDoesNotSupportIdentifyConnection"))
-
-
-class AuroraHostListPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider"}
-
-    @property
-    def subscribed_methods(self) -> Set[str]:
-        return self._SUBSCRIBED_METHODS
-
-    def init_host_provider(
-            self,
-            props: Properties,
-            host_list_provider_service: HostListProviderService,
-            init_host_provider_func: Callable):
-        provider: HostListProvider = host_list_provider_service.host_list_provider
-        if provider is None:
-            init_host_provider_func()
-            return
-
-        if host_list_provider_service.is_static_host_list_provider():
-            host_list_provider_service.host_list_provider = AuroraHostListProvider(host_list_provider_service, props)
-        elif not isinstance(provider, AuroraHostListProvider):
-            raise AwsWrapperError(Messages.get_formatted(
-                "AuroraHostListPlugin.ProviderAlreadySet",
-                type(provider).__name__))
-
-        init_host_provider_func()
-
-
-class AuroraHostListPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return AuroraHostListPlugin()
+        raise UnsupportedOperationError(
+            Messages.get_formatted("ConnectionStringHostListProvider.UnsupportedMethod", "identify_connection"))

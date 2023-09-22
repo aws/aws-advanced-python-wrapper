@@ -59,7 +59,7 @@ class TestReadWriteSplitting:
 
     @pytest.fixture(scope='class')
     def props(self):
-        return {"plugins": "aurora_host_list,read_write_splitting", "connect_timeout": 10, "autocommit": True}
+        return {"plugins": "read_write_splitting", "connect_timeout": 10, "autocommit": True}
 
     @pytest.fixture(scope='class')
     def failover_props(self):

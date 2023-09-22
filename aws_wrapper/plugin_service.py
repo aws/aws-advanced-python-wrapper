@@ -37,12 +37,11 @@ from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
 from aws_wrapper.default_plugin import DefaultPlugin
 from aws_wrapper.dialect import (Dialect, DialectManager,
-                                 TopologyAwareDatabaseDialect)
+                                 TopologyAwareDatabaseDialect, UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
 from aws_wrapper.failover_plugin import FailoverPluginFactory
-from aws_wrapper.host_list_provider import (AuroraHostListPluginFactory,
-                                            ConnectionStringHostListProvider,
+from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
                                             HostListProvider,
                                             HostListProviderService,
                                             StaticHostListProvider)
@@ -127,7 +126,7 @@ class PluginService(ExceptionHandler, Protocol):
 
     @property
     @abstractmethod
-    def dialect(self) -> Optional[Dialect]:
+    def dialect(self) -> Dialect:
         ...
 
     @property
@@ -265,7 +264,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._target_driver_dialect
 
     @property
-    def dialect(self) -> Optional[Dialect]:
+    def dialect(self) -> Dialect:
         return self._dialect
 
     @property
@@ -292,6 +291,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         connection = self.current_connection if connection is None else connection
         if connection is None:
             raise AwsWrapperError(Messages.get("PluginServiceImpl.UpdateDialectNullConnection"))
+
+        original_dialect = self._dialect
         self._dialect = \
             self._dialect_provider.query_for_dialect(
                 self._original_url,
@@ -299,9 +300,13 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 connection,
                 self.target_driver_dialect)
 
+        if original_dialect != self._dialect:
+            host_list_provider_init = self._dialect.get_host_list_provider_supplier()
+            self.host_list_provider = host_list_provider_init(self, self._props)
+
     def update_driver_dialect(self, connection_provider: ConnectionProvider):
-        self._target_driver_dialect = self._target_driver_dialect_manager.get_pool_connection_driver_dialect(connection_provider,
-                                                                                                             self._target_driver_dialect)
+        self._target_driver_dialect = self._target_driver_dialect_manager.get_pool_connection_driver_dialect(
+            connection_provider, self._target_driver_dialect)
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -312,6 +317,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return plugin_manager.get_host_info_by_strategy(role, strategy)
 
     def get_host_role(self, connection: Optional[Connection] = None) -> HostRole:
+        connection = connection if connection is not None else self.current_connection
+        if connection is None:
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.GetHostRoleNullConnection"))
+
         return self._host_list_provider.get_host_role(connection)
 
     def refresh_host_list(self, connection: Optional[Connection] = None):
@@ -363,7 +372,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         try:
             with closing(connection.cursor()) as cursor:
-                if self.dialect is not None:
+                if not isinstance(self.dialect, UnknownDialect):
                     cursor.execute(self.dialect.host_alias_query)
                     for row in cursor.fetchall():
                         host_info.add_alias(row[0])
@@ -464,7 +473,6 @@ class PluginManager(CanReleaseResources):
         "iam": IamAuthPluginFactory,
         "aws_secrets_manager": AwsSecretsManagerPluginFactory,
         "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
-        "aurora_host_list": AuroraHostListPluginFactory,
         "host_monitoring": HostMonitoringPluginFactory,
         "failover": FailoverPluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,

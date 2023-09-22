@@ -18,7 +18,6 @@ from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
 from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
-from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.plugin_service import (PluginManager, PluginService,
@@ -102,7 +101,9 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         plugin_service = PluginServiceImpl(
             container, props, target_func, target_driver_dialect_manager, target_driver_dialect)
         plugin_manager: PluginManager = PluginManager(container, props)
-        plugin_service.host_list_provider = AuroraHostListProvider(plugin_service, props)
+
+        host_list_provider_init = plugin_service.dialect.get_host_list_provider_supplier()
+        plugin_service.host_list_provider = host_list_provider_init(plugin_service, props)
 
         plugin_manager.init_host_provider(props, plugin_service)
 

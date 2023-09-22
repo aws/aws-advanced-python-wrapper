@@ -18,7 +18,6 @@ from datetime import datetime, timedelta
 import psycopg
 import pytest
 
-from aws_wrapper.dialect import Dialect
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.hostinfo import HostInfo, HostRole
@@ -115,17 +114,6 @@ def test_get_topology_force_update(
     result = provider.force_refresh(mock_conn)
 
     assert queried_hosts == result
-    spy.assert_called_once()
-
-
-def test_get_topology_invalid_dialect(mocker, mock_provider_service, initial_hosts, props):
-    provider = AuroraHostListProvider(mock_provider_service, props)
-    spy = mocker.spy(provider, "_query_for_topology")
-    mock_provider_service.dialect = None
-
-    result = provider.refresh()
-
-    assert initial_hosts == result
     spy.assert_called_once()
 
 
@@ -367,15 +355,6 @@ def test_host_pattern_setting(mock_provider_service, props):
             "?.cluster-custom-xyz.us-east-2.rds.amazonaws.com"
         provider = AuroraHostListProvider(mock_provider_service, props)
         provider._initialize()
-
-
-def test_get_topology_aware_dialect_invalid_dialect(mocker, mock_provider_service, props):
-    provider = AuroraHostListProvider(mock_provider_service, props)
-    mock_dialect = mocker.MagicMock(spec=Dialect)
-    mock_provider_service.dialect = mock_dialect
-
-    with pytest.raises(AwsWrapperError):
-        provider._get_topology_aware_dialect("AuroraHostListProvider.InvalidDialectForGetHostRole")
 
 
 def test_get_host_role(mock_provider_service, mock_conn, mock_cursor, props):
