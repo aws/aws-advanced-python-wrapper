@@ -20,7 +20,8 @@ from typing import Dict, Set
 import psycopg
 import pytest
 
-from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.host_availability import HostAvailability
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.stale_dns_plugin import StaleDnsHelper
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties
@@ -59,27 +60,31 @@ def initial_conn_mock(mocker):
 
 @pytest.fixture
 def writer_cluster():
-    return HostInfo("my-cluster.cluster-XYZ.us-west-2.rds.amazonaws.com", 1234, HostAvailability.AVAILABLE, HostRole.WRITER)
+    return HostInfo(
+        "my-cluster.cluster-XYZ.us-west-2.rds.amazonaws.com", 1234, HostRole.WRITER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
 def writer_instance():
-    return HostInfo("writer-host.XYZ.us-west-2.rds.amazonaws.com", 1234, HostAvailability.AVAILABLE, HostRole.WRITER)
+    return HostInfo(
+        "writer-host.XYZ.us-west-2.rds.amazonaws.com", 1234, HostRole.WRITER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
 def reader_cluster():
-    return HostInfo("my-cluster.cluster-ro-XYZ.us-west-2.rds.amazonaws.com", 1234, HostAvailability.AVAILABLE, HostRole.READER)
+    return HostInfo(
+        "my-cluster.cluster-ro-XYZ.us-west-2.rds.amazonaws.com", 1234, HostRole.READER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
 def reader_a():
-    return HostInfo("reader-a-host.XYZ.us-west-2.rds.amazonaws.com", 1234, HostAvailability.AVAILABLE, HostRole.READER)
+    return HostInfo(
+        "reader-a-host.XYZ.us-west-2.rds.amazonaws.com", 1234, HostRole.READER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
 def reader_b():
-    return HostInfo("reader-b-host.XYZ.us-west-2.rds.amazonaws.com", 1234, HostAvailability.AVAILABLE, HostRole.READER)
+    return HostInfo("reader-b-host.XYZ.us-west-2.rds.amazonaws.com", 1234, HostRole.READER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
@@ -113,8 +118,8 @@ def test_get_verified_connection__is_writer_cluster_dns_false(plugin_service_moc
 def test_get_verified_connection__cluster_inet_address_none(mocker, plugin_service_mock, host_list_provider_mock, default_properties,
                                                             initial_conn_mock, connect_func_mock):
     target = StaleDnsHelper(plugin_service_mock)
-    writer_cluster_invalid_cluster_inet_address = HostInfo("my-cluster.cluster-invalid.us-west-2.rds.amazonaws.com", 1234, HostAvailability.AVAILABLE,
-                                                           HostRole.WRITER)
+    writer_cluster_invalid_cluster_inet_address = HostInfo(
+        "my-cluster.cluster-invalid.us-west-2.rds.amazonaws.com", 1234, HostRole.WRITER, HostAvailability.AVAILABLE)
 
     socket.gethostbyname = mocker.MagicMock(return_value=None)
     connect_func_mock.return_value = initial_conn_mock

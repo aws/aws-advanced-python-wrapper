@@ -15,22 +15,21 @@
 from __future__ import annotations
 
 from itertools import chain, cycle
+from time import sleep, time
 from typing import TYPE_CHECKING
 from unittest.mock import call
 
 import psycopg
 import pytest
 
-from aws_wrapper.errors import FailoverError
-from aws_wrapper.failover_result import WriterFailoverResult
-
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
 
-from time import sleep, time
-
-from aws_wrapper.failover_result import ReaderFailoverResult
-from aws_wrapper.hostinfo import HostAvailability, HostInfo, HostRole
+from aws_wrapper.errors import FailoverError
+from aws_wrapper.failover_result import (ReaderFailoverResult,
+                                         WriterFailoverResult)
+from aws_wrapper.host_availability import HostAvailability
+from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.utils.properties import Properties
 from aws_wrapper.writer_failover_handler import (WriterFailoverHandler,
                                                  WriterFailoverHandlerImpl)
@@ -78,22 +77,22 @@ def default_properties():
 
 @pytest.fixture
 def new_writer_host():
-    return HostInfo("new-writer-host", 1234, HostAvailability.AVAILABLE, HostRole.WRITER)
+    return HostInfo("new-writer-host", 1234, HostRole.WRITER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
 def writer():
-    return HostInfo("writer-host", 1234, HostAvailability.AVAILABLE, HostRole.WRITER)
+    return HostInfo("writer-host", 1234, HostRole.WRITER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
 def reader_a():
-    return HostInfo("reader-a-host", 1234, HostAvailability.AVAILABLE, HostRole.READER)
+    return HostInfo("reader-a-host", 1234, HostRole.READER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
 def reader_b():
-    return HostInfo("reader-b-host", 1234, HostAvailability.AVAILABLE, HostRole.READER)
+    return HostInfo("reader-b-host", 1234, HostRole.READER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
@@ -142,7 +141,7 @@ def test_reconnect_to_writer_task_b_reader_exception(
     assert not result.is_new_host
     assert result.new_connection is writer_connection_mock
 
-    expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
                 call(writer.as_aliases(), HostAvailability.AVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected)
@@ -153,7 +152,7 @@ def test_reconnect_to_writer_slow_task_b(
         reader_a_connection_mock, default_properties, new_writer_host, writer, reader_a, reader_b, topology,
         new_topology):
     exception = Exception("Test Exception")
-    expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
                 call(writer.as_aliases(), HostAvailability.AVAILABLE)]
 
     mock_hosts_property = mocker.PropertyMock(side_effect=chain([topology], cycle([new_topology])))
@@ -225,7 +224,7 @@ def test_reconnect_to_writer_task_b_defers(
     assert not result.is_new_host
     assert result.new_connection is writer_connection_mock
 
-    expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
                 call(writer.as_aliases(), HostAvailability.AVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected)
@@ -271,7 +270,7 @@ def test_connect_to_new_writer_slow_task_a(
     assert result.is_new_host
     assert result.new_connection is new_writer_connection_mock
 
-    expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
                 call(new_writer_host.as_aliases(), HostAvailability.AVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected)
@@ -321,7 +320,7 @@ def test_connect_to_new_writer_task_a_defers(
     assert len(result.topology) == 4
     assert "new-writer-host" == result.topology[0].host
 
-    expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
                 call(new_writer_host.as_aliases(), HostAvailability.AVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected, any_order=True)
@@ -377,7 +376,7 @@ def test_failed_to_connect_failover_timeout(
     assert not result.is_connected
     assert not result.is_new_host
 
-    expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE)]
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected)
     plugin_service_mock.force_refresh_host_list.assert_called()
@@ -420,7 +419,7 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(
     assert not result.is_connected
     assert not result.is_new_host
 
-    expected = [call(writer.as_aliases(), HostAvailability.NOT_AVAILABLE),
-                call(new_writer_host.as_aliases(), HostAvailability.NOT_AVAILABLE)]
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
+                call(new_writer_host.as_aliases(), HostAvailability.UNAVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected, any_order=True)
