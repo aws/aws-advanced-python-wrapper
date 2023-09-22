@@ -2,9 +2,6 @@ name: Autoscaling Tests
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - autoScalingTests
 
 jobs:
   run-autoscaling-tests:
