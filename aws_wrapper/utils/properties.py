@@ -178,10 +178,6 @@ class WrapperProperties:
         "failover_reader_connect_timeout_sec",
         "Reader connection attempt timeout in seconds during a reader failover process.",
         300)  # 5 minutes
-    KEEP_SESSION_STATE_ON_FAILOVER = WrapperProperty(
-        "keep_session_state_on_failover",
-        "Set to true to maintain the session state of connections post failover, rather than resetting it.",
-        "True")
 
     # Host Availability Strategy
     DEFAULT_HOST_AVAILABILITY_STRATEGY = WrapperProperty(
