@@ -294,3 +294,57 @@ class TestAuroraFailover:
             instance.get_host(), instance.get_port(), db_name, user, password)
 
         return connect_params
+
+    def test_keep_session_state_on_failover_is_false(self, test_driver: TestDriver, test_environment: TestEnvironment, props, aurora_utility):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+
+        with AwsWrapperConnection.connect(target_driver_connect, self._init_default_props(test_environment), **props) as conn, \
+                conn.cursor() as cursor_1:
+            cursor_1.execute("DROP TABLE IF EXISTS test3_2")
+            cursor_1.execute("CREATE TABLE test3_2 (id int not null primary key, test3_2_field varchar(255) not null)")
+            conn.commit()
+
+            conn.autocommit = False
+
+            with conn.cursor() as cursor_2:
+                cursor_2.execute("INSERT INTO test3_2 VALUES (1, 'test field string 1')")
+
+                aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+                with pytest.raises(TransactionResolutionUnknownError):
+                    cursor_2.execute("INSERT INTO test3_2 VALUES (2, 'test field string 2')")
+
+            # check autocommit value, which should be reset to true
+            assert conn.autocommit is True
+
+            with conn.cursor() as cursor_3:
+                cursor_3.execute("DROP TABLE IF EXISTS test3_2")
+                conn.commit()
+
+    def test_keep_session_state_on_failover_is_true(self, test_driver: TestDriver, test_environment: TestEnvironment, props, aurora_utility):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+
+        props["keep_session_state_on_failover"] = "true"
+
+        with AwsWrapperConnection.connect(target_driver_connect, self._init_default_props(test_environment), **props) as conn, \
+                conn.cursor() as cursor_1:
+            cursor_1.execute("DROP TABLE IF EXISTS test3_2")
+            cursor_1.execute("CREATE TABLE test3_2 (id int not null primary key, test3_2_field varchar(255) not null)")
+            conn.commit()
+
+            conn.autocommit = False
+
+            with conn.cursor() as cursor_2:
+                cursor_2.execute("INSERT INTO test3_2 VALUES (1, 'test field string 1')")
+
+                aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+                with pytest.raises(TransactionResolutionUnknownError):
+                    cursor_2.execute("INSERT INTO test3_2 VALUES (2, 'test field string 2')")
+
+            # check autocommit value, which should be reset to true
+            assert conn.autocommit is False
+
+            with conn.cursor() as cursor_3:
+                cursor_3.execute("DROP TABLE IF EXISTS test3_2")
+                conn.commit()
