@@ -14,24 +14,23 @@
 
 from __future__ import annotations
 
-import functools
+from logging import getLogger
 
 from aws_wrapper.utils.messages import Messages
 
 
-def log():
-    """
-    logging decorator
-    """
+class Log:
+    def __init__(self, name: str):
+        self.logger = getLogger(name)
 
-    def log_decorator(func):
-        @functools.wraps(func)
-        def func_wrapper(msg: str, *args, **kwargs):
-            if args is None and kwargs is None:
-                func(Messages.get(msg))
-            else:
-                func(Messages.get_formatted(msg, *args, **kwargs))
+    def debug(self, msg, *args, **kwargs):
+        if args is None and kwargs is None:
+            self.logger.debug(Messages.get(msg))
+        else:
+            self.logger.debug(Messages.get_formatted(msg, *args, **kwargs))
 
-        return func_wrapper
-
-    return log_decorator
+    def error(self, msg, *args, **kwargs):
+        if args is None and kwargs is None:
+            self.logger.error(Messages.get(msg))
+        else:
+            self.logger.error(Messages.get_formatted(msg, *args, **kwargs))

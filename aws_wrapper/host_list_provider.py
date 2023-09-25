@@ -20,12 +20,9 @@ from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
-from logging import getLogger
 from threading import RLock
 from typing import (TYPE_CHECKING, List, Optional, Protocol, Tuple,
                     runtime_checkable)
-
-from aws_wrapper.utils.log import log
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
@@ -38,6 +35,7 @@ from aws_wrapper.host_availability import (HostAvailability,
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.utils.cache_map import CacheMap
+from aws_wrapper.utils.log import Log
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
@@ -45,7 +43,7 @@ from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.timeout import timeout
 from aws_wrapper.utils.utils import LogUtils
 
-logger = getLogger(__name__)
+logger = Log(__name__)
 
 
 class HostListProvider(Protocol):
@@ -203,18 +201,18 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):
-            message = Messages.get("AuroraHostListProvider.InvalidPattern")
+            message = "AuroraHostListProvider.InvalidPattern"
             logger.error(message)
             raise AwsWrapperError(message)
 
         url_type = self._rds_utils.identify_rds_type(host)
         if url_type == RdsUrlType.RDS_PROXY:
-            message = Messages.get("AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy")
+            message = "AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy"
             logger.error(message)
             raise AwsWrapperError(message)
 
         if url_type == RdsUrlType.RDS_CUSTOM_CLUSTER:
-            message = Messages.get("AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom")
+            message = "AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom"
             logger.error(message)
             raise AwsWrapperError(message)
 
@@ -229,7 +227,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 continue
             for host in hosts:
                 if host.url == url:
-                    log()(logger.debug)("AuroraHostListProvider.SuggestedClusterId", key, url)
+                    logger.debug("AuroraHostListProvider.SuggestedClusterId", key, url)
                     return AuroraHostListProvider.ClusterIdSuggestion(key, is_primary_cluster_id)
         return None
 
@@ -321,8 +319,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 hosts.append(host)
 
         if len(writers) == 0:
-            log_error = log()(logger.error)
-            log_error.log("AuroraHostListProvider.InvalidTopology")
+            logger.error("AuroraHostListProvider.InvalidTopology")
             hosts.clear()
         elif len(writers) == 1:
             hosts.append(writers[0])
