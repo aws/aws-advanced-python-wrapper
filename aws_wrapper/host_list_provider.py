@@ -25,6 +25,8 @@ from threading import RLock
 from typing import (TYPE_CHECKING, List, Optional, Protocol, Tuple,
                     runtime_checkable)
 
+from aws_wrapper.utils.log import log
+
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
 
@@ -227,7 +229,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 continue
             for host in hosts:
                 if host.url == url:
-                    logger.debug(Messages.get_formatted("AuroraHostListProvider.SuggestedClusterId", key, url))
+                    log()(logger.debug)("AuroraHostListProvider.SuggestedClusterId", key, url)
                     return AuroraHostListProvider.ClusterIdSuggestion(key, is_primary_cluster_id)
         return None
 
@@ -300,6 +302,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     # this condition is True when autocommit is False and the query started a new transaction.
                     conn.commit()
                 return res
+
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.InvalidQuery")) from e
 
@@ -318,7 +321,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 hosts.append(host)
 
         if len(writers) == 0:
-            logger.error(Messages.get("AuroraHostListProvider.InvalidTopology"))
+            log_error = log()(logger.error)
+            log_error.log("AuroraHostListProvider.InvalidTopology")
             hosts.clear()
         elif len(writers) == 1:
             hosts.append(writers[0])
