@@ -35,6 +35,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_wrapper.utils import restore_transaction_status
+
 if TYPE_CHECKING:
     from types import TracebackType
 
@@ -161,6 +163,7 @@ class Cursor:
     def callproc(self, *args, **kwargs):
         ...
 
+    @restore_transaction_status
     def execute(
             self,
             *args,
