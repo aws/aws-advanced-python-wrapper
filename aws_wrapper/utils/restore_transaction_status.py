@@ -17,15 +17,12 @@ from __future__ import annotations
 import functools
 from typing import TYPE_CHECKING
 
-from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
-
-from aws_wrapper.host_list_provider import HostListProviderService
-
 if TYPE_CHECKING:
+    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.pep249 import Connection
 
 
-def restore_transaction_status(conn: Connection):
+def restore_transaction_status(target_driver_dialect: TargetDriverDialect, conn: Connection):
     """
     Restore transaction status decorator
     """
@@ -33,13 +30,11 @@ def restore_transaction_status(conn: Connection):
     def restore_transaction_status_decorator(func):
         @functools.wraps(func)
         def func_wrapper(*args, **kwargs):
-            target_driver_dialect = HostListProviderService.target_driver_dialect
-            initial_transaction_status: bool = TargetDriverDialect.is_in_transaction(conn)
+            initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
 
             func(*args, **kwargs)
 
-            if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
-                # this condition is True when autocommit is False and the query started a new transaction.
+            if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):                # this condition is True when autocommit is False and the query started a new transaction.
                 conn.commit()
 
         return func_wrapper

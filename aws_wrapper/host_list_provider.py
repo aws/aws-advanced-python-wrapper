@@ -40,10 +40,10 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
+from aws_wrapper.utils.restore_transaction_status import \
+    restore_transaction_status
 from aws_wrapper.utils.timeout import timeout
 from aws_wrapper.utils.utils import LogUtils
-from aws_wrapper.utils.restore_transaction_status import restore_transaction_status
-
 
 logger = getLogger(__name__)
 
@@ -291,12 +291,14 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     break
 
     def _query_for_topology(self, conn: Connection) -> Optional[List[HostInfo]]:
+        target_driver_dialect = self._host_list_provider_service.target_driver_dialect
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
         try:
             with closing(conn.cursor()) as cursor:
-                restore_transaction_status(conn)(cursor.execute(self._dialect.topology_query))
-                res = self._process_query_results(cursor)
-                return res
+                cursor_execute_func_with_restore_transaction_status = restore_transaction_status(target_driver_dialect, conn)(cursor.execute)
+                cursor_execute_func_with_restore_transaction_status(self._dialect.topology_query)
+                result = self._process_query_results(cursor)
+                return result
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.InvalidQuery")) from e
 
