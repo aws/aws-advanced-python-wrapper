@@ -400,7 +400,9 @@ class FailoverPlugin(Plugin):
     @staticmethod
     def _can_direct_execute(method_name):
         return method_name == "Connection.close" or \
-            method_name == "Connection.closed"
+            method_name == "Connection.closed" or \
+            method_name == "Cursor.close"
+
 
     @staticmethod
     def _allowed_on_closed_connection(method_name: str):
