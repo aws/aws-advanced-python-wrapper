@@ -44,14 +44,16 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     _network_bound_methods: Set[str] = {
         "Connection.commit",
         "Connection.autocommit",
-        "Connection.autocommit_setter",
+        "Connection.set_autocommit",
+        "Connection.is_read_only",
+        "Connection.set_read_only",
         "Connection.rollback",
         "Connection.cursor",
         "Cursor.close",
         "Cursor.execute",
         "Cursor.fetchone",
         "Cursor.fetchmany",
-        "Cursor.fetchall",
+        "Cursor.fetchall"
     }
 
     def is_dialect(self, connect_func: Callable) -> bool:

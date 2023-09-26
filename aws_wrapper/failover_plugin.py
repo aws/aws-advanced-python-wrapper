@@ -398,18 +398,13 @@ class FailoverPlugin(Plugin):
 
     @staticmethod
     def _can_direct_execute(method_name):
-        # TODO: adjust method names to proper python method names
         return method_name == "Connection.close" or \
-            method_name == "Connection.abort" or \
-            method_name == "Connection.isClosed"
+            method_name == "Connection.closed" or \
+            method_name == "Cursor.close"
 
     @staticmethod
     def _allowed_on_closed_connection(method_name: str):
-        # TODO: adjust method names to proper python method names
-        return method_name == "Connection.getAutoCommit" or \
-            method_name == "Connection.getCatalog" or \
-            method_name == "Connection.getSchema" or \
-            method_name == "Connection.getTransactionIsolation"
+        return method_name == "Connection.autocommit"
 
 
 class FailoverPluginFactory(PluginFactory):
