@@ -34,7 +34,8 @@ def restore_transaction_status(target_driver_dialect: TargetDriverDialect, conn:
 
             func(*args, **kwargs)
 
-            if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):                # this condition is True when autocommit is False and the query started a new transaction.
+            if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
+                # this condition is True when autocommit is False and the query started a new transaction.
                 conn.commit()
 
         return func_wrapper
