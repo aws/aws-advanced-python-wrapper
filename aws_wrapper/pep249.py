@@ -163,7 +163,6 @@ class Cursor:
     def callproc(self, *args, **kwargs):
         ...
 
-    @restore_transaction_status
     def execute(
             self,
             *args,
