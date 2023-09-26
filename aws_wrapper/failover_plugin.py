@@ -403,7 +403,6 @@ class FailoverPlugin(Plugin):
             method_name == "Connection.closed" or \
             method_name == "Cursor.close"
 
-
     @staticmethod
     def _allowed_on_closed_connection(method_name: str):
         return method_name == "Connection.autocommit"
