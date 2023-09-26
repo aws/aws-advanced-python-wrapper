@@ -52,7 +52,7 @@ class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
             if conn is None:
-                raise AwsWrapperError(Messages.get_formatted("SqlAlchemyDriverDialect.SetValueOnNullConnection", "autocommit"))
+                raise AwsWrapperError(Messages.get_formatted("SqlAlchemyDriverDialect.SetValueOnNoneConnection", "autocommit"))
 
         return self._underlying_driver.set_autocommit(conn, autocommit)
 
@@ -92,7 +92,8 @@ class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
             if conn is None:
-                raise AwsWrapperError(Messages.get_formatted("SqlAlchemyDriverDialect.SetValueOnNullConnection", "readonly"))
+                raise AwsWrapperError(
+                    Messages.get_formatted("SqlAlchemyDriverDialect.SetValueOnNoneConnection", "read_only"))
 
         return self._underlying_driver.set_read_only(conn, read_only)
 
