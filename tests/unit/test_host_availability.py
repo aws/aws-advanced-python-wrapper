@@ -25,7 +25,7 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 def test_create_default_availability_strategy_given_empty_properties():
     props = Properties()
     strategy = create_host_availability_strategy(props)
-    assert strategy is HostAvailabilityStrategy
+    assert isinstance(strategy, HostAvailabilityStrategy)
 
 
 def test_create_default_availability_strategy_given_override_property():

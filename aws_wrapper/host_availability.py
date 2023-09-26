@@ -73,13 +73,13 @@ class ExponentialBackoffHostAvailabilityStrategy(HostAvailabilityStrategy):
 
 def create_host_availability_strategy(properties: Properties):
     if properties is None:
-        return HostAvailabilityStrategy
+        return HostAvailabilityStrategy()
 
     default_strategy = WrapperProperties.DEFAULT_HOST_AVAILABILITY_STRATEGY.get(properties)
     if default_strategy is None or default_strategy == "":
-        return HostAvailabilityStrategy
+        return HostAvailabilityStrategy()
 
     if default_strategy == ExponentialBackoffHostAvailabilityStrategy.name:
         return ExponentialBackoffHostAvailabilityStrategy(properties)
 
-    return HostAvailabilityStrategy
+    return HostAvailabilityStrategy()
