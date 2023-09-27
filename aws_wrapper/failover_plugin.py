@@ -79,8 +79,8 @@ class FailoverPlugin(Plugin):
         self._rds_utils = RdsUtils()
         self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
         self._stale_dns_helper: StaleDnsHelper = StaleDnsHelper(plugin_service)
-        self._saved_read_only_status: bool = False
-        self._saved_auto_commit_status: bool = False
+        self._saved_read_only_status: Optional[bool] = False
+        self._saved_auto_commit_status: Optional[bool] = False
 
         FailoverPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
