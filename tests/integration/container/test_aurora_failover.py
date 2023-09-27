@@ -308,8 +308,6 @@ class TestAuroraFailover:
             with conn.cursor() as cursor_1:
                 cursor_1.execute("DROP TABLE IF EXISTS test3_3")
                 cursor_1.execute("CREATE TABLE test3_3 (id int not null primary key, test3_3_field varchar(255) not null)")
-
-                conn.autocommit = False
                 conn.commit()
 
             with conn.cursor() as cursor_2:
