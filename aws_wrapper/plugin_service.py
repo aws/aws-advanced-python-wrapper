@@ -17,6 +17,9 @@ from __future__ import annotations
 from contextlib import closing
 from typing import TYPE_CHECKING
 
+from aws_wrapper.utils.restore_transaction_status import \
+    restore_transaction_status
+
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin import Plugin, PluginFactory
@@ -374,9 +377,13 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         host_info.add_alias(host_info.as_alias())
 
+        target_driver_dialect = self._target_driver_dialect
+
         try:
             with closing(connection.cursor()) as cursor:
                 if not isinstance(self.dialect, UnknownDialect):
+                    execute_with_restore = restore_transaction_status(target_driver_dialect, connection)(cursor.execute)
+                    execute_with_restore(self.dialect.host_alias_query)
                     cursor.execute(self.dialect.host_alias_query)
                     for row in cursor.fetchall():
                         host_info.add_alias(row[0])

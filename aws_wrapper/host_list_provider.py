@@ -295,8 +295,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
         try:
             with closing(conn.cursor()) as cursor:
-                cursor_execute_func_with_restore_transaction_status = restore_transaction_status(target_driver_dialect, conn)(cursor.execute)
-                cursor_execute_func_with_restore_transaction_status(self._dialect.topology_query)
+                execute_with_restore = restore_transaction_status(target_driver_dialect, conn)(cursor.execute)
+                execute_with_restore(self._dialect.topology_query)
                 result = self._process_query_results(cursor)
                 return result
         except ProgrammingError as e:
