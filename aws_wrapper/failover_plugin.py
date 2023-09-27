@@ -70,7 +70,7 @@ class FailoverPlugin(Plugin):
             self._properties)
         self._failover_reader_connect_timeout_sec = WrapperProperties.FAILOVER_READER_CONNECT_TIMEOUT_SEC.get_float(
             self._properties)
-
+        self._keep_session_state_on_failover = WrapperProperties.KEEP_SESSION_STATE_ON_FAILOVER.get_bool(self._properties)
         self._failover_mode: FailoverMode
         self._is_in_transaction: bool = False
         self._is_closed: bool = False
@@ -79,7 +79,8 @@ class FailoverPlugin(Plugin):
         self._rds_utils = RdsUtils()
         self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
         self._stale_dns_helper: StaleDnsHelper = StaleDnsHelper(plugin_service)
-        self._keep_session_state_on_failover = WrapperProperties.KEEP_SESSION_STATE_ON_FAILOVER.get_bool(self._properties)
+        self._saved_read_only_status: bool = False
+        self._saved_auto_commit_status: bool = False
 
         FailoverPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
@@ -129,6 +130,12 @@ class FailoverPlugin(Plugin):
 
         if self._is_closed and not self._allowed_on_closed_connection(method_name):
             self._invalid_invocation_on_closed_connection()
+
+        if method_name == "Connection.set_read_only" and args is not None and len(args) > 0:
+            self._saved_read_only_status = bool(args[0])
+
+        if method_name == "Connection.set_auto_commit" and args is not None and len(args) > 0:
+            self._saved_auto_commit_status = bool(args[0])
 
         try:
             self._update_topology(False)
@@ -192,10 +199,14 @@ class FailoverPlugin(Plugin):
             properties: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
-        conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection,
-                                                                          self._host_list_provider_service, host,
-                                                                          properties,
+        conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
                                                                           connect_func)
+        if self._keep_session_state_on_failover:
+            self._saved_read_only_status = None if self._saved_read_only_status == self._plugin_service.target_driver_dialect.is_read_only(conn) \
+                else self._saved_read_only_status
+            self._saved_auto_commit_status = None if self._saved_read_only_status == self._plugin_service.target_driver_dialect.get_autocommit(conn) \
+                else self._saved_auto_commit_status
+
         if is_initial_connection:
             self._plugin_service.refresh_host_list(conn)
 
@@ -255,10 +266,10 @@ class FailoverPlugin(Plugin):
         else:
             if result.exception is not None:
                 raise result.exception
-            if self._keep_session_state_on_failover is not None and result.connection is not None and result.new_host is not None:
+            if self._keep_session_state_on_failover:
+                self.restore_session_state(result.connection)
+            if result.connection is not None and result.new_host is not None:
                 self._plugin_service.set_current_connection(result.connection, result.new_host)
-            else:
-                self._switch_current_connection_to(result.new_host, True)
 
         if self._plugin_service.current_host_info is not None and old_aliases is not None and len(old_aliases) > 0:
             self._plugin_service.current_host_info.remove_alias(old_aliases)
@@ -278,30 +289,24 @@ class FailoverPlugin(Plugin):
             raise FailoverFailedError(Messages.get("FailoverPlugin.UnableToConnectToWriter"))
 
         writer_host = self._get_writer(result.topology)
-        if not self._keep_session_state_on_failover:
-            self._plugin_service.set_current_connection(result.new_connection, writer_host)
-        else:
-            self._switch_current_connection_to(writer_host, True)
+        if self._keep_session_state_on_failover:
+            self.restore_session_state(result.new_connection)
+
+        self._plugin_service.set_current_connection(result.new_connection, writer_host)
 
         logger.debug(Messages.get_formatted("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info))
 
         self._plugin_service.refresh_host_list()
 
-    def _switch_current_connection_to(self, host: Optional[HostInfo], failover_occurred: bool):
-        if host is not None:
-            connection_for_host = self._plugin_service.connect(host, self._properties)
-        current_connection = self._plugin_service.current_connection
+    def restore_session_state(self, conn: Optional[Connection]):
+        if conn is None:
+            return
 
-        if connection_for_host is not None and current_connection is not None and \
-                current_connection != connection_for_host:
-            self._transfer_session_state(current_connection, connection_for_host)
-            target_driver_dialect = self._plugin_service.target_driver_dialect
-            if current_connection is not None and target_driver_dialect is not None and not target_driver_dialect.is_closed(current_connection):
-                self._invalidate_current_connection()
-        if host is not None:
-            self._plugin_service.set_current_connection(connection_for_host, host)
-            if not failover_occurred:
-                self._plugin_service.update_in_transaction(False)
+        if self._saved_read_only_status is not None:
+            self._plugin_service.target_driver_dialect.set_read_only(conn, self._saved_read_only_status)
+
+        if self._saved_auto_commit_status is not None:
+            self._plugin_service.target_driver_dialect.set_autocommit(conn, self._saved_auto_commit_status)
 
     def _invalidate_current_connection(self):
         conn = self._plugin_service.current_connection
@@ -349,7 +354,17 @@ class FailoverPlugin(Plugin):
 
     def _connect_to(self, host: HostInfo):
         try:
-            self._switch_current_connection_to(host, False)
+            connection_for_host = self._plugin_service.connect(host, self._properties)
+            current_connection = self._plugin_service.current_connection
+
+            if connection_for_host is not None and current_connection is not None and \
+                    current_connection != connection_for_host:
+                self._transfer_session_state(current_connection, connection_for_host)
+                self._invalidate_current_connection()
+
+            self._plugin_service.set_current_connection(connection_for_host, host)
+            self._plugin_service.update_in_transaction(False)
+
             logger.debug(Messages.get_formatted("FailoverPlugin.EstablishedConnection", host))
         except Exception as ex:
             if self._plugin_service is not None:
