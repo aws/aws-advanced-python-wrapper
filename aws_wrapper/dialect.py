@@ -298,8 +298,8 @@ class RdsPgDialect(PgDialect):
                 for row in aws_cursor:
                     rds_tools = bool(row[0])
                     aurora_utils = bool(row[1])
-                    logger.debug(Messages.get_formatted(
-                        "RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils)))
+                    logger.debug(
+                        "RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils))
                     if rds_tools and not aurora_utils:
                         return True
 
@@ -604,4 +604,4 @@ class DialectManager(DialectProvider):
 
     def _log_current_dialect(self):
         dialect_class = "<null>" if self._dialect is None else type(self._dialect).__name__
-        logger.debug(Messages.get_formatted("DialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update))
+        logger.debug("DialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update)

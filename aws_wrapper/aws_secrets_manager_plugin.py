@@ -122,9 +122,8 @@ class AwsSecretsManagerPlugin(Plugin):
                     AwsSecretsManagerPlugin._secrets_cache[self._secret_key] = self._secret
                     fetched = True
             except (ClientError, AttributeError) as e:
-                logger.debug(Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e))
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)) from e
+                logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)
+                raise AwsWrapperError(Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)) from e
 
         return fetched
 
@@ -161,9 +160,9 @@ class AwsSecretsManagerPlugin(Plugin):
 
         session = self._session if self._session else boto3.Session()
         if region not in session.get_available_regions("rds"):
-            exception_message = Messages.get_formatted("AwsSdk.UnsupportedRegion", region)
-            logger.debug(exception_message)
-            raise AwsWrapperError(exception_message)
+            exception_message = "AwsSdk.UnsupportedRegion"
+            logger.debug(exception_message, region)
+            raise AwsWrapperError(Messages.get_formatted(exception_message, region))
 
         return region
 

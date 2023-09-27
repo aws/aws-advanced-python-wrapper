@@ -19,18 +19,18 @@ from logging import getLogger
 from aws_wrapper.utils.messages import Messages
 
 
-class Log:
+class Logger:
     def __init__(self, name: str):
         self.logger = getLogger(name)
 
+    def set_level(self, level):
+        self.logger.setLevel(level)
+
     def debug(self, msg, *args, **kwargs):
-        if args is None and kwargs is None:
-            self.logger.debug(Messages.get(msg))
-        else:
-            self.logger.debug(Messages.get_formatted(msg, *args, **kwargs))
+        self.logger.debug(Messages.get_formatted(msg, *args, **kwargs))
 
     def error(self, msg, *args, **kwargs):
-        if args is None and kwargs is None:
-            self.logger.error(Messages.get(msg))
-        else:
-            self.logger.error(Messages.get_formatted(msg, *args, **kwargs))
+        self.logger.error(Messages.get_formatted(msg, *args, **kwargs))
+
+    def warning(self, msg, *args, **kwargs):
+        self.logger.warning(Messages.get_formatted(msg, *args, **kwargs))                              

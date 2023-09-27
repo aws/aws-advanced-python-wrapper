@@ -100,11 +100,11 @@ class IamAuthPlugin(Plugin):
         token_info = IamAuthPlugin._token_cache.get(cache_key)
 
         if token_info and not token_info.is_expired():
-            logger.debug(Messages.get_formatted("IamAuthPlugin.UseCachedIamToken", token_info.token))
+            logger.debug("IamAuthPlugin.UseCachedIamToken", token_info.token)
             WrapperProperties.PASSWORD.set(props, token_info.token)
         else:
             token: str = self._generate_authentication_token(props, host, port, region)
-            logger.debug(Messages.get_formatted("IamAuthPlugin.GeneratedNewIamToken", token))
+            logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
             WrapperProperties.PASSWORD.set(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
@@ -113,7 +113,7 @@ class IamAuthPlugin(Plugin):
             return connect_func()
 
         except Exception as e:
-            logger.debug(Messages.get_formatted("IamAuthPlugin.ConnectException", e))
+            logger.debug("IamAuthPlugin.ConnectException", e)
 
             is_cached_token = (token_info and not token_info.is_expired())
             if not self._plugin_service.is_login_exception(error=e) or not is_cached_token:
@@ -123,7 +123,7 @@ class IamAuthPlugin(Plugin):
             # Try to generate a new token and try to connect again
 
             token = self._generate_authentication_token(props, host, port, region)
-            logger.debug(Messages.get_formatted("IamAuthPlugin.GeneratedNewIamToken", token))
+            logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
             WrapperProperties.PASSWORD.set(props, token)
             IamAuthPlugin._token_cache[token] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
@@ -175,7 +175,7 @@ class IamAuthPlugin(Plugin):
             if default_port > 0:
                 return default_port
             else:
-                logger.debug(Messages.get_formatted("IamAuthPlugin.InvalidPort", default_port))
+                logger.debug("IamAuthPlugin.InvalidPort", default_port)
 
         if host_info.is_port_specified():
             return host_info.port

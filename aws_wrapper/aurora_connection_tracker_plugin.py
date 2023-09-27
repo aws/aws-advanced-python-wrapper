@@ -56,7 +56,7 @@ class OpenedConnectionTracker:
         instance_endpoint: Optional[str] = next((alias for alias in aliases if self._rds_utils.is_rds_instance(alias)),
                                                 None)
         if not instance_endpoint:
-            logger.debug(Messages.get("OpenedConnectionTracker.UnableToPopulateOpenedConnectionSet"))
+            logger.debug("OpenedConnectionTracker.UnableToPopulateOpenedConnectionSet")
             return
 
         self._track_connection(instance_endpoint, conn)
@@ -130,7 +130,7 @@ class OpenedConnectionTracker:
 
             msg += f"\t[{key} : {conn}]"
 
-        return logger.debug(Messages.get_formatted("OpenedConnectionTracker.OpenedConnectionsTracked", msg))
+        return logger.debug("OpenedConnectionTracker.OpenedConnectionsTracked", msg)
 
     def _log_connection_set(self, host: str, conn_set: Optional[WeakSet]):
         if conn_set is None or len(conn_set) == 0:
@@ -141,7 +141,7 @@ class OpenedConnectionTracker:
             conn += f"\n\t\t{item}"
 
         msg = host + f"[{conn}\n]"
-        logger.debug(Messages.get_formatted("OpenedConnectionTracker.InvalidatingConnections", msg))
+        logger.debug("OpenedConnectionTracker.InvalidatingConnections", msg)
 
 
 class AuroraConnectionTrackerPlugin(Plugin):

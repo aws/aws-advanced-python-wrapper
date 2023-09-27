@@ -369,7 +369,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             return
 
         if len(host_info.aliases) > 0:
-            logger.debug(Messages.get_formatted("PluginServiceImpl.NonEmptyAliases", host_info.aliases))
+            logger.debug("PluginServiceImpl.NonEmptyAliases", host_info.aliases)
             return
 
         host_info.add_alias(host_info.as_alias())
@@ -383,7 +383,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         except Exception as e:
             # log and ignore
-            logger.debug(Messages.get_formatted("PluginServiceImpl.FailedToRetrieveHostPort", e))
+            logger.debug("PluginServiceImpl.FailedToRetrieveHostPort", e)
 
         host = self.identify_connection(connection)
         if host:

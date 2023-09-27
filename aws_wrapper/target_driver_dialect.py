@@ -98,10 +98,10 @@ class TargetDriverDialectManager(TargetDriverDialectProvider):
 
     @staticmethod
     def _log_dialect(dialect_code: str, target_driver_dialect: TargetDriverDialect):
-        logger.debug(Messages.get_formatted(
+        logger.debug(
             "TargetDriverDialectManager.UseDialect",
             dialect_code,
-            target_driver_dialect))
+            target_driver_dialect)
 
     def get_pool_connection_driver_dialect(self, connection_provider: ConnectionProvider,
                                            underlying_driver_dialect: TargetDriverDialect) -> TargetDriverDialect:

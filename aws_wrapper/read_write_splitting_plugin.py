@@ -112,7 +112,7 @@ class ReadWriteSplittingPlugin(Plugin):
 
         current_role = self._plugin_service.get_host_role(current_conn)
         if current_role is None or current_role == HostRole.UNKNOWN:
-            self._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.ErrorVerifyingInitialHostSpecRole"))
+            self._log_and_raise_exception("ReadWriteSplittingPlugin.ErrorVerifyingInitialHostSpecRole")
 
         current_host = self._plugin_service.initial_connection_host_info
         if current_host is not None:
@@ -149,12 +149,10 @@ class ReadWriteSplittingPlugin(Plugin):
             return execute_func()
         except Exception as ex:
             if isinstance(ex, FailoverError):
-                logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.FailoverExceptionWhileExecutingCommand",
-                                                    method_name))
+                logger.debug("ReadWriteSplittingPlugin.FailoverExceptionWhileExecutingCommand", method_name)
                 self._close_idle_connections()
             else:
-                logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.ExceptionWhileExecutingCommand",
-                                                    method_name))
+                logger.debug("ReadWriteSplittingPlugin.ExceptionWhileExecutingCommand", method_name)
             raise ex
 
     def _update_internal_connection_info(self):
@@ -170,12 +168,12 @@ class ReadWriteSplittingPlugin(Plugin):
 
     def _set_writer_connection(self, writer_conn: Connection, writer_host_info: HostInfo):
         self._writer_connection = writer_conn
-        logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.SetWriterConnection", writer_host_info.url))
+        logger.debug("ReadWriteSplittingPlugin.SetWriterConnection", writer_host_info.url)
 
     def _set_reader_connection(self, reader_conn: Connection, reader_host_info: HostInfo):
         self._reader_connection = reader_conn
         self._reader_host_info = reader_host_info
-        logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.SetReaderConnection", reader_host_info.url))
+        logger.debug("ReadWriteSplittingPlugin.SetReaderConnection", reader_host_info.url)
 
     def _get_new_writer_connection(self, writer_host: HostInfo):
         conn = self._plugin_service.connect(writer_host, self._properties)
@@ -190,7 +188,7 @@ class ReadWriteSplittingPlugin(Plugin):
 
         if (current_conn is not None and
                 target_driver_dialect is not None and target_driver_dialect.is_closed(current_conn)):
-            self._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.SetReadOnlyOnClosedConnection"))
+            self._log_and_raise_exception("ReadWriteSplittingPlugin.SetReadOnlyOnClosedConnection")
 
         if self._is_connection_usable(current_conn, target_driver_dialect):
             try:
@@ -200,11 +198,11 @@ class ReadWriteSplittingPlugin(Plugin):
 
         hosts = self._plugin_service.hosts
         if hosts is None or len(hosts) == 0:
-            self._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.EmptyHostList"))
+            self._log_and_raise_exception("ReadWriteSplittingPlugin.EmptyHostList")
 
         current_host = self._plugin_service.current_host_info
         if current_host is None:
-            self._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.UnavailableHostInfo"))
+            self._log_and_raise_exception("ReadWriteSplittingPlugin.UnavailableHostInfo")
             return
 
         if read_only:
@@ -213,19 +211,18 @@ class ReadWriteSplittingPlugin(Plugin):
                     self._switch_to_reader_connection(hosts)
                 except Exception:
                     if not self._is_connection_usable(current_conn, target_driver_dialect):
-                        self._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.ErrorSwitchingToReader"))
+                        self._log_and_raise_exception("ReadWriteSplittingPlugin.ErrorSwitchingToReader")
                         return
 
-                    logger.warning(Messages.get_formatted("ReadWriteSplittingPlugin.FallbackToWriter",
-                                                          current_host.url))
+                    logger.warning("ReadWriteSplittingPlugin.FallbackToWriter", current_host.url)
         elif current_host.role != HostRole.WRITER:
             if self._plugin_service.is_in_transaction:
-                self._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.SetReadOnlyFalseInTransaction"))
+                self._log_and_raise_exception("ReadWriteSplittingPlugin.SetReadOnlyFalseInTransaction")
 
             try:
                 self._switch_to_writer_connection(hosts)
             except Exception:
-                self._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.ErrorSwitchingToWriter"))
+                self._log_and_raise_exception("ReadWriteSplittingPlugin.ErrorSwitchingToWriter")
 
     def _switch_current_connection_to(self, new_conn: Connection, new_conn_host: HostInfo):
         current_conn = self._plugin_service.current_connection
@@ -235,7 +232,7 @@ class ReadWriteSplittingPlugin(Plugin):
         self._transfer_session_state(new_conn)
         self._plugin_service.set_current_connection(new_conn, new_conn_host)
 
-        logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.SettingCurrentConnection", new_conn_host.url))
+        logger.debug("ReadWriteSplittingPlugin.SettingCurrentConnection", new_conn_host.url)
 
     def _switch_to_writer_connection(self, hosts: List[HostInfo]):
         current_host = self._plugin_service.current_host_info
@@ -258,7 +255,7 @@ class ReadWriteSplittingPlugin(Plugin):
         if self._is_reader_conn_from_internal_pool:
             self._close_connection_if_idle(self._reader_connection)
 
-        logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.SwitchedFromReaderToWriter", writer_host.url))
+        logger.debug("ReadWriteSplittingPlugin.SwitchedFromReaderToWriter", writer_host.url)
 
     def _switch_to_reader_connection(self, hosts: List[HostInfo]):
         current_host = self._plugin_service.current_host_info
@@ -274,11 +271,9 @@ class ReadWriteSplittingPlugin(Plugin):
         elif self._reader_connection is not None and self._reader_host_info is not None:
             try:
                 self._switch_current_connection_to(self._reader_connection, self._reader_host_info)
-                logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.SwitchedFromWriterToReader",
-                                                    self._reader_host_info.url))
+                logger.debug("ReadWriteSplittingPlugin.SwitchedFromWriterToReader", self._reader_host_info.url)
             except Exception:
-                logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.ErrorSwitchingToCachedReader",
-                                                    self._reader_host_info.url))
+                logger.debug("ReadWriteSplittingPlugin.ErrorSwitchingToCachedReader", self._reader_host_info.url)
 
                 self._reader_connection.close()
                 self._reader_connection = None
@@ -294,7 +289,7 @@ class ReadWriteSplittingPlugin(Plugin):
             if writer_host is not None:
                 if not self._is_connection_usable(self._writer_connection, self._plugin_service.target_driver_dialect):
                     self._get_new_writer_connection(writer_host)
-                logger.warning(Messages.get_formatted("ReadWriteSplittingPlugin.NoReadersFound", writer_host.url))
+                logger.warning("ReadWriteSplittingPlugin.NoReadersFound", writer_host.url)
                 return
 
         conn: Optional[Connection] = None
@@ -311,18 +306,18 @@ class ReadWriteSplittingPlugin(Plugin):
                     reader_host = host
                     break
                 except Exception:
-                    logger.warning(Messages.get_formatted("ReadWriteSplittingPlugin.FailedToConnectToReader", host.url))
+                    logger.warning("ReadWriteSplittingPlugin.FailedToConnectToReader", host.url)
 
         if conn is None or reader_host is None:
-            self._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.NoReadersAvailable"))
+            self._log_and_raise_exception("ReadWriteSplittingPlugin.NoReadersAvailable")
             return
 
-        logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.SuccessfullyConnectedToReader", reader_host.url))
+        logger.debug("ReadWriteSplittingPlugin.SuccessfullyConnectedToReader", reader_host.url)
 
         self._set_reader_connection(conn, reader_host)
         self._switch_current_connection_to(conn, reader_host)
 
-        logger.debug(Messages.get_formatted("ReadWriteSplittingPlugin.SwitchedFromWriterToReader", reader_host.url))
+        logger.debug("ReadWriteSplittingPlugin.SwitchedFromWriterToReader", reader_host.url)
 
     def _transfer_session_state(self, conn: Connection):
         from_conn: Optional[Connection] = self._plugin_service.current_connection
@@ -348,7 +343,7 @@ class ReadWriteSplittingPlugin(Plugin):
             pass  # Swallow exception
 
     def _close_idle_connections(self):
-        logger.debug(Messages.get("ReadWriteSplittingPlugin.ClosingInternalConnections"))
+        logger.debug("ReadWriteSplittingPlugin.ClosingInternalConnections")
         self._close_connection_if_idle(self._reader_connection)
         self._close_connection_if_idle(self._writer_connection)
 
@@ -367,7 +362,7 @@ class ReadWriteSplittingPlugin(Plugin):
             if host.role == HostRole.WRITER:
                 return host
 
-        ReadWriteSplittingPlugin._log_and_raise_exception(Messages.get("ReadWriteSplittingPlugin.NoWriterFound"))
+        ReadWriteSplittingPlugin._log_and_raise_exception("ReadWriteSplittingPlugin.NoWriterFound")
 
         return None
 
