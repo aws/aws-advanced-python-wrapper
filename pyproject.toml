@@ -9,7 +9,7 @@ license = "Apache-2.0"
 [tool.poetry.dependencies]
 python = "^3.8.1"
 resourcebundle = "^2.1.0"
-boto3 = "^1.28.44"
+boto3 = "^1.28.55"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.3.0"
