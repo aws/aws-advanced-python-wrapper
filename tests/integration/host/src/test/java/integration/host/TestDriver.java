@@ -18,6 +18,5 @@ package integration.host;
 
 public enum TestDriver {
   PG,
-  MYSQL,
-  MARIADB
+  MYSQL
 }

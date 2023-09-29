@@ -183,28 +183,6 @@ public class TestEnvironmentConfig implements AutoCloseable {
         }
         break;
 
-      case MARIADB:
-        for (int i = 1; i <= env.numOfInstances; i++) {
-          env.databaseContainers.add(
-              containerHelper.createMariadbContainer(
-                  env.network,
-                  DATABASE_CONTAINER_NAME_PREFIX + i,
-                  env.info.getDatabaseInfo().getDefaultDbName(),
-                  env.info.getDatabaseInfo().getUsername(),
-                  env.info.getDatabaseInfo().getPassword()));
-          env.databaseContainers.get(0).start();
-
-          env.info
-              .getDatabaseInfo()
-              .getInstances()
-              .add(
-                  new TestInstanceInfo(
-                      DATABASE_CONTAINER_NAME_PREFIX + i,
-                      DATABASE_CONTAINER_NAME_PREFIX + i,
-                      3306));
-        }
-        break;
-
       default:
         throw new NotImplementedException(env.info.getRequest().getDatabaseEngine().toString());
     }
@@ -399,7 +377,6 @@ public class TestEnvironmentConfig implements AutoCloseable {
   private static int getPort(TestEnvironmentRequest request) {
     switch (request.getDatabaseEngine()) {
       case MYSQL:
-      case MARIADB:
         return 3306;
       case PG:
         return 5432;

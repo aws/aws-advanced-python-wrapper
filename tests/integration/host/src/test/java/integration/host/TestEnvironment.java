@@ -20,12 +20,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
-import integration.host.DatabaseEngine;
-import integration.host.DatabaseEngineDeployment;
-import integration.host.TestDriver;
-import integration.host.TestEnvironmentFeatures;
-import integration.host.TestEnvironmentInfo;
-import integration.host.TestInstanceInfo;
 import integration.host.util.StringUtils;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -178,18 +172,12 @@ public class TestEnvironment {
 
     switch (testDriver) {
       case MYSQL:
-        driverCompatibleToDatabaseEngine =
-            databaseEngine == DatabaseEngine.MYSQL || databaseEngine == DatabaseEngine.MARIADB;
+        driverCompatibleToDatabaseEngine = databaseEngine == DatabaseEngine.MYSQL;
         disabledByFeature = features.contains(TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS);
         break;
       case PG:
         driverCompatibleToDatabaseEngine = databaseEngine == DatabaseEngine.PG;
         disabledByFeature = features.contains(TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS);
-        break;
-      case MARIADB:
-        driverCompatibleToDatabaseEngine =
-            databaseEngine == DatabaseEngine.MYSQL || databaseEngine == DatabaseEngine.MARIADB;
-        disabledByFeature = features.contains(TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS);
         break;
       default:
         throw new NotImplementedException(testDriver.toString());
