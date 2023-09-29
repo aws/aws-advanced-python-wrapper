@@ -17,6 +17,7 @@ from typing import List
 import psycopg
 import pytest
 
+from aws_wrapper.connection_provider import SqlAlchemyPooledConnectionProvider
 from aws_wrapper.errors import FailoverSuccessError
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Error
@@ -344,3 +345,71 @@ def test_connect_error_updating_host(mocker, plugin_service_mock, connect_func_m
             mocker.MagicMock(), mocker.MagicMock(), writer_host, default_props, True, connect_func_mock)
 
     host_list_provider_service_mock.initial_connection_host_info.assert_not_called()
+
+
+def test_close_pooled_reader_connection_after_set_read_only(mocker, plugin_service_mock):
+    def connect_side_effect(host, props):
+        if host in [reader_host1, reader_host2, reader_host3]:
+            return reader_conn_mock
+        elif host == writer_host:
+            return writer_conn_mock
+        return None
+
+    plugin_service_mock.connect.side_effect = connect_side_effect
+    plugin_service_mock.current_host_info = mocker.MagicMock(side_effect=[writer_host, writer_host, reader_host1])
+    plugin_service_mock.get_host_info_by_strategy.return_value = reader_host1
+
+    provider = SqlAlchemyPooledConnectionProvider(
+        lambda _, __: {"pool_size": 3},
+        None,
+        180000000000,  # 3 minutes
+        600000000000)  # 10 minutes
+
+    conn_provider_manager_mock = mocker.MagicMock()
+    conn_provider_manager_mock.get_connection_provider.return_value = provider
+    plugin_service_mock.get_connection_provider_manager.return_value = conn_provider_manager_mock
+
+    plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
+
+    spy = mocker.spy(plugin, "_close_connection_if_idle")
+
+    plugin._switch_connection_if_required(True)
+    plugin._switch_connection_if_required(False)
+
+    spy.assert_called_once_with(reader_conn_mock)
+    assert spy.call_count == 1
+
+
+def test_close_pooled_writer_connection_after_set_read_only(mocker, plugin_service_mock):
+    def connect_side_effect(host, props):
+        if host in [reader_host1, reader_host2, reader_host3]:
+            return reader_conn_mock
+        elif host == writer_host:
+            return writer_conn_mock
+        return None
+
+    plugin_service_mock.connect.side_effect = connect_side_effect
+    plugin_service_mock.current_host_info = (
+        mocker.MagicMock(side_effect=[writer_host, writer_host, reader_host1, reader_host1, writer_host]))
+    plugin_service_mock.get_host_info_by_strategy.return_value = reader_host1
+
+    provider = SqlAlchemyPooledConnectionProvider(
+        lambda _, __: {"pool_size": 3},
+        None,
+        180000000000,  # 3 minutes
+        600000000000)  # 10 minutes
+
+    conn_provider_manager_mock = mocker.MagicMock()
+    conn_provider_manager_mock.get_connection_provider.return_value = provider
+    plugin_service_mock.get_connection_provider_manager.return_value = conn_provider_manager_mock
+
+    plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
+
+    spy = mocker.spy(plugin, "_close_connection_if_idle")
+
+    plugin._switch_connection_if_required(True)
+    plugin._switch_connection_if_required(False)
+    plugin._switch_connection_if_required(True)
+
+    spy.assert_called_with(writer_conn_mock)
+    assert spy.call_count == 2
