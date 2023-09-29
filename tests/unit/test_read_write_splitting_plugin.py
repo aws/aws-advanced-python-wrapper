@@ -349,7 +349,7 @@ def test_connect_error_updating_host(mocker, plugin_service_mock, connect_func_m
 
 def test_close_pooled_reader_connection_after_set_read_only(mocker, plugin_service_mock):
     def connect_side_effect(host, props):
-        if host == reader_host1 or host == reader_host2 or host == reader_host3:
+        if host in [reader_host1, reader_host2, reader_host3]:
             return reader_conn_mock
         elif host == writer_host:
             return writer_conn_mock
@@ -382,7 +382,7 @@ def test_close_pooled_reader_connection_after_set_read_only(mocker, plugin_servi
 
 def test_close_pooled_writer_connection_after_set_read_only(mocker, plugin_service_mock):
     def connect_side_effect(host, props):
-        if host == reader_host1 or host == reader_host2 or host == reader_host3:
+        if host in [reader_host1, reader_host2, reader_host3]:
             return reader_conn_mock
         elif host == writer_host:
             return writer_conn_mock
