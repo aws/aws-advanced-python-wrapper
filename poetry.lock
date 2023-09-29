@@ -903,13 +903,13 @@ testing = ["argcomplete", "attrs (>=19.2.0)", "hypothesis (>=3.56)", "mock", "no
 
 [[package]]
 name = "pytest-html"
-version = "4.0.1"
+version = "4.0.2"
 description = "pytest plugin for generating HTML reports"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "pytest_html-4.0.1-py3-none-any.whl", hash = "sha256:81383115dec5d182bf19c5dbae0bc2bebf7ad5c371fda477ebe9b7b054d2b63b"},
-    {file = "pytest_html-4.0.1.tar.gz", hash = "sha256:2d5e2863196a940607a477d747793c75f18d76fa72276c5d4db423a39665f55c"},
+    {file = "pytest_html-4.0.2-py3-none-any.whl", hash = "sha256:907c3e68462df129d3ee96dee58bd63f70216b06421836b22fd3fd57ef314acb"},
+    {file = "pytest_html-4.0.2.tar.gz", hash = "sha256:88682b9e8e51392472546a70a2139b27d6bc1834a4afd3e41da33c9d9f91e4a4"},
 ]
 
 [package.dependencies]
@@ -1199,4 +1199,4 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "34b8dcc725304beb2bd7a5894d1f033368f2577cfd305ab7b0759df723e304fc"
+content-hash = "d657961510e0555dc75e4c692eaf9148aba05845b5d6822ef763fccfabf8ec83"
