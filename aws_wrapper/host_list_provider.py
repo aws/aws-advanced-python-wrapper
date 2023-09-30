@@ -36,12 +36,12 @@ from aws_wrapper.host_availability import (HostAvailability,
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.utils.cache_map import CacheMap
+from aws_wrapper.utils.keep_current_transaction_status import \
+    keep_current_transaction_status
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.restore_transaction_status import \
-    restore_transaction_status
 from aws_wrapper.utils.timeout import timeout
 from aws_wrapper.utils.utils import LogUtils
 
@@ -295,7 +295,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
         try:
             with closing(conn.cursor()) as cursor:
-                execute_with_restore = restore_transaction_status(target_driver_dialect, conn)(cursor.execute)
+                execute_with_restore = keep_current_transaction_status(target_driver_dialect, conn)(cursor.execute)
                 execute_with_restore(self._dialect.topology_query)
                 result = self._process_query_results(cursor)
                 return result
@@ -385,7 +385,11 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             with closing(connection.cursor()) as cursor:
                 cursor_execute_func_with_timeout = timeout(
                     AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
-                cursor_execute_func_with_timeout(self._dialect.is_reader_query)
+
+                execute_with_keep_current_transaction_status = keep_current_transaction_status(target_driver_dialect, connection)(
+                    cursor_execute_func_with_timeout(self._dialect.is_reader_query))
+                execute_with_keep_current_transaction_status(self._dialect.topology_query)
+
                 result = cursor.fetchone()
                 if not initial_transaction_status and target_driver_dialect.is_in_transaction(connection):
                     # this condition is True when autocommit is False and the query started a new transaction.
@@ -401,10 +405,16 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         if connection is None:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
         try:
+            target_driver_dialect = self._host_list_provider_service.target_driver_dialect
+
             with closing(connection.cursor()) as cursor:
                 cursor_execute_func_with_timeout = timeout(
                     AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
-                cursor_execute_func_with_timeout(self._dialect.host_id_query)
+
+                execute_with_restore = keep_current_transaction_status(target_driver_dialect, connection)(
+                    cursor_execute_func_with_timeout(self._dialect.host_id_query))
+                execute_with_restore(self._dialect.topology_query)
+
                 result = cursor.fetchone()
                 if result:
                     host_id = result[0]
