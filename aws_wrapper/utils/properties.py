@@ -181,7 +181,7 @@ class WrapperProperties:
     KEEP_SESSION_STATE_ON_FAILOVER = WrapperProperty(
         "keep_session_state_on_failover",
         "Allow connections to retain a partial previous session state after failover occurs.",
-        "False")
+        False)
 
     # Host Availability Strategy
     DEFAULT_HOST_AVAILABILITY_STRATEGY = WrapperProperty(

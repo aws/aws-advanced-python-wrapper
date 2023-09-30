@@ -79,8 +79,8 @@ class FailoverPlugin(Plugin):
         self._rds_utils = RdsUtils()
         self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._properties.get("host"))
         self._stale_dns_helper: StaleDnsHelper = StaleDnsHelper(plugin_service)
-        self._saved_read_only_status: Optional[bool] = False
-        self._saved_auto_commit_status: Optional[bool] = False
+        self._saved_read_only_status: bool = False
+        self._saved_auto_commit_status: bool = False
 
         FailoverPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
@@ -134,7 +134,7 @@ class FailoverPlugin(Plugin):
         if method_name == "Connection.set_read_only" and args is not None and len(args) > 0:
             self._saved_read_only_status = bool(args[0])
 
-        if method_name == "Connection.set_auto_commit" and args is not None and len(args) > 0:
+        if method_name == "Connection.autocommit_setter" and args is not None and len(args) > 0:
             self._saved_auto_commit_status = bool(args[0])
 
         try:
@@ -202,10 +202,10 @@ class FailoverPlugin(Plugin):
         conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
                                                                           connect_func)
         if self._keep_session_state_on_failover:
-            self._saved_read_only_status = None if self._saved_read_only_status == self._plugin_service.target_driver_dialect.is_read_only(conn) \
+            self._saved_read_only_status = False if self._saved_read_only_status == self._plugin_service.target_driver_dialect.is_read_only(conn) \
                 else self._saved_read_only_status
-            self._saved_auto_commit_status = None if self._saved_read_only_status == self._plugin_service.target_driver_dialect.get_autocommit(conn) \
-                else self._saved_auto_commit_status
+            self._saved_auto_commit_status = False if self._saved_read_only_status == \
+                self._plugin_service.target_driver_dialect.get_autocommit(conn) else self._saved_auto_commit_status
 
         if is_initial_connection:
             self._plugin_service.refresh_host_list(conn)
