@@ -156,7 +156,7 @@ class WrapperProperties:
     ENABLE_FAILOVER = WrapperProperty(
         "enable_failover",
         "Enable/disable cluster-aware failover logic",
-        "True")
+        True)
     FAILOVER_MODE = WrapperProperty(
         "failover_mode",
         "Decide which node role (writer, reader, or either) to connect to during failover.")
