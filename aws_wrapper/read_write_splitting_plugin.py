@@ -37,6 +37,7 @@ from aws_wrapper.utils.notifications import (ConnectionEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import WrapperProperties
 
+
 logger = getLogger(__name__)
 
 
