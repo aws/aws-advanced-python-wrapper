@@ -264,25 +264,22 @@ class TestAuroraFailover:
                                      aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         initial_writer_instance_info = test_environment.get_writer()
-        nominated_writer_instance_info = test_environment.get_instances()[1]
-        nominated_writer_id = nominated_writer_instance_info.get_instance_id()
 
         props["plugins"] = "failover,host_monitoring"
         with AwsWrapperConnection.connect(target_driver_connect, self._init_default_props(test_environment), **props) as conn:
             # Enable autocommit, otherwise each select statement will start a valid transaction.
             conn.autocommit = True
 
-            aurora_utility.failover_cluster_and_wait_until_writer_changed(nominated_writer_id)
-            aurora_utility.assert_first_query_throws(conn, FailoverSuccessError)
+            ProxyHelper.disable_connectivity(initial_writer_instance_info.get_instance_id())
+
+            aurora_utility.assert_first_query_throws(conn, FailoverSuccessError, None)
 
             current_connection_id = aurora_utility.query_instance_id(conn)
-
             instance_ids = aurora_utility.get_aurora_instance_ids()
 
             assert len(instance_ids) > 0
 
             next_writer_id = instance_ids[0]
-
             assert initial_writer_instance_info.get_instance_id() != current_connection_id
             assert next_writer_id == current_connection_id
 
