@@ -241,7 +241,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
                         if not self.is_same(writer_candidate, initial_writer_host):
                             # new writer available
-                            logger.debug(LogUtils.log_topology(self._current_topology, "[TaskB] "))
+                            logger.debug("LogUtils.Topology", LogUtils.log_topology(self._current_topology, "[TaskB]"))
 
                             if self.connect_to_writer(writer_candidate):
                                 return True

@@ -367,7 +367,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._initialize()
         connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, False)
-        logger.debug(LogUtils.log_topology(topology.hosts))
+        logger.debug("LogUtils.Topology", LogUtils.log_topology(topology.hosts))
         self._hosts = topology.hosts
         return tuple(self._hosts)
 
@@ -375,7 +375,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         self._initialize()
         connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, True)
-        logger.debug(LogUtils.log_topology(topology.hosts))
+        logger.debug("LogUtils.Topology", LogUtils.log_topology(topology.hosts))
         self._hosts = topology.hosts
         return tuple(self._hosts)
 

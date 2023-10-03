@@ -74,7 +74,7 @@ class StaleDnsHelper:
         else:
             self._plugin_service.refresh_host_list(conn)
 
-        logger.debug(LogUtils.log_topology(self._plugin_service.hosts))
+        logger.debug("LogUtils.Topology", LogUtils.log_topology(self._plugin_service.hosts))
 
         if self._writer_host_info is None:
             writer_candidate: Optional[HostInfo] = self._get_writer()
