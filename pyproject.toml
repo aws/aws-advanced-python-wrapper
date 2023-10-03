@@ -24,7 +24,7 @@ mysql-connector-python = "^8.1.0"
 
 [tool.poetry.group.test.dependencies]
 boto3 = "^1.27.1"
-coverage = "^7.3.0"
+coverage = "^7.3.2"
 debugpy = "^1.8.0"
 pydevd-pycharm = "^233.6745.319"
 pytest = "^7.4.2"
