@@ -141,8 +141,8 @@ class FailoverPlugin(Plugin):
             self._update_topology(False)
             return execute_func()
         except Exception as ex:
-            msg = Messages.get_formatted("FailoverPlugin.DetectedException", str(ex))
-            logger.debug(msg)
+            msg = "FailoverPlugin.DetectedException", str(ex))
+            logger.debug(msg, str(ex))
             if self._last_exception != ex and self._should_exception_trigger_connection_switch(ex):
                 self._invalidate_current_connection()
                 if self._plugin_service.current_host_info is not None:
@@ -151,7 +151,7 @@ class FailoverPlugin(Plugin):
 
                 self._pick_new_connection()
                 self._last_exception = ex
-            raise AwsWrapperError(msg) from ex
+            raise AwsWrapperError(Messages.get_formatted("FailoverPlugin.DetectedException", str(ex))) from ex
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         if not self._enable_failover_setting:
@@ -241,13 +241,13 @@ class FailoverPlugin(Plugin):
         if self._is_in_transaction or self._plugin_service.is_in_transaction:
             self._plugin_service.update_in_transaction(False)
 
-            error_msg = Messages.get("FailoverPlugin.TransactionResolutionUnknownError")
+            error_msg = "FailoverPlugin.TransactionResolutionUnknownError"
             logger.warning(error_msg)
-            raise TransactionResolutionUnknownError(error_msg)
+            raise TransactionResolutionUnknownError(Messages.get(error_msg))
         else:
-            error_msg = Messages.get("FailoverPlugin.ConnectionChangedError")
+            error_msg = "FailoverPlugin.ConnectionChangedError"
             logger.error(error_msg)
-            raise FailoverSuccessError(error_msg)
+            raise FailoverSuccessError(Messages.get(error_msg))
 
     def _failover_reader(self, failed_host: Optional[HostInfo]):
         logger.debug("FailoverPlugin.StartReaderFailover")

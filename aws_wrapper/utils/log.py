@@ -25,9 +25,9 @@ class Logger:
 
     def debug(self, msg, *args, **kwargs):
         if args is not None and len(args) > 0:
-            self.logger.debug(Messages.get_formatted("TESTING_ABCD " + msg, *args, **kwargs))
+            self.logger.debug(Messages.get_formatted(msg, *args, **kwargs))
         else:
-            self.logger.debug(Messages.get("TESTING_NO_ARGS_ABCD " + msg, *args, **kwargs))
+            self.logger.debug(Messages.get(msg, *args, **kwargs))
 
     def error(self, msg, *args, **kwargs):
         if args is not None and len(args) > 0:
