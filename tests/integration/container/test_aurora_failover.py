@@ -31,8 +31,7 @@ if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
     from .utils.test_database_info import TestDatabaseInfo
 
-from logging import getLogger
-
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.wrapper import AwsWrapperConnection
 from .utils.aurora_test_utility import AuroraTestUtility
 from .utils.driver_helper import DriverHelper
@@ -45,7 +44,7 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
 class TestAuroraFailover:
     IDLE_CONNECTIONS_NUM: int = 5
-    logger = getLogger(__name__)
+    logger = Logger(__name__)
 
     @pytest.fixture(scope='class')
     def aurora_utility(self):

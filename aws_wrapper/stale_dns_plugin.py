@@ -15,8 +15,9 @@
 from __future__ import annotations
 
 import socket
-from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
+
+from aws_wrapper.utils.log import Logger
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
@@ -33,7 +34,7 @@ from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.utils import LogUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class StaleDnsHelper:
@@ -60,7 +61,7 @@ class StaleDnsHelper:
 
         host_inet_address: Optional[str] = cluster_inet_address
 
-        logger.debug(Messages.get_formatted("StaleDnsHelper.ClusterEndpointDns", host_info.host, host_inet_address))
+        logger.debug("StaleDnsHelper.ClusterEndpointDns", host_info.host, host_inet_address)
 
         if cluster_inet_address is None:
             return conn
@@ -82,7 +83,7 @@ class StaleDnsHelper:
 
             self._writer_host_info = writer_candidate
 
-        logger.debug(Messages.get_formatted("StaleDnsHelper.WriterHostSpec", self._writer_host_info))
+        logger.debug("StaleDnsHelper.WriterHostSpec", self._writer_host_info)
 
         if self._writer_host_info is None:
             return conn
@@ -93,13 +94,13 @@ class StaleDnsHelper:
             except socket.gaierror:
                 pass
 
-        logger.debug(Messages.get_formatted("StaleDnsHelper.WriterInetAddress", self._writer_host_address))
+        logger.debug("StaleDnsHelper.WriterInetAddress", self._writer_host_address)
 
         if self._writer_host_address is None:
             return conn
 
         if self._writer_host_address != cluster_inet_address:
-            logger.debug(Messages.get_formatted("StaleDnsHelper.StaleDnsDetected", self._writer_host_info))
+            logger.debug("StaleDnsHelper.StaleDnsDetected", self._writer_host_info)
 
             writer_conn: Connection = self._plugin_service.connect(self._writer_host_info, props)
             if is_initial_connection:
@@ -120,7 +121,7 @@ class StaleDnsHelper:
 
         writer_changes = changes.get(self._writer_host_info.url, None)
         if writer_changes is not None and HostEvent.CONVERTED_TO_READER in writer_changes:
-            logger.debug(Messages.get_formatted("StaleDnsHelper.Reset"))
+            logger.debug("StaleDnsHelper.Reset")
             self._writer_host_info = None
             self._writer_host_address = None
 

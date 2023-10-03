@@ -17,9 +17,10 @@ from __future__ import annotations
 from abc import abstractmethod
 from contextlib import closing
 from enum import Enum, auto
-from logging import getLogger
 from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple,
                     runtime_checkable)
+
+from aws_wrapper.utils.log import Logger
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
@@ -37,7 +38,7 @@ from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class DialectCode(Enum):
@@ -298,8 +299,8 @@ class RdsPgDialect(PgDialect):
                 for row in aws_cursor:
                     rds_tools = bool(row[0])
                     aurora_utils = bool(row[1])
-                    logger.debug(Messages.get_formatted(
-                        "RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils)))
+                    logger.debug(
+                        "RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils))
                     if rds_tools and not aurora_utils:
                         return True
 
@@ -373,13 +374,13 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
                 aws_cursor.execute(self._extensions_sql)
                 row = aws_cursor.fetchone()
                 if row and bool(row[0]):
-                    logger.debug(Messages.get("AuroraPgDialect.HasExtensionsTrue"))
+                    logger.debug("AuroraPgDialect.HasExtensionsTrue")
                     has_extensions = True
 
             with closing(conn.cursor()) as aws_cursor:
                 aws_cursor.execute(self._has_topology_sql)
                 if aws_cursor.fetchone() is not None:
-                    logger.debug(Messages.get("AuroraPgDialect.HasTopologyTrue"))
+                    logger.debug("AuroraPgDialect.HasTopologyTrue")
                     has_topology = True
 
             return has_extensions and has_topology
@@ -604,4 +605,4 @@ class DialectManager(DialectProvider):
 
     def _log_current_dialect(self):
         dialect_class = "<null>" if self._dialect is None else type(self._dialect).__name__
-        logger.debug(Messages.get_formatted("DialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update))
+        logger.debug("DialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update)

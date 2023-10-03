@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
 
 from json import loads
-from logging import getLogger
 from re import search
 from types import SimpleNamespace
 from typing import Callable, Dict, Optional, Set, Tuple
@@ -34,10 +33,11 @@ from botocore.exceptions import ClientError
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.plugin import Plugin, PluginFactory
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class AwsSecretsManagerPlugin(Plugin):
@@ -122,7 +122,7 @@ class AwsSecretsManagerPlugin(Plugin):
                     AwsSecretsManagerPlugin._secrets_cache[self._secret_key] = self._secret
                     fetched = True
             except (ClientError, AttributeError) as e:
-                logger.debug(Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e))
+                logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)
                 raise AwsWrapperError(
                     Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)) from e
 
@@ -161,9 +161,9 @@ class AwsSecretsManagerPlugin(Plugin):
 
         session = self._session if self._session else boto3.Session()
         if region not in session.get_available_regions("rds"):
-            exception_message = Messages.get_formatted("AwsSdk.UnsupportedRegion", region)
-            logger.debug(exception_message)
-            raise AwsWrapperError(exception_message)
+            exception_message = "AwsSdk.UnsupportedRegion"
+            logger.debug(exception_message, region)
+            raise AwsWrapperError(exception_message, region)
 
         return region
 

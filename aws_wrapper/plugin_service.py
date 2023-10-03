@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from aws_wrapper.target_driver_dialect import TargetDriverDialectManager
 
 from abc import abstractmethod
-from logging import getLogger
 from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
                     Set, Tuple, Type)
 
@@ -54,13 +53,14 @@ from aws_wrapper.read_write_splitting_plugin import \
     ReadWriteSplittingPluginFactory
 from aws_wrapper.stale_dns_plugin import StaleDnsPluginFactory
 from aws_wrapper.utils.cache_map import CacheMap
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class PluginServiceManagerContainer:
@@ -369,7 +369,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             return
 
         if len(host_info.aliases) > 0:
-            logger.debug(Messages.get_formatted("PluginServiceImpl.NonEmptyAliases", host_info.aliases))
+            logger.debug("PluginServiceImpl.NonEmptyAliases", host_info.aliases)
             return
 
         host_info.add_alias(host_info.as_alias())
@@ -383,7 +383,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         except Exception as e:
             # log and ignore
-            logger.debug(Messages.get_formatted("PluginServiceImpl.FailedToRetrieveHostPort", e))
+            logger.debug("PluginServiceImpl.FailedToRetrieveHostPort", e)
 
         host = self.identify_connection(connection)
         if host:

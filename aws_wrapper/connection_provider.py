@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.target_driver_dialect import TargetDriverDialect
 
-from logging import getLogger
 from threading import Lock
 
 from sqlalchemy import QueuePool, pool
@@ -30,6 +29,7 @@ from sqlalchemy import QueuePool, pool
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostselector import HostSelector, RandomHostSelector
 from aws_wrapper.plugin import CanReleaseResources
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
@@ -37,7 +37,7 @@ from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.sliding_expiration_cache import SlidingExpirationCache
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class ConnectionProvider(Protocol):
@@ -84,8 +84,7 @@ class DriverConnectionProvider(ConnectionProvider):
             host_info: HostInfo,
             properties: Properties) -> Connection:
         prepared_properties = target_driver_dialect.prepare_connect_info(host_info, properties)
-        logger.debug(Messages.get_formatted("DriverConnectionProvider.ConnectingToHost", host_info.host,
-                                            PropertiesUtils.log_properties(prepared_properties)))
+        logger.debug("DriverConnectionProvider.ConnectingToHost", host_info.host, PropertiesUtils.log_properties(prepared_properties))
         return target_func(**prepared_properties)
 
 

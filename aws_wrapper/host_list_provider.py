@@ -20,10 +20,11 @@ from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
-from logging import getLogger
 from threading import RLock
 from typing import (TYPE_CHECKING, List, Optional, Protocol, Tuple,
                     runtime_checkable)
+
+from aws_wrapper.utils.log import Logger
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
@@ -43,7 +44,7 @@ from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.timeout import timeout
 from aws_wrapper.utils.utils import LogUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class HostListProvider(Protocol):
@@ -227,7 +228,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 continue
             for host in hosts:
                 if host.url == url:
-                    logger.debug(Messages.get_formatted("AuroraHostListProvider.SuggestedClusterId", key, url))
+                    logger.debug("AuroraHostListProvider.SuggestedClusterId", key, url)
                     return AuroraHostListProvider.ClusterIdSuggestion(key, is_primary_cluster_id)
         return None
 
@@ -318,7 +319,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 hosts.append(host)
 
         if len(writers) == 0:
-            logger.error(Messages.get("AuroraHostListProvider.InvalidTopology"))
+            logger.error("AuroraHostListProvider.InvalidTopology")
             hosts.clear()
         elif len(writers) == 1:
             hosts.append(writers[0])

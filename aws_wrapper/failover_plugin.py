@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
-from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from psycopg import OperationalError
@@ -38,6 +37,7 @@ from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
                                                  ReaderFailoverHandlerImpl)
 from aws_wrapper.stale_dns_plugin import StaleDnsHelper
 from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
@@ -46,7 +46,7 @@ from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.writer_failover_handler import (WriterFailoverHandler,
                                                  WriterFailoverHandlerImpl)
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class FailoverPlugin(Plugin):
@@ -116,7 +116,7 @@ class FailoverPlugin(Plugin):
                 failover_mode = FailoverMode.STRICT_WRITER
 
         self._failover_mode = failover_mode
-        logger.debug(Messages.get_formatted("FailoverPlugin.ParameterValue", "FAILOVER_MODE", self._failover_mode))
+        logger.debug("FailoverPlugin.ParameterValue", "FAILOVER_MODE", self._failover_mode)
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -171,7 +171,7 @@ class FailoverPlugin(Plugin):
                 if self._is_node_still_valid(alias + '/', changes):
                     return
 
-            logger.debug(Messages.get_formatted("FailoverPlugin.InvalidNode", current_host))
+            logger.debug("FailoverPlugin.InvalidNode", current_host)
 
     def connect(
             self,
@@ -250,7 +250,7 @@ class FailoverPlugin(Plugin):
             raise FailoverSuccessError(error_msg)
 
     def _failover_reader(self, failed_host: Optional[HostInfo]):
-        logger.debug(Messages.get("FailoverPlugin.StartReaderFailover"))
+        logger.debug("FailoverPlugin.StartReaderFailover")
 
         old_aliases = None
         if self._plugin_service.current_host_info is not None:
@@ -276,10 +276,10 @@ class FailoverPlugin(Plugin):
 
         self._update_topology(True)
 
-        logger.debug(Messages.get_formatted("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info))
+        logger.debug("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
 
     def _failover_writer(self):
-        logger.debug(Messages.get("FailoverPlugin.StartWriterFailover"))
+        logger.debug("FailoverPlugin.StartWriterFailover")
 
         result: WriterFailoverResult = self._writer_failover_handler.failover(self._plugin_service.hosts)
 
@@ -294,7 +294,7 @@ class FailoverPlugin(Plugin):
 
         self._plugin_service.set_current_connection(result.new_connection, writer_host)
 
-        logger.debug(Messages.get_formatted("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info))
+        logger.debug("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
 
         self._plugin_service.refresh_host_list()
 
@@ -340,7 +340,7 @@ class FailoverPlugin(Plugin):
 
     def _pick_new_connection(self):
         if self._is_closed and self._closed_explicitly:
-            logger.debug(Messages.get("FailoverPlugin.NoOperationsAfterConnectionClosed"))
+            logger.debug("FailoverPlugin.NoOperationsAfterConnectionClosed")
             return
 
         if self._plugin_service.current_connection is None and not self._should_attempt_reader_connection():
@@ -365,11 +365,10 @@ class FailoverPlugin(Plugin):
             self._plugin_service.set_current_connection(connection_for_host, host)
             self._plugin_service.update_in_transaction(False)
 
-            logger.debug(Messages.get_formatted("FailoverPlugin.EstablishedConnection", host))
+            logger.debug("FailoverPlugin.EstablishedConnection", host)
         except Exception as ex:
             if self._plugin_service is not None:
-                logger.debug(Messages.get_formatted("FailoverPlugin.ConnectionToHostFailed", 'writer' if host.role == HostRole.WRITER else 'reader',
-                                                    host.url))
+                logger.debug("FailoverPlugin.ConnectionToHostFailed", 'writer' if host.role == HostRole.WRITER else 'reader', host.url)
             raise ex
 
     def _should_attempt_reader_connection(self) -> bool:
@@ -398,7 +397,7 @@ class FailoverPlugin(Plugin):
 
     def _should_exception_trigger_connection_switch(self, ex: Exception) -> bool:
         if not self._is_failover_enabled():
-            logger.debug(Messages.get_formatted("FailoverPlugin.FailoverDisabled"))
+            logger.debug("FailoverPlugin.FailoverDisabled")
             return False
 
         if isinstance(ex, OperationalError):
