@@ -294,3 +294,44 @@ class TestAuroraFailover:
             instance.get_host(), instance.get_port(), db_name, user, password)
 
         return connect_params
+
+    def test_fail_from_writer_where_keep_session_state_on_failover_is_true(self, test_driver: TestDriver, test_environment: TestEnvironment, props,
+                                                                           aurora_utility):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
+
+        props["keep_session_state_on_failover"] = "true"
+
+        with AwsWrapperConnection.connect(target_driver_connect, self._init_default_props(test_environment), **props) as conn:
+            conn.autocommit = False
+
+            with conn.cursor() as cursor_1:
+                cursor_1.execute("DROP TABLE IF EXISTS test3_3")
+                cursor_1.execute("CREATE TABLE test3_3 (id int not null primary key, test3_3_field varchar(255) not null)")
+                conn.commit()
+
+            with conn.cursor() as cursor_2:
+                cursor_2.execute("INSERT INTO test3_3 VALUES (1, 'test field string 1')")
+
+                aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+                with pytest.raises(TransactionResolutionUnknownError):
+                    cursor_2.execute("INSERT INTO test3_3 VALUES (2, 'test field string 2')")
+
+            # Attempt to query the instance id.
+            current_connection_id = aurora_utility.query_instance_id(conn)
+            # Assert that we are connected to the new writer after failover happens.
+            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            next_cluster_writer_id = aurora_utility.get_cluster_writer_instance_id()
+            assert current_connection_id == next_cluster_writer_id
+            assert current_connection_id != initial_writer_id
+
+            with conn.cursor() as cursor_3:
+                cursor_3.execute("SELECT count(*) from test3_3")
+                result = cursor_3.fetchone()
+                assert 0 == int(result[0])
+                cursor_3.execute("DROP TABLE IF EXISTS test3_3")
+                conn.commit()
+
+                # Assert autocommit is still false after failover.
+                assert conn.autocommit is False

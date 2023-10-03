@@ -44,7 +44,7 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     _network_bound_methods: Set[str] = {
         "Connection.commit",
         "Connection.autocommit",
-        "Connection.set_autocommit",
+        "Connection.autocommit_setter",
         "Connection.is_read_only",
         "Connection.set_read_only",
         "Connection.rollback",

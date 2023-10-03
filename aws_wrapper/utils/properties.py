@@ -156,7 +156,7 @@ class WrapperProperties:
     ENABLE_FAILOVER = WrapperProperty(
         "enable_failover",
         "Enable/disable cluster-aware failover logic",
-        "True")
+        True)
     FAILOVER_MODE = WrapperProperty(
         "failover_mode",
         "Decide which node role (writer, reader, or either) to connect to during failover.")
@@ -178,6 +178,10 @@ class WrapperProperties:
         "failover_reader_connect_timeout_sec",
         "Reader connection attempt timeout in seconds during a reader failover process.",
         300)  # 5 minutes
+    KEEP_SESSION_STATE_ON_FAILOVER = WrapperProperty(
+        "keep_session_state_on_failover",
+        "Allow connections to retain a partial previous session state after failover occurs.",
+        False)
 
     # Host Availability Strategy
     DEFAULT_HOST_AVAILABILITY_STRATEGY = WrapperProperty(
