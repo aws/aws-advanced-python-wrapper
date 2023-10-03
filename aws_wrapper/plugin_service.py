@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from contextlib import closing
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from threading import Event
 
 from abc import abstractmethod
+from concurrent.futures import Executor, ThreadPoolExecutor
 from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
                     Set, Tuple)
 
@@ -45,11 +46,14 @@ from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.utils.cache_map import CacheMap
+from aws_wrapper.utils.decorators import \
+    preserve_transaction_status_with_timeout
 from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
-from aws_wrapper.utils.properties import Properties, PropertiesUtils
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
 
 logger = Logger(__name__)
 
@@ -174,6 +178,8 @@ class PluginService(ExceptionHandler, Protocol):
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
+
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
 
     def __init__(
             self,
@@ -365,12 +371,12 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         host_info.add_alias(host_info.as_alias())
 
+        driver_dialect = self._driver_dialect
         try:
-            with closing(connection.cursor()) as cursor:
-                if not isinstance(self.dialect, UnknownDatabaseDialect):
-                    cursor.execute(self.dialect.host_alias_query)
-                    for row in cursor.fetchall():
-                        host_info.add_alias(row[0])
+            timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(PluginServiceImpl._executor, timeout_sec,
+                                                                                        driver_dialect, connection)(self._fill_aliases)
+            cursor_execute_func_with_timeout(connection, host_info)
 
         except Exception as e:
             # log and ignore
@@ -379,6 +385,16 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         host = self.identify_connection(connection)
         if host:
             host_info.add_alias(*host.as_aliases())
+
+    def _fill_aliases(self, conn: Connection, host_info: HostInfo) -> bool:
+        with closing(conn.cursor()) as cursor:
+            if not isinstance(self.dialect, UnknownDialect):
+                cursor.execute(self.dialect.host_alias_query)
+                # If variable with such a name is presented then it means it's an Aurora cluster
+                for row in cursor.fetchall():
+                    host_info.add_alias(row[0])
+                return True
+        return False
 
     def is_static_host_list_provider(self) -> bool:
         return self._host_list_provider is StaticHostListProvider

@@ -191,7 +191,7 @@ def test_rds_pg_is_dialect(mock_super, mock_cursor, mock_conn, rds_pg_dialect):
     assert not rds_pg_dialect.is_dialect(mock_conn)
 
 
-def test_get_dialect_custom_dialect(mock_custom_dialect, mock_driver_dialect):
+def test_get_dialect_custom_dialect(mock_custom_dialect):
     manager = DatabaseDialectManager()
     manager._custom_dialect = mock_custom_dialect
 
