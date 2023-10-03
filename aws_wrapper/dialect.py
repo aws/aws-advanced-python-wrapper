@@ -165,7 +165,6 @@ class MysqlDialect(Dialect):
     def is_dialect(self, conn: Connection) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
-
                 aws_cursor.execute(self.server_version_query)
                 for record in aws_cursor:
                     for column_value in record:
