@@ -33,7 +33,6 @@ import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.InternetProtocol;
-import org.testcontainers.containers.MariaDBContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -50,7 +49,6 @@ public class ContainerHelper {
 
   private static final String MYSQL_CONTAINER_IMAGE_NAME = "mysql:latest";
   private static final String POSTGRES_CONTAINER_IMAGE_NAME = "postgres:latest";
-  private static final String MARIADB_CONTAINER_IMAGE_NAME = "mariadb:latest";
   private static final DockerImageName TOXIPROXY_IMAGE =
       DockerImageName.parse("shopify/toxiproxy:2.1.4");
 
@@ -307,17 +305,6 @@ public class ContainerHelper {
         .withDatabaseName(testDbName)
         .withUsername(username)
         .withPassword(password);
-  }
-
-  public MariaDBContainer<?> createMariadbContainer(
-      Network network, String networkAlias, String testDbName, String username, String password) {
-
-    return new MariaDBContainer<>(MARIADB_CONTAINER_IMAGE_NAME)
-        .withNetwork(network)
-        .withNetworkAliases(networkAlias)
-        .withDatabaseName(testDbName)
-        .withPassword(password)
-        .withUsername(username);
   }
 
   public ToxiproxyContainer createAndStartProxyContainer(

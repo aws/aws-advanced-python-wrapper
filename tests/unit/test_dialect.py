@@ -18,10 +18,9 @@ import psycopg
 import pytest
 
 from aws_wrapper.dialect import (AuroraMysqlDialect, AuroraPgDialect,
-                                 DialectCode, DialectManager, MariaDbDialect,
-                                 MysqlDialect, PgDialect, RdsMysqlDialect,
-                                 RdsPgDialect, TargetDriverType,
-                                 UnknownDialect)
+                                 DialectCode, DialectManager, MysqlDialect,
+                                 PgDialect, RdsMysqlDialect, RdsPgDialect,
+                                 TargetDriverType, UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.utils.properties import Properties, WrapperProperties
@@ -78,11 +77,6 @@ def mysql_dialect():
 
 
 @pytest.fixture
-def mariadb_dialect():
-    return MariaDbDialect()
-
-
-@pytest.fixture
 def rds_mysql_dialect():
     return RdsMysqlDialect()
 
@@ -120,18 +114,6 @@ def test_mysql_is_dialect(mock_conn, mock_cursor, mock_session, mysql_dialect):
     mock_cursor.__iter__.return_value = records
 
     assert not mysql_dialect.is_dialect(mock_conn)
-
-
-def test_mariadb_is_dialect(mock_conn, mock_cursor, mock_session, mariadb_dialect):
-    records = [("some_value", "some_value"), ("mariadb", "some_value")]
-    mock_cursor.__iter__.return_value = records
-
-    assert mariadb_dialect.is_dialect(mock_conn)
-
-    records = [("some_value", "some_value"), ("some_value", "some_value")]
-    mock_cursor.__iter__.return_value = records
-
-    assert not mariadb_dialect.is_dialect(mock_conn)
 
 
 @patch('aws_wrapper.dialect.super')
@@ -297,17 +279,6 @@ def test_get_dialect_pg(mock_target_driver_dialect):
         assert manager._can_update is True
 
 
-def test_get_dialect_mariadb(mock_target_driver_dialect):
-    manager = DialectManager()
-    props = Properties({"host": "localhost"})
-
-    with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.MARIADB):
-        assert isinstance(manager.get_dialect(mock_target_driver_dialect, props), MariaDbDialect)
-        assert isinstance(manager._dialect, MariaDbDialect)
-        assert DialectCode.MARIADB == manager._dialect_code
-        assert manager._can_update is True
-
-
 def test_get_dialect_unknown_dialect(mock_target_driver_dialect):
     manager = DialectManager()
     props = Properties({"host": "localhost"})
@@ -345,12 +316,12 @@ def test_query_for_dialect_no_update_candidates(mock_dialect, mock_conn, mock_ta
     manager = DialectManager()
     mock_dialect.dialect_update_candidates = None
     manager._can_update = True
-    manager._dialect_code = DialectCode.MARIADB
+    manager._dialect_code = DialectCode.PG
     manager._dialect = mock_dialect
 
     assert mock_dialect == manager.query_for_dialect("url", HostInfo("host"), mock_conn, mock_target_driver_dialect)
-    assert DialectCode.MARIADB == manager._known_endpoint_dialects.get("url")
-    assert DialectCode.MARIADB == manager._known_endpoint_dialects.get("host")
+    assert DialectCode.PG == manager._known_endpoint_dialects.get("url")
+    assert DialectCode.PG == manager._known_endpoint_dialects.get("host")
 
 
 def test_query_for_dialect_pg(mock_conn, mock_cursor, mock_target_driver_dialect):

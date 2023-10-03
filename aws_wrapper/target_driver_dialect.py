@@ -27,8 +27,6 @@ if TYPE_CHECKING:
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.generic_target_driver_dialect import \
     GenericTargetDriverDialect
-from aws_wrapper.mariadb_target_driver_dialect import \
-    MariaDBTargetDriverDialect
 from aws_wrapper.mysql_target_driver_dialect import MySQLTargetDriverDialect
 from aws_wrapper.pg_target_driver_dialect import PgTargetDriverDialect
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
@@ -52,7 +50,6 @@ class TargetDriverDialectManager(TargetDriverDialectProvider):
     known_dialects_by_code: Dict[str, TargetDriverDialect] = {
         TargetDriverDialectCodes.PSYCOPG: PgTargetDriverDialect(),
         TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON: MySQLTargetDriverDialect(),
-        TargetDriverDialectCodes.MARIADB_CONNECTOR_PYTHON: MariaDBTargetDriverDialect(),
         TargetDriverDialectCodes.GENERIC: GenericTargetDriverDialect(),
     }
 

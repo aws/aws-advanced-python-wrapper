@@ -207,8 +207,6 @@ can also be useful.
             systemProperty("exclude-performance", "true")
             systemProperty("exclude-mysql-driver", "true")
             systemProperty("exclude-mysql-engine", "true")
-            systemProperty("exclude-mariadb-driver", "true")
-            systemProperty("exclude-mariadb-engine", "true")
             
             // Add this line to disable the failover tests
             systemProperty("exclude-failover", "true")
