@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 def keep_current_transaction_status(target_driver_dialect: TargetDriverDialect, conn: Connection):
     """
-    Restore transaction status decorator
+    Keep current transaction status decorator
     """
 
     def keep_current_transaction_status_decorator(func):
