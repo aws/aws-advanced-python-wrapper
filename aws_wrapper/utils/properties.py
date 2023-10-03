@@ -249,8 +249,8 @@ class PropertiesUtils:
         return host if port is None else f"{host}:{port}"
 
     @staticmethod
-    def log_properties(props: Properties, caption: str = ""):
+    def log_properties(props: Properties):
         if not props:
             return "<empty>"
 
-        return f"\n{caption} {props}"
+        return f"\n{props}"

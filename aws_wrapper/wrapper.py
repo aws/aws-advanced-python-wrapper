@@ -93,7 +93,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         target_func: Callable = target
 
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
-        logger.debug(PropertiesUtils.log_properties(props, "Connection Properties: "))
+        logger.debug("Wrapper.Properties", PropertiesUtils.log_properties(props))
 
         target_driver_dialect_manager: TargetDriverDialectManager = TargetDriverDialectManager()
         target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)
