@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from copy import deepcopy
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from random import shuffle
 from threading import Event
 from time import sleep
@@ -36,7 +36,7 @@ from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
 from aws_wrapper.utils.messages import Messages
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class ReaderFailoverHandler:

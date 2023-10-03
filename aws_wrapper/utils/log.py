@@ -23,11 +23,8 @@ class Logger:
     def __init__(self, name: str):
         self.logger = getLogger(name)
 
-    def set_level(self, level):
-        self.logger.setLevel(level)
-
     def debug(self, msg, *args, **kwargs):
-        self.logger.debug(Messages.get_formatted(msg, *args, **kwargs))
+        self.logger.debug(Messages.get_formatted("TESTING_ABCD " + msg, *args, **kwargs))
 
     def error(self, msg, *args, **kwargs):
         self.logger.error(Messages.get_formatted(msg, *args, **kwargs))

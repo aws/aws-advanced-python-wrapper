@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import copy
 from dataclasses import dataclass
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from queue import Queue
 from threading import Event, Lock, RLock
 from time import perf_counter_ns, sleep
@@ -42,7 +42,7 @@ from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.utils import QueueUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class HostMonitoringPluginFactory(PluginFactory):

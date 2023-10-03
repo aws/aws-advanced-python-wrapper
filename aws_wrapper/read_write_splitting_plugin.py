@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from io import UnsupportedOperation
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set
 
 if TYPE_CHECKING:
@@ -36,8 +36,9 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import WrapperProperties
+from aws_wrapper.utils.log import Logger
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class ReadWriteSplittingPlugin(Plugin):

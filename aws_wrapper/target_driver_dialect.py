@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Type
 
 from aws_wrapper.connection_provider import (
@@ -35,7 +35,7 @@ from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class TargetDriverDialectProvider(Protocol):

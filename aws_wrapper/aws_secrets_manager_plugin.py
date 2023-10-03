@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
 
 from json import loads
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from re import search
 from types import SimpleNamespace
 from typing import Callable, Dict, Optional, Set, Tuple
@@ -37,7 +37,7 @@ from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class AwsSecretsManagerPlugin(Plugin):

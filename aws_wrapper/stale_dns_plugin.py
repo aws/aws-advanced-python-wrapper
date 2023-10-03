@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import socket
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.utils import LogUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class StaleDnsHelper:

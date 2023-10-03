@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from threading import Event
 from time import sleep
 from typing import List, Optional
@@ -37,7 +37,7 @@ from aws_wrapper.host_availability import HostAvailability
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.utils.messages import Messages
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class WriterFailoverHandler:

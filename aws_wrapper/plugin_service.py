@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from aws_wrapper.target_driver_dialect import TargetDriverDialectManager
 
 from abc import abstractmethod
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
                     Set, Tuple, Type)
 
@@ -60,7 +60,7 @@ from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class PluginServiceManagerContainer:

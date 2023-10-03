@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
 from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
@@ -27,7 +27,7 @@ from aws_wrapper.target_driver_dialect import TargetDriverDialectManager
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class AwsWrapperConnection(Connection, CanReleaseResources):

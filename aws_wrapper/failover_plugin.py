@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from psycopg import OperationalError
@@ -46,7 +46,7 @@ from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.writer_failover_handler import (WriterFailoverHandler,
                                                  WriterFailoverHandlerImpl)
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class FailoverPlugin(Plugin):

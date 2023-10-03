@@ -35,15 +35,16 @@ from aws_wrapper.host_availability import (HostAvailability,
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.utils.cache_map import CacheMap
-from aws_wrapper.utils.log import Log
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.timeout import timeout
 from aws_wrapper.utils.utils import LogUtils
+from aws_wrapper.utils.log import Logger
 
-logger = Log(__name__)
+
+logger = Logger(__name__)
 
 
 class HostListProvider(Protocol):

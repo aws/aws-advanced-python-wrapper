@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 import socket
 import timeit
 from datetime import datetime, timedelta
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from time import perf_counter_ns, sleep
 from typing import Any, List, Optional
 
@@ -42,7 +42,7 @@ from .test_instance_info import TestInstanceInfo
 
 
 class AuroraTestUtility:
-    logger = getLogger(__name__)
+    logger = Logger(__name__)
 
     _client: Any
 

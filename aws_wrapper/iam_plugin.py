@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
 
 from datetime import datetime, timedelta
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from typing import Callable, Dict, Optional, Set
 
 import boto3
@@ -35,7 +35,7 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class TokenInfo:

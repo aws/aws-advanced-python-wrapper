@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from threading import Thread
 from typing import (TYPE_CHECKING, Any, Callable, Dict, FrozenSet, List,
                     Optional, Set)
@@ -36,11 +36,11 @@ from aws_wrapper.plugin import Plugin, PluginFactory
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.rdsutils import RdsUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class OpenedConnectionTracker:
-    logger = getLogger(__name__)
+    logger = Logger(__name__)
 
     _opened_connections: Dict[str, WeakSet] = {}
     _rds_utils = RdsUtils()

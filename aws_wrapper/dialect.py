@@ -17,7 +17,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from contextlib import closing
 from enum import Enum, auto
-from logging import getLogger
+from aws_wrapper.utils.log import Logger
 from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple,
                     runtime_checkable)
 
@@ -37,7 +37,7 @@ from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class DialectCode(Enum):
