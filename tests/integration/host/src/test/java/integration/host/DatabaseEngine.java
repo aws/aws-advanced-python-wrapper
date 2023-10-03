@@ -18,6 +18,5 @@ package integration.host;
 
 public enum DatabaseEngine {
   MYSQL,
-  PG,
-  MARIADB
+  PG
 }

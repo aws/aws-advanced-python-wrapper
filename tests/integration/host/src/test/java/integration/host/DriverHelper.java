@@ -34,8 +34,6 @@ public class DriverHelper {
         return "jdbc:mysql://";
       case PG:
         return "jdbc:postgresql://";
-      case MARIADB:
-        return "jdbc:mariadb://";
       default:
         throw new NotImplementedException(databaseEngine.toString());
     }
@@ -47,8 +45,6 @@ public class DriverHelper {
         return getDriverClassname(TestDriver.MYSQL);
       case PG:
         return getDriverClassname(TestDriver.PG);
-      case MARIADB:
-        return getDriverClassname(TestDriver.MARIADB);
       default:
         throw new NotImplementedException(databaseEngine.toString());
     }
@@ -60,8 +56,6 @@ public class DriverHelper {
         return "com.mysql.cj.jdbc.Driver";
       case PG:
         return "org.postgresql.Driver";
-      case MARIADB:
-        return "org.mariadb.jdbc.Driver";
       default:
         throw new NotImplementedException(testDriver.toString());
     }
@@ -82,9 +76,6 @@ public class DriverHelper {
         props.setProperty(
             PGProperty.CONNECT_TIMEOUT.getName(), String.valueOf(timeUnit.toSeconds(timeout)));
         break;
-      case MARIADB:
-        props.setProperty("connectTimeout", String.valueOf(timeUnit.toMillis(timeout)));
-        break;
       default:
         throw new NotImplementedException(testDriver.toString());
     }
@@ -104,9 +95,6 @@ public class DriverHelper {
       case PG:
         props.setProperty(
             PGProperty.SOCKET_TIMEOUT.getName(), String.valueOf(timeUnit.toSeconds(timeout)));
-        break;
-      case MARIADB:
-        props.setProperty("socketTimeout", String.valueOf(timeUnit.toMillis(timeout)));
         break;
       default:
         throw new NotImplementedException(testDriver.toString());

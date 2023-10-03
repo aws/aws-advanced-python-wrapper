@@ -25,7 +25,6 @@ dependencies {
     testImplementation("org.apache.commons:commons-dbcp2:2.9.0")
     testImplementation("org.postgresql:postgresql:42.5.0")
     testImplementation("mysql:mysql-connector-java:8.0.31")
-    testImplementation("org.mariadb.jdbc:mariadb-java-client:3.1.0")
     testImplementation("org.springframework.boot:spring-boot-starter-jdbc:2.7.4")
     testImplementation("org.mockito:mockito-inline:4.8.0")
     testImplementation("software.amazon.awssdk:rds:2.20.49")
@@ -34,7 +33,6 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers:1.17.4")
     testImplementation("org.testcontainers:mysql:1.18.0")
     testImplementation("org.testcontainers:postgresql:1.17.5")
-    testImplementation("org.testcontainers:mariadb:1.17.3")
     testImplementation("org.testcontainers:junit-jupiter:1.17.4")
     testImplementation("org.testcontainers:toxiproxy:1.17.5")
     testImplementation("org.apache.poi:poi-ooxml:5.2.2")
@@ -70,11 +68,9 @@ tasks.register<Test>("test-all-environments") {
     doFirst {
         systemProperty("exclude-performance", "true")
 
-        // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
+        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
 
         systemProperty("exclude-python-38", "true")
     }
@@ -87,11 +83,9 @@ tasks.register<Test>("test-docker") {
         systemProperty("exclude-aurora", "true")
         systemProperty("exclude-performance", "true")
 
-        // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
+        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
 
         systemProperty("exclude-python-38", "true")
     }
@@ -104,11 +98,9 @@ tasks.register<Test>("test-aurora") {
         systemProperty("exclude-docker", "true")
         systemProperty("exclude-performance", "true")
 
-        // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
+        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
 
         systemProperty("exclude-python-38", "true")
     }
@@ -122,8 +114,6 @@ tasks.register<Test>("test-pg-aurora") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
     }
 }
 
@@ -147,8 +137,6 @@ tasks.register<Test>("test-autoscaling") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
     }
 }
 
@@ -160,11 +148,9 @@ tasks.register<Test>("debug-all-environments") {
     doFirst {
         systemProperty("exclude-performance", "true")
 
-        // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
+        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
 
         systemProperty("exclude-python-38", "true")
     }
@@ -177,11 +163,9 @@ tasks.register<Test>("debug-docker") {
         systemProperty("exclude-aurora", "true")
         systemProperty("exclude-performance", "true")
 
-        // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
+        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
 
         systemProperty("exclude-python-38", "true")
     }
@@ -194,11 +178,9 @@ tasks.register<Test>("debug-aurora") {
         systemProperty("exclude-docker", "true")
         systemProperty("exclude-performance", "true")
 
-        // TODO: Temporary disable Mysql and MariaDb tests. Uncomment when the driver supports them.
+        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
 
         systemProperty("exclude-python-38", "true")
     }
@@ -212,8 +194,6 @@ tasks.register<Test>("debug-pg-aurora") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
     }
 }
 
@@ -237,7 +217,5 @@ tasks.register<Test>("debug-autoscaling") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
-        systemProperty("exclude-mariadb-driver", "true")
-        systemProperty("exclude-mariadb-engine", "true")
     }
 }

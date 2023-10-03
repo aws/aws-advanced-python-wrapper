@@ -20,4 +20,3 @@ class TestDriver(str, Enum):
 
     PG = "PG"  # psycopg
     MYSQL = "MYSQL"  # ?
-    MARIADB = "MARIADB"  # ?
