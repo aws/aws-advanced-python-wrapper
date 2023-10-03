@@ -35,7 +35,6 @@ from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
 from aws_wrapper.utils.log import Logger
 
-
 logger = Logger(__name__)
 
 
