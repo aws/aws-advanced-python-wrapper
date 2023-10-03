@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import closing
 from enum import Enum, auto
 from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple,
@@ -36,6 +37,7 @@ from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
+from aws_wrapper.utils.timeout import timeout
 from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
@@ -116,7 +118,7 @@ class Dialect(Protocol):
         ...
 
     @abstractmethod
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         ...
 
     @abstractmethod
@@ -140,6 +142,8 @@ class DialectProvider(Protocol):
 
 class MysqlDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_MYSQL, DialectCode.RDS_MYSQL)
+    _executor: Executor = ThreadPoolExecutor()
+    _timeout_sec: int = 3
 
     @property
     def default_port(self) -> int:
@@ -161,10 +165,13 @@ class MysqlDialect(Dialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return MysqlDialect._DIALECT_UPDATE_CANDIDATES
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self.server_version_query)
+                cursor_execute_func_with_timeout = timeout(AuroraHostListProvider._executor, self._timeout_sec, driver_dialect, conn)(
+                    aws_cursor.execute)
+                cursor_execute_func_with_timeout(self.server_version_query)
+
                 for record in aws_cursor:
                     for column_value in record:
                         if "mysql" in column_value.lower():
@@ -180,6 +187,8 @@ class MysqlDialect(Dialect):
 
 class PgDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_PG, DialectCode.RDS_PG)
+    _executor: Executor = ThreadPoolExecutor()
+    _timeout_sec: int = 3
 
     @property
     def default_port(self) -> int:
@@ -201,10 +210,14 @@ class PgDialect(Dialect):
     def exception_handler(self) -> Optional[ExceptionHandler]:
         return PgExceptionHandler()
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
+
         try:
             with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute('SELECT 1 FROM pg_proc LIMIT 1')
+                cursor_execute_func_with_timeout = timeout(AuroraHostListProvider._executor, self._timeout_sec, driver_dialect, conn)(
+                    aws_cursor.execute)
+                cursor_execute_func_with_timeout('SELECT 1 FROM pg_proc LIMIT 1')
+
                 if aws_cursor.fetchone() is not None:
                     return True
         except Exception:
@@ -221,10 +234,12 @@ class PgDialect(Dialect):
 class RdsMysqlDialect(MysqlDialect):
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL,)
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self.server_version_query)
+                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._timeout_sec, driver_dialect, conn)(
+                    aws_cursor.execute)
+                cursor_execute_func_with_timeout(self.server_version_query)
                 for record in aws_cursor:
                     for column_value in record:
                         if "source distribution" in column_value.lower():
@@ -246,14 +261,16 @@ class RdsPgDialect(PgDialect):
                               "WHERE name='rds.extensions'")
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG,)
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
 
-        if not super().is_dialect(conn):
+        if not super().is_dialect(conn, driver_dialect):
             return False
 
         try:
             with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(RdsPgDialect._EXTENSIONS_QUERY)
+                cursor_execute_func_with_timeout = timeout(PgDialect._executor, PgDialect._timeout_sec, driver_dialect, conn)(
+                    aws_cursor.execute)
+                cursor_execute_func_with_timeout(RdsPgDialect._EXTENSIONS_QUERY)
                 for row in aws_cursor:
                     rds_tools = bool(row[0])
                     aurora_utils = bool(row[1])
@@ -288,10 +305,12 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return None
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute("SHOW VARIABLES LIKE 'aurora_version'")
+                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._timeout_sec, driver_dialect, conn)(
+                    aws_cursor.execute)
+                cursor_execute_func_with_timeout("SHOW VARIABLES LIKE 'aurora_version'")
                 # If variable with such a name is presented then it means it's an Aurora cluster
                 if aws_cursor.fetchone() is not None:
                     return True
@@ -320,8 +339,8 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
     _host_id_query = "SELECT aurora_db_instance_identifier()"
     _is_reader_query = "SELECT pg_is_in_recovery()"
 
-    def is_dialect(self, conn: Connection) -> bool:
-        if not super().is_dialect(conn):
+    def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
+        if not super().is_dialect(conn, driver_dialect):
             return False
 
         has_extensions: bool = False
@@ -329,14 +348,18 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
         try:
             with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self._extensions_sql)
+                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._timeout_sec, driver_dialect, conn)(
+                    aws_cursor.execute)
+                cursor_execute_func_with_timeout(self._extensions_sql)
                 row = aws_cursor.fetchone()
                 if row and bool(row[0]):
                     logger.debug("AuroraPgDialect.HasExtensionsTrue")
                     has_extensions = True
 
             with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self._has_topology_sql)
+                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._timeout_sec, driver_dialect, conn)(
+                    aws_cursor.execute)
+                cursor_execute_func_with_timeout(self._has_topology_sql)
                 if aws_cursor.fetchone() is not None:
                     logger.debug("AuroraPgDialect.HasTopologyTrue")
                     has_topology = True
@@ -382,7 +405,7 @@ class UnknownDialect(Dialect):
     def exception_handler(self) -> Optional[ExceptionHandler]:
         return None
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
@@ -514,7 +537,7 @@ class DialectManager(DialectProvider):
                     raise AwsWrapperError(Messages.get_formatted("DialectManager.UnknownDialectCode", dialect_code))
 
                 initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-                is_dialect = dialect_candidate.is_dialect(conn)
+                is_dialect = dialect_candidate.is_dialect(conn, driver_dialect)
                 if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                     # this condition is True when autocommit is False and the query started a new transaction.
                     conn.commit()

@@ -246,9 +246,11 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 # Return the original hosts passed to the connect method
                 return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
+            target_driver_dialect = self._host_list_provider_service.target_driver_dialect
+
             try:
                 query_for_topology_func_with_timeout = (
-                    timeout(AuroraHostListProvider._executor, self._max_timeout)(self._query_for_topology))
+                    timeout(AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, conn)(self._query_for_topology))
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
@@ -289,17 +291,13 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     break
 
     def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
-        target_driver_dialect = self._host_list_provider_service.target_driver_dialect
-        initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._dialect.topology_query)
-                res = self._process_query_results(cursor)
-                if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
-                    # this condition is True when autocommit is False and the query started a new transaction.
-                    conn.commit()
-                return res
+
+                result = self._process_query_results(cursor)
+                return result
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.InvalidQuery")) from e
 
@@ -380,17 +378,15 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def get_host_role(self, connection: Connection) -> HostRole:
         target_driver_dialect = self._host_list_provider_service.target_driver_dialect
-        initial_transaction_status: bool = target_driver_dialect.is_in_transaction(connection)
 
         try:
             with closing(connection.cursor()) as cursor:
                 cursor_execute_func_with_timeout = timeout(
-                    AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
+                    AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(cursor.execute)
                 cursor_execute_func_with_timeout(self._dialect.is_reader_query)
+
                 result = cursor.fetchone()
-                if not initial_transaction_status and target_driver_dialect.is_in_transaction(connection):
-                    # this condition is True when autocommit is False and the query started a new transaction.
-                    connection.commit()
+
                 if result:
                     is_reader = result[0]
                     return HostRole.READER if is_reader else HostRole.WRITER
@@ -401,10 +397,12 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
         if connection is None:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
+
+        target_driver_dialect = self._host_list_provider_service.target_driver_dialect
         try:
             with closing(connection.cursor()) as cursor:
                 cursor_execute_func_with_timeout = timeout(
-                    AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
+                    AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(cursor.execute)
                 cursor_execute_func_with_timeout(self._dialect.host_id_query)
                 result = cursor.fetchone()
                 if result:

@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from threading import Event
 
 from abc import abstractmethod
+from concurrent.futures import Executor, ThreadPoolExecutor
 from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
                     Set, Tuple)
 
@@ -36,7 +37,8 @@ from aws_wrapper.dialect import (Dialect, DialectManager,
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.exception_handling import ExceptionHandler, ExceptionManager
 from aws_wrapper.host_availability import HostAvailability
-from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
+from aws_wrapper.host_list_provider import (AuroraHostListProvider,
+                                            ConnectionStringHostListProvider,
                                             HostListProvider,
                                             HostListProviderService,
                                             StaticHostListProvider)
@@ -47,7 +49,9 @@ from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
-from aws_wrapper.utils.properties import Properties, PropertiesUtils
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
+from aws_wrapper.utils.timeout import timeout
 
 logger = Logger(__name__)
 
@@ -172,6 +176,8 @@ class PluginService(ExceptionHandler, Protocol):
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
+
+    _executor: Executor = ThreadPoolExecutor()
 
     def __init__(
             self,
@@ -363,10 +369,18 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         host_info.add_alias(host_info.as_alias())
 
+        target_driver_dialect = self._target_driver_dialect
+
         try:
             with closing(connection.cursor()) as cursor:
                 if not isinstance(self.dialect, UnknownDialect):
-                    cursor.execute(self.dialect.host_alias_query)
+
+                    timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
+
+                    cursor_execute_func_with_timeout = timeout(AuroraHostListProvider._executor, timeout_sec, target_driver_dialect, connection)(
+                        cursor.execute)
+                    cursor_execute_func_with_timeout(self.dialect.host_alias_query)
+
                     for row in cursor.fetchall():
                         host_info.add_alias(row[0])
 
