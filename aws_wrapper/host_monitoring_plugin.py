@@ -179,9 +179,9 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
                                 self._plugin_service.host_list_provider))
                     self._plugin_service.fill_aliases(host_info=self._monitoring_host_info)
             except Exception as e:
-                message = Messages.get_formatted("HostMonitoringPlugin.ErrorIdentifyingConnection", e)
-                logger.debug(message)
-                raise AwsWrapperError(message) from e
+                message = "HostMonitoringPlugin.ErrorIdentifyingConnection"
+                logger.debug(message, e)
+                raise AwsWrapperError(Messages.get_formatted(message, e)) from e
         return self._monitoring_host_info
 
     def release_resources(self):

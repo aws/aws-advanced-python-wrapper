@@ -351,7 +351,7 @@ class ReadWriteSplittingPlugin(Plugin):
     @staticmethod
     def _log_and_raise_exception(log_msg: str):
         logger.error(log_msg)
-        raise ReadWriteSplittingError(log_msg)
+        raise ReadWriteSplittingError(Messages.get(log_msg))
 
     @staticmethod
     def _is_connection_usable(conn: Optional[Connection], target_driver_dialect: Optional[TargetDriverDialect]):

@@ -202,20 +202,20 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):
-            message = Messages.get("AuroraHostListProvider.InvalidPattern")
+            message = "AuroraHostListProvider.InvalidPattern"
             logger.error(message)
-            raise AwsWrapperError(message)
+            raise AwsWrapperError(Messages.get(message))
 
         url_type = self._rds_utils.identify_rds_type(host)
         if url_type == RdsUrlType.RDS_PROXY:
-            message = Messages.get("AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy")
+            message = "AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy"
             logger.error(message)
-            raise AwsWrapperError(message)
+            raise AwsWrapperError(Messages.get(message))
 
         if url_type == RdsUrlType.RDS_CUSTOM_CLUSTER:
-            message = Messages.get("AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom")
+            message = "AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom"
             logger.error(message)
-            raise AwsWrapperError(message)
+            raise AwsWrapperError(Messages.get(message))
 
     def _get_suggested_cluster_id(self, url: str) -> Optional[ClusterIdSuggestion]:
         for key, hosts in AuroraHostListProvider._topology_cache.get_dict().items():

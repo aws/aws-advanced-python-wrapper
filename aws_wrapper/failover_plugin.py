@@ -141,7 +141,7 @@ class FailoverPlugin(Plugin):
             self._update_topology(False)
             return execute_func()
         except Exception as ex:
-            msg = "FailoverPlugin.DetectedException", str(ex))
+            msg = "FailoverPlugin.DetectedException"
             logger.debug(msg, str(ex))
             if self._last_exception != ex and self._should_exception_trigger_connection_switch(ex):
                 self._invalidate_current_connection()
@@ -157,10 +157,10 @@ class FailoverPlugin(Plugin):
         if not self._enable_failover_setting:
             return
 
-        msg = "Changes: "
+        msg = ""
         for key in changes:
             msg += f"\n\tHost '{key}': {changes[key]}"
-        logger.debug(msg)
+        logger.debug("FailoverPlugin.Changes", msg)
 
         current_host = self._plugin_service.current_host_info
         if current_host is not None:
@@ -332,9 +332,9 @@ class FailoverPlugin(Plugin):
             self._is_closed = False
             self._pick_new_connection()
 
-            error_msg = Messages.get("FailoverPlugin.ConnectionChangedError")
+            error_msg = "FailoverPlugin.ConnectionChangedError"
             logger.debug(error_msg)
-            raise FailoverSuccessError(error_msg)
+            raise FailoverSuccessError(Messages.get(error_msg))
         else:
             raise AwsWrapperError(Messages.get("FailoverPlugin.NoOperationsAfterConnectionClosed"))
 
