@@ -74,6 +74,14 @@ def enable_on_features(enable_on_test_features: List[TestEnvironmentFeatures]):
     )
 
 
+def disable_on_engines(requested_engines: List[DatabaseEngine]):
+    current_engine = TestEnvironment.get_current().get_engine()
+    return pytest.mark.skipif(
+        current_engine in requested_engines,
+        reason=f"This test is not supported for {current_engine.value}"
+    )
+
+
 def disable_on_drivers(disabled_drivers: List[TestDriver]):
     # TODO: Finish implementing
     ...

@@ -54,12 +54,12 @@ class TestBasicFunctionality:
 
     @pytest.fixture(scope='class')
     def props(self):
-        return {"plugins": "failover", "connect_timeout": 10}
+        return {"plugins": "aurora_connection_tracker,failover", "connect_timeout": 10}
 
     def test_execute__positional_and_keyword_args(
-            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
+            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string())
+        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
         cursor = conn.cursor()
 
         some_number = 1

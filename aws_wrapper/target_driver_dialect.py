@@ -70,11 +70,11 @@ class TargetDriverDialectManager(TargetDriverDialectProvider):
             if self._custom_dialect.is_dialect(conn_func):
                 self._log_dialect("custom", self._custom_dialect)
                 return self._custom_dialect
-        logger.warning("TargetDriverDialectManager.CustomDialectNotSupported")
+            else:
+                logger.warning("TargetDriverDialectManager.CustomDialectNotSupported")
+
         result: Optional[TargetDriverDialect]
-
         dialect_code: Optional[str] = WrapperProperties.TARGET_DRIVER_DIALECT.get(props)
-
         if dialect_code:
             result = TargetDriverDialectManager.known_dialects_by_code.get(dialect_code)
             if result is None:

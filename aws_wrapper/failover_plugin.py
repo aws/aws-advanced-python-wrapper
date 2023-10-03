@@ -25,8 +25,6 @@ if TYPE_CHECKING:
 
 from typing import Any, Callable, Dict, Optional, Set
 
-from psycopg import OperationalError
-
 from aws_wrapper.errors import (AwsWrapperError, FailoverFailedError,
                                 FailoverSuccessError,
                                 TransactionResolutionUnknownError)
@@ -54,6 +52,16 @@ class FailoverPlugin(Plugin):
                                      "connect",
                                      "force_connect",
                                      "notify_host_list_changed"}
+
+    _METHODS_REQUIRE_UPDATED_TOPOLOGY: Set[str] = {
+        "Connection.commit",
+        "Connection.autocommit",
+        "Connection.autocommit_setter",
+        "Connection.rollback",
+        "Connection.cursor",
+        "Cursor.callproc",
+        "Cursor.execute"
+    }
 
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
@@ -138,7 +146,8 @@ class FailoverPlugin(Plugin):
             self._saved_auto_commit_status = bool(args[0])
 
         try:
-            self._update_topology(False)
+            if self._requires_update_topology(method_name):
+                self._update_topology(False)
             return execute_func()
         except Exception as ex:
             logger.debug("FailoverPlugin.DetectedException", str(ex))
@@ -400,9 +409,6 @@ class FailoverPlugin(Plugin):
             logger.debug("FailoverPlugin.FailoverDisabled")
             return False
 
-        if isinstance(ex, OperationalError):
-            return True
-
         return self._plugin_service.is_network_exception(ex)
 
     @staticmethod
@@ -425,12 +431,15 @@ class FailoverPlugin(Plugin):
     @staticmethod
     def _can_direct_execute(method_name):
         return method_name == "Connection.close" or \
-            method_name == "Connection.closed" or \
+            method_name == "Connection.is_closed" or \
             method_name == "Cursor.close"
 
     @staticmethod
     def _allowed_on_closed_connection(method_name: str):
         return method_name == "Connection.autocommit"
+
+    def _requires_update_topology(self, method_name: str):
+        return method_name in FailoverPlugin._METHODS_REQUIRE_UPDATED_TOPOLOGY
 
 
 class FailoverPluginFactory(PluginFactory):

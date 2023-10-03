@@ -476,7 +476,6 @@ class PluginManager(CanReleaseResources):
     _NOTIFY_HOST_LIST_CHANGED_METHOD: str = "notify_host_list_changed"
     _GET_HOST_INFO_BY_STRATEGY_METHOD: str = "get_host_info_by_strategy"
     _INIT_HOST_LIST_PROVIDER_METHOD: str = "init_host_provider"
-    _DEFAULT_PLUGINS = ""
 
     _PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
         "iam": IamAuthPluginFactory,
@@ -499,11 +498,7 @@ class PluginManager(CanReleaseResources):
         self._connection_provider_manager = ConnectionProviderManager()
 
         requested_plugins = WrapperProperties.PLUGINS.get(props)
-
-        if requested_plugins is None:
-            requested_plugins = self._DEFAULT_PLUGINS
-
-        if requested_plugins == "":
+        if requested_plugins is None or requested_plugins == "":
             self._plugins.append(DefaultPlugin(self._container.plugin_service, self._connection_provider_manager))
             return
 
@@ -535,9 +530,12 @@ class PluginManager(CanReleaseResources):
         conn: Optional[Connection] = target_driver_dialect.get_connection_from_obj(target)
         current_conn: Optional[Connection] = target_driver_dialect.unwrap_connection(plugin_service.current_connection)
 
-        if conn is not None and conn != current_conn and method_name != "Connection.close" and method_name != "Cursor.close":
-            msg = Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target)
-            raise AwsWrapperError(msg)
+        if method_name not in ["Connection.close", "Cursor.close"] and conn is not None and conn != current_conn:
+            raise AwsWrapperError(Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target))
+
+        if conn is None and method_name in ["Connection.close", "Cursor.close"]:
+            return
+
         return self._execute_with_subscribed_plugins(
             method_name,
             # next_plugin_func is defined later in make_pipeline

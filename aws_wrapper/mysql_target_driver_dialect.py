@@ -14,18 +14,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Set
-
-from mysql.connector.cursor import MySQLCursor
-from mysql.connector.cursor_cext import CMySQLCursor
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
 
+from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from inspect import signature
 
 from mysql.connector import CMySQLConnection, MySQLConnection
+from mysql.connector.cursor import MySQLCursor
+from mysql.connector.cursor_cext import CMySQLCursor
 
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.generic_target_driver_dialect import \
@@ -34,11 +34,17 @@ from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
+from aws_wrapper.utils.timeout import timeout
 
 
 class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     _driver_name = "MySQL Connector Python"
     TARGET_DRIVER_CODE = "MySQL"
+    AUTH_PLUGIN_PARAM = "auth_plugin"
+    AUTH_METHOD = "mysql_clear_password"
+    IS_CLOSED_TIMEOUT_SEC = 3
+
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     _dialect_code: str = TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
@@ -61,7 +67,18 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
-            return not conn.is_connected()
+
+            # is_connected validates the connection using a ping().
+            # If there are any unread results from previous executions an error will be thrown.
+            if self.can_execute_query(conn):
+                is_connected_with_timeout = timeout(
+                    MySQLTargetDriverDialect._executor,
+                    MySQLTargetDriverDialect.IS_CLOSED_TIMEOUT_SEC)(conn.is_connected)
+                try:
+                    return not is_connected_with_timeout()
+                except TimeoutError:
+                    return False
+            return False
 
         raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_connected"))
 
@@ -80,12 +97,22 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
         raise UnsupportedOperationError(
             Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
+    def set_password(self, props: Properties, pwd: str):
+        WrapperProperties.PASSWORD.set(props, pwd)
+        props[MySQLTargetDriverDialect.AUTH_PLUGIN_PARAM] = MySQLTargetDriverDialect.AUTH_METHOD
+
     def abort_connection(self, conn: Connection):
         raise UnsupportedOperationError(
             Messages.get_formatted(
                 "TargetDriverDialect.UnsupportedOperationError",
                 self._driver_name,
                 "abort_connection"))
+
+    def can_execute_query(self, conn: Connection) -> bool:
+        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
+            if conn.unread_result:
+                return conn.can_consume_results
+        return True
 
     def is_in_transaction(self, conn: Connection) -> bool:
         if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
@@ -100,10 +127,18 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
             return obj
 
         if isinstance(obj, CMySQLCursor):
-            return obj._cnx
+            try:
+                if isinstance(obj._cnx, CMySQLConnection) or isinstance(obj._cnx, MySQLConnection):
+                    return obj._cnx
+            except ReferenceError:
+                return None
 
         if isinstance(obj, MySQLCursor):
-            return obj._connection
+            try:
+                if isinstance(obj._connection, CMySQLConnection) or isinstance(obj._connection, MySQLConnection):
+                    return obj._connection
+            except ReferenceError:
+                return None
 
         return None
 

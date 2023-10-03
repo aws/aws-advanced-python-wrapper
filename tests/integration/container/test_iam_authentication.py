@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from tests.integration.container.utils.test_instance_info import TestInstanceInfo
 
 from socket import gethostbyname
-from typing import Callable, Dict
+from typing import Callable
 
 import pytest
 
@@ -41,75 +41,60 @@ from tests.integration.container.utils.driver_helper import DriverHelper
 class TestAwsIamAuthentication:
     def test_iam_wrong_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        user: str = f"WRONG_{conn_utils.iam_user}_USER"
-        connect_params: str = self.init_aws_iam_properties(test_environment, {
-            "user": user,
-            "password": conn_utils.password
-        })
+        user = f"WRONG_{conn_utils.iam_user}_USER"
+        params = conn_utils.get_connect_params(user=user)
+        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
 
         with pytest.raises(AwsWrapperError):
-            AwsWrapperConnection.connect(target_driver_connect, connect_params)
+            AwsWrapperConnection.connect(
+                target_driver_connect,
+                **params,
+                plugins="iam")
 
     def test_iam_no_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        connect_params: str = self.init_aws_iam_properties(test_environment, {
-            "password": conn_utils.password
-        })
+        params = conn_utils.get_connect_params()
+        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        params.pop("user", None)
 
         with pytest.raises(AwsWrapperError):
-            AwsWrapperConnection.connect(target_driver_connect, connect_params)
+            AwsWrapperConnection.connect(target_driver_connect, **params, plugins="iam")
 
     def test_iam_using_ip_address(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         instance: TestInstanceInfo = test_environment.get_writer()
         ip_address = self.get_ip_address(instance.get_host())
-        user: str = conn_utils.iam_user
-        connect_params: str = self.init_aws_iam_properties(test_environment, {
-            "host": ip_address,
-            "user": user,
-            "password": "<anything>",
-            "iam_host": instance.get_host()
-        })
 
-        self.validate_connection(target_driver_connect, connect_params)
+        params = conn_utils.get_connect_params(host=ip_address, user=conn_utils.iam_user, password="<anything>")
+        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        params.update({"iam_host": instance.get_host(), "plugins": "iam"})
+
+        self.validate_connection(target_driver_connect, **params)
 
     def test_iam_valid_connection_properties(
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        connect_params: str = self.init_aws_iam_properties(test_environment, {
-            "user": conn_utils.iam_user,
-            "password": "<anything>"
-        })
+        params = conn_utils.get_connect_params(user=conn_utils.iam_user, password="<anything>")
+        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        params["plugins"] = "iam"
 
-        self.validate_connection(target_driver_connect, connect_params)
+        self.validate_connection(target_driver_connect, **params)
 
     def test_iam_valid_connection_properties_no_password(
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        connect_params: str = self.init_aws_iam_properties(test_environment, {
-            "dbname": conn_utils.dbname,
-            "user": conn_utils.iam_user,
-        })
+        params = conn_utils.get_connect_params(user=conn_utils.iam_user)
+        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        params.pop("password", None)
+        params["plugins"] = "iam"
 
-        self.validate_connection(target_driver_connect, connect_params)
-
-    def init_aws_iam_properties(self, test_environment: TestEnvironment, props: Dict[str, str]) -> str:
-        instance = test_environment.get_writer()
-        props["plugins"] = "iam"
-        props["port"] = str(instance.get_port())
-
-        if not props.get("host"):
-            props["host"] = instance.get_host()
-        if not props.get("dbname"):
-            props["dbname"] = test_environment.get_database_info().get_default_db_name()
-
-        return "plugins=iam " + " ".join([f"{key}={value}" for key, value in props.items()])
+        self.validate_connection(target_driver_connect, **params)
 
     def get_ip_address(self, hostname: str):
         return gethostbyname(hostname)
 
-    def validate_connection(self, target_driver_connect: Callable, connect_params: str):
-        with AwsWrapperConnection.connect(target_driver_connect, connect_params) as conn, \
+    def validate_connection(self, target_driver_connect: Callable, **connect_params):
+        with AwsWrapperConnection.connect(target_driver_connect, **connect_params) as conn, \
                 conn.cursor() as cursor:
             cursor.execute("SELECT now()")
             records = cursor.fetchall()

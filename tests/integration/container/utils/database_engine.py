@@ -15,6 +15,6 @@
 from enum import Enum
 
 
-class DatabaseEngine(Enum):
+class DatabaseEngine(str, Enum):
     MYSQL = "MYSQL"
     PG = "PG"
