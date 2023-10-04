@@ -141,8 +141,7 @@ class FailoverPlugin(Plugin):
             self._update_topology(False)
             return execute_func()
         except Exception as ex:
-            msg = "FailoverPlugin.DetectedException"
-            logger.debug(msg, str(ex))
+            logger.debug("FailoverPlugin.DetectedException", str(ex))
             if self._last_exception != ex and self._should_exception_trigger_connection_switch(ex):
                 self._invalidate_current_connection()
                 if self._plugin_service.current_host_info is not None:
