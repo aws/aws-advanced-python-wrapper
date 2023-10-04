@@ -12,10 +12,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 import sys
 from logging import DEBUG, Formatter, Logger, StreamHandler
 from queue import Empty, Queue
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, Tuple
+
+if TYPE_CHECKING:
+    from aws_wrapper.hostinfo import HostInfo
 
 
 class LogUtils:
@@ -37,7 +42,7 @@ class LogUtils:
         logger.addHandler(handler)
 
     @staticmethod
-    def log_topology(hosts: list, message_prefix: Optional[str] = None):
+    def log_topology(hosts: Tuple[HostInfo, ...], message_prefix: Optional[str] = None):
         """Returns a formatted string of the topology that looks like the following
         Topology: {
             HostInfo[host=url, port=123]

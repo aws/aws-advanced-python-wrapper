@@ -14,13 +14,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
     from .hostinfo import HostInfo, HostRole
 
 import random
-from typing import List, Protocol
+from typing import Protocol
 
 from .pep249 import Error
 from .utils.messages import Messages
@@ -29,13 +29,13 @@ from .utils.messages import Messages
 # Interface for a strategy defining how to pick a host from a list of hosts
 class HostSelector(Protocol):
 
-    def get_host(self, hosts: List[HostInfo], role: HostRole) -> HostInfo:
+    def get_host(self, hosts: Tuple[HostInfo, ...], role: HostRole) -> HostInfo:
         ...
 
 
 class RandomHostSelector(HostSelector):
 
-    def get_host(self, hosts: List[HostInfo], role: HostRole) -> HostInfo:
+    def get_host(self, hosts: Tuple[HostInfo, ...], role: HostRole) -> HostInfo:
 
         eligible_hosts = [host for host in hosts if host.role == role]
 

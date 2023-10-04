@@ -92,7 +92,7 @@ def test_failover(plugin_service_mock, connection_mock, default_properties, defa
     target: ReaderFailoverHandler = ReaderFailoverHandlerImpl(plugin_service_mock, props)
     result: ReaderFailoverResult = target.failover(hosts, current_host)
 
-    # Confirm we got a successful connection with the expected node
+    # Confirm we got a successful connection with the expected host
     assert result.is_connected
     assert result.connection == connection_mock
     assert result.new_host == success_host
@@ -278,17 +278,17 @@ def test_get_reader_tuples_by_priority(plugin_service_mock, connection_mock, def
 def test_host_failover_strict_reader_enabled(plugin_service_mock, connection_mock, default_properties, default_hosts):
     writer = HostInfo("writer", 1234, HostRole.WRITER, HostAvailability.AVAILABLE)
     reader = HostInfo("reader1", 1234, HostRole.READER, HostAvailability.AVAILABLE)
-    hosts = [writer, reader]
+    hosts = (writer, reader)
 
-    # only reader nodes should be chosen
+    # only reader hosts should be chosen
     hosts_by_priority = ReaderFailoverHandlerImpl.get_hosts_by_priority(hosts, True)
-    assert hosts_by_priority == [reader]
+    assert hosts_by_priority == (reader, )
 
     # should select the reader even if unavailable
     reader._availability = HostAvailability.UNAVAILABLE
     hosts_by_priority = ReaderFailoverHandlerImpl.get_hosts_by_priority(hosts, True)
-    assert hosts_by_priority == [reader]
+    assert hosts_by_priority == (reader,)
 
-    # writer node will only be selected when it is the only node in the topology
-    hosts_by_priority = ReaderFailoverHandlerImpl.get_hosts_by_priority([writer], True)
-    assert hosts_by_priority == [writer]
+    # writer host will only be selected when it is the only host in the topology
+    hosts_by_priority = ReaderFailoverHandlerImpl.get_hosts_by_priority((writer,), True)
+    assert hosts_by_priority == (writer,)

@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 import psycopg
 import pytest
@@ -22,7 +22,7 @@ import pytest
 if TYPE_CHECKING:
     from aws_wrapper.writer_failover_handler import WriterFailoverHandler
 
-from typing import Dict, FrozenSet, List, Set
+from typing import Dict, FrozenSet, Set
 from unittest import mock
 from unittest.mock import MagicMock, PropertyMock
 
@@ -239,7 +239,7 @@ def test_failover_reader_with_valid_failed_host(plugin_service_mock, host_list_p
     host: HostInfo = HostInfo("host")
     host._availability = HostAvailability.AVAILABLE
     host._aliases = ["alias1", "alias2"]
-    hosts: List[HostInfo] = [host]
+    hosts: Tuple[HostInfo, ...] = (host, )
     type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
 
     properties = Properties()
@@ -261,7 +261,7 @@ def test_failover_reader_with_no_failed_host(plugin_service_mock, host_list_prov
     host: HostInfo = HostInfo("host")
     host._availability = HostAvailability.AVAILABLE
     host._aliases = ["alias1", "alias2"]
-    hosts: List[HostInfo] = [host]
+    hosts: Tuple[HostInfo, ...] = (host, )
     type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
 
     properties = Properties()
@@ -284,7 +284,7 @@ def test_failover_writer_failed_failover_raises_error(plugin_service_mock, host_
     writer_failover_handler_mock: WriterFailoverHandler = MagicMock()
     host: HostInfo = HostInfo("host")
     host._aliases = ["alias1", "alias2"]
-    hosts: List[HostInfo] = [host]
+    hosts: Tuple[HostInfo, ...] = (host, )
     type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
 
     properties = Properties()
@@ -305,7 +305,7 @@ def test_failover_writer_failed_failover_with_no_result(plugin_service_mock, hos
                                                         init_host_provider_func_mock, writer_failover_handler_mock):
     host: HostInfo = HostInfo("host")
     host._aliases = ["alias1", "alias2"]
-    hosts: List[HostInfo] = [host]
+    hosts: Tuple[HostInfo, ...] = (host, )
     type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
 
     writer_result_mock: WriterFailoverResult = MagicMock()
@@ -336,7 +336,7 @@ def test_failover_writer_success(plugin_service_mock, host_list_provider_service
                                  writer_failover_handler_mock):
     host: HostInfo = HostInfo("host")
     host._aliases = ["alias1", "alias2"]
-    hosts: List[HostInfo] = [host]
+    hosts: Tuple[HostInfo, ...] = (host, )
     type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
 
     properties = Properties()

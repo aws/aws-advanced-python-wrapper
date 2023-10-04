@@ -86,7 +86,7 @@ class PluginServiceManagerContainer:
 class PluginService(ExceptionHandler, Protocol):
     @property
     @abstractmethod
-    def hosts(self) -> List[HostInfo]:
+    def hosts(self) -> Tuple[HostInfo, ...]:
         ...
 
     @property
@@ -199,7 +199,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._original_url = PropertiesUtils.get_url(props)
         self._host_list_provider: HostListProvider = ConnectionStringHostListProvider(self, props)
 
-        self._hosts: List[HostInfo] = []
+        self._hosts: Tuple[HostInfo, ...] = ()
         self._current_connection: Optional[Connection] = None
         self._current_host_info: Optional[HostInfo] = None
         self._initial_connection_host_info: Optional[HostInfo] = None
@@ -212,11 +212,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._dialect = self._dialect_provider.get_dialect(target_driver_dialect.dialect_code, props)
 
     @property
-    def hosts(self) -> List[HostInfo]:
+    def hosts(self) -> Tuple[HostInfo, ...]:
         return self._hosts
 
     @hosts.setter
-    def hosts(self, new_hosts: List[HostInfo]):
+    def hosts(self, new_hosts: Tuple[HostInfo, ...]):
         self._hosts = new_hosts
 
     @property
@@ -429,7 +429,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 changes[key] = {HostEvent.HOST_ADDED}
 
         if len(changes) > 0:
-            self.hosts = list(new_hosts) if new_hosts is not None else []
+            self.hosts = tuple(new_hosts) if new_hosts is not None else ()
             self._container.plugin_manager.notify_host_list_changed(changes)
 
     def _compare(self, host_a: HostInfo, host_b: HostInfo) -> Set[HostEvent]:

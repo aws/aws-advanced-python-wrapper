@@ -21,8 +21,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from threading import RLock
-from typing import (TYPE_CHECKING, List, Optional, Protocol, Tuple,
-                    runtime_checkable)
+from typing import TYPE_CHECKING, Optional, Protocol, Tuple, runtime_checkable
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
@@ -114,7 +113,7 @@ class HostListProviderService(Protocol):
 
 
 class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
-    _topology_cache: CacheMap[str, List[HostInfo]] = CacheMap()
+    _topology_cache: CacheMap[str, Tuple[HostInfo, ...]] = CacheMap()
     # Maps cluster IDs to a boolean representing whether they are a primary cluster ID or not. A primary cluster ID is a
     # cluster ID that is equivalent to a cluster URL. Topology info is shared between AuroraHostListProviders that have
     # the same cluster ID.
@@ -131,10 +130,10 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
         self._max_timeout = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(self._props)
         self._rds_utils: RdsUtils = RdsUtils()
-        self._hosts: List[HostInfo] = []
+        self._hosts: Tuple[HostInfo, ...] = ()
         self._cluster_id: str = str(uuid.uuid4())
         self._initial_host_info: Optional[HostInfo] = None
-        self._initial_hosts: List[HostInfo] = []
+        self._initial_hosts: Tuple[HostInfo, ...] = ()
         self._cluster_instance_template: Optional[HostInfo] = None
         self._rds_url_type: Optional[RdsUrlType] = None
 
@@ -157,11 +156,11 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 return
 
             host_availability_strategy = create_host_availability_strategy(self._props)
-            self._initial_host_info = HostInfo(
+            self._initial_host_info: HostInfo = HostInfo(
                 host=self._props.get("host"),
                 port=self._props.get("port", HostInfo.NO_PORT),
                 host_availability_strategy=host_availability_strategy)
-            self._initial_hosts: List[HostInfo] = [self._initial_host_info]
+            self._initial_hosts: Tuple[HostInfo, ...] = (self._initial_host_info, )
             self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
 
             self._cluster_instance_template: HostInfo
@@ -266,7 +265,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         else:
             return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
-    def _suggest_cluster_id(self, primary_cluster_id_hosts: List[HostInfo]):
+    def _suggest_cluster_id(self, primary_cluster_id_hosts: Tuple[HostInfo, ...]):
         if not primary_cluster_id_hosts:
             return
 
@@ -288,7 +287,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                         cluster_id, self._cluster_id, self._suggested_cluster_id_refresh_ns)
                     break
 
-    def _query_for_topology(self, conn: Connection) -> Optional[List[HostInfo]]:
+    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
         target_driver_dialect = self._host_list_provider_service.target_driver_dialect
         initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
@@ -303,7 +302,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.InvalidQuery")) from e
 
-    def _process_query_results(self, cursor: Cursor) -> List[HostInfo]:
+    def _process_query_results(self, cursor: Cursor) -> Tuple[HostInfo, ...]:
         host_map = {}
         for record in cursor:
             host = self._create_host(record)
@@ -327,7 +326,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             writers.sort(reverse=True, key=lambda h: h.last_update_time)
             hosts.append(writers[0])
 
-        return hosts
+        return tuple(hosts)
 
     def _create_host(self, record: Tuple) -> HostInfo:
         # According to TopologyAwareDatabaseDialect.topology_query the result set
@@ -424,7 +423,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     @dataclass()
     class FetchTopologyResult:
-        hosts: List[HostInfo]
+        hosts: Tuple[HostInfo, ...]
         is_cached_data: bool
 
 
@@ -433,7 +432,7 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
         self._props: Properties = props
-        self._hosts: List[HostInfo] = []
+        self._hosts: Tuple[HostInfo, ...] = ()
         self._is_initialized: bool = False
         self._initial_host_info: Optional[HostInfo] = None
 
@@ -446,7 +445,7 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
             port=self._props.get("port", HostInfo.NO_PORT),
             host_availability_strategy=create_host_availability_strategy(self._props))
 
-        self._hosts.append(self._initial_host_info)
+        self._hosts += (self._initial_host_info, )
 
         self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
         self._is_initialized = True
