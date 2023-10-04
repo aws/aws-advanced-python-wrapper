@@ -163,7 +163,7 @@ class AwsSecretsManagerPlugin(Plugin):
         if region not in session.get_available_regions("rds"):
             exception_message = "AwsSdk.UnsupportedRegion"
             logger.debug(exception_message, region)
-            raise AwsWrapperError(exception_message, region)
+            raise AwsWrapperError(Messages.get_formatted(exception_message, region))
 
         return region
 
