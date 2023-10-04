@@ -20,8 +20,6 @@ from enum import Enum, auto
 from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple,
                     runtime_checkable)
 
-from aws_wrapper.utils.log import Logger
-
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from .generic_target_driver_dialect import TargetDriverDialect
@@ -36,6 +34,7 @@ from aws_wrapper.utils.rdsutils import RdsUtils
 from .exceptions import ExceptionHandler, PgExceptionHandler
 from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
+from .utils.log import Logger
 from .utils.messages import Messages
 
 logger = Logger(__name__)

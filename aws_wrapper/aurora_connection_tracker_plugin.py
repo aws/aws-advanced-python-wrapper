@@ -18,9 +18,6 @@ from threading import Thread
 from typing import (TYPE_CHECKING, Any, Callable, Dict, FrozenSet, List,
                     Optional, Set)
 
-from aws_wrapper.errors import FailoverError
-from aws_wrapper.utils.log import Logger
-
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.plugin_service import PluginService
@@ -31,8 +28,10 @@ if TYPE_CHECKING:
 
 from _weakrefset import WeakSet
 
+from aws_wrapper.errors import FailoverError
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.rdsutils import RdsUtils
 
 logger = Logger(__name__)

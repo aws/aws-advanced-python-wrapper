@@ -17,8 +17,6 @@ from __future__ import annotations
 import socket
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
-from aws_wrapper.utils.log import Logger
-
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
@@ -29,6 +27,7 @@ if TYPE_CHECKING:
 
 from aws_wrapper.hostinfo import HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.rdsutils import RdsUtils

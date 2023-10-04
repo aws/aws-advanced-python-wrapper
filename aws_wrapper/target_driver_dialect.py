@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Type
 from aws_wrapper.connection_provider import (
     ConnectionProvider, SqlAlchemyPooledConnectionProvider)
 from aws_wrapper.sqlalchemy_driver_dialect import SqlAlchemyDriverDialect
-from aws_wrapper.utils.log import Logger
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
@@ -30,6 +29,7 @@ from aws_wrapper.generic_target_driver_dialect import \
 from aws_wrapper.mysql_target_driver_dialect import MySQLTargetDriverDialect
 from aws_wrapper.pg_target_driver_dialect import PgTargetDriverDialect
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
