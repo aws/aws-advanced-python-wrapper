@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import copy
 from dataclasses import dataclass
-from logging import getLogger
 from queue import Queue
 from threading import Event, Lock, RLock
 from time import perf_counter_ns, sleep
@@ -36,13 +35,14 @@ from aws_wrapper.host_availability import HostAvailability
 from aws_wrapper.plugin import CanReleaseResources, Plugin, PluginFactory
 from aws_wrapper.utils.atomic import AtomicInt
 from aws_wrapper.utils.concurrent import ConcurrentDict
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import HostEvent
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.utils import QueueUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class HostMonitoringPluginFactory(PluginFactory):
@@ -120,7 +120,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
         result = None
 
         try:
-            logger.debug(Messages.get_formatted("HostMonitoringPlugin.ActivatedMonitoring", method_name))
+            logger.debug("HostMonitoringPlugin.ActivatedMonitoring", method_name)
             monitor_context = self._monitor_service.start_monitoring(
                 connection,
                 self._get_monitoring_host_info().all_aliases,
@@ -147,7 +147,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
                                 pass
                             raise AwsWrapperError(
                                 Messages.get_formatted("HostMonitoringPlugin.UnavailableHost", host_info.as_alias()))
-                logger.debug(Messages.get_formatted("HostMonitoringPlugin.MonitoringDeactivated", method_name))
+                logger.debug("HostMonitoringPlugin.MonitoringDeactivated", method_name)
 
         return result
 
@@ -169,7 +169,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
 
             try:
                 if rds_type.is_rds_cluster:
-                    logger.debug(Messages.get("HostMonitoringPlugin.ClusterEndpointHostInfo"))
+                    logger.debug("HostMonitoringPlugin.ClusterEndpointHostInfo")
                     self._monitoring_host_info = self._plugin_service.identify_connection()
                     if self._monitoring_host_info is None:
                         raise AwsWrapperError(
@@ -179,9 +179,9 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
                                 self._plugin_service.host_list_provider))
                     self._plugin_service.fill_aliases(host_info=self._monitoring_host_info)
             except Exception as e:
-                message = Messages.get_formatted("HostMonitoringPlugin.ErrorIdentifyingConnection", e)
-                logger.debug(message)
-                raise AwsWrapperError(message) from e
+                message = "HostMonitoringPlugin.ErrorIdentifyingConnection"
+                logger.debug(message, e)
+                raise AwsWrapperError(Messages.get_formatted(message, e)) from e
         return self._monitoring_host_info
 
     def release_resources(self):
@@ -254,7 +254,7 @@ class MonitoringContext:
             self._target_dialect.abort_connection(self._connection)
         except Exception as e:
             # log and ignore
-            logger.debug(Messages.get_formatted("MonitorContext.ExceptionAbortingConnection", e))
+            logger.debug("MonitorContext.ExceptionAbortingConnection", e)
 
     def update_host_status(
             self, url: str, status_check_start_time_ns: int, status_check_end_time_ns: int, is_available: bool):
@@ -280,12 +280,12 @@ class MonitoringContext:
             self._failure_detection_interval_ms * max(0, self._failure_detection_count)
 
         if unavailable_host_duration_ns > (max_unavailable_host_duration_ms * 1_000_000):
-            logger.debug(Messages.get_formatted("MonitorContext.HostUnavailable", url))
+            logger.debug("MonitorContext.HostUnavailable", url)
             self._is_host_unavailable = True
             self._abort_connection()
             return
 
-        logger.debug(Messages.get_formatted("MonitorContext.HostNotResponding", url, self._current_failure_count))
+        logger.debug("MonitorContext.HostNotResponding", url, self._current_failure_count)
         return
 
 
@@ -334,7 +334,7 @@ class Monitor:
 
     def stop_monitoring(self, context: MonitoringContext):
         if context is None:
-            logger.warning(Messages.get("Monitor.ContextNone"))
+            logger.warning("Monitor.ContextNone")
             return
 
         context.is_active = False
@@ -454,10 +454,10 @@ class Monitor:
                         props_copy[key[len(Monitor._MONITORING_PROPERTY_PREFIX):len(key)]] = value
                         props_copy.pop(key, None)
 
-                logger.debug(Messages.get_formatted("Monitor.OpeningMonitorConnection", self._host_info.url))
+                logger.debug("Monitor.OpeningMonitorConnection", self._host_info.url)
                 start_ns = perf_counter_ns()
                 self._monitoring_conn = self._plugin_service.force_connect(self._host_info, props_copy, None)
-                logger.debug(Messages.get_formatted("Monitor.OpenedMonitorConnection", self._host_info.url))
+                logger.debug("Monitor.OpenedMonitorConnection", self._host_info.url)
                 return Monitor.HostStatus(True, perf_counter_ns() - start_ns)
 
             start_ns = perf_counter_ns()

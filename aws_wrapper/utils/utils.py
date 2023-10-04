@@ -53,7 +53,7 @@ class LogUtils:
         """
         msg = "\n\t".join(["<null>" if not host else str(host) for host in hosts])
         prefix = "" if not message_prefix else message_prefix + " "
-        return prefix + f"Topology: {{\n\t{msg}}}"
+        return prefix + f": {{\n\t{msg}}}"
 
 
 class QueueUtils:

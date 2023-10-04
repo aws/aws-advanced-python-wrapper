@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 import socket
 import timeit
 from datetime import datetime, timedelta
-from logging import getLogger
 from time import perf_counter_ns, sleep
 from typing import Any, List, Optional
 
@@ -33,6 +32,7 @@ import boto3
 from botocore.config import Config
 
 from aws_wrapper.errors import UnsupportedOperationError
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from .database_engine import DatabaseEngine
 from .driver_helper import DriverHelper
@@ -42,7 +42,7 @@ from .test_instance_info import TestInstanceInfo
 
 
 class AuroraTestUtility:
-    logger = getLogger(__name__)
+    logger = Logger(__name__)
 
     _client: Any
 

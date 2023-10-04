@@ -24,18 +24,18 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
 
 from datetime import datetime, timedelta
-from logging import getLogger
 from typing import Callable, Dict, Optional, Set
 
 import boto3
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.plugin import Plugin, PluginFactory
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class TokenInfo:
@@ -100,11 +100,11 @@ class IamAuthPlugin(Plugin):
         token_info = IamAuthPlugin._token_cache.get(cache_key)
 
         if token_info and not token_info.is_expired():
-            logger.debug(Messages.get_formatted("IamAuthPlugin.UseCachedIamToken", token_info.token))
+            logger.debug("IamAuthPlugin.UseCachedIamToken", token_info.token)
             WrapperProperties.PASSWORD.set(props, token_info.token)
         else:
             token: str = self._generate_authentication_token(props, host, port, region)
-            logger.debug(Messages.get_formatted("IamAuthPlugin.GeneratedNewIamToken", token))
+            logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
             WrapperProperties.PASSWORD.set(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
@@ -113,7 +113,7 @@ class IamAuthPlugin(Plugin):
             return connect_func()
 
         except Exception as e:
-            logger.debug(Messages.get_formatted("IamAuthPlugin.ConnectException", e))
+            logger.debug("IamAuthPlugin.ConnectException", e)
 
             is_cached_token = (token_info and not token_info.is_expired())
             if not self._plugin_service.is_login_exception(error=e) or not is_cached_token:
@@ -123,7 +123,7 @@ class IamAuthPlugin(Plugin):
             # Try to generate a new token and try to connect again
 
             token = self._generate_authentication_token(props, host, port, region)
-            logger.debug(Messages.get_formatted("IamAuthPlugin.GeneratedNewIamToken", token))
+            logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
             WrapperProperties.PASSWORD.set(props, token)
             IamAuthPlugin._token_cache[token] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
@@ -175,7 +175,7 @@ class IamAuthPlugin(Plugin):
             if default_port > 0:
                 return default_port
             else:
-                logger.debug(Messages.get_formatted("IamAuthPlugin.InvalidPort", default_port))
+                logger.debug("IamAuthPlugin.InvalidPort", default_port)
 
         if host_info.is_port_specified():
             return host_info.port
@@ -186,15 +186,15 @@ class IamAuthPlugin(Plugin):
         rds_region = self._rds_utils.get_rds_region(hostname) if hostname else None
 
         if not rds_region:
-            exception_message = Messages.get_formatted("IamAuthPlugin.UnsupportedHostname", hostname)
-            logger.debug(exception_message)
-            raise AwsWrapperError(exception_message)
+            exception_message = "IamAuthPlugin.UnsupportedHostname"
+            logger.debug(exception_message, hostname)
+            raise AwsWrapperError(Messages.get_formatted(exception_message, hostname))
 
         session = self._session if self._session else boto3.Session()
         if rds_region not in session.get_available_regions("rds"):
-            exception_message = Messages.get_formatted("AwsSdk.UnsupportedRegion", rds_region)
-            logger.debug(exception_message)
-            raise AwsWrapperError(exception_message)
+            exception_message = "AwsSdk.UnsupportedRegion"
+            logger.debug(exception_message, rds_region)
+            raise AwsWrapperError(Messages.get_formatted(exception_message, rds_region))
 
         return rds_region
 

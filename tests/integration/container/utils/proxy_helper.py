@@ -20,16 +20,15 @@ if TYPE_CHECKING:
     from .proxy_info import ProxyInfo
     from toxiproxy import Proxy  # type: ignore
 
-from logging import getLogger
-
 from toxiproxy.api import APIConsumer  # type: ignore
 from toxiproxy.exceptions import NotFound  # type: ignore
 
+from aws_wrapper.utils.log import Logger
 from .test_environment import TestEnvironment
 
 
 class ProxyHelper:
-    logger = getLogger(__name__)
+    logger = Logger(__name__)
 
     @staticmethod
     def disable_all_connectivity():

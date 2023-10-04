@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-from logging import getLogger
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Type
 
 from aws_wrapper.connection_provider import (
@@ -30,10 +29,11 @@ from aws_wrapper.generic_target_driver_dialect import \
 from aws_wrapper.mysql_target_driver_dialect import MySQLTargetDriverDialect
 from aws_wrapper.pg_target_driver_dialect import PgTargetDriverDialect
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class TargetDriverDialectProvider(Protocol):
@@ -70,7 +70,7 @@ class TargetDriverDialectManager(TargetDriverDialectProvider):
             if self._custom_dialect.is_dialect(conn_func):
                 self._log_dialect("custom", self._custom_dialect)
                 return self._custom_dialect
-        logger.warning(Messages.get("TargetDriverDialectManager.CustomDialectNotSupported"))
+        logger.warning("TargetDriverDialectManager.CustomDialectNotSupported")
         result: Optional[TargetDriverDialect]
 
         dialect_code: Optional[str] = WrapperProperties.TARGET_DRIVER_DIALECT.get(props)
@@ -95,10 +95,10 @@ class TargetDriverDialectManager(TargetDriverDialectProvider):
 
     @staticmethod
     def _log_dialect(dialect_code: str, target_driver_dialect: TargetDriverDialect):
-        logger.debug(Messages.get_formatted(
+        logger.debug(
             "TargetDriverDialectManager.UseDialect",
             dialect_code,
-            target_driver_dialect))
+            target_driver_dialect)
 
     def get_pool_connection_driver_dialect(self, connection_provider: ConnectionProvider,
                                            underlying_driver_dialect: TargetDriverDialect) -> TargetDriverDialect:

@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from copy import deepcopy
-from logging import getLogger
 from random import shuffle
 from threading import Event
 from time import sleep
@@ -34,9 +33,9 @@ from aws_wrapper.failover_result import ReaderFailoverResult
 from aws_wrapper.host_availability import HostAvailability
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
-from aws_wrapper.utils.messages import Messages
+from aws_wrapper.utils.log import Logger
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class ReaderFailoverHandler:
@@ -76,7 +75,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
     def failover(self, current_topology: List[HostInfo], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         if current_topology is None or len(current_topology) == 0:
-            logger.debug(Messages.get_formatted("ReaderFailoverHandler.InvalidTopology", "failover"))
+            logger.debug("ReaderFailoverHandler.InvalidTopology", "failover")
             return ReaderFailoverHandlerImpl.failed_reader_failover_result
 
         result: ReaderFailoverResult = ReaderFailoverHandlerImpl.failed_reader_failover_result
@@ -129,7 +128,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
     def get_reader_connection(self, hosts: List[HostInfo]) -> ReaderFailoverResult:
         if hosts is None or len(hosts) == 0:
-            logger.debug(Messages.get_formatted("ReaderFailoverHandler.InvalidTopology", "get_reader_connection"))
+            logger.debug("ReaderFailoverHandler.InvalidTopology", "get_reader_connection")
             return ReaderFailoverHandlerImpl.failed_reader_failover_result
 
         hosts_by_priority = ReaderFailoverHandlerImpl.get_reader_hosts_by_priority(hosts)
@@ -166,16 +165,16 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
     def attempt_connection(self, host: HostInfo) -> ReaderFailoverResult:
         props: Properties = deepcopy(self._properties)
-        logger.debug(Messages.get_formatted("ReaderFailoverHandler.AttemptingReaderConnection", host.url, props))
+        logger.debug("ReaderFailoverHandler.AttemptingReaderConnection", host.url, props)
 
         try:
             conn: Connection = self._plugin_service.force_connect(host, props, self._timeout_event)
             self._plugin_service.set_availability(host.all_aliases, HostAvailability.AVAILABLE)
 
-            logger.debug(Messages.get_formatted("ReaderFailoverHandler.SuccessfulReaderConnection", host.url))
+            logger.debug("ReaderFailoverHandler.SuccessfulReaderConnection", host.url)
             return ReaderFailoverResult(conn, True, host, None)
         except Exception as ex:
-            logger.debug(Messages.get_formatted("ReaderFailoverHandler.FailedReaderConnection", host.url))
+            logger.debug("ReaderFailoverHandler.FailedReaderConnection", host.url)
             self._plugin_service.set_availability(host.all_aliases, HostAvailability.UNAVAILABLE)
             if not self._plugin_service.is_network_exception(ex):
                 return ReaderFailoverResult(None, False, None, ex)

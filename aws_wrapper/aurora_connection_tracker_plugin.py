@@ -14,12 +14,9 @@
 
 from __future__ import annotations
 
-from logging import getLogger
 from threading import Thread
 from typing import (TYPE_CHECKING, Any, Callable, Dict, FrozenSet, List,
                     Optional, Set)
-
-from aws_wrapper.errors import FailoverError
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
@@ -31,17 +28,16 @@ if TYPE_CHECKING:
 
 from _weakrefset import WeakSet
 
+from aws_wrapper.errors import FailoverError
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin, PluginFactory
-from aws_wrapper.utils.messages import Messages
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.rdsutils import RdsUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class OpenedConnectionTracker:
-    logger = getLogger(__name__)
-
     _opened_connections: Dict[str, WeakSet] = {}
     _rds_utils = RdsUtils()
 
@@ -56,7 +52,7 @@ class OpenedConnectionTracker:
         instance_endpoint: Optional[str] = next((alias for alias in aliases if self._rds_utils.is_rds_instance(alias)),
                                                 None)
         if not instance_endpoint:
-            logger.debug(Messages.get("OpenedConnectionTracker.UnableToPopulateOpenedConnectionSet"))
+            logger.debug("OpenedConnectionTracker.UnableToPopulateOpenedConnectionSet")
             return
 
         self._track_connection(instance_endpoint, conn)
@@ -130,7 +126,7 @@ class OpenedConnectionTracker:
 
             msg += f"\t[{key} : {conn}]"
 
-        return logger.debug(Messages.get_formatted("OpenedConnectionTracker.OpenedConnectionsTracked", msg))
+        return logger.debug("OpenedConnectionTracker.OpenedConnectionsTracked", msg)
 
     def _log_connection_set(self, host: str, conn_set: Optional[WeakSet]):
         if conn_set is None or len(conn_set) == 0:
@@ -141,7 +137,7 @@ class OpenedConnectionTracker:
             conn += f"\n\t\t{item}"
 
         msg = host + f"[{conn}\n]"
-        logger.debug(Messages.get_formatted("OpenedConnectionTracker.InvalidatingConnections", msg))
+        logger.debug("OpenedConnectionTracker.InvalidatingConnections", msg)
 
 
 class AuroraConnectionTrackerPlugin(Plugin):

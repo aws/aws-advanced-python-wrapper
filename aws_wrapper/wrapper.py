@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-from logging import getLogger
 from typing import Any, Callable, Iterator, List, Optional, Union
 
 from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
@@ -24,10 +23,11 @@ from aws_wrapper.plugin_service import (PluginManager, PluginService,
                                         PluginServiceImpl,
                                         PluginServiceManagerContainer)
 from aws_wrapper.target_driver_dialect import TargetDriverDialectManager
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class AwsWrapperConnection(Connection, CanReleaseResources):
@@ -93,7 +93,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         target_func: Callable = target
 
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
-        logger.debug(PropertiesUtils.log_properties(props, "Connection Properties: "))
+        logger.debug("Wrapper.Properties", PropertiesUtils.log_properties(props))
 
         target_driver_dialect_manager: TargetDriverDialectManager = TargetDriverDialectManager()
         target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)

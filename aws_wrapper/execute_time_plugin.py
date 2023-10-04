@@ -20,14 +20,13 @@ if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.utils.properties import Properties
 
-from logging import getLogger
 from time import perf_counter_ns
 from typing import Any, Callable, Set
 
 from aws_wrapper.plugin import Plugin, PluginFactory
-from aws_wrapper.utils.messages import Messages
+from aws_wrapper.utils.log import Logger
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 class ExecuteTimePlugin(Plugin):
@@ -49,7 +48,7 @@ class ExecuteTimePlugin(Plugin):
         elapsed_time_ns = perf_counter_ns() - start_time_ns
         ExecuteTimePlugin.execute_time += elapsed_time_ns
 
-        logger.debug(Messages.get_formatted("ExecuteTimePlugin.ExecuteTime", method_name, elapsed_time_ns))
+        logger.debug("ExecuteTimePlugin.ExecuteTime", method_name, elapsed_time_ns)
 
         return result
 
