@@ -18,4 +18,3 @@ from enum import Enum
 class DatabaseEngine(Enum):
     MYSQL = "MYSQL"
     PG = "PG"
-    MARIADB = "MARIADB"

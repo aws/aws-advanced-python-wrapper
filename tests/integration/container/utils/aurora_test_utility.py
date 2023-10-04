@@ -283,8 +283,6 @@ class AuroraTestUtility:
     def _get_driver_for_database_engine(self, database_engine: DatabaseEngine) -> TestDriver:
         if database_engine == DatabaseEngine.MYSQL:
             return TestDriver.MYSQL
-        elif database_engine == DatabaseEngine.MARIADB:
-            return TestDriver.MARIADB
         elif database_engine == DatabaseEngine.PG:
             return TestDriver.PG
         else:

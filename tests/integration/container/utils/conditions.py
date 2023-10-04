@@ -14,19 +14,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from .database_engine import DatabaseEngine
     from .database_engine_deployment import DatabaseEngineDeployment
     from .test_driver import TestDriver
-
-from typing import List
+    from .test_environment_features import TestEnvironmentFeatures
 
 import pytest
 
 from .test_environment import TestEnvironment
-from .test_environment_features import TestEnvironmentFeatures
 
 
 def enable_on_deployment(requested_deployment: DatabaseEngineDeployment):
@@ -92,9 +90,3 @@ def disable_on_features(disable_on_test_features: List[TestEnvironmentFeatures])
         disable_test,
         reason="The current test environment contains test features for which this test is disabled"
     )
-
-
-disable_on_mariadb_driver = pytest.mark.skipif(
-    TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS not in TestEnvironment.get_current().get_features(),
-    reason="This test does not support the MariaDB driver"
-)

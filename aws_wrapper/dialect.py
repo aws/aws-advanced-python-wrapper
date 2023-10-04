@@ -50,8 +50,6 @@ class DialectCode(Enum):
     RDS_PG: str = "rds-pg"
     PG: str = "pg"
 
-    MARIADB: str = "mariadb"
-
     CUSTOM: str = "custom"
     UNKNOWN: str = "unknown"
 
@@ -66,7 +64,6 @@ class DialectCode(Enum):
 class TargetDriverType(Enum):
     MYSQL = auto()
     POSTGRES = auto()
-    MARIADB = auto()
     CUSTOM = auto()
 
 
@@ -220,46 +217,6 @@ class PgDialect(Dialect):
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
 
-class MariaDbDialect(Dialect):
-    _DIALECT_UPDATE_CANDIDATES = None
-
-    @property
-    def default_port(self) -> int:
-        return 3306
-
-    @property
-    def host_alias_query(self) -> str:
-        return "SELECT CONCAT(@@hostname, ':', @@port)"
-
-    @property
-    def server_version_query(self) -> str:
-        return "SELECT VERSION()"
-
-    @property
-    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode]]:
-        return MariaDbDialect._DIALECT_UPDATE_CANDIDATES
-
-    @property
-    def exception_handler(self) -> Optional[ExceptionHandler]:
-        # TODO
-        return None
-
-    def is_dialect(self, conn: Connection) -> bool:
-        try:
-            with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self.server_version_query)
-                for record in aws_cursor:
-                    if "mariadb" in record[0].lower():
-                        return True
-        except Exception:
-            pass
-
-        return False
-
-    def get_host_list_provider_supplier(self) -> Callable:
-        return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
-
-
 class RdsMysqlDialect(MysqlDialect):
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL,)
 
@@ -399,7 +356,6 @@ class UnknownDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCode, ...]] = \
         (DialectCode.MYSQL,
          DialectCode.PG,
-         DialectCode.MARIADB,
          DialectCode.RDS_MYSQL,
          DialectCode.RDS_PG,
          DialectCode.AURORA_MYSQL,
@@ -444,7 +400,6 @@ class DialectManager(DialectProvider):
         self._known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
         self._known_dialects_by_code: Dict[DialectCode, Dialect] = {DialectCode.MYSQL: MysqlDialect(),
                                                                     DialectCode.PG: PgDialect(),
-                                                                    DialectCode.MARIADB: MariaDbDialect(),
                                                                     DialectCode.RDS_MYSQL: RdsMysqlDialect(),
                                                                     DialectCode.RDS_PG: RdsPgDialect(),
                                                                     DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
@@ -530,20 +485,6 @@ class DialectManager(DialectProvider):
             self._log_current_dialect()
             return self._dialect
 
-        if target_driver_type is TargetDriverType.MARIADB:
-            rds_type = self._rds_helper.identify_rds_type(host)
-            if rds_type.is_rds_cluster:
-                # Aurora MariaDB doesn't exist.
-                # If this is a cluster endpoint then user is trying to connect to AMS via the MariaDB driver.
-                self._dialect_code = DialectCode.AURORA_MYSQL
-                self._dialect = self._known_dialects_by_code[DialectCode.AURORA_MYSQL]
-                return self._dialect
-            self._can_update = True
-            self._dialect_code = DialectCode.MARIADB
-            self._dialect = self._known_dialects_by_code[DialectCode.MARIADB]
-            self._log_current_dialect()
-            return self._dialect
-
         self._can_update = True
         self._dialect_code = DialectCode.UNKNOWN
         self._dialect = self._known_dialects_by_code[DialectCode.UNKNOWN]
@@ -555,8 +496,6 @@ class DialectManager(DialectProvider):
             return TargetDriverType.POSTGRES
         if driver_dialect == TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON:
             return TargetDriverType.MYSQL
-        if driver_dialect == TargetDriverDialectCodes.MARIADB_CONNECTOR_PYTHON:
-            return TargetDriverType.MARIADB
 
         return TargetDriverType.CUSTOM
 

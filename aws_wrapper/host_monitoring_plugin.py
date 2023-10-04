@@ -261,7 +261,6 @@ class MonitoringContext:
         if not self._is_active:
             return
         total_elapsed_time_ns = status_check_end_time_ns - self._monitor_start_time_ns
-
         if total_elapsed_time_ns > (self._failure_detection_time_ms * 1_000_000):
             self._set_host_availability(url, is_available, status_check_start_time_ns, status_check_end_time_ns)
 
@@ -324,6 +323,9 @@ class Monitor:
     def is_stopped(self):
         return self._is_stopped.is_set()
 
+    def stop(self):
+        self._is_stopped.set()
+
     def start_monitoring(self, context: MonitoringContext):
         current_time_ns = perf_counter_ns()
         context.set_monitor_start_time_ns(current_time_ns)
@@ -346,7 +348,7 @@ class Monitor:
         try:
             self._is_stopped.clear()
 
-            while True:
+            while not self.is_stopped:
                 current_time_ns = perf_counter_ns()
                 first_added_new_context = None
 
@@ -423,7 +425,8 @@ class Monitor:
                 else:
                     # Subtract the time taken for the status check from the delay
                     delay_ms -= (status.elapsed_time_ns / 1_000_000)
-                    delay_ms = max(delay_ms, Monitor._MIN_HOST_CHECK_TIMEOUT_MS)
+                    if delay_ms <= 0:
+                        delay_ms = Monitor._MIN_HOST_CHECK_TIMEOUT_MS
                     # Use this delay for all active contexts
                     self._host_check_timeout_ms = delay_ms
 
@@ -438,7 +441,7 @@ class Monitor:
                 except Exception:
                     # Do nothing
                     pass
-            self._is_stopped.set()
+            self.stop()
 
     def _check_host_status(self, host_check_timeout_ms: int) -> HostStatus:
         start_ns = perf_counter_ns()
@@ -473,10 +476,11 @@ class Monitor:
     def _execute_conn_check(self, conn: Connection, timeout_sec: float):
         target_driver_dialect = self._plugin_service.target_driver_dialect
         initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
-        kwargs = {WrapperProperties.SOCKET_TIMEOUT_SEC.name: int(timeout_sec)}  # TODO: extend kwargs types with float
+        kwargs = {WrapperProperties.SOCKET_TIMEOUT_SEC.name: timeout_sec}
 
         with conn.cursor() as cursor:
             target_driver_dialect.execute(conn, cursor, "SELECT 1", **kwargs)
+            cursor.fetchone()
 
         if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
             conn.commit()
@@ -571,10 +575,11 @@ class MonitoringThreadContainer:
 
     def _release_resources(self):
         self._monitor_map.clear()
-        # TODO: Investigate how to cancel the future. This will only cancel it if it isn't currently running
         self._tasks_map.apply_if(
             lambda monitor, future: not future.done() and not future.cancelled(),
             lambda monitor, future: future.cancel())
+        for monitor, _ in self._tasks_map.items():
+            monitor.stop()
         self._tasks_map.clear()
         QueueUtils.clear(self._available_monitors)
 

@@ -1,14 +1,11 @@
-name: Integration Tests
+name: MySQL Performance Tests
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
-  build-integration-tests:
-    name: Run Integration Tests
+  build-performance-tests:
+    name: Run Performance Tests on MySQL
     runs-on: ubuntu-latest
 
     steps:
@@ -52,9 +49,9 @@ jobs:
           echo "TEMP_AWS_SECRET_ACCESS_KEY=${creds[1]}" >> $GITHUB_ENV
           echo "TEMP_AWS_SESSION_TOKEN=${creds[2]}" >> $GITHUB_ENV
 
-      - name: 'Run Integration Tests'
+      - name: 'Run MySQL Performance Tests'
         run: |
-          ./gradlew --no-parallel --no-daemon test-all-environments --info
+          ./gradlew --no-parallel --no-daemon test-mysql-aurora-performance --info
         env:
           AURORA_CLUSTER_DOMAIN: ${{ secrets.DB_CONN_SUFFIX }}
           AURORA_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
@@ -66,6 +63,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: pytest-integration-report
+          name: pytest-performance-report
           path: ./tests/integration/container/reports
           retention-days: 5

@@ -200,19 +200,12 @@ class TestEnvironment:
         database_engine = self.get_engine()
 
         if test_driver == TestDriver.MYSQL:
-            driver_compatible_to_database_engine = (database_engine == DatabaseEngine.MYSQL) \
-             or (database_engine == DatabaseEngine.MARIADB)
+            driver_compatible_to_database_engine = database_engine == DatabaseEngine.MYSQL
             disabled_by_feature = TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS in features
         elif test_driver == TestDriver.PG:
             driver_compatible_to_database_engine = (
                 database_engine == DatabaseEngine.PG)
             disabled_by_feature = TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS in features
-
-        elif test_driver == TestDriver.MARIADB:
-            driver_compatible_to_database_engine = (database_engine == DatabaseEngine.MYSQL) \
-             or (database_engine == DatabaseEngine.MARIADB)
-            disabled_by_feature = TestEnvironmentFeatures.SKIP_MARIADB_DRIVER_TESTS in features
-
         else:
             raise UnsupportedOperationError(test_driver.value)
 

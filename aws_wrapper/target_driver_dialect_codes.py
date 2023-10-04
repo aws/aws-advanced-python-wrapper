@@ -16,5 +16,4 @@ class TargetDriverDialectCodes:
     SQLALCHEMY = "sqlalchemy"
     PSYCOPG = "psycopg"
     MYSQL_CONNECTOR_PYTHON = "mysql-connector-python"
-    MARIADB_CONNECTOR_PYTHON = "mariadb-connector-python"
     GENERIC = "generic"

@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from logging import getLogger
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -33,6 +34,8 @@ from .utils.proxy_helper import ProxyHelper
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
+logger = getLogger(__name__)
+
 
 @pytest.fixture(scope='module')
 def conn_utils():
@@ -40,7 +43,6 @@ def conn_utils():
 
 
 def pytest_runtest_setup(item):
-
     if hasattr(item, "callspec"):
         current_driver = item.callspec.params.get("test_driver")
         TestEnvironment.get_current().set_current_driver(current_driver)
@@ -65,7 +67,7 @@ def pytest_runtest_setup(item):
         while (len(instances) != request.get_num_of_instances()
                or len(instances) == 0
                or not aurora_utility.is_db_instance_writer(instances[0])) and (
-                   timeit.default_timer() - start_time) < 300:  # 5 min
+                timeit.default_timer() - start_time) < 300:  # 5 min
 
             try:
                 instances = aurora_utility.get_aurora_instance_ids()

@@ -12,11 +12,30 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from enum import Enum
+import csv
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import List
 
 
-class TestDriver(str, Enum):
-    __test__ = False
+@dataclass
+class PerfStatBase(ABC):
 
-    PG = "PG"  # psycopg
-    MYSQL = "MYSQL"  # ?
+    @abstractmethod
+    def write_data(self, writer):
+        pass
+
+
+class PerformanceUtil:
+    @staticmethod
+    def write_perf_data_to_file(file_name: str, header: List, data: List[PerfStatBase]):
+        with open(f"{file_name}", "w", encoding="UTF8") as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+
+            for row in data:
+                row.write_data(writer)
+
+    @staticmethod
+    def to_millis(nanos: int):
+        return nanos / 1_000_000

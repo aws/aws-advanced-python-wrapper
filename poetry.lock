@@ -350,6 +350,21 @@ classify-imports = "*"
 flake8 = "*"
 
 [[package]]
+name = "functiontrace"
+version = "0.3.7"
+description = "A profiling tool that traces your application's execution"
+optional = false
+python-versions = "<3.12,>=3.6"
+files = [
+    {file = "functiontrace-0.3.7-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2c66b1244c73cb65c2a6d8f23a4616eea94e52b2e964577e40335786dbad16d1"},
+    {file = "functiontrace-0.3.7-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:92f3a041b9e50308400d29f18cc5fb23003dc7d5ef3447746893e8bb65803761"},
+    {file = "functiontrace-0.3.7-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c1d0690d065e1267b582032004383805c66a58e9917a7605ec683c516cf7341f"},
+    {file = "functiontrace-0.3.7-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0bc4c66f62ee4661efe251cd9cadc634246f0c2559dd6e53cf9eeb136500e443"},
+    {file = "functiontrace-0.3.7-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c6ee68942a110b120e072ac3d28612da9a4c72affb06ad00e2e100bfcfcb6edd"},
+    {file = "functiontrace-0.3.7.tar.gz", hash = "sha256:ddb9f1645ab5fc3f67b707efeced9853a3272840d65881b8cd7d1eddc80295e8"},
+]
+
+[[package]]
 name = "future"
 version = "0.18.3"
 description = "Clean single-source support for Python 3 and 2"
@@ -1109,7 +1124,6 @@ aiomysql = ["aiomysql (>=0.2.0)", "greenlet (!=0.4.17)"]
 aiosqlite = ["aiosqlite", "greenlet (!=0.4.17)", "typing-extensions (!=3.10.0.1)"]
 asyncio = ["greenlet (!=0.4.17)"]
 asyncmy = ["asyncmy (>=0.2.3,!=0.2.4,!=0.2.6)", "greenlet (!=0.4.17)"]
-mariadb-connector = ["mariadb (>=1.0.1,!=1.1.2,!=1.1.5)"]
 mssql = ["pyodbc"]
 mssql-pymssql = ["pymssql"]
 mssql-pyodbc = ["pyodbc"]
