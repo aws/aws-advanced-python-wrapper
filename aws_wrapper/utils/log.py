@@ -23,20 +23,20 @@ class Logger:
     def __init__(self, name: str):
         self.logger = getLogger(name)
 
-    def debug(self, msg, *args, **kwargs):
+    def debug(self, msg, *args):
         if args is not None and len(args) > 0:
-            self.logger.debug(Messages.get_formatted(msg, *args, **kwargs))
+            self.logger.debug(Messages.get_formatted(msg, *args))
         else:
-            self.logger.debug(Messages.get(msg, *args, **kwargs))
+            self.logger.debug(Messages.get(msg))
 
-    def error(self, msg, *args, **kwargs):
+    def error(self, msg, *args):
         if args is not None and len(args) > 0:
-            self.logger.error(Messages.get_formatted(msg, *args, **kwargs))
+            self.logger.error(Messages.get_formatted(msg, *args))
         else:
-            self.logger.error(Messages.get(msg, *args, **kwargs))
+            self.logger.error(Messages.get(msg))
 
-    def warning(self, msg, *args, **kwargs):
+    def warning(self, msg, *args):
         if args is not None and len(args) > 0:
-            self.logger.warning(Messages.get_formatted(msg, *args, **kwargs))
+            self.logger.warning(Messages.get_formatted(msg, *args))
         else:
-            self.logger.warning(Messages.get(msg, *args, **kwargs))
+            self.logger.warning(Messages.get(msg))
