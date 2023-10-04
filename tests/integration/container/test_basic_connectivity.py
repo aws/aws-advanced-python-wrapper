@@ -58,6 +58,7 @@ class TestBasicConnectivity:
 
         conn.close()
 
+    @enable_on_features([TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_conn_string())
@@ -79,7 +80,8 @@ class TestBasicConnectivity:
 
         conn.close()
 
-    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                         TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_proxied_wrapper_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         conn = AwsWrapperConnection.connect(target_driver_connect, conn_utils.get_proxy_conn_string())
@@ -110,6 +112,7 @@ class TestBasicConnectivity:
 
     @enable_on_num_instances(min_instances=2)
     @enable_on_deployment(DatabaseEngineDeployment.AURORA)
+    @enable_on_features([TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     @disable_on_features([TestEnvironmentFeatures.PERFORMANCE])
     def test_wrapper_connection_reader_cluster_with_efm_enabled(
             self, test_driver: TestDriver, props, conn_utils):

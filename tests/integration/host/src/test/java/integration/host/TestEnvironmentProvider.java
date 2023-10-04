@@ -109,6 +109,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_8,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                      TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
                       testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
@@ -137,6 +138,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                      TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
                       testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
@@ -169,6 +171,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_8,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                      TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
                       testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
@@ -197,6 +200,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.DOCKER,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                      TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
                       testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
@@ -257,6 +261,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.AURORA,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                      TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED,
                       excludeFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
                       TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
                       excludeIam ? null : TestEnvironmentFeatures.IAM,
@@ -280,6 +285,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       DatabaseEngineDeployment.AURORA,
                       TargetPythonVersion.PYTHON_3_11,
                       TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                      TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED,
                       excludeFailover ? null : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
                       TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
                       excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
