@@ -62,12 +62,13 @@ class WrapperProperty:
 
 
 class WrapperProperties:
+    DEFAULT_PLUGINS = "aurora_connection_tracker,failover,host_monitoring"
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
 
     PLUGINS = WrapperProperty(
         "plugins",
         "Comma separated list of connection plugin codes",
-        "aurora_connection_tracker,failover,host_monitoring")
+        DEFAULT_PLUGINS)
     USER = WrapperProperty("user", "Driver user name")
     PASSWORD = WrapperProperty("password", "Driver password")
     DATABASE = WrapperProperty("database", "Driver database name")
@@ -212,6 +213,13 @@ class WrapperProperties:
         "reader_host_selector_strategy",
         "The strategy that should be used to select a new reader host.",
         "random")
+
+    # Plugin Sorting
+    AUTO_SORT_PLUGIN_ORDER = WrapperProperty(
+        "auto_sort_wrapper_plugin_order",
+        "This flag is enabled by default, meaning that the plugins order will be automatically adjusted. "
+        "Disable it at your own risk or if you really need plugins to be executed in a particular order.",
+        True)
 
 
 class PropertiesUtils:
