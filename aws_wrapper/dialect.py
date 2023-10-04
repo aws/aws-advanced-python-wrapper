@@ -28,13 +28,13 @@ from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
                                             ConnectionStringHostListProvider)
 from aws_wrapper.hostinfo import HostInfo
+from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
 from .exceptions import ExceptionHandler, PgExceptionHandler
 from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
-from .utils.log import Logger
 from .utils.messages import Messages
 
 logger = Logger(__name__)

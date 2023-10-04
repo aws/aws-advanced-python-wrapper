@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from concurrent.futures import Executor, ThreadPoolExecutor
-from logging import getLogger
 from typing import TYPE_CHECKING, Any, Callable, Set
 
 import psycopg
@@ -34,8 +33,6 @@ from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-
-logger = getLogger(__name__)
 
 
 class PgTargetDriverDialect(GenericTargetDriverDialect):
