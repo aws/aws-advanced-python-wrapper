@@ -46,7 +46,7 @@ from tests.integration.container.utils.test_environment_features import \
 
 @enable_on_num_instances(min_instances=2)
 @enable_on_deployment(DatabaseEngineDeployment.AURORA)
-@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
 class TestReadWriteSplitting:
     @pytest.fixture(scope='class')
     def aurora_utils(self):
@@ -638,6 +638,7 @@ class TestReadWriteSplitting:
     that new connections are sent to the other readers until their connection count equals that of
     the overloaded reader.
     """
+
     @enable_on_num_instances(min_instances=5)
     def test_pooled_connection__least_connections__pool_mapping(
             self, test_environment: TestEnvironment, test_driver: TestDriver, aurora_utils, conn_utils, props):

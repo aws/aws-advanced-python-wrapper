@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.pep249 import Connection
+    from aws_wrapper.utils.properties import Properties
 
 import copy
 from typing import Any, Callable, Set
@@ -32,7 +33,6 @@ from aws_wrapper.host_availability import HostAvailability
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import Plugin
 from aws_wrapper.utils.messages import Messages
-from aws_wrapper.utils.properties import Properties, PropertiesUtils
 
 
 class DefaultPlugin(Plugin):
@@ -52,7 +52,6 @@ class DefaultPlugin(Plugin):
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
         target_driver_props = copy.copy(props)
-        PropertiesUtils.remove_wrapper_props(target_driver_props)
         connection_provider: ConnectionProvider = \
             self._connection_provider_manager.get_connection_provider(host_info, target_driver_props)
         result = self._connect(target_driver_func, target_driver_dialect, host_info, target_driver_props, connection_provider)
@@ -80,7 +79,6 @@ class DefaultPlugin(Plugin):
             is_initial_connection: bool,
             force_connect_func: Callable) -> Connection:
         target_driver_props = copy.copy(props)
-        PropertiesUtils.remove_wrapper_props(target_driver_props)
         return self._connect(
             target_driver_func,
             target_driver_dialect,

@@ -140,6 +140,32 @@ tasks.register<Test>("test-autoscaling") {
     }
 }
 
+tasks.register<Test>("test-pg-aurora-performance") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-iam", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-mysql-aurora-performance") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-iam", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+    }
+}
+
 // Debug
 
 tasks.register<Test>("debug-all-environments") {
@@ -217,5 +243,31 @@ tasks.register<Test>("debug-autoscaling") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
+    }
+}
+
+tasks.register<Test>("debug-pg-aurora-performance") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.debugTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-iam", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+    }
+}
+
+tasks.register<Test>("debug-mysql-aurora-performance") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.debugTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-iam", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
     }
 }

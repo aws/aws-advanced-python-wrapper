@@ -155,6 +155,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
                 for future in as_completed(futures, timeout=self.timeout_sec):
                     result = future.result()
                     if result.is_connected or result.exception is not None:
+                        executor.shutdown(wait=False)
                         return result
             except TimeoutError:
                 self._timeout_event.set()

@@ -33,6 +33,7 @@ from aws_wrapper.aurora_connection_tracker_plugin import \
     AuroraConnectionTrackerPluginFactory
 from aws_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
+from aws_wrapper.connect_time_plugin import ConnectTimePluginFactory
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
 from aws_wrapper.default_plugin import DefaultPlugin
@@ -40,6 +41,7 @@ from aws_wrapper.dialect import (Dialect, DialectManager,
                                  TopologyAwareDatabaseDialect, UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.exceptions import ExceptionHandler, ExceptionManager
+from aws_wrapper.execute_time_plugin import ExecuteTimePluginFactory
 from aws_wrapper.failover_plugin import FailoverPluginFactory
 from aws_wrapper.host_availability import HostAvailability
 from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
@@ -483,7 +485,9 @@ class PluginManager(CanReleaseResources):
         "host_monitoring": HostMonitoringPluginFactory,
         "failover": FailoverPluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,
-        "stale_dns": StaleDnsPluginFactory
+        "stale_dns": StaleDnsPluginFactory,
+        "connect_time": ConnectTimePluginFactory,
+        "execute_time": ExecuteTimePluginFactory,
     }
 
     def __init__(self, container: PluginServiceManagerContainer, props: Properties):
@@ -507,7 +511,7 @@ class PluginManager(CanReleaseResources):
         for plugin_code in plugin_list:
             plugin_code = plugin_code.strip()
             if plugin_code not in PluginManager._PLUGIN_FACTORIES:
-                raise AwsWrapperError(Messages.get_joined("PluginManager.InvalidPlugin", plugin_code))
+                raise AwsWrapperError(Messages.get_formatted("PluginManager.InvalidPlugin", plugin_code))
             factory: PluginFactory = object.__new__(PluginManager._PLUGIN_FACTORIES[plugin_code])
             plugin: Plugin = factory.get_instance(self._container.plugin_service, props)
             self._plugins.append(plugin)

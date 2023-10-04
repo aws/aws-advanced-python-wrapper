@@ -65,6 +65,9 @@ class HostInfo:
             and self._availability == other._availability \
             and self.role == other.role
 
+    def __str__(self):
+        return f"HostInfo({self.host}, {self.port}, {self.role}, {self._availability})"
+
     @property
     def url(self):
         if self.is_port_specified():
