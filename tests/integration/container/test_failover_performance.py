@@ -233,7 +233,7 @@ class TestPerformance:
                     conn_str,
                     **props)
             except Exception as e:
-                TestPerformance.logger.debug(f"Open connection failed with exception: {str(e)}")
+                TestPerformance.logger.debug("OpenConnectionFailed", str(e))
             connection_attempts += 1
 
         if conn is None:

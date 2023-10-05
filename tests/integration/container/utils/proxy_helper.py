@@ -58,7 +58,7 @@ class ProxyHelper:
                                    stream="upstream",
                                    toxicity=1,
                                    attributes=attributes)
-        ProxyHelper.logger.debug("Disabled connectivity to " + proxy_info.proxy.name)
+        ProxyHelper.logger.debug("Testing.DisabledConnectivity", proxy_info.proxy.name)
 
     @staticmethod
     def enable_all_connectivity():
@@ -89,4 +89,4 @@ class ProxyHelper:
         if up_stream is not None:
             proxy_info.proxy.destroy_toxic("UP-STREAM")
 
-        ProxyHelper.logger.debug("Enabled connectivity to " + proxy_info.proxy.name)
+        ProxyHelper.logger.debug("Testing.EnabledConnectivity", proxy_info.proxy.name)
