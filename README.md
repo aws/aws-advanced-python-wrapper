@@ -80,31 +80,30 @@ and how to integrate it within your project and with your Python driver of choic
 [Getting Started page](./docs/GettingStarted.md).
 
 ### Connection Properties
-The following table lists the common 
+The following table lists the common connection properties used with the AWS Advanced Python Wrapper.
 
-| Parameter                                    |                                             Documentation Link                                             |
-|----------------------------------------------|:----------------------------------------------------------------------------------------------------------:|
-| `wrapper_dialect`                            |     [Dialects](/docs/using-the-python-driver/DatabaseDialects.md), and whether you should include it.      |
-| `plugins`                                    |                                                                                                            |
-| `secrets_manager_secret_id`                  |  [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)   |
-| `secrets_manager_region`                     |  [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)   |
-| `failover_mode`                              |          [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)          |
-| `cluster_instance_host_pattern`              |          [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)          |
-| `failover_cluster_topology_refresh_rate_sec` |          [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)          |
-| `failover_reader_connect_timeout_sec`        |          [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)          |
-| `failover_timeout_sec`                       |          [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)          |
-| `failover_writer_reconnect_interval_sec`     |          [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)          |
-| `failure_detection_count`                    |    [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)    |
-| `failure_detection_enabled`                  |    [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)    |
-| `failure_detection_interval_ms`              |    [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)    |
-| `failure_detection_time_ms`                  |    [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)    |
-| `monitor_disposal_time_ms`                   |    [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)    |
-| `iam_default_port`                           | [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md) |
-| `iam_host`                                   | [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md) |
-| `iam_region`                                 | [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md) |
-| `iam_expiration`                             | [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md) |
-
-**A Secret ARN** has the following format: `arn:aws:secretsmanager:<Region>:<AccountId>:secret:SecretName-6RandomCharacters`
+| Parameter                                    |                                                   Documentation Link                                                    |
+|----------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------:|
+| `wrapper_dialect`                            |            [Dialects](/docs/using-the-python-driver/DatabaseDialects.md), and whether you should include it.            |
+| `plugins`                                    | [Connection Plugin Manager](/docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters) |
+| `secrets_manager_secret_id`                  |         [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)         |
+| `secrets_manager_region`                     |         [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)         |
+| `enable_failover`                            |                [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
+| `failover_mode`                              |                [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
+| `cluster_instance_host_pattern`              |                [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
+| `failover_cluster_topology_refresh_rate_sec` |                [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
+| `failover_reader_connect_timeout_sec`        |                [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
+| `failover_timeout_sec`                       |                [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
+| `failover_writer_reconnect_interval_sec`     |                [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
+| `failure_detection_count`                    |          [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
+| `failure_detection_enabled`                  |          [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
+| `failure_detection_interval_ms`              |          [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
+| `failure_detection_time_ms`                  |          [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
+| `monitor_disposal_time_ms`                   |          [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
+| `iam_default_port`                           |       [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
+| `iam_host`                                   |       [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
+| `iam_region`                                 |       [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
+| `iam_expiration`                             |       [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
 
 ### Using the AWS Advanced Python Driver
 

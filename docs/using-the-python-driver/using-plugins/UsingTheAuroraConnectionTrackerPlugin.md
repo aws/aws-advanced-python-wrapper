@@ -1,7 +1,7 @@
 # Aurora Connection Tracker Plugin
 
 This plugin tracks all the opened connections. In the event of a cluster failover, this plugin will close all the impacted connections.
-This plugin is enabled by default. It can also be explicitly included by adding the plugin code `aurora_connection_tracker ` to the [`plugins`](../UsingThePythonDriver.md#aws-advanced-python-driver-parameters) value, or by adding it to the current [driver profile](../UsingThePythonDriver.md#connection-plugin-manager-parameters).
+This plugin is enabled by default. It can also be explicitly included by adding the plugin code `aurora_connection_tracker` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) value.
 
 ## Use Case
 User applications can have two types of connections:
