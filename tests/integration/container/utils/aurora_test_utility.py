@@ -152,6 +152,7 @@ class AuroraTestUtility:
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
         self.logger.debug(
+            "Freeform",
             f"Finished failover from {initial_writer_id} in {(perf_counter_ns() - start) / 1_000_000}ms\n")
 
     def failover_cluster(self, cluster_id: Optional[str] = None) -> None:
