@@ -1,0 +1,67 @@
+name: 'Release Draft'
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  actions: write
+  deployments: write
+  packages: write
+  pull-requests: write
+  repository-projects: write
+  contents: write
+
+jobs:
+  python-wrapper-release-gh-draft:
+    name: 'Build And Release Draft'
+    runs-on: ubuntu-latest
+    environment:
+      name: draft_release
+      url: https://test.pypi.org/project/aws-advanced-python-wrapper/
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v3
+      - name: 'Set up Python 3.11'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: 'Install poetry'
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: '1.4.2'
+      - name: 'Install dependencies'
+        run: poetry install
+      - name: 'Run mypy - static type checking'
+        run: poetry run mypy .
+      - name: 'Run flake8 - linting'
+        run: poetry run flake8 .
+      - name: 'Run isort - dependency import sorting check'
+        run: poetry run isort --check-only .
+      - name: 'Run unit tests'
+        run: poetry run pytest ./tests/unit -Werror
+      - name: 'Set Version Env Variable'
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      - name: 'Get Release Details'
+        run: |
+          export RELEASE_DETAILS="$(awk -vN=2 'n<N;/^## /{++n}' CHANGELOG.md)"
+          export RELEASE_DETAILS="$(sed '${/^# /d;}' <<< "$RELEASE_DETAILS")"
+          export RELEASE_DETAILS="$(sed '$d' <<< "$RELEASE_DETAILS")"
+          touch RELEASE_DETAILS.md
+          echo "$RELEASE_DETAILS" > RELEASE_DETAILS.md
+      - name: 'Create a Package'
+        run: poetry build
+      - name: 'Upload to TestPyPI'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+      - name: 'Create a Draft Release'
+        uses: ncipollo/release-action@v1
+        with:
+          draft: true
+          name: "AWS Advanced Python Wrapper - v${{ env.RELEASE_VERSION }}"
+          bodyFile: RELEASE_DETAILS.md
+          token: ${{ secrets.GITHUB_TOKEN }}
