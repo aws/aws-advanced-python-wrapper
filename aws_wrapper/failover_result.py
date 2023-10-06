@@ -14,14 +14,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Optional
 
 
 @dataclass
@@ -36,7 +36,7 @@ class ReaderFailoverResult:
 class WriterFailoverResult:
     is_connected: bool
     is_new_host: bool
-    topology: Optional[List[HostInfo]]
+    topology: Optional[Tuple[HostInfo, ...]]
     new_connection: Optional[Connection]
     task_name: Optional[str]
     exception: Optional[Exception]

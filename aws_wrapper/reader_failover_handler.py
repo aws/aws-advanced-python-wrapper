@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Tuple
 
 if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
@@ -27,7 +27,7 @@ from copy import deepcopy
 from random import shuffle
 from threading import Event
 from time import sleep
-from typing import List, Optional
+from typing import Optional
 
 from aws_wrapper.failover_result import ReaderFailoverResult
 from aws_wrapper.host_availability import HostAvailability
@@ -40,11 +40,11 @@ logger = Logger(__name__)
 
 class ReaderFailoverHandler:
     @abstractmethod
-    def failover(self, current_topology: List[HostInfo], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
+    def failover(self, current_topology: Tuple[HostInfo, ...], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         pass
 
     @abstractmethod
-    def get_reader_connection(self, hosts: List[HostInfo]) -> ReaderFailoverResult:
+    def get_reader_connection(self, hosts: Tuple[HostInfo, ...]) -> ReaderFailoverResult:
         pass
 
 
@@ -73,7 +73,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
     def timeout_sec(self, value):
         self._timeout_sec = value
 
-    def failover(self, current_topology: List[HostInfo], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
+    def failover(self, current_topology: Tuple[HostInfo, ...], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         if current_topology is None or len(current_topology) == 0:
             logger.debug("ReaderFailoverHandler.InvalidTopology", "failover")
             return ReaderFailoverHandlerImpl.failed_reader_failover_result
@@ -92,7 +92,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
         return result
 
     def _internal_failover_task(
-            self, topology: List[HostInfo], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
+            self, topology: Tuple[HostInfo, ...], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         try:
             while not self._timeout_event.is_set():
                 result = self._failover_internal(topology, current_host)
@@ -119,14 +119,14 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
         return ReaderFailoverHandlerImpl.failed_reader_failover_result
 
-    def _failover_internal(self, hosts: List[HostInfo], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
+    def _failover_internal(self, hosts: Tuple[HostInfo, ...], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         if current_host is not None:
             self._plugin_service.set_availability(current_host.all_aliases, HostAvailability.UNAVAILABLE)
 
         hosts_by_priority = ReaderFailoverHandlerImpl.get_hosts_by_priority(hosts, self._strict_reader_failover)
         return self._get_connection_from_host_group(hosts_by_priority)
 
-    def get_reader_connection(self, hosts: List[HostInfo]) -> ReaderFailoverResult:
+    def get_reader_connection(self, hosts: Tuple[HostInfo, ...]) -> ReaderFailoverResult:
         if hosts is None or len(hosts) == 0:
             logger.debug("ReaderFailoverHandler.InvalidTopology", "get_reader_connection")
             return ReaderFailoverHandlerImpl.failed_reader_failover_result
@@ -134,7 +134,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
         hosts_by_priority = ReaderFailoverHandlerImpl.get_reader_hosts_by_priority(hosts)
         return self._get_connection_from_host_group(hosts_by_priority)
 
-    def _get_connection_from_host_group(self, hosts: List[HostInfo]) -> ReaderFailoverResult:
+    def _get_connection_from_host_group(self, hosts: Tuple[HostInfo, ...]) -> ReaderFailoverResult:
         for i in range(0, len(hosts), 2):
             result = self._get_result_from_next_task_batch(hosts, i)
             if result.is_connected or result.exception is not None:
@@ -144,7 +144,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
         return ReaderFailoverHandlerImpl.failed_reader_failover_result
 
-    def _get_result_from_next_task_batch(self, hosts: List[HostInfo], i: int) -> ReaderFailoverResult:
+    def _get_result_from_next_task_batch(self, hosts: Tuple[HostInfo, ...], i: int) -> ReaderFailoverResult:
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(self.attempt_connection, hosts[i])]
             if i + 1 < len(hosts):
@@ -205,10 +205,10 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             hosts_by_priority.append(writer_host)
         hosts_by_priority += down_hosts
 
-        return hosts_by_priority
+        return tuple(hosts_by_priority)
 
     @classmethod
-    def get_reader_hosts_by_priority(cls, hosts: List[HostInfo]) -> List[HostInfo]:
+    def get_reader_hosts_by_priority(cls, hosts: Tuple[HostInfo, ...]) -> Tuple[HostInfo, ...]:
         active_readers: List[HostInfo] = []
         down_hosts: List[HostInfo] = []
 
@@ -223,4 +223,4 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
         shuffle(active_readers)
         shuffle(down_hosts)
 
-        return active_readers + down_hosts
+        return tuple(active_readers + down_hosts)

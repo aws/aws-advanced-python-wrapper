@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
     from aws_wrapper.plugin_service import PluginService
@@ -26,7 +26,7 @@ from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from threading import Event
 from time import sleep
-from typing import List, Optional
+from typing import Optional
 
 from aws_wrapper import LogUtils
 from aws_wrapper.errors import AwsWrapperError
@@ -42,14 +42,14 @@ logger = Logger(__name__)
 
 class WriterFailoverHandler:
     @abstractmethod
-    def failover(self, current_topology: List[HostInfo]) -> WriterFailoverResult:
+    def failover(self, current_topology: Tuple[HostInfo, ...]) -> WriterFailoverResult:
         pass
 
 
 class WriterFailoverHandlerImpl(WriterFailoverHandler):
     failed_writer_failover_result = WriterFailoverResult(False, False, None, None, None, None)
     _current_connection: Optional[Connection] = None
-    _current_topology: Optional[List[HostInfo]] = None
+    _current_topology: Optional[Tuple[HostInfo, ...]] = None
     _current_reader_connection: Optional[Connection] = None
     _current_reader_host: Optional[HostInfo] = None
 
@@ -69,7 +69,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         self._reconnect_writer_interval_sec = reconnect_writer_interval_sec
         self._timeout_event = Event()
 
-    def failover(self, current_topology: List[HostInfo]) -> WriterFailoverResult:
+    def failover(self, current_topology: Tuple[HostInfo, ...]) -> WriterFailoverResult:
         if current_topology is None or len(current_topology) == 0:
             logger.debug("WriterFailoverHandler.FailoverCalledWithInvalidTopology")
             return WriterFailoverHandlerImpl.failed_writer_failover_result
@@ -81,7 +81,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         logger.debug("WriterFailoverHandler.FailedToConnectToWriterInstance")
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
-    def get_writer(self, topology: List[HostInfo]) -> Optional[HostInfo]:
+    def get_writer(self, topology: Tuple[HostInfo, ...]) -> Optional[HostInfo]:
         if topology is None or len(topology) == 0:
             return None
 
@@ -91,7 +91,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
         return None
 
-    def get_result_from_future(self, current_topology: List[HostInfo]) -> WriterFailoverResult:
+    def get_result_from_future(self, current_topology: Tuple[HostInfo, ...]) -> WriterFailoverResult:
         writer_host: Optional[HostInfo] = self.get_writer(current_topology)
         if writer_host is not None:
             self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.UNAVAILABLE)
@@ -117,7 +117,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
     def log_task_success(self, result: WriterFailoverResult) -> None:
-        topology: Optional[List[HostInfo]] = result.topology
+        topology: Optional[Tuple[HostInfo, ...]] = result.topology
         if topology is None or len(topology) == 0:
             task_name: Optional[str] = result.task_name if not None else "None"
             logger.error("WriterFailoverHandler.SuccessfulConnectionInvalidTopology", task_name)
@@ -134,7 +134,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         logger.debug("WriterFailoverHandler.TaskAAttemptReconnectToWriterInstance", initial_writer_host.url)
 
         conn: Optional[Connection] = None
-        latest_topology: Optional[List[HostInfo]] = None
+        latest_topology: Optional[Tuple[HostInfo, ...]] = None
         success: bool = False
 
         try:
@@ -172,7 +172,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 pass
             logger.debug("WriterFailoverHandler.TaskAFinished")
 
-    def is_current_host_writer(self, latest_topology: List[HostInfo], initial_writer_host: HostInfo) -> bool:
+    def is_current_host_writer(self, latest_topology: Tuple[HostInfo, ...], initial_writer_host: HostInfo) -> bool:
         latest_writer: Optional[HostInfo] = self.get_writer(latest_topology)
         if latest_writer is None:
             return False
@@ -182,7 +182,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
         return current_aliases is not None and len(current_aliases) > 0 and bool(current_aliases.intersection(latest_writer_all_aliases))
 
-    def wait_for_new_writer(self, current_topology: List[HostInfo], current_host: HostInfo) -> WriterFailoverResult:
+    def wait_for_new_writer(self, current_topology: Tuple[HostInfo, ...], current_host: HostInfo) -> WriterFailoverResult:
         logger.debug("WriterFailoverHandler.TaskBAttemptConnectionToNewWriterInstance")
         self._current_topology = current_topology
         try:
@@ -226,12 +226,12 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         while not self._timeout_event.is_set():
             try:
                 self._plugin_service.force_refresh_host_list(self._current_reader_connection)
-                current_topology: List[HostInfo] = self._plugin_service.hosts
+                current_topology: Tuple[HostInfo, ...] = self._plugin_service.hosts
 
                 if len(current_topology) > 0:
                     if len(current_topology) == 1:
                         # currently connected reader is in the middle of failover. It is not yet connected to a new writer and works
-                        # as a standalone node. The handler must wait until the reader connects to the entire cluster to fetch the
+                        # as a standalone host. The handler must wait until the reader connects to the entire cluster to fetch the
                         # cluster topology
                         logger.debug("WriterFailoverHandler.StandaloneNode", "None" if self._current_reader_host is None else
                                      self._current_reader_host.url)

@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
     from aws_wrapper.failover_result import ReaderFailoverResult, WriterFailoverResult
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, Optional, Set
 
 from psycopg import OperationalError
 
@@ -203,8 +203,9 @@ class FailoverPlugin(Plugin):
         if self._keep_session_state_on_failover:
             self._saved_read_only_status = False if self._saved_read_only_status == self._plugin_service.target_driver_dialect.is_read_only(conn) \
                 else self._saved_read_only_status
-            self._saved_auto_commit_status = False if self._saved_read_only_status == \
-                self._plugin_service.target_driver_dialect.get_autocommit(conn) else self._saved_auto_commit_status
+            self._saved_auto_commit_status = False \
+                if self._saved_read_only_status == self._plugin_service.target_driver_dialect.get_autocommit(conn) \
+                else self._saved_auto_commit_status
 
         if is_initial_connection:
             self._plugin_service.refresh_host_list(conn)
@@ -405,7 +406,7 @@ class FailoverPlugin(Plugin):
         return self._plugin_service.is_network_exception(ex)
 
     @staticmethod
-    def _get_writer(hosts: List[HostInfo]) -> Optional[HostInfo]:
+    def _get_writer(hosts: Tuple[HostInfo, ...]) -> Optional[HostInfo]:
         for host in hosts:
             if host.role == HostRole.WRITER:
                 return host
@@ -413,9 +414,9 @@ class FailoverPlugin(Plugin):
         return None
 
     @staticmethod
-    def _is_node_still_valid(node: str, changes: Dict[str, Set[HostEvent]]):
-        if node in changes:
-            options = changes.get(node)
+    def _is_node_still_valid(host: str, changes: Dict[str, Set[HostEvent]]):
+        if host in changes:
+            options = changes.get(host)
             return options is not None and \
                 HostEvent.HOST_DELETED not in options and HostEvent.WENT_DOWN not in options
 

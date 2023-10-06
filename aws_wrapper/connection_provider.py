@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, List, Optional,
+from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
                     Protocol, Tuple)
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ class ConnectionProvider(Protocol):
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         ...
 
-    def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
         ...
 
     def connect(
@@ -69,7 +69,7 @@ class DriverConnectionProvider(ConnectionProvider):
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         return strategy in self._accepted_strategies
 
-    def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
         host_selector: Optional[HostSelector] = self._accepted_strategies.get(strategy)
         if host_selector is not None:
             return host_selector.get_host(hosts, role)
@@ -126,7 +126,7 @@ class ConnectionProviderManager:
 
         return accepts_strategy
 
-    def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
         if ConnectionProviderManager._conn_provider is not None:
             with ConnectionProviderManager._lock:
                 if ConnectionProviderManager._conn_provider is not None \
@@ -191,7 +191,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         return strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS
 
-    def get_host_info_by_strategy(self, hosts: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
         if strategy != SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS:
             raise AwsWrapperError(Messages.get_formatted(
                 "ConnectionProvider.UnsupportedHostSelectorStrategy",

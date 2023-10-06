@@ -15,8 +15,8 @@
 from __future__ import annotations
 
 from threading import Thread
-from typing import (TYPE_CHECKING, Any, Callable, Dict, FrozenSet, List,
-                    Optional, Set)
+from typing import (TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional,
+                    Set, Tuple)
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
@@ -208,7 +208,7 @@ class AuroraConnectionTrackerPlugin(Plugin):
                 self._need_update_current_writer = True
             raise e
 
-    def _get_writer(self, hosts: List[HostInfo]) -> Optional[HostInfo]:
+    def _get_writer(self, hosts: Tuple[HostInfo, ...]) -> Optional[HostInfo]:
         for host in hosts:
             if host.role == HostRole.WRITER:
                 return host

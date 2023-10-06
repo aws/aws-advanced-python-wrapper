@@ -159,7 +159,7 @@ class WrapperProperties:
         True)
     FAILOVER_MODE = WrapperProperty(
         "failover_mode",
-        "Decide which node role (writer, reader, or either) to connect to during failover.")
+        "Decide which host role (writer, reader, or either) to connect to during failover.")
     FAILOVER_TIMEOUT_SEC = WrapperProperty(
         "failover_timeout_sec",
         "Maximum allowed time in seconds for the failover process.",

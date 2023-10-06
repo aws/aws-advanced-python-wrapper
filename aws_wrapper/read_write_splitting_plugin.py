@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from io import UnsupportedOperation
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
@@ -234,7 +234,7 @@ class ReadWriteSplittingPlugin(Plugin):
 
         logger.debug("ReadWriteSplittingPlugin.SettingCurrentConnection", new_conn_host.url)
 
-    def _switch_to_writer_connection(self, hosts: List[HostInfo]):
+    def _switch_to_writer_connection(self, hosts: Tuple[HostInfo, ...]):
         current_host = self._plugin_service.current_host_info
         current_conn = self._plugin_service.current_connection
         target_driver_dialect = self._plugin_service.target_driver_dialect
@@ -257,7 +257,7 @@ class ReadWriteSplittingPlugin(Plugin):
 
         logger.debug("ReadWriteSplittingPlugin.SwitchedFromReaderToWriter", writer_host.url)
 
-    def _switch_to_reader_connection(self, hosts: List[HostInfo]):
+    def _switch_to_reader_connection(self, hosts: Tuple[HostInfo, ...]):
         current_host = self._plugin_service.current_host_info
         current_conn = self._plugin_service.current_connection
         target_driver_dialect = self._plugin_service.target_driver_dialect
@@ -283,7 +283,7 @@ class ReadWriteSplittingPlugin(Plugin):
         if self._is_writer_conn_from_internal_pool:
             self._close_connection_if_idle(self._writer_connection)
 
-    def _initialize_reader_connection(self, hosts: List[HostInfo]):
+    def _initialize_reader_connection(self, hosts: Tuple[HostInfo, ...]):
         if len(hosts) == 1:
             writer_host = self._get_writer(hosts)
             if writer_host is not None:
@@ -357,7 +357,7 @@ class ReadWriteSplittingPlugin(Plugin):
         return conn is not None and target_driver_dialect is not None and not target_driver_dialect.is_closed(conn)
 
     @staticmethod
-    def _get_writer(hosts: List[HostInfo]) -> Optional[HostInfo]:
+    def _get_writer(hosts: Tuple[HostInfo, ...]) -> Optional[HostInfo]:
         for host in hosts:
             if host.role == HostRole.WRITER:
                 return host
