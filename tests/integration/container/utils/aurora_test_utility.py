@@ -151,8 +151,7 @@ class AuroraTestUtility:
             sleep(1)
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
-        self.logger.debug(
-            f"Finished failover from {initial_writer_id} in {(perf_counter_ns() - start) / 1_000_000}ms\n")
+        self.logger.debug("Testing.FinishedFailover", initial_writer_id, str((perf_counter_ns() - start) / 1_000_000))
 
     def failover_cluster(self, cluster_id: Optional[str] = None) -> None:
         if cluster_id is None:
