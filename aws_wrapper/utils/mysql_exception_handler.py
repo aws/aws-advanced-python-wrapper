@@ -17,7 +17,7 @@ from typing import List, Optional
 from mysql.connector import InterfaceError, OperationalError
 
 from aws_wrapper.errors import QueryTimeoutError
-from aws_wrapper.exceptions import ExceptionHandler
+from aws_wrapper.exception_handling import ExceptionHandler
 
 
 class MySQLExceptionHandler(ExceptionHandler):

@@ -19,7 +19,7 @@ from psycopg.errors import (ConnectionTimeout,
                             OperationalError)
 
 from aws_wrapper.errors import QueryTimeoutError
-from aws_wrapper.exceptions import ExceptionHandler
+from aws_wrapper.exception_handling import ExceptionHandler
 
 
 class PgExceptionHandler(ExceptionHandler):

@@ -25,7 +25,7 @@ from .utils.pg_exception_handler import PgExceptionHandler
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
-    from .exceptions import ExceptionHandler
+    from .exception_handling import ExceptionHandler
     from .generic_target_driver_dialect import TargetDriverDialect
 
 from aws_wrapper.errors import AwsWrapperError
