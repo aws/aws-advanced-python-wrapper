@@ -59,9 +59,7 @@ conn = AwsWrapperConnection.connect(
     monitoring-connect_timeout=10, monitoring-socket_timeout=10)
 ```
 
-> :heavy_exclamation_mark: **Always ensure you provide a non-zero socket timeout value or a connect timeout value to the Host Monitoring Connection Plugin**
->
-> The Host Monitoring Connection Plugin does not have default timeout values such as `connect_timeout` or `socket_timeout` since these values are driver specific. Most Python drivers use 0 as the default timeout value. If you **do not** override the default timeout value, the Host Monitoring Connection Plugin may wait forever to establish a monitoring connection in the event where the database host is unavailable.
+> :heavy_exclamation_mark: **If specifying a monitoring- prefixed timeout, always ensure you provide a non-zero timeout value**
 
 >### :warning: Warnings About Usage of the AWS Advanced Python Driver with RDS Proxy
 
