@@ -1,0 +1,15 @@
+[A-Za-z]+(?:_[A-Za-z]+)
+[Ff]ailover
+Postgres
+Powershell
+[Pp]sycopg
+[Gg]radle
+MySQL
+GitHub
+VSC[OoDdEe]
+P[YyCcHhAaRrMm]
+Powershell
+autocommit
+read_only
+hostname
+[Kk]eepalive
