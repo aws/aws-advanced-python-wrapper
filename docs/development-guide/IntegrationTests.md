@@ -12,7 +12,7 @@ This documentation walks through the requirements and steps required to run and 
   - Mac/Linux:
     - `curl -sSL https://install.python-poetry.org | python3 -`
     - `poetry install`
-  - Windows (powershell):
+  - Windows (Powershell):
     - `(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -`
     - `poetry install`
 
@@ -50,18 +50,18 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
     1. If you don’t have one already, create a `.bashrc` file at `~/` if you are on Mac or `C:\Users\<your_username>\`
        if you are on PC
     2. Add the environment variables specified in the [Environment Variables section](#environment-variables) to
-       your `.bashrc` file to set their default values. The default valuescan be overridden on the command line
+       your `.bashrc` file to set their default values. The default values can be overridden on the command line
 2. Install Poetry
    - Mac/Linux:
        - `curl -sSL https://install.python-poetry.org | python3 -`
-   - Windows (powershell):
+   - Windows (Powershell):
        - `(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -`
 3. Execute `poetry install` to install the aws_wrapper module and the required dependencies
 4. Open a git bash terminal in VSCode or Pycharm by opening the terminal window, clicking the dropdown, and then
    selecting “git bash”. The terminal window can be opened using “View → Tool Windows → Terminal” in Pycharm or “View →
    Terminal” in VSCode.
 5. Run `source ~/.bashrc` in the new terminal to load your environment variables.
-6. In the git bash terminal, navigate to the project root directory and execute a gradle integration test task, eg:
+6. In the git bash terminal, navigate to the project root directory and execute a gradle integration test task, e.g.:
    `./gradlew test-pg-aurora`. Other tasks are defined in `tests/integration/host/build.gradle.kts`.
 
 ## Debugging Aurora Integration Tests - Pycharm
@@ -90,7 +90,7 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
 3. At the top right of the Pycharm window, click the dropdown arrow and select your newly created debug configuration
 4. Click the bug symbol to start the debug configuration. Pycharm will begin listening for a debug connection
 5. Navigate to your Pycharm git bash terminal. In the terminal, navigate to the project root directory. Execute a gradle
-   integration test debug task, eg: `./gradlew debug-pg-aurora`. Other tasks are defined
+   integration test debug task, e.g.: `./gradlew debug-pg-aurora`. Other tasks are defined
    in `tests/integration/host/build.gradle.kts`
 6. The logs in the console will print the following message prompting you to open the Pycharm debug window when the
    debugger has attached:
@@ -105,8 +105,8 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
 2. If you haven’t already, create a `launch.json` file in the `.vscode` directory. Add an `Attach` configuration as
    the [one provided in this repository](../../.vscode/launch.json).
 3. Add any desired breakpoints to the integration test code.
-4. Navigate to your Pycharm git bash terminal. In the terminal, navigate to the project root directory. Execute a gradle
-   integration test debug task, eg: `./gradlew debug-pg-aurora`. Other tasks are defined
+4. Navigate to your Pycharm git bash terminal. In the terminal, navigate to the project root directory. Execute a Gradle
+   integration test debug task, e.g.: `./gradlew debug-pg-aurora`. Other tasks are defined
    in `tests/integration/host/build.gradle.kts`.
 5. Wait for the following message prompting you to attach the debugger from VSCode:
    `Starting debugpy - you may now attach to the debugger from vscode...`
