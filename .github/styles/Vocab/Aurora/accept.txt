@@ -10,6 +10,5 @@ VSC[OoDdEe]
 P[YyCcHhAaRrMm]
 Powershell
 autocommit
-read_only
 hostname
 [Kk]eepalive
