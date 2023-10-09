@@ -14,7 +14,7 @@ boto3 = "^1.28.57"
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.3.0"
 flake8 = "^6.0.0"
-flake8-type-checking = "^2.4.1"
+flake8-type-checking = "^2.4.2"
 isort = "^5.12.0"
 pep8-naming = "^0.13.3"
 SQLAlchemy = "^2.0.21"
