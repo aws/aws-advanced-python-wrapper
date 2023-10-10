@@ -73,7 +73,9 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
             if self.can_execute_query(conn):
                 is_connected_with_timeout = timeout(
                     MySQLTargetDriverDialect._executor,
-                    MySQLTargetDriverDialect.IS_CLOSED_TIMEOUT_SEC)(conn.is_connected)
+                    MySQLTargetDriverDialect.IS_CLOSED_TIMEOUT_SEC,
+                    self,
+                    conn)(conn.is_connected)
                 try:
                     return not is_connected_with_timeout()
                 except TimeoutError:
