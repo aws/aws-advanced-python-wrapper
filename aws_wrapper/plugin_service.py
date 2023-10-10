@@ -35,8 +35,6 @@ from aws_wrapper.dialect import (Dialect, DialectManager,
                                  TopologyAwareDatabaseDialect, UnknownDialect)
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.exception_handling import ExceptionHandler, ExceptionManager
-from aws_wrapper.execute_time_plugin import ExecuteTimePluginFactory
-from aws_wrapper.failover_plugin import FailoverPluginFactory
 from aws_wrapper.host_availability import HostAvailability
 from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
                                             HostListProvider,
