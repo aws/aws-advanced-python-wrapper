@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from concurrent.futures import Executor
 
-from aws_wrapper.utils.preserve_transaction_status import \
-    preserve_transaction_status
+# from aws_wrapper.utils.preserve_transaction_status import \
+#     preserve_transaction_status
 
 
 def timeout(executor: Executor, timeout_sec, target_driver_dialect: TargetDriverDialect, conn: Connection):
@@ -34,10 +34,14 @@ def timeout(executor: Executor, timeout_sec, target_driver_dialect: TargetDriver
     def timeout_decorator(func):
         @functools.wraps(func)
         def func_wrapper(*args, **kwargs):
-            preserve_transaction_status_after_execute = preserve_transaction_status(target_driver_dialect, conn)(func)
-            preserve_transaction_status_after_execute(*args, **kwargs)
+
+            initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
 
             future = executor.submit(func, *args, **kwargs)
+
+            if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
+                # this condition is True when autocommit is False and the query started a new transaction.
+                conn.commit()
 
             # raises TimeoutError on timeout
             return future.result(timeout=timeout_sec)

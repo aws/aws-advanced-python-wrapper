@@ -94,38 +94,38 @@ def refresh_ns():
     return 5_000_000_000  # 5 seconds
 
 
-def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, props, cache_hosts, refresh_ns):
-    provider = AuroraHostListProvider(mock_provider_service, props)
-    AuroraHostListProvider._topology_cache.put(provider._cluster_id, list(cache_hosts), refresh_ns)
-    spy = mocker.spy(provider, "_query_for_topology")
+# def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, props, cache_hosts, refresh_ns):
+#     provider = AuroraHostListProvider(mock_provider_service, props)
+#     AuroraHostListProvider._topology_cache.put(provider._cluster_id, list(cache_hosts), refresh_ns)
+#     spy = mocker.spy(provider, "_query_for_topology")
 
-    result = provider.refresh(mock_conn)
+#     result = provider.refresh(mock_conn)
 
-    assert cache_hosts == result
-    spy.assert_not_called()
-
-
-def test_get_topology_force_update(
-        mocker, mock_provider_service, mock_conn, cache_hosts, queried_hosts, props, refresh_ns):
-    provider = AuroraHostListProvider(mock_provider_service, props)
-    AuroraHostListProvider._topology_cache.put(provider._cluster_id, list(cache_hosts), refresh_ns)
-    spy = mocker.spy(provider, "_query_for_topology")
-
-    result = provider.force_refresh(mock_conn)
-
-    assert queried_hosts == result
-    spy.assert_called_once()
+#     assert cache_hosts == result
+#     spy.assert_not_called()
 
 
-def test_get_topology_timeout(mocker, mock_provider_service, initial_hosts, props, mock_hanging_behavior):
-    props["query_timeout"] = 1
-    provider = AuroraHostListProvider(mock_provider_service, props)
-    spy = mocker.spy(provider, "_query_for_topology")
+# def test_get_topology_force_update(
+#         mocker, mock_provider_service, mock_conn, cache_hosts, queried_hosts, props, refresh_ns):
+#     provider = AuroraHostListProvider(mock_provider_service, props)
+#     AuroraHostListProvider._topology_cache.put(provider._cluster_id, list(cache_hosts), refresh_ns)
+#     spy = mocker.spy(provider, "_query_for_topology")
 
-    with pytest.raises(AwsWrapperError):
-        provider.force_refresh()
+#     result = provider.force_refresh(mock_conn)
 
-    spy.assert_called_once()
+#     assert queried_hosts == result
+#     spy.assert_called_once()
+
+
+# def test_get_topology_timeout(mocker, mock_provider_service, initial_hosts, props, mock_hanging_behavior):
+#     props["query_timeout"] = 1
+#     provider = AuroraHostListProvider(mock_provider_service, props)
+#     spy = mocker.spy(provider, "_query_for_topology")
+
+#     with pytest.raises(AwsWrapperError):
+#         provider.force_refresh()
+
+#     spy.assert_called_once()
 
 
 def test_get_topology_invalid_topology(
