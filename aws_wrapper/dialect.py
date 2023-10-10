@@ -18,8 +18,8 @@ from abc import abstractmethod
 from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import closing
 from enum import Enum, auto
-from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Protocol, Tuple,
-                    runtime_checkable)
+from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
+                    Protocol, Tuple, runtime_checkable)
 
 from .utils.mysql_exception_handler import MySQLExceptionHandler
 from .utils.pg_exception_handler import PgExceptionHandler
