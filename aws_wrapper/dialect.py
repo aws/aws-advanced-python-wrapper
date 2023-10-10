@@ -18,7 +18,7 @@ from abc import abstractmethod
 from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import closing
 from enum import Enum, auto
-from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple,
+from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Protocol, Tuple,
                     runtime_checkable)
 
 from .utils.mysql_exception_handler import MySQLExceptionHandler
@@ -142,8 +142,9 @@ class DialectProvider(Protocol):
 
 class MysqlDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_MYSQL, DialectCode.RDS_MYSQL)
-    _executor: Executor = ThreadPoolExecutor()
-    _timeout_sec: int = 3
+    _TIMEOUT_SEC = 3
+
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     @property
     def default_port(self) -> int:
@@ -168,7 +169,7 @@ class MysqlDialect(Dialect):
     def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._timeout_sec, driver_dialect, conn)(
+                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._TIMEOUT_SEC, driver_dialect, conn)(
                     aws_cursor.execute)
                 cursor_execute_func_with_timeout(self.server_version_query)
 
@@ -187,8 +188,9 @@ class MysqlDialect(Dialect):
 
 class PgDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_PG, DialectCode.RDS_PG)
-    _executor: Executor = ThreadPoolExecutor()
-    _timeout_sec: int = 3
+    _TIMEOUT_SEC = 3
+
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     @property
     def default_port(self) -> int:
@@ -214,7 +216,7 @@ class PgDialect(Dialect):
 
         try:
             with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = timeout(PgDialect._executor, PgDialect._timeout_sec, driver_dialect, conn)(
+                cursor_execute_func_with_timeout = timeout(PgDialect._executor, PgDialect._TIMEOUT_SEC, driver_dialect, conn)(
                     aws_cursor.execute)
                 cursor_execute_func_with_timeout('SELECT 1 FROM pg_proc LIMIT 1')
 

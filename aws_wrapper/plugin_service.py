@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from contextlib import closing
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
@@ -176,7 +176,7 @@ class PluginService(ExceptionHandler, Protocol):
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
 
-    _executor: Executor = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     def __init__(
             self,
