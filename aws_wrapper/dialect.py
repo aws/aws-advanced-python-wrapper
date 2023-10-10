@@ -168,7 +168,7 @@ class MysqlDialect(Dialect):
     def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = timeout(AuroraHostListProvider._executor, self._timeout_sec, driver_dialect, conn)(
+                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._timeout_sec, driver_dialect, conn)(
                     aws_cursor.execute)
                 cursor_execute_func_with_timeout(self.server_version_query)
 
@@ -214,7 +214,7 @@ class PgDialect(Dialect):
 
         try:
             with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = timeout(AuroraHostListProvider._executor, self._timeout_sec, driver_dialect, conn)(
+                cursor_execute_func_with_timeout = timeout(PgDialect._executor, PgDialect._timeout_sec, driver_dialect, conn)(
                     aws_cursor.execute)
                 cursor_execute_func_with_timeout('SELECT 1 FROM pg_proc LIMIT 1')
 
@@ -237,7 +237,7 @@ class RdsMysqlDialect(MysqlDialect):
     def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
             with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._timeout_sec, driver_dialect, conn)(
+                cursor_execute_func_with_timeout = timeout(RdsMysqlDialect._executor, RdsMysqlDialect._timeout_sec, driver_dialect, conn)(
                     aws_cursor.execute)
                 cursor_execute_func_with_timeout(self.server_version_query)
                 for record in aws_cursor:
@@ -268,7 +268,7 @@ class RdsPgDialect(PgDialect):
 
         try:
             with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = timeout(PgDialect._executor, PgDialect._timeout_sec, driver_dialect, conn)(
+                cursor_execute_func_with_timeout = timeout(RdsPgDialect._executor, RdsPgDialect._timeout_sec, driver_dialect, conn)(
                     aws_cursor.execute)
                 cursor_execute_func_with_timeout(RdsPgDialect._EXTENSIONS_QUERY)
                 for row in aws_cursor:
@@ -348,7 +348,7 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
         try:
             with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._timeout_sec, driver_dialect, conn)(
+                cursor_execute_func_with_timeout = timeout(AuroraPgDialect._executor, AuroraPgDialect._timeout_sec, driver_dialect, conn)(
                     aws_cursor.execute)
                 cursor_execute_func_with_timeout(self._extensions_sql)
                 row = aws_cursor.fetchone()
@@ -357,7 +357,7 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
                     has_extensions = True
 
             with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = timeout(MysqlDialect._executor, MysqlDialect._timeout_sec, driver_dialect, conn)(
+                cursor_execute_func_with_timeout = timeout(AuroraPgDialect._executor, AuroraPgDialect._timeout_sec, driver_dialect, conn)(
                     aws_cursor.execute)
                 cursor_execute_func_with_timeout(self._has_topology_sql)
                 if aws_cursor.fetchone() is not None:

@@ -37,8 +37,7 @@ from aws_wrapper.dialect import (Dialect, DialectManager,
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.exception_handling import ExceptionHandler, ExceptionManager
 from aws_wrapper.host_availability import HostAvailability
-from aws_wrapper.host_list_provider import (AuroraHostListProvider,
-                                            ConnectionStringHostListProvider,
+from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
                                             HostListProvider,
                                             HostListProviderService,
                                             StaticHostListProvider)
@@ -377,7 +376,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
                     timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
 
-                    cursor_execute_func_with_timeout = timeout(AuroraHostListProvider._executor, timeout_sec, target_driver_dialect, connection)(
+                    cursor_execute_func_with_timeout = timeout(PluginServiceImpl._executor, timeout_sec, target_driver_dialect, connection)(
                         cursor.execute)
                     cursor_execute_func_with_timeout(self.dialect.host_alias_query)
 
