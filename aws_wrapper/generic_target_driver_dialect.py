@@ -156,7 +156,7 @@ class GenericTargetDriverDialect(TargetDriverDialect):
         socket_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
         if socket_timeout is not None:
             kwargs.pop(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
-            execute_with_timeout = timeout(GenericTargetDriverDialect._executor, socket_timeout)(
+            execute_with_timeout = timeout(GenericTargetDriverDialect._executor, socket_timeout, self, conn)(
                 lambda: cursor.execute(query, *args, **kwargs))
             return execute_with_timeout()
         else:
