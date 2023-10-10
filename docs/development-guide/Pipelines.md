@@ -22,23 +22,23 @@ The connect pipeline performs any additional setup or post connection steps requ
 
 The most common usage of the connect pipeline is to fetch extra credentials from external locations.
 
-An example would be the IAM connection plugin. The IAM connection plugin generates an IAM authentication token to be used when establishing a connection. Since authentication is only required when establishing a connection and not required for any subsequent execution, the IAM authentication plugin only needs to implement the connect pipeline.
+An example would be the [IAM connection plugin](../using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md). The IAM connection plugin generates an IAM authentication token to be used when establishing a connection. Since authentication is only required when establishing a connection and not required for any subsequent execution, the IAM authentication plugin only needs to implement the connect pipeline.
 
 ## Force Connect Pipeline
 
-The force connect pipeline is similar to the connect pipeline except that it will use the default `DriverConnectionProvider` class to establish connections regardless of whether a non-default `ConnectionProvider` has been requested via `ConnectionProviderManager.set_connection_provider(connection_provider)`. For most plugins, the connect and force connect implementation will be equivalent.
+The force_connect pipeline is similar to the connect pipeline except that it will use the default `DriverConnectionProvider` class to establish connections regardless of whether a non-default `ConnectionProvider` has been requested via `ConnectionProviderManager.set_connection_provider(connection_provider)`. For most plugins, the connect and force_connect implementation will be equivalent.
 
 ## Execute Pipeline
 
-The execute pipeline performs additional work for python method calls.
+The execute pipeline performs additional work for Python method calls.
 
 Usages for this pipeline include:
 
 - handling execution exceptions
 - logging and measuring execution information
 - caching execution results
-- updates the host lists before executing the python method
-- catches network exceptions and performs the failover procedure
+- updating the host lists before executing the Python method
+- catching network exceptions and performing the failover procedure
 
 ## Host List Provider Pipeline
 
@@ -47,20 +47,20 @@ This pipeline is executed once during the initialization stage of the connection
 
 All subscribed plugins are called to set up their respective host list provider.
 Since each connection may only have one host list provider,
-setting a host list provider would override any previously set host list providers.
+setting a host list provider in a plugin within the pipeline would override any previously set host list providers.
 
 The host list providers are used to retrieve host information about the database server,
 either from the connection string or by querying the database server.
 For simple use cases where having up-to-date information on all existing database replicas is not necessary,
-using a simple host list provider such as the [connection string host list provider](../../aws_wrapper/host_list_provider.py) would be necessary.
-The connection string host list provider simply parses the host and port information from the connection string during initialization,
+using a simple host list provider such as the [connection string host list provider](../../aws_wrapper/host_list_provider.py) would be sufficient.
+The connection string host list provider parses the host and port information from the connection string during initialization,
 it does not perform any additional work.
 
 For cases where keeping updated information on existing and available replicas is necessary,
 such as during the failover procedure, it is important to have a host list provider that can re-fetch information once in a while,
 like the Aurora host list provider.
 The Aurora host list provider should be automatically used by the wrapper when the application is connecting to Aurora databases.
-However, you can ensure that the provider is used by specifying a topology-aware dialect, for more information, see [Database Dialects](../using-the-python-driver/DatabaseDialects.md).
+However, you can ensure that the provider is used by specifying a topology-aware dialect. For more information, see [Database Dialects](../using-the-python-driver/DatabaseDialects.md).
 
 ## Connection Changed Notification Pipeline
 
@@ -79,6 +79,6 @@ will be called whenever changes in the current node list are detected.
 
 Plugins should subscribe to this pipeline and the get_host_info_by_strategy pipeline if they implement a host selection strategy via the `get_host_info_by_strategy` method. In this case, plugins should override the `accepts_strategy` and `get_host_info_by_strategy` methods to implement any desired logic. The `accepts_strategy` method should return true for each selection strategy that the plugin supports.
 
-## Get HostSpec by Strategy pipeline
+## Get Host Info by Strategy pipeline
 
-Plugins should subscribe to this pipeline and the accepts_strategy pipeline if they implement a host selection strategy. In this case, plugins should override both the `accepts_strategy` method and the `get_host_info_by_strategy` method. The `accepts_strategy` method should return true for each strategy that can be processed by the plugin in `get_host_info_by_strategy`. The `get_host_info_by_strategy` method should implement the desired logic for selecting a host using any plugin-accepted strategies. Host selection via a "random" strategy is supported by default.
+Plugins should subscribe to this pipeline and the accepts_strategy pipeline if they implement a host selection strategy. In this case, plugins should override both the `accepts_strategy` method and the `get_host_info_by_strategy` method. The `accepts_strategy` method should return true for each strategy that can be processed by the plugin in `get_host_info_by_strategy`. The `get_host_info_by_strategy` method should implement the desired logic for selecting a host using any plugin-accepted strategies. Host selection via the "random" strategy is supported by default.
