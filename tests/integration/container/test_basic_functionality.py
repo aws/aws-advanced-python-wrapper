@@ -63,7 +63,7 @@ class TestBasicFunctionality:
         cursor = conn.cursor()
 
         some_number = 1
-        cursor.execute("SELECT %s", (some_number,), binary=True)
+        cursor.execute("SELECT %s", params=(some_number,))
         result = cursor.fetchone()
         assert 1 == result[0]
 
