@@ -86,8 +86,7 @@ def init_plugin(plugin_service, props, mock_monitor_service):
 
 
 def test_init_no_query_timeout(mock_plugin_service, mock_driver_dialect, props):
-    mock_driver_dialect.supports_socket_timeout.return_value = False
-    mock_driver_dialect.supports_tcp_keepalive.return_value = False
+    mock_driver_dialect.supports_abort_connection.return_value = False
 
     with pytest.raises(AwsWrapperError):
         HostMonitoringPlugin(mock_plugin_service, props)
@@ -165,25 +164,21 @@ def test_connect(mocker, plugin, host_info, props, mock_conn, mock_plugin_servic
     assert mock_conn == connection
 
 
-@pytest.mark.parametrize("host_events", [["host-1", HostEvent.HOST_DELETED], ["host-1", HostEvent.WENT_DOWN]])
+@pytest.mark.parametrize(
+    "host_events",
+    [{"instance-1.xyz.us-east-2.rds.amazonaws.com": {HostEvent.HOST_DELETED}},
+     {"instance-1.xyz.us-east-2.rds.amazonaws.com": {HostEvent.WENT_DOWN}}])
 def test_notify_host_list_changed(
         mocker, plugin, host_info, props, mock_conn, mock_plugin_service, mock_monitor_service, host_events):
-    mock_host_info1 = mocker.MagicMock()
-    mock_host_info2 = mocker.MagicMock()
-    mock_host_info1.url = "instance-1.xyz.us-east-2.rds.amazonaws.com"
-    mock_host_info2.url = "instance-2.xyz.us-east-2.rds.amazonaws.com"
-    aliases1 = frozenset({"alias1", "alias2"})
-    aliases2 = frozenset({"alias3", "alias4"})
-    mock_host_info1.all_aliases = aliases1
-    mock_host_info2.all_aliases = aliases2
+    mock_host_info = mocker.MagicMock()
+    mock_host_info.url = "instance-1.xyz.us-east-2.rds.amazonaws.com"
+    aliases = frozenset({"instance-1.xyz.us-east-2.rds.amazonaws.com", "alias1", "alias2"})
+    mock_host_info.all_aliases = aliases
+    plugin._is_connection_initialized = True
 
-    mock_plugin_service.current_host_info = mock_host_info1
+    mock_plugin_service.current_host_info = mock_host_info
     plugin.notify_host_list_changed(host_events)
-    mock_monitor_service.stop_monitoring_host.assert_called_with(aliases1)
-
-    mock_plugin_service.current_host_info = mock_host_info2
-    plugin.notify_host_list_changed(host_events)
-    mock_monitor_service.stop_monitoring_host.assert_called_with(aliases2)
+    mock_monitor_service.stop_monitoring_host.assert_called_with(aliases)
 
 
 def test_get_monitoring_host_info_errors(mocker, plugin, mock_plugin_service):

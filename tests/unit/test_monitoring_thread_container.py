@@ -21,7 +21,7 @@ from aws_wrapper.host_monitoring_plugin import MonitoringThreadContainer
 @pytest.fixture
 def container(mock_executor):
     container = MonitoringThreadContainer()
-    container._executor = mock_executor
+    MonitoringThreadContainer._executor = mock_executor
     return container
 
 

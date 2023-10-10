@@ -11,6 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 import psycopg
 import pytest
 
@@ -49,7 +50,7 @@ def mock_executor(mocker):
 @pytest.fixture
 def thread_container(mock_executor):
     container = MonitoringThreadContainer()
-    container._executor = mock_executor
+    MonitoringThreadContainer._executor = mock_executor
     return container
 
 

@@ -21,7 +21,8 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from threading import RLock
-from typing import TYPE_CHECKING, Optional, Protocol, Tuple, runtime_checkable
+from typing import (TYPE_CHECKING, ClassVar, Optional, Protocol, Tuple,
+                    runtime_checkable)
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
@@ -122,7 +123,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     # cluster IDs so that connections to the same clusters can share topology info.
     _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
 
-    _executor: Executor = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service

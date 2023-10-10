@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from copy import copy
 from dataclasses import dataclass
 from queue import Queue
@@ -37,7 +37,8 @@ from aws_wrapper.utils.atomic import AtomicInt
 from aws_wrapper.utils.concurrent import ConcurrentDict
 from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
-from aws_wrapper.utils.notifications import HostEvent
+from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
+                                             OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rdsutils import RdsUtils
 from aws_wrapper.utils.utils import QueueUtils
@@ -55,12 +56,13 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
 
     def __init__(self, plugin_service, props):
         dialect: TargetDriverDialect = plugin_service.target_driver_dialect
-        if not dialect.supports_socket_timeout() and not dialect.supports_tcp_keepalive():
+        if not dialect.supports_abort_connection():
             raise AwsWrapperError(Messages.get_formatted(
-                "HostMonitoringPlugin.QueryTimeoutNotSupported", type(dialect).__name__))
+                "HostMonitoringPlugin.ConfigurationNotSupported", type(dialect).__name__))
 
         self._props: Properties = props
         self._plugin_service: PluginService = plugin_service
+        self._is_connection_initialized = False
         self._monitoring_host_info: Optional[HostInfo] = None
         self._rds_utils: RdsUtils = RdsUtils()
         self._monitor_service: MonitorService = MonitorService(plugin_service)
@@ -151,13 +153,27 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
 
         return result
 
-    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        if HostEvent.WENT_DOWN in changes or HostEvent.HOST_DELETED in changes:
-            monitoring_aliases = self._get_monitoring_host_info().all_aliases
-            if monitoring_aliases:
-                self._monitor_service.stop_monitoring_host(monitoring_aliases)
-
+    def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         self._monitoring_host_info = None
+        if ConnectionEvent.INITIAL_CONNECTION in changes:
+            self._is_connection_initialized = True
+
+        return OldConnectionSuggestedAction.NO_OPINION
+
+    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
+        if not self._is_connection_initialized:
+            return
+
+        for host, events in changes.items():
+            if HostEvent.WENT_DOWN not in events and HostEvent.HOST_DELETED not in events:
+                return
+
+            monitoring_aliases = self._get_monitoring_host_info().all_aliases
+            if len(monitoring_aliases) == 0:
+                return
+
+            if host in monitoring_aliases:
+                self._monitor_service.stop_monitoring_host(monitoring_aliases)
 
     def _get_monitoring_host_info(self) -> HostInfo:
         if self._monitoring_host_info is None:
@@ -494,7 +510,7 @@ class MonitoringThreadContainer:
     _monitor_map: ConcurrentDict[str, Monitor] = ConcurrentDict()
     _tasks_map: ConcurrentDict[Monitor, Future] = ConcurrentDict()
     _available_monitors: Queue[Monitor] = Queue()
-    _executor: ThreadPoolExecutor = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     # This logic ensures that this class is a Singleton
     def __new__(cls, *args, **kwargs):
@@ -530,7 +546,8 @@ class MonitoringThreadContainer:
             supplied_monitor = monitor_supplier()
             if supplied_monitor is None:
                 raise AwsWrapperError(Messages.get("MonitoringThreadContainer.SupplierMonitorNone"))
-            self._tasks_map.compute_if_absent(supplied_monitor, lambda k: self._executor.submit(supplied_monitor.run))
+            self._tasks_map.compute_if_absent(
+                supplied_monitor, lambda _: MonitoringThreadContainer._executor.submit(supplied_monitor.run))
             return supplied_monitor
 
         if monitor is None:

@@ -67,11 +67,6 @@ tasks.register<Test>("test-all-environments") {
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-performance", "true")
-
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
-
         systemProperty("exclude-python-38", "true")
     }
 }

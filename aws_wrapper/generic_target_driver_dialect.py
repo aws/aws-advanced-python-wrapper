@@ -15,12 +15,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Set
+from concurrent.futures import Executor, ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
 
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
-from aws_wrapper.utils.properties import Properties, PropertiesUtils
+from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
+                                          WrapperProperties)
+from aws_wrapper.utils.timeout import timeout
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
@@ -67,6 +70,17 @@ class TargetDriverDialect(ABC):
     def supports_tcp_keepalive(self) -> bool:
         return False
 
+    # Supports aborting connection from another thread
+    def supports_abort_connection(self) -> bool:
+        return False
+
+    def can_execute_query(self, conn: Connection) -> bool:
+        return True
+
+    @abstractmethod
+    def set_password(self, props: Properties, pwd: str):
+        pass
+
     @abstractmethod
     def is_dialect(self, connect_func: Callable) -> bool:
         pass
@@ -105,6 +119,7 @@ class TargetDriverDialect(ABC):
 
 
 class GenericTargetDriverDialect(TargetDriverDialect):
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     def is_dialect(self, connect_func: Callable) -> bool:
         return True
@@ -120,19 +135,32 @@ class GenericTargetDriverDialect(TargetDriverDialect):
         PropertiesUtils.remove_wrapper_props(prop_copy)
         return prop_copy
 
+    def set_password(self, props: Properties, pwd: str):
+        WrapperProperties.PASSWORD.set(props, pwd)
+
     def is_closed(self, conn: Connection) -> bool:
-        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_closed"))
+        raise UnsupportedOperationError(
+            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_closed"))
 
     def abort_connection(self, conn: Connection):
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "abort_connection"))
+            Messages.get_formatted(
+                "TargetDriverDialect.UnsupportedOperationError", self._driver_name, "abort_connection"))
 
     def is_in_transaction(self, conn: Connection) -> bool:
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_in_transaction"))
+            Messages.get_formatted(
+                "TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_in_transaction"))
 
     def execute(self, conn: Connection, cursor: Cursor, query: str, *args: Any, **kwargs: Any) -> Cursor:
-        return cursor.execute(query, *args, **kwargs)
+        socket_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
+        if socket_timeout is not None:
+            kwargs.pop(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
+            execute_with_timeout = timeout(GenericTargetDriverDialect._executor, socket_timeout)(
+                lambda: cursor.execute(query, *args, **kwargs))
+            return execute_with_timeout()
+        else:
+            return cursor.execute(query, *args, **kwargs)
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         return

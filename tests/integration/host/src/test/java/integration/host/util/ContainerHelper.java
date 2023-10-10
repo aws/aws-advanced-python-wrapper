@@ -91,7 +91,7 @@ public class ContainerHelper {
     String reportSetting = String.format(
         "--html=./tests/integration/container/reports/%s.html", config.getPrimaryInfo());
     Long exitCode = execInContainer(container, consumer,
-        "poetry", "run", "pytest", reportSetting, "-k", filter,
+        "poetry", "run", "pytest", "-vvvvv", reportSetting, "-k", filter,
         "-p", "no:logging", "--capture=tee-sys", testFolder);
 
     System.out.println("==== Container console feed ==== <<<<");

@@ -14,8 +14,9 @@
 
 from __future__ import annotations
 
-from logging import getLogger
 from typing import TYPE_CHECKING
+
+from aws_wrapper.utils.log import Logger
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
@@ -34,7 +35,7 @@ from .utils.proxy_helper import ProxyHelper
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
-logger = getLogger(__name__)
+logger = Logger(__name__)
 
 
 @pytest.fixture(scope='module')
@@ -71,7 +72,8 @@ def pytest_runtest_setup(item):
 
             try:
                 instances = aurora_utility.get_aurora_instance_ids()
-            except Exception:
+            except Exception as ex:
+                logger.warning("conftest.ExceptionWhileObtainingInstanceIDs", ex)
                 instances = list()
 
             sleep(5)

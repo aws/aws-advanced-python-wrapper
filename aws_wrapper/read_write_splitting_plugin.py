@@ -190,7 +190,7 @@ class ReadWriteSplittingPlugin(Plugin):
                 target_driver_dialect is not None and target_driver_dialect.is_closed(current_conn)):
             self._log_and_raise_exception("ReadWriteSplittingPlugin.SetReadOnlyOnClosedConnection")
 
-        if self._is_connection_usable(current_conn, target_driver_dialect):
+        if current_conn is not None and target_driver_dialect.can_execute_query(current_conn):
             try:
                 self._plugin_service.refresh_host_list()
             except Exception:

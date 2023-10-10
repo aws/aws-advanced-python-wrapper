@@ -20,4 +20,4 @@ if __name__ == "__main__":
     test_filter = sys.argv[1]
     report_setting = sys.argv[2]
     test_folder = sys.argv[3]
-    sys.exit(pytest.main([report_setting, "-k", test_filter, "-p", "no:logging", "--capture=tee-sys", test_folder]))
+    sys.exit(pytest.main(["-vvvvv", report_setting, "-k", test_filter, "-p", "no:logging", "--capture=tee-sys", test_folder]))

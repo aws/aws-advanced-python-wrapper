@@ -242,8 +242,6 @@ class TestPerformance:
 
     def _stop_network_thread(self, test_environment: TestEnvironment, sleep_delay_seconds: int, downtime: AtomicInt):
         sleep(sleep_delay_seconds)
-        logger.debug(
-            f"disable connectivity to: {test_environment.get_proxy_writer().get_instance_id()}")
         ProxyHelper.disable_connectivity(test_environment.get_proxy_writer().get_instance_id())
         down = perf_counter_ns()
         downtime.set(down)

@@ -14,16 +14,13 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Executor, ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Callable, Set
 
 import psycopg
 
-from aws_wrapper.utils.timeout import timeout
-
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
-    from aws_wrapper.pep249 import Connection, Cursor
+    from aws_wrapper.pep249 import Connection
 
 from inspect import signature
 
@@ -42,8 +39,6 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     # https://www.psycopg.org/psycopg3/docs/api/pq.html#psycopg.pq.TransactionStatus
     PSYCOPG_ACTIVE_TRANSACTION_STATUS = 1
     PSYCOPG_IN_TRANSACTION_STATUS = 2
-
-    __executor: Executor = ThreadPoolExecutor()
 
     _dialect_code: str = TargetDriverDialectCodes.PSYCOPG
     _network_bound_methods: Set[str] = {
@@ -76,7 +71,8 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
         if isinstance(conn, psycopg.Connection):
             conn.close()
             return
-        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "cancel"))
+        raise UnsupportedOperationError(
+            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "cancel"))
 
     def is_in_transaction(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
@@ -170,11 +166,5 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     def supports_tcp_keepalive(self) -> bool:
         return True
 
-    def execute(self, conn: Connection, cursor: Cursor, query: str, *args: Any, **kwargs: Any) -> Cursor:
-        socket_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
-        if socket_timeout is not None:
-            kwargs.pop(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
-            execute_with_timeout = timeout(self.__executor, socket_timeout)(lambda: cursor.execute(query, *args, **kwargs))
-            return execute_with_timeout()
-        else:
-            return cursor.execute(query, *args, **kwargs)
+    def supports_abort_connection(self) -> bool:
+        return True

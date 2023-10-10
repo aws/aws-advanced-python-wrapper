@@ -168,7 +168,6 @@ class Cursor:
     ) -> Cursor:
         ...
 
-    # TODO: check parameters
     def executemany(
             self,
             *args,

@@ -20,8 +20,12 @@ from enum import Enum, auto
 from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple,
                     runtime_checkable)
 
+from .utils.mysql_exception_handler import MySQLExceptionHandler
+from .utils.pg_exception_handler import PgExceptionHandler
+
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
+    from .exception_handling import ExceptionHandler
     from .generic_target_driver_dialect import TargetDriverDialect
 
 from aws_wrapper.errors import AwsWrapperError
@@ -32,7 +36,6 @@ from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
-from .exceptions import ExceptionHandler, PgExceptionHandler
 from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
@@ -152,8 +155,7 @@ class MysqlDialect(Dialect):
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
-        # TODO
-        return None
+        return MySQLExceptionHandler()
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:

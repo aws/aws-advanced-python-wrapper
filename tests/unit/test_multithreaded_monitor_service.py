@@ -70,8 +70,7 @@ def failure_detection_count():
 
 @pytest.fixture
 def thread_container(mock_executor):
-    monitoring_thread_container = MonitoringThreadContainer()
-    monitoring_thread_container._executor = mock_executor
+    MonitoringThreadContainer._executor = mock_executor
     mock_executor.return_value = mock_future
     return mock_executor
 
