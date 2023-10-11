@@ -49,3 +49,24 @@ def preserve_transaction_status_with_timeout(executor: Executor, timeout_sec, ta
         return func_wrapper
 
     return preserve_transaction_status_with_timeout_decorator
+
+
+def timeout(executor: Executor, timeout_sec):
+    """
+    Timeout decorator, timeout in seconds
+    """
+
+    def timeout_decorator(func):
+        @functools.wraps(func)
+        def func_wrapper(*args, **kwargs):
+
+            future = executor.submit(func, *args, **kwargs)
+
+            # raises TimeoutError on timeout
+            result = future.result(timeout=timeout_sec)
+
+            return result
+
+        return func_wrapper
+
+    return timeout_decorator

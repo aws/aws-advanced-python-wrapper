@@ -34,7 +34,7 @@ from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-from aws_wrapper.utils.timeout import preserve_transaction_status_with_timeout
+from aws_wrapper.utils.timeout import timeout
 
 
 class MySQLTargetDriverDialect(GenericTargetDriverDialect):
@@ -71,11 +71,9 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
             # is_connected validates the connection using a ping().
             # If there are any unread results from previous executions an error will be thrown.
             if self.can_execute_query(conn):
-                is_connected_with_timeout = preserve_transaction_status_with_timeout(
+                is_connected_with_timeout = timeout(
                     MySQLTargetDriverDialect._executor,
-                    MySQLTargetDriverDialect.IS_CLOSED_TIMEOUT_SEC,
-                    self,
-                    conn)(conn.is_connected)
+                    MySQLTargetDriverDialect.IS_CLOSED_TIMEOUT_SEC)(conn.is_connected)
                 try:
                     return not is_connected_with_timeout()
                 except TimeoutError:

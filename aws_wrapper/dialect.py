@@ -168,17 +168,22 @@ class MysqlDialect(Dialect):
 
     def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    MysqlDialect._executor, MysqlDialect.TIMEOUT_SEC, driver_dialect, conn)(aws_cursor.execute)
-                cursor_execute_func_with_timeout(self.server_version_query)
-
-                for record in aws_cursor:
-                    for column_value in record:
-                        if "mysql" in column_value.lower():
-                            return True
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                MysqlDialect._executor, MysqlDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
+            return cursor_execute_func_with_timeout(conn)
         except Exception:
             pass
+
+        return False
+
+    def _is_dialect(self, conn: Connection) -> bool:
+        with closing(conn.cursor()) as aws_cursor:
+            aws_cursor.execute(self.server_version_query)
+            # If variable with such a name is presented then it means it's an Aurora cluster
+            for record in aws_cursor:
+                for column_value in record:
+                    if "mysql" in column_value.lower():
+                        return True
 
         return False
 
@@ -238,17 +243,22 @@ class RdsMysqlDialect(MysqlDialect):
 
     def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    RdsMysqlDialect._executor, RdsMysqlDialect.TIMEOUT_SEC, driver_dialect, conn)(aws_cursor.execute)
-                cursor_execute_func_with_timeout(self.server_version_query)
-                for record in aws_cursor:
-                    for column_value in record:
-                        if "source distribution" in column_value.lower():
-                            return True
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                MysqlDialect._executor, MysqlDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
+            return cursor_execute_func_with_timeout(conn)
         except Exception:
             pass
 
+        return False
+
+    def _is_dialect(self, conn: Connection) -> bool:
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self.server_version_query)
+            # If variable with such a name is presented then it means it's an Aurora cluster
+            for record in cursor:
+                for column_value in record:
+                    if "source distribution" in column_value.lower():
+                        return True
         return False
 
     @property
@@ -264,27 +274,30 @@ class RdsPgDialect(PgDialect):
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG,)
 
     def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
-
         if not super().is_dialect(conn, driver_dialect):
             return False
 
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    RdsPgDialect._executor, RdsPgDialect.TIMEOUT_SEC, driver_dialect, conn)(aws_cursor.execute)
-                cursor_execute_func_with_timeout(RdsPgDialect._EXTENSIONS_QUERY)
-                for row in aws_cursor:
-                    rds_tools = bool(row[0])
-                    aurora_utils = bool(row[1])
-                    logger.debug(
-                        "RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils))
-                    if rds_tools and not aurora_utils:
-                        return True
-
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                RdsPgDialect._executor, RdsPgDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
+            return cursor_execute_func_with_timeout(conn)
         except Exception:
             # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
             # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
             conn.rollback()
+
+        return False
+
+    def _is_dialect(self, conn: Connection) -> bool:
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(RdsPgDialect._EXTENSIONS_QUERY)
+            for row in cursor:
+                rds_tools = bool(row[0])
+                aurora_utils = bool(row[1])
+                logger.debug(
+                    "RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils))
+                if rds_tools and not aurora_utils:
+                    return True
         return False
 
     @property
@@ -310,19 +323,20 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
     def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                MysqlDialect._executor, MysqlDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
+                AuroraMysqlDialect._executor, AuroraMysqlDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
             return cursor_execute_func_with_timeout(conn)
         except Exception:
             pass
 
         return False
 
-    def _is_dialect(self, conn) -> bool:
+    def _is_dialect(self, conn: Connection) -> bool:
         with closing(conn.cursor()) as cursor:
             cursor.execute("SHOW VARIABLES LIKE 'aurora_version'")
             # If variable with such a name is presented then it means it's an Aurora cluster
             if cursor.fetchone() is not None:
                 return True
+        return False
 
     def get_host_list_provider_supplier(self) -> Callable:
         return lambda provider_service, props: AuroraHostListProvider(provider_service, props)
@@ -352,28 +366,40 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
         has_topology: bool = False
 
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    AuroraPgDialect._executor, AuroraPgDialect.TIMEOUT_SEC, driver_dialect, conn)(aws_cursor.execute)
-                cursor_execute_func_with_timeout(self._extensions_sql)
-                row = aws_cursor.fetchone()
-                if row and bool(row[0]):
-                    logger.debug("AuroraPgDialect.HasExtensionsTrue")
-                    has_extensions = True
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                AuroraPgDialect._executor, AuroraPgDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect_extensions)
+            has_extensions = cursor_execute_func_with_timeout(conn)
 
-            with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    AuroraPgDialect._executor, AuroraPgDialect.TIMEOUT_SEC, driver_dialect, conn)(aws_cursor.execute)
-                cursor_execute_func_with_timeout(self._has_topology_sql)
-                if aws_cursor.fetchone() is not None:
-                    logger.debug("AuroraPgDialect.HasTopologyTrue")
-                    has_topology = True
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                AuroraPgDialect._executor, AuroraPgDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect_topology)
+            has_topology = cursor_execute_func_with_timeout(conn)
 
             return has_extensions and has_topology
         except Exception:
             # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
             # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
             conn.rollback()
+
+        return False
+
+    def _is_dialect_extensions(self, conn: Connection) -> bool:
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._extensions_sql)
+            # If variable with such a name is presented then it means it's an Aurora cluster
+            row = cursor.fetchone()
+            if row and bool(row[0]):
+                logger.debug("AuroraPgDialect.HasExtensionsTrue")
+                return True
+
+        return False
+
+    def _is_dialect_topology(self, conn: Connection) -> bool:
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._has_topology_sql)
+            # If variable with such a name is presented then it means it's an Aurora cluster
+            if cursor.fetchone() is not None:
+                logger.debug("AuroraPgDialect.HasExtensionsTrue")
+                return True
 
         return False
 

@@ -249,9 +249,9 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             target_driver_dialect = self._host_list_provider_service.target_driver_dialect
 
             try:
-                query_for_topology_func_with_timeout = (
-                    preserve_transaction_status_with_timeout(AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, conn)(
-                        self._query_for_topology))
+                query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(AuroraHostListProvider._executor, self._max_timeout,
+                                                                                                target_driver_dialect, conn)(
+                                                                                                    self._get_topology_execute)
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
@@ -268,6 +268,14 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             return AuroraHostListProvider.FetchTopologyResult(cached_hosts, True)
         else:
             return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
+
+    def _get_topology_execute(self, conn: Connection) -> bool:
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._query_for_topology)
+            # If variable with such a name is presented then it means it's an Aurora cluster
+            if cursor.fetchone() is not None:
+                return True
+        return False
 
     def _suggest_cluster_id(self, primary_cluster_id_hosts: Tuple[HostInfo, ...]):
         if not primary_cluster_id_hosts:
@@ -381,19 +389,23 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         target_driver_dialect = self._host_list_provider_service.target_driver_dialect
 
         try:
-            with closing(connection.cursor()) as cursor:
-                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(cursor.execute)
-                cursor_execute_func_with_timeout(self._dialect.is_reader_query)
-
-                result = cursor.fetchone()
-
-                if result:
-                    is_reader = result[0]
-                    return HostRole.READER if is_reader else HostRole.WRITER
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(self._get_host_role)
+            result = cursor_execute_func_with_timeout(self._dialect.is_reader_query)
+            if result:
+                is_reader = result[0]
+                return HostRole.READER if is_reader else HostRole.WRITER
         except Error as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole")) from e
         raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole"))
+
+    def _get_host_role(self, conn: Connection) -> bool:
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._dialect.is_reader_query)
+            # If variable with such a name is presented then it means it's an Aurora cluster
+            if cursor.fetchone() is not None:
+                return True
+        return False
 
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
         if connection is None:
@@ -401,20 +413,26 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
         target_driver_dialect = self._host_list_provider_service.target_driver_dialect
         try:
-            with closing(connection.cursor()) as cursor:
-                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(cursor.execute)
-                cursor_execute_func_with_timeout(self._dialect.host_id_query)
-                result = cursor.fetchone()
-                if result:
-                    host_id = result[0]
-                    hosts = self.refresh()
-                    if not hosts:
-                        return None
-                    return next((host_info for host_info in hosts if host_info.host_id == host_id), None)
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(self._identify_connection)
+            result = cursor_execute_func_with_timeout(connection)
+            if result:
+                host_id = result[0]
+                hosts = self.refresh()
+                if not hosts:
+                    return None
+                return next((host_info for host_info in hosts if host_info.host_id == host_id), None)
         except Error as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection")) from e
         raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
+
+    def _identify_connection(self, conn: Connection) -> bool:
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._dialect.host_id_query)
+            # If variable with such a name is presented then it means it's an Aurora cluster
+            if cursor.fetchone() is not None:
+                return True
+        return False
 
     @dataclass()
     class ClusterIdSuggestion:
