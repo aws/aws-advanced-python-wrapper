@@ -373,7 +373,6 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         try:
             with closing(connection.cursor()) as cursor:
                 if not isinstance(self.dialect, UnknownDialect):
-
                     timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
 
                     cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(PluginServiceImpl._executor, timeout_sec,
