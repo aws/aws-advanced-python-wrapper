@@ -18,9 +18,10 @@ import functools
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from concurrent.futures import Executor
+
     from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
     from aws_wrapper.pep249 import Connection
-    from concurrent.futures import Executor
 
 
 def preserve_transaction_status_with_timeout(executor: Executor, timeout_sec, target_driver_dialect: TargetDriverDialect, conn: Connection):
