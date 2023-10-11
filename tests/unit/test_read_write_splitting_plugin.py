@@ -71,22 +71,22 @@ def connect_func_mock(mocker):
 
 
 @pytest.fixture
-def target_driver_dialect_mock(mocker, writer_conn_mock):
+def driver_dialect_mock(mocker, writer_conn_mock):
     def is_closed_side_effect(conn):
         return conn == closed_writer_conn_mock
 
-    target_driver_dialect_mock = mocker.MagicMock()
-    target_driver_dialect_mock.is_closed.side_effect = is_closed_side_effect
-    target_driver_dialect_mock.get_connection_from_obj.return_value = writer_conn_mock
-    target_driver_dialect_mock.unwrap_connection.return_value = writer_conn_mock
+    driver_dialect_mock = mocker.MagicMock()
+    driver_dialect_mock.is_closed.side_effect = is_closed_side_effect
+    driver_dialect_mock.get_connection_from_obj.return_value = writer_conn_mock
+    driver_dialect_mock.unwrap_connection.return_value = writer_conn_mock
 
-    return target_driver_dialect_mock
+    return driver_dialect_mock
 
 
 @pytest.fixture
-def plugin_service_mock(mocker, target_driver_dialect_mock):
+def plugin_service_mock(mocker, driver_dialect_mock):
     plugin_service_mock = mocker.MagicMock()
-    plugin_service_mock.target_driver_dialect = target_driver_dialect_mock
+    plugin_service_mock.driver_dialect = driver_dialect_mock
     plugin_service_mock.hosts = default_hosts
     plugin_service_mock.is_in_transaction = False
     return plugin_service_mock

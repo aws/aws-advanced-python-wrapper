@@ -20,7 +20,7 @@ from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo, HostRole
     from aws_wrapper.pep249 import Connection
-    from aws_wrapper.target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.driver_dialect import DriverDialect
 
 from threading import Lock
 
@@ -54,7 +54,7 @@ class ConnectionProvider(Protocol):
     def connect(
             self,
             target_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             properties: Properties) -> Connection:
         ...
@@ -80,10 +80,10 @@ class DriverConnectionProvider(ConnectionProvider):
     def connect(
             self,
             target_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             properties: Properties) -> Connection:
-        prepared_properties = target_driver_dialect.prepare_connect_info(host_info, properties)
+        prepared_properties = driver_dialect.prepare_connect_info(host_info, properties)
         logger.debug("DriverConnectionProvider.ConnectingToHost", host_info.host, PropertiesUtils.log_properties(prepared_properties))
         return target_func(**prepared_properties)
 
@@ -215,12 +215,12 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     def connect(
             self,
             target_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             properties: Properties):
         queue_pool: Optional[QueuePool] = SqlAlchemyPooledConnectionProvider._database_pools.compute_if_absent(
             PoolKey(host_info.url, self._get_extra_key(host_info, properties)),
-            lambda _: self._create_pool(target_func, target_driver_dialect, host_info, properties),
+            lambda _: self._create_pool(target_func, driver_dialect, host_info, properties),
             SqlAlchemyPooledConnectionProvider._POOL_EXPIRATION_CHECK_NS
         )
 
@@ -244,11 +244,11 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     def _create_pool(
             self,
             target_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties):
         kwargs = dict() if self._pool_configurator is None else self._pool_configurator(host_info, props)
-        prepared_properties = target_driver_dialect.prepare_connect_info(host_info, props)
+        prepared_properties = driver_dialect.prepare_connect_info(host_info, props)
         kwargs["creator"] = self._get_connection_func(target_func, prepared_properties)
         return self._create_sql_alchemy_pool(**kwargs)
 

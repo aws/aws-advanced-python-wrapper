@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from boto3 import Session
-    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.generic_driver_dialect import DriverDialect
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
@@ -73,7 +73,7 @@ class IamAuthPlugin(Plugin):
     def connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -101,11 +101,11 @@ class IamAuthPlugin(Plugin):
 
         if token_info is not None and not token_info.is_expired():
             logger.debug("IamAuthPlugin.UseCachedIamToken", token_info.token)
-            self._plugin_service.target_driver_dialect.set_password(props, token_info.token)
+            self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
             token: str = self._generate_authentication_token(props, host, port, region)
             logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
-            self._plugin_service.target_driver_dialect.set_password(props, token)
+            self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
 
@@ -124,7 +124,7 @@ class IamAuthPlugin(Plugin):
 
             token = self._generate_authentication_token(props, host, port, region)
             logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
-            self._plugin_service.target_driver_dialect.set_password(props, token)
+            self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[token] = TokenInfo(token, datetime.now() + timedelta(
                 seconds=token_expiration_sec))
 
@@ -136,7 +136,7 @@ class IamAuthPlugin(Plugin):
     def force_connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,

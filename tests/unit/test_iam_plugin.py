@@ -80,7 +80,7 @@ def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection,
     mock_client.generate_db_auth_token.return_value = _GENERATED_TOKEN
     mock_session.get_available_regions.return_value = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2']
     mock_func.return_value = mock_connection
-    mock_plugin_service.target_driver_dialect = mock_dialect
+    mock_plugin_service.driver_dialect = mock_dialect
     mock_plugin_service.dialect = mock_dialect
     mock_dialect.default_port = _DEFAULT_PG_PORT
 
@@ -100,7 +100,7 @@ def test_pg_connect_valid_token_in_cache(mocker, mock_plugin_service, mock_sessi
                                                  mock_session)
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
-        target_driver_dialect=mock_dialect,
+        driver_dialect=mock_dialect,
         host_info=_PG_HOST_INFO,
         props=test_props,
         is_initial_connection=False,
@@ -128,7 +128,7 @@ def test_pg_connect_with_invalid_port_fall_backs_to_host_port(
                                                  mock_session)
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
-        target_driver_dialect=mock_dialect,
+        driver_dialect=mock_dialect,
         host_info=_PG_HOST_INFO_WITH_PORT,
         props=test_props,
         is_initial_connection=False,
@@ -164,7 +164,7 @@ def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(
                                                  mock_session)
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
-        target_driver_dialect=mock_dialect,
+        driver_dialect=mock_dialect,
         host_info=_PG_HOST_INFO,
         props=test_props,
         is_initial_connection=False,
@@ -197,7 +197,7 @@ def test_connect_expired_token_in_cache(mocker, mock_plugin_service, mock_sessio
     with pytest.raises(Exception):
         target_plugin.connect(
             target_driver_func=mocker.MagicMock(),
-            target_driver_dialect=mock_dialect,
+            driver_dialect=mock_dialect,
             host_info=_PG_HOST_INFO,
             props=test_props,
             is_initial_connection=False,
@@ -221,7 +221,7 @@ def test_connect_empty_cache(mocker, mock_plugin_service, mock_connection, mock_
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
     actual_connection = target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
-        target_driver_dialect=mock_dialect,
+        driver_dialect=mock_dialect,
         host_info=_PG_HOST_INFO,
         props=test_props,
         is_initial_connection=False,
@@ -252,7 +252,7 @@ def test_connect_with_specified_port(mocker, mock_plugin_service, mock_session, 
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
-        target_driver_dialect=mock_dialect,
+        driver_dialect=mock_dialect,
         host_info=_PG_HOST_INFO_WITH_PORT,
         props=test_props,
         is_initial_connection=False,
@@ -286,7 +286,7 @@ def test_connect_with_specified_iam_default_port(mocker, mock_plugin_service, mo
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
-        target_driver_dialect=mock_dialect,
+        driver_dialect=mock_dialect,
         host_info=_PG_HOST_INFO_WITH_PORT,
         props=test_props,
         is_initial_connection=False,
@@ -324,7 +324,7 @@ def test_connect_with_specified_region(mocker, mock_plugin_service, mock_session
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
-        target_driver_dialect=mock_dialect,
+        driver_dialect=mock_dialect,
         host_info=HostInfo("pg.testdb.us-east-2.rds.amazonaws.com"),
         props=test_props,
         is_initial_connection=False,
@@ -363,7 +363,7 @@ def test_connect_with_specified_host(mocker, mock_plugin_service, mock_session, 
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
-        target_driver_dialect=mock_dialect,
+        driver_dialect=mock_dialect,
         host_info=HostInfo("pg.testdb.us-east-2.rds.amazonaws.com"),
         props=test_props,
         is_initial_connection=False,

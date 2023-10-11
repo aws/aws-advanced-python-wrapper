@@ -26,7 +26,7 @@ from .utils.pg_exception_handler import PgExceptionHandler
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from .exception_handling import ExceptionHandler
-    from .generic_target_driver_dialect import TargetDriverDialect
+    from .generic_driver_dialect import DriverDialect
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
@@ -36,7 +36,7 @@ from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
-from .target_driver_dialect import TargetDriverDialectCodes
+from .driver_dialect import DriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
 
@@ -88,7 +88,7 @@ class TopologyAwareDatabaseDialect(Protocol):
         return self._is_reader_query
 
 
-class Dialect(Protocol):
+class DatabaseDialect(Protocol):
 
     @property
     @abstractmethod
@@ -125,7 +125,7 @@ class Dialect(Protocol):
 
 
 class DialectProvider(Protocol):
-    def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[Dialect]:
+    def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[DatabaseDialect]:
         """
         Returns the dialect identified by analyzing the AwsWrapperProperties.DIALECT property (if set) or the target
         driver method
@@ -133,12 +133,12 @@ class DialectProvider(Protocol):
         ...
 
     def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection,
-                          driver_dialect: TargetDriverDialect) -> Optional[Dialect]:
+                          driver_dialect: DriverDialect) -> Optional[DatabaseDialect]:
         """Returns the dialect identified by querying the database to identify the engine type"""
         ...
 
 
-class MysqlDialect(Dialect):
+class MysqlDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_MYSQL, DialectCode.RDS_MYSQL)
 
     @property
@@ -159,7 +159,7 @@ class MysqlDialect(Dialect):
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
-        return MysqlDialect._DIALECT_UPDATE_CANDIDATES
+        return MysqlDatabaseDialect._DIALECT_UPDATE_CANDIDATES
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
@@ -178,7 +178,7 @@ class MysqlDialect(Dialect):
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
 
-class PgDialect(Dialect):
+class PgDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_PG, DialectCode.RDS_PG)
 
     @property
@@ -195,7 +195,7 @@ class PgDialect(Dialect):
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
-        return PgDialect._DIALECT_UPDATE_CANDIDATES
+        return PgDatabaseDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
@@ -218,7 +218,7 @@ class PgDialect(Dialect):
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
 
-class RdsMysqlDialect(MysqlDialect):
+class RdsMysqlDialect(MysqlDatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL,)
 
     def is_dialect(self, conn: Connection) -> bool:
@@ -239,7 +239,7 @@ class RdsMysqlDialect(MysqlDialect):
         return RdsMysqlDialect._DIALECT_UPDATE_CANDIDATES
 
 
-class RdsPgDialect(PgDialect):
+class RdsPgDialect(PgDatabaseDialect):
     _EXTENSIONS_QUERY: str = ("SELECT (setting LIKE '%rds_tools%') AS rds_tools, "
                               "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
                               "FROM pg_settings "
@@ -273,7 +273,7 @@ class RdsPgDialect(PgDialect):
         return RdsPgDialect._DIALECT_UPDATE_CANDIDATES
 
 
-class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
+class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
     _topology_query: str = ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
                             "CPU, REPLICA_LAG_IN_MILLISECONDS, LAST_UPDATE_TIMESTAMP "
                             "FROM information_schema.replica_host_status "
@@ -304,7 +304,7 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
         return lambda provider_service, props: AuroraHostListProvider(provider_service, props)
 
 
-class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
+class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
     _extensions_sql: str = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils " \
                            "FROM pg_settings WHERE name='rds.extensions'"
 
@@ -353,7 +353,7 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
         return lambda provider_service, props: AuroraHostListProvider(provider_service, props)
 
 
-class UnknownDialect(Dialect):
+class UnknownDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCode, ...]] = \
         (DialectCode.MYSQL,
          DialectCode.PG,
@@ -376,7 +376,7 @@ class UnknownDialect(Dialect):
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
-        return UnknownDialect._DIALECT_UPDATE_CANDIDATES
+        return UnknownDatabaseDialect._DIALECT_UPDATE_CANDIDATES
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
@@ -392,27 +392,27 @@ class UnknownDialect(Dialect):
 class DialectManager(DialectProvider):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
 
-    def __init__(self, rds_helper: Optional[RdsUtils] = None, custom_dialect: Optional[Dialect] = None) -> None:
+    def __init__(self, rds_helper: Optional[RdsUtils] = None, custom_dialect: Optional[DatabaseDialect] = None) -> None:
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
         self._can_update: bool = False
-        self._dialect: Dialect = UnknownDialect()
+        self._dialect: DatabaseDialect = UnknownDatabaseDialect()
         self._dialect_code: DialectCode = DialectCode.UNKNOWN
-        self._custom_dialect: Optional[Dialect] = custom_dialect if custom_dialect else None
+        self._custom_dialect: Optional[DatabaseDialect] = custom_dialect if custom_dialect else None
         self._known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
-        self._known_dialects_by_code: Dict[DialectCode, Dialect] = {DialectCode.MYSQL: MysqlDialect(),
-                                                                    DialectCode.PG: PgDialect(),
-                                                                    DialectCode.RDS_MYSQL: RdsMysqlDialect(),
-                                                                    DialectCode.RDS_PG: RdsPgDialect(),
-                                                                    DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
-                                                                    DialectCode.AURORA_PG: AuroraPgDialect(),
-                                                                    DialectCode.UNKNOWN: UnknownDialect()}
+        self._known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {DialectCode.MYSQL: MysqlDatabaseDialect(),
+                                                                            DialectCode.PG: PgDatabaseDialect(),
+                                                                            DialectCode.RDS_MYSQL: RdsMysqlDialect(),
+                                                                            DialectCode.RDS_PG: RdsPgDialect(),
+                                                                            DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
+                                                                            DialectCode.AURORA_PG: AuroraPgDialect(),
+                                                                            DialectCode.UNKNOWN: UnknownDatabaseDialect()}
 
     @property
     def custom_dialect(self):
         return self._custom_dialect
 
     @custom_dialect.setter
-    def custom_dialect(self, dialect: Dialect):
+    def custom_dialect(self, dialect: DatabaseDialect):
         self._custom_dialect = dialect
 
     def reset_custom_dialect(self):
@@ -421,7 +421,7 @@ class DialectManager(DialectProvider):
     def reset_endpoint_cache(self):
         self._known_endpoint_dialects.clear()
 
-    def get_dialect(self, driver_dialect: str, props: Properties) -> Dialect:
+    def get_dialect(self, driver_dialect: str, props: Properties) -> DatabaseDialect:
         self._can_update = False
 
         if self._custom_dialect is not None:
@@ -439,7 +439,7 @@ class DialectManager(DialectProvider):
             dialect_code = DialectCode.from_string(user_dialect_setting)
 
         if dialect_code is not None:
-            dialect: Optional[Dialect] = self._known_dialects_by_code.get(dialect_code)
+            dialect: Optional[DatabaseDialect] = self._known_dialects_by_code.get(dialect_code)
             if dialect:
                 self._dialect_code = dialect_code
                 self._dialect = dialect
@@ -493,15 +493,15 @@ class DialectManager(DialectProvider):
         return self._dialect
 
     def _get_target_driver_type(self, driver_dialect: str) -> TargetDriverType:
-        if driver_dialect == TargetDriverDialectCodes.PSYCOPG:
+        if driver_dialect == DriverDialectCodes.PSYCOPG:
             return TargetDriverType.POSTGRES
-        if driver_dialect == TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON:
+        if driver_dialect == DriverDialectCodes.MYSQL_CONNECTOR_PYTHON:
             return TargetDriverType.MYSQL
 
         return TargetDriverType.CUSTOM
 
     def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection,
-                          driver_dialect: TargetDriverDialect) -> Dialect:
+                          driver_dialect: DriverDialect) -> DatabaseDialect:
         if not self._can_update:
             self._log_current_dialect()
             return self._dialect

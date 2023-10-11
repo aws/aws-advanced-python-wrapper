@@ -19,13 +19,13 @@ from mysql.connector.cursor_cext import CMySQLCursor
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.mysql_target_driver_dialect import MySQLTargetDriverDialect
+from aws_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 
 @pytest.fixture
 def dialect():
-    return MySQLTargetDriverDialect()
+    return MySQLDriverDialect()
 
 
 @pytest.fixture

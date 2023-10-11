@@ -18,7 +18,7 @@ import socket
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.generic_driver_dialect import DriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
@@ -151,7 +151,7 @@ class StaleDnsPlugin(Plugin):
     def connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -162,7 +162,7 @@ class StaleDnsPlugin(Plugin):
     def force_connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,

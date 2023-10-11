@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import psycopg
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.generic_driver_dialect import DriverDialect
     from aws_wrapper.pep249 import Connection
 
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -63,7 +63,7 @@ def mock_plugin_service(mocker):
 
 
 @pytest.fixture
-def mock_target_driver_dialect(mocker):
+def mock_driver_dialect(mocker):
     return mocker.MagicMock()
 
 
@@ -73,13 +73,13 @@ def default_conn_provider(mocker):
 
 
 @pytest.fixture(autouse=True)
-def setup(mock_conn, container, mock_plugin_service, mock_target_driver_dialect):
+def setup(mock_conn, container, mock_plugin_service, mock_driver_dialect):
     container.plugin_service.current_connection = mock_conn
-    container.plugin_service.target_driver_dialect.get_connection_from_obj.return_value = mock_conn
-    container.plugin_service.target_driver_dialect.unwrap_connection.return_value = mock_conn
+    container.plugin_service.driver_dialect.get_connection_from_obj.return_value = mock_conn
+    container.plugin_service.driver_dialect.unwrap_connection.return_value = mock_conn
 
 
-def test_execute_call_a(mocker, mock_conn, container, mock_target_driver_dialect):
+def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
@@ -126,7 +126,7 @@ def _target_call(calls: List[str]):
     return "result_value"
 
 
-def test_execute_call_b(mocker, container, mock_target_driver_dialect):
+def test_execute_call_b(mocker, container, mock_driver_dialect):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
@@ -148,7 +148,7 @@ def test_execute_call_b(mocker, container, mock_target_driver_dialect):
     assert calls[4] == "TestPluginOne:after execute"
 
 
-def test_execute_call_c(mocker, container, mock_target_driver_dialect):
+def test_execute_call_c(mocker, container, mock_driver_dialect):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
@@ -168,7 +168,7 @@ def test_execute_call_c(mocker, container, mock_target_driver_dialect):
     assert calls[2] == "TestPluginOne:after execute"
 
 
-def test_execute_against_old_target(mocker, container, mock_target_driver_dialect):
+def test_execute_against_old_target(mocker, container, mock_driver_dialect):
     mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
     manager._container = container
@@ -181,7 +181,7 @@ def test_execute_against_old_target(mocker, container, mock_target_driver_dialec
         manager.execute(mock_conn, "test_execute", lambda: _target_call([]))
 
 
-def test_connect(mocker, container, mock_conn, mock_target_driver_dialect):
+def test_connect(mocker, container, mock_conn, mock_driver_dialect):
     calls = []
 
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls, mock_conn)]
@@ -323,7 +323,7 @@ class TestPlugin(Plugin):
     def connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -391,7 +391,7 @@ class TestPluginRaisesError(TestPlugin):
     def connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,

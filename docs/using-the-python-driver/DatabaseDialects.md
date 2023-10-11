@@ -35,7 +35,7 @@ Dialect codes specify what kind of database any connections will be made to.
 
 If you are interested in using the AWS Advanced Python Driver but your desired database type is not currently supported, it is possible to create a custom dialect.
 
-To create a custom dialect, implement the [`Dialect`](../../aws_wrapper/dialect.py) class. For databases clusters that are aware of their topology, the `TopologyAwareDatabaseDialect` interface should also be implemented. See the following classes in the [Dialect file](../../aws_wrapper/dialect.py) for examples:
+To create a custom dialect, implement the [`DatabaseDialect`](../../aws_wrapper/database_dialect.py) class. For databases clusters that are aware of their topology, the `TopologyAwareDatabaseDialect` interface should also be implemented. See the following classes in the [Database Dialect file](../../aws_wrapper/database_dialect.py) for examples:
 - PgDialect is a generic dialect that should work with any PostgreSQL database.
 - AuroraPgDialect is an extension of PgDialect, but also implements the `TopologyAwareDatabaseDialect` interface.
 

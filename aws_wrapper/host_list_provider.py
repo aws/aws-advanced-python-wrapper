@@ -25,9 +25,9 @@ from typing import (TYPE_CHECKING, ClassVar, Optional, Protocol, Tuple,
                     runtime_checkable)
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.generic_driver_dialect import DriverDialect
 
-import aws_wrapper.dialect as db_dialect
+import aws_wrapper.database_dialect as db_dialect
 from aws_wrapper.errors import (AwsWrapperError, QueryTimeoutError,
                                 UnsupportedOperationError)
 from aws_wrapper.host_availability import (HostAvailability,
@@ -83,12 +83,12 @@ class HostListProviderService(Protocol):
 
     @property
     @abstractmethod
-    def dialect(self) -> db_dialect.Dialect:
+    def dialect(self) -> db_dialect.DatabaseDialect:
         ...
 
     @property
     @abstractmethod
-    def target_driver_dialect(self) -> TargetDriverDialect:
+    def driver_dialect(self) -> DriverDialect:
         ...
 
     @property
@@ -289,14 +289,14 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     break
 
     def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
-        target_driver_dialect = self._host_list_provider_service.target_driver_dialect
-        initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
+        driver_dialect = self._host_list_provider_service.driver_dialect
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         # TODO: Set network timeout to ensure topology query does not execute indefinitely
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._dialect.topology_query)
                 res = self._process_query_results(cursor)
-                if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
+                if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                     # this condition is True when autocommit is False and the query started a new transaction.
                     conn.commit()
                 return res
@@ -379,8 +379,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         return tuple(self._hosts)
 
     def get_host_role(self, connection: Connection) -> HostRole:
-        target_driver_dialect = self._host_list_provider_service.target_driver_dialect
-        initial_transaction_status: bool = target_driver_dialect.is_in_transaction(connection)
+        driver_dialect = self._host_list_provider_service.driver_dialect
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(connection)
 
         try:
             with closing(connection.cursor()) as cursor:
@@ -388,7 +388,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
                 cursor_execute_func_with_timeout(self._dialect.is_reader_query)
                 result = cursor.fetchone()
-                if not initial_transaction_status and target_driver_dialect.is_in_transaction(connection):
+                if not initial_transaction_status and driver_dialect.is_in_transaction(connection):
                     # this condition is True when autocommit is False and the query started a new transaction.
                     connection.commit()
                 if result:

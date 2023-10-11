@@ -52,17 +52,17 @@ def mock_conn(mocker):
 
 
 @pytest.fixture
-def mock_target_driver_dialect(mocker):
-    mock_target_driver_dialect = mocker.MagicMock()
-    mock_target_driver_dialect.is_closed.return_value = False
-    return mock_target_driver_dialect
+def mock_driver_dialect(mocker):
+    mock_driver_dialect = mocker.MagicMock()
+    mock_driver_dialect.is_closed.return_value = False
+    return mock_driver_dialect
 
 
 @pytest.fixture
-def mock_plugin_service(mocker, mock_conn, mock_target_driver_dialect):
+def mock_plugin_service(mocker, mock_conn, mock_driver_dialect):
     plugin_service = mocker.MagicMock()
     plugin_service.force_connect.return_value = mock_conn
-    plugin_service.target_driver_dialect = mock_target_driver_dialect
+    plugin_service.driver_dialect = mock_driver_dialect
     return plugin_service
 
 
@@ -137,7 +137,7 @@ def test_run_host_available(
         mock_monitor_service,
         mock_plugin_service,
         mock_conn,
-        mock_target_driver_dialect):
+        mock_driver_dialect):
     remove_delays()
     host_alias = "host-1"
     container = MonitoringThreadContainer()
@@ -145,7 +145,7 @@ def test_run_host_available(
     container._tasks_map.put_if_absent(monitor, mocker.MagicMock())
 
     executor = ThreadPoolExecutor()
-    context = MonitoringContext(monitor, mock_conn, mock_target_driver_dialect, 10, 1, 3)
+    context = MonitoringContext(monitor, mock_conn, mock_driver_dialect, 10, 1, 3)
     monitor.start_monitoring(context)
 
     future = executor.submit(monitor.run)
@@ -154,7 +154,7 @@ def test_run_host_available(
     wait([future], 3)
 
     mock_plugin_service.force_connect.assert_called_once_with(host_info, monitoring_conn_props, None)
-    mock_target_driver_dialect.abort_connection.assert_not_called()
+    mock_driver_dialect.abort_connection.assert_not_called()
     mock_monitor_service.notify_unused.assert_called_once()
     mock_conn.close.assert_called_once()
     assert context._is_host_unavailable is False
@@ -171,10 +171,10 @@ def test_run_host_unavailable(
         mock_monitor_service,
         mock_plugin_service,
         mock_conn,
-        mock_target_driver_dialect):
+        mock_driver_dialect):
     remove_delays()
     executor = ThreadPoolExecutor()
-    context = MonitoringContext(monitor, mock_conn, mock_target_driver_dialect, 30, 10, 3)
+    context = MonitoringContext(monitor, mock_conn, mock_driver_dialect, 30, 10, 3)
 
     mocker.patch("aws_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=TimeoutError())
     monitor.start_monitoring(context)
@@ -182,7 +182,7 @@ def test_run_host_unavailable(
     wait([future], 3)
 
     mock_plugin_service.force_connect.assert_called_once_with(host_info, monitoring_conn_props, None)
-    mock_target_driver_dialect.abort_connection.assert_called_once()
+    mock_driver_dialect.abort_connection.assert_called_once()
     mock_monitor_service.notify_unused.assert_called_once()
     mock_conn.close.assert_called_once()
     assert context._is_host_unavailable is True

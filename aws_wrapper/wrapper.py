@@ -16,13 +16,13 @@ from __future__ import annotations
 
 from typing import Any, Callable, Iterator, List, Optional, Union
 
+from aws_wrapper.driver_dialect import DriverDialectManager
 from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.plugin_service import (PluginManager, PluginService,
                                         PluginServiceImpl,
                                         PluginServiceManagerContainer)
-from aws_wrapper.target_driver_dialect import TargetDriverDialectManager
 from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, PropertiesUtils
@@ -43,21 +43,21 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
     @property
     def is_closed(self):
-        return self._plugin_service.target_driver_dialect.is_closed(self.target_connection)
+        return self._plugin_service.driver_dialect.is_closed(self.target_connection)
 
     @property
     def read_only(self) -> bool:
         return self._plugin_manager.execute(
             self.target_connection,
             "Connection.is_read_only",
-            lambda: self._plugin_service.target_driver_dialect.is_read_only(self.target_connection))
+            lambda: self._plugin_service.driver_dialect.is_read_only(self.target_connection))
 
     @read_only.setter
     def read_only(self, read_only: bool):
         self._plugin_manager.execute(
             self.target_connection,
             "Connection.set_read_only",
-            lambda: self._plugin_service.target_driver_dialect.set_read_only(self.target_connection, read_only),
+            lambda: self._plugin_service.driver_dialect.set_read_only(self.target_connection, read_only),
             read_only)
 
     @property
@@ -65,14 +65,14 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         return self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit",
-            lambda: self._plugin_service.target_driver_dialect.get_autocommit(self.target_connection))
+            lambda: self._plugin_service.driver_dialect.get_autocommit(self.target_connection))
 
     @autocommit.setter
     def autocommit(self, autocommit: bool):
         self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit_setter",
-            lambda: self._plugin_service.target_driver_dialect.set_autocommit(self.target_connection, autocommit),
+            lambda: self._plugin_service.driver_dialect.set_autocommit(self.target_connection, autocommit),
             autocommit)
 
     @staticmethod
@@ -95,11 +95,11 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
         logger.debug("Wrapper.Properties", PropertiesUtils.log_properties(props))
 
-        target_driver_dialect_manager: TargetDriverDialectManager = TargetDriverDialectManager()
-        target_driver_dialect = target_driver_dialect_manager.get_dialect(target_func, props)
+        driver_dialect_manager: DriverDialectManager = DriverDialectManager()
+        driver_dialect = driver_dialect_manager.get_dialect(target_func, props)
         container: PluginServiceManagerContainer = PluginServiceManagerContainer()
         plugin_service = PluginServiceImpl(
-            container, props, target_func, target_driver_dialect_manager, target_driver_dialect)
+            container, props, target_func, driver_dialect_manager, driver_dialect)
         plugin_manager: PluginManager = PluginManager(container, props)
 
         host_list_provider_init = plugin_service.dialect.get_host_list_provider_supplier()
@@ -113,7 +113,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
             return AwsWrapperConnection(plugin_service, plugin_manager)
 
         conn = plugin_manager.connect(
-            target_func, target_driver_dialect, plugin_service.initial_connection_host_info, props, True)
+            target_func, driver_dialect, plugin_service.initial_connection_host_info, props, True)
 
         if not conn:
             raise AwsWrapperError(Messages.get("ConnectionWrapper.ConnectionNotOpen"))
@@ -224,7 +224,7 @@ class AwsWrapperCursor(Cursor):
             *args: Any,
             **kwargs: Any
     ) -> AwsWrapperCursor:
-        driver_dialect = self._plugin_service.target_driver_dialect
+        driver_dialect = self._plugin_service.driver_dialect
         try:
             return self._plugin_manager.execute(
                 self.target_cursor,

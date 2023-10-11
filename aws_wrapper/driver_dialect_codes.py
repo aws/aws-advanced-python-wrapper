@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-class TargetDriverDialectCodes:
+class DriverDialectCodes:
     SQLALCHEMY = "sqlalchemy"
     PSYCOPG = "psycopg"
     MYSQL_CONNECTOR_PYTHON = "mysql-connector-python"
