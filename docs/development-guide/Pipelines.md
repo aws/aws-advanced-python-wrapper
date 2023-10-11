@@ -5,14 +5,14 @@
 A plugin pipeline is an execution workflow achieving a specific goal.
 
 The plugin pipelines available in the driver are:
-- The connect pipeline.
+- The connect pipeline
 - The force_connect pipeline
-- The execute pipeline.
-- The host list provider pipeline.
-- The connection changed notification pipeline.
-- The host list changed notification pipeline.
-- The accepts strategy pipeline.
-- The get_host_info_by_strategy pipeline.
+- The execute pipeline
+- The host list provider pipeline
+- The connection changed notification pipeline
+- The host list changed notification pipeline
+- The accepts strategy pipeline
+- The get_host_info_by_strategy pipeline
 
 A plugin does not need to implement all pipelines. A plugin can implement one or more pipelines depending on its functionality.
 
@@ -34,11 +34,11 @@ The execute pipeline performs additional work for Python method calls.
 
 Usages for this pipeline include:
 
-- handling execution exceptions
-- logging and measuring execution information
-- caching execution results
-- updating the host lists before executing the Python method
-- catching network exceptions and performing the failover procedure
+- Handling execution exceptions
+- Logging and measuring execution information
+- Catching execution results
+- Updating the host lists before executing the Python method
+- Catching network exceptions and performing the failover procedure
 
 ## Host List Provider Pipeline
 
