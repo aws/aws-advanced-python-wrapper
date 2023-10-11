@@ -77,7 +77,7 @@ will be called whenever changes in the current host list are detected.
 
 ## Accepts Strategy Pipeline
 
-Plugins should subscribe to this pipeline and the `get_host_info_by_strategy` pipeline if they implement a host selection strategy via the `get_host_info_by_strategy` method. In this case, plugins should override the `accepts_strategy` and `get_host_info_by_strategy` methods to implement any desired logic. The `accepts_strategy` method should return true for each selection strategy that the plugin supports.
+Plugins should subscribe to this pipeline and the `get_host_info_by_strategy` pipeline if they implement a host selection strategy via the `get_host_info_by_strategy` method. In this case, plugins should override the `accepts_strategy` and `get_host_info_by_strategy` methods to implement any desired logic. The `accepts_strategy` method should return `True` for each selection strategy that the plugin supports.
 
 ## Get Host Info by Strategy pipeline
 
