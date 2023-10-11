@@ -30,7 +30,7 @@ from aws_wrapper.errors import (FailoverFailedError, FailoverSuccessError,
 
 
 def configure_pool(host_info: HostInfo, props: Dict[str, Any]) -> Dict[str, Any]:
-    return {"pool_size": 1}
+    return {"pool_size": 5}
 
 
 def get_pool_key(host_info: HostInfo, props: Dict[str, Any]) -> str:
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     provider = SqlAlchemyPooledConnectionProvider(configure_pool, get_pool_key)
     ConnectionProviderManager.set_connection_provider(provider)
 
-    """ Setup step: open connection and create tables - uncomment this section to create table and test values """
+    """ Setup step: open connection and create tables """
     with AwsWrapperConnection.connect(mysql.connector.Connect, **params) as conn:
         configure_initial_session_states(conn)
         execute_queries_with_failover_handling(

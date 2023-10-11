@@ -92,7 +92,7 @@ if __name__ == "__main__":
     provider = SqlAlchemyPooledConnectionProvider(configure_pool, get_pool_key)
     ConnectionProviderManager.set_connection_provider(provider)
 
-    """ Setup step: open connection and create tables - uncomment this section to create table and test values """
+    """ Setup step: open connection and create tables """
     with AwsWrapperConnection.connect(psycopg.Connection.connect, **params) as conn:
         configure_initial_session_states(conn)
         execute_queries_with_failover_handling(
@@ -101,23 +101,26 @@ if __name__ == "__main__":
             conn, "INSERT INTO bank_test VALUES (0, 'Jane Doe', 200), (1, 'John Smith', 200)")
 
     """ Example step: open connection and perform transaction """
-    with AwsWrapperConnection.connect(psycopg.Connection.connect, **params) as conn, conn.cursor() as cursor:
-        configure_initial_session_states(conn)
+    try:
+        with AwsWrapperConnection.connect(psycopg.Connection.connect, **params) as conn, conn.cursor() as cursor:
+            configure_initial_session_states(conn)
 
-        execute_queries_with_failover_handling(
-            conn, "UPDATE bank_test SET account_balance=account_balance - 100 WHERE name='Jane Doe'")
-        execute_queries_with_failover_handling(
-            conn, "UPDATE bank_test SET account_balance=account_balance + 100 WHERE name='John Smith'")
+            execute_queries_with_failover_handling(
+                conn, "UPDATE bank_test SET account_balance=account_balance - 100 WHERE name='Jane Doe'")
+            execute_queries_with_failover_handling(
+                conn, "UPDATE bank_test SET account_balance=account_balance + 100 WHERE name='John Smith'")
 
-        # Internally switch to a reader connection
-        conn.read_only = True
-        for i in range(2):
-            cursor = execute_queries_with_failover_handling(conn, f"SELECT * FROM bank_test WHERE id = {i}")
-            results = cursor.fetchall()
-            for record in results:
-                print(record)
+            # Internally switch to a reader connection
+            conn.read_only = True
+            for i in range(2):
+                cursor = execute_queries_with_failover_handling(conn, f"SELECT * FROM bank_test WHERE id = {i}")
+                results = cursor.fetchall()
+                for record in results:
+                    print(record)
 
-        execute_queries_with_failover_handling(conn, "DROP TABLE bank_test")
+    finally:
+        with AwsWrapperConnection.connect(psycopg.Connection.connect, **params) as conn:
+            execute_queries_with_failover_handling(conn, "DROP TABLE bank_test")
 
-    """ If connection pools were enabled, close them here """
-    ConnectionProviderManager.release_resources()
+        """ If connection pools were enabled, close them here """
+        ConnectionProviderManager.release_resources()
