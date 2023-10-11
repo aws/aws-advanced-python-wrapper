@@ -70,7 +70,7 @@ When the AWS Advanced Python Driver throws a `TransactionResolutionUnknownError`
 
 #### Sample Code
 
-[PostgreSQL Failover Sample Code](../../examples/PGFailover.py)
+[PostgreSQL Failover Sample Code](../../examples/PGFailover.py)  
 [MySQL Failover Sample Code](../../examples/MySQLFailover.py)
 
 >### :warning: Warnings About Proper Usage of the AWS Advanced Python Driver

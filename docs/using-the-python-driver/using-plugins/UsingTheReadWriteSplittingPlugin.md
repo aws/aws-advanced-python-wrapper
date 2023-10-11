@@ -4,7 +4,7 @@ The read-write splitting plugin adds functionality to switch between writer and 
 
 ### Loading the Read-Write Splitting Plugin
 
-The read-write splitting plugin is not loaded by default. To load the plugin, include `read_write_splitting` in the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) connection parameter. If you would like to load the read-write splitting plugin with the failover and host monitoring plugins, the read-write splitting plugin must be listed before these plugins in the plugin chain. If it is not, failover exceptions will not be properly processed by the plugin. See the example below to properly load the read-write splitting plugin with these plugins.
+The read-write splitting plugin is not loaded by default. To load the plugin, include `read_write_splitting` in the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) connection parameter. If you are loading the failover and host monitoring plugins as well, the read-write splitting plugin must be listed before them in the plugin chain. If it is not, failover exceptions will not be properly processed by the plugin. See the example below to properly load the read-write splitting plugin.
 
 ```
 params = {
@@ -39,7 +39,7 @@ The wrapper driver currently uses [SqlAlchemy](https://docs.sqlalchemy.org/en/20
 
 1.  Create an instance of `SqlAlchemyPooledConnectionProvider`, passing in any optional arguments if desired:
     - The first optional argument takes in a `Callable` that can be used to return custom parameter settings for the connection pool. See [here](https://docs.sqlalchemy.org/en/20/core/pooling.html#sqlalchemy.pool.QueuePool) for a list of available parameters. Note that you should not set the `creator` parameter - this parameter will be set automatically by the wrapper driver. This is done to follow desired behavior and ensure that the read-write plugin can successfully establish connections to new instances.
-    - The second optional argument takes in a `Callable` that can be used to define custom key generation for the internal connection pools. Key generation is used to define when new connection pools are created; a new pool will be created each time a connection is requested with a unique key. By default, a new pool will be created for each unique instance-user combination. If you would like to define a different key system, you should pass in a `Callable` defining this logic. The `Callable` should take in a HostInfo and Dict and return a string representing the desired connection pool key. A simple example is shown below. Please see the [Postgres](../../examples/PGReadWriteSplitting.py) or [MySQL](../../examples/MySQLReadWriteSplitting.py) sample code for a full example.
+    - The second optional argument takes in a `Callable` that can be used to define custom key generation for the internal connection pools. Key generation is used to define when new connection pools are created; a new pool will be created each time a connection is requested with a unique key. By default, a new pool will be created for each unique instance-user combination. If you would like to define a different key system, you should pass in a `Callable` defining this logic. The `Callable` should take in a HostInfo and Dict specifying the connection properties and return a string representing the desired connection pool key. A simple example is shown below. Please see the [Postgres](../../examples/PGReadWriteSplitting.py) or [MySQL](../../examples/MySQLReadWriteSplitting.py) sample code for a full example.
 
     > :warning: If you do not include the username in the connection pool key, connection pools may be shared between different users. As a result, an initial connection established with a privileged user may be returned to a connection request with a lower-privilege user without re-verifying credentials. This behavior is inherent to the nature of connection pools and not a bug with the driver. `ConnectionProviderManager.releaseResources` can be called to close all pools and remove all cached pool connections.
 
@@ -53,7 +53,7 @@ The wrapper driver currently uses [SqlAlchemy](https://docs.sqlalchemy.org/en/20
       return f"{url}{user}{db}"
     
     provider = SqlAlchemyPooledConnectionProvider(
-        lambda host_info, props: {"pool_size": 1},
+        lambda host_info, props: {"pool_size": 5},
         get_pool_key)
     ConnectionProviderManager.set_connection_provider(provider)
     ```
@@ -69,7 +69,7 @@ The wrapper driver currently uses [SqlAlchemy](https://docs.sqlalchemy.org/en/20
 > :warning: **Note:** You must call `ConnectionProviderManager.release_resources` to close the internal connection pools when you are finished using all connections. Unless `ConnectionProviderManager.release_resources` is called, the wrapper driver will keep the pools open so that they can be shared between connections.
 
 ### Example
-[Postgres read-write splitting sample code](../../examples/PGReadWriteSplitting.py)
+[Postgres read-write splitting sample code](../../examples/PGReadWriteSplitting.py)  
 [MySQL read-write splitting sample code](../../examples/MySQLReadWriteSplitting.py)
 
 ### Connection Strategies
@@ -100,7 +100,7 @@ conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 
 #### General plugin limitations
 
-When a `Cursor` is created, it is bound to the database connection established at that moment. Consequently, if the read-write plugin switches the internal connection, any `Cursor` objects created before this will continue using the old database connection. This bypasses the desired functionality provided by the plugin. To prevent these scenarios, an exception will be thrown if your code uses any `Cursor` objects created before a change in internal connection. To solve this problem, please ensure you create new Cursor objects after switching between the writer/reader.
+When a `Cursor` is created, it is bound to the database connection established at that moment. Consequently, if the read-write plugin switches the internal connection, any `Cursor` objects created before this will continue using the old database connection. This bypasses the desired functionality provided by the plugin. To prevent these scenarios, an exception will be thrown if your code uses any `Cursor` objects created before a change in internal connection. To solve this problem, please ensure you create new `Cursor` objects after switching between the writer/reader.
 
 #### Session state limitations
 
