@@ -23,7 +23,7 @@ from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-from aws_wrapper.utils.timeout import timeout
+from aws_wrapper.utils.timeout import preserve_transaction_status_with_timeout
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
@@ -156,7 +156,7 @@ class GenericTargetDriverDialect(TargetDriverDialect):
         socket_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
         if socket_timeout is not None:
             kwargs.pop(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
-            execute_with_timeout = timeout(GenericTargetDriverDialect._executor, socket_timeout, self, conn)(
+            execute_with_timeout = preserve_transaction_status_with_timeout(GenericTargetDriverDialect._executor, socket_timeout, self, conn)(
                 lambda: cursor.execute(query, *args, **kwargs))
             return execute_with_timeout()
         else:

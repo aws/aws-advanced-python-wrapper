@@ -40,7 +40,7 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.timeout import timeout
+from aws_wrapper.utils.timeout import preserve_transaction_status_with_timeout
 from aws_wrapper.utils.utils import LogUtils
 
 logger = Logger(__name__)
@@ -250,7 +250,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
             try:
                 query_for_topology_func_with_timeout = (
-                    timeout(AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, conn)(self._query_for_topology))
+                    preserve_transaction_status_with_timeout(AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, conn)(
+                        self._query_for_topology))
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
@@ -381,7 +382,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
         try:
             with closing(connection.cursor()) as cursor:
-                cursor_execute_func_with_timeout = timeout(
+                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
                     AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(cursor.execute)
                 cursor_execute_func_with_timeout(self._dialect.is_reader_query)
 
@@ -401,7 +402,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         target_driver_dialect = self._host_list_provider_service.target_driver_dialect
         try:
             with closing(connection.cursor()) as cursor:
-                cursor_execute_func_with_timeout = timeout(
+                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
                     AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(cursor.execute)
                 cursor_execute_func_with_timeout(self._dialect.host_id_query)
                 result = cursor.fetchone()

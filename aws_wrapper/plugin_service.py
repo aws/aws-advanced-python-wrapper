@@ -50,7 +50,7 @@ from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-from aws_wrapper.utils.timeout import timeout
+from aws_wrapper.utils.timeout import preserve_transaction_status_with_timeout
 
 logger = Logger(__name__)
 
@@ -376,8 +376,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
                     timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
 
-                    cursor_execute_func_with_timeout = timeout(PluginServiceImpl._executor, timeout_sec, target_driver_dialect, connection)(
-                        cursor.execute)
+                    cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(PluginServiceImpl._executor, timeout_sec,
+                                                                                                target_driver_dialect, connection)(cursor.execute)
                     cursor_execute_func_with_timeout(self.dialect.host_alias_query)
 
                     for row in cursor.fetchall():
