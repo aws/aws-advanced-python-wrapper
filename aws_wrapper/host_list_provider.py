@@ -124,7 +124,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     # cluster IDs so that connections to the same clusters can share topology info.
     _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="AuroraHostListProviderExecutor")
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service

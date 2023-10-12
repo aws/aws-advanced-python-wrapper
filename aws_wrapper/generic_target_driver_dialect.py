@@ -119,7 +119,7 @@ class TargetDriverDialect(ABC):
 
 
 class GenericTargetDriverDialect(TargetDriverDialect):
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="GenericTargetDriverDialectExecutor")
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     def is_dialect(self, connect_func: Callable) -> bool:
         return True
