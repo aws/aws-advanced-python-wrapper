@@ -52,9 +52,12 @@ if __name__ == "__main__":
     # Closes all pools and removes all cached pool connections
     ConnectionProviderManager.release_resources()
 
-    # Correctly throws an exception - creates a fresh connection pool which will check the password because there are no
-    # longer any cached pool connections.
-    with AwsWrapperConnection.connect(
-            psycopg.Connection.connect, **params, password=incorrect_password) as incorrect_password_conn:
-        # Will not reach - exception will be thrown
-        pass
+    try:
+        # Correctly throws an exception - creates a fresh connection pool which will check the password because there
+        # are no longer any cached pool connections.
+        with AwsWrapperConnection.connect(
+                psycopg.Connection.connect, **params, password=incorrect_password) as incorrect_password_conn:
+            # Will not reach - exception will be thrown
+            pass
+    except Exception:
+        print("Failed to connect - password was incorrect")
