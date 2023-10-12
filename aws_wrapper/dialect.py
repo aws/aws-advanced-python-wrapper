@@ -370,7 +370,7 @@ class AuroraPgDialect(PgDialect, TopologyAwareDatabaseDialect):
 
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                AuroraPgDialect._executor, AuroraPgDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect_extensions)
+                AuroraPgDialect._executor, PgDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect_extensions)
             has_extensions = cursor_execute_func_with_timeout(conn)
 
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
