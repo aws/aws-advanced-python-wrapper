@@ -19,7 +19,7 @@ from io import UnsupportedOperation
 from typing import TYPE_CHECKING, Any, Callable, Optional, Set, Tuple
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.generic_driver_dialect import DriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
@@ -82,7 +82,7 @@ class ReadWriteSplittingPlugin(Plugin):
     def connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -97,7 +97,7 @@ class ReadWriteSplittingPlugin(Plugin):
     def force_connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -134,9 +134,9 @@ class ReadWriteSplittingPlugin(Plugin):
         return OldConnectionSuggestedAction.NO_OPINION
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
-        target_driver_dialect = self._plugin_service.target_driver_dialect
-        conn: Optional[Connection] = target_driver_dialect.get_connection_from_obj(target)
-        current_conn: Optional[Connection] = target_driver_dialect.unwrap_connection(self._plugin_service.current_connection)
+        driver_dialect = self._plugin_service.driver_dialect
+        conn: Optional[Connection] = driver_dialect.get_connection_from_obj(target)
+        current_conn: Optional[Connection] = driver_dialect.unwrap_connection(self._plugin_service.current_connection)
 
         if conn is not None and conn != current_conn:
             msg = Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target)
@@ -184,13 +184,13 @@ class ReadWriteSplittingPlugin(Plugin):
 
     def _switch_connection_if_required(self, read_only: bool):
         current_conn = self._plugin_service.current_connection
-        target_driver_dialect = self._plugin_service.target_driver_dialect
+        driver_dialect = self._plugin_service.driver_dialect
 
         if (current_conn is not None and
-                target_driver_dialect is not None and target_driver_dialect.is_closed(current_conn)):
+                driver_dialect is not None and driver_dialect.is_closed(current_conn)):
             self._log_and_raise_exception("ReadWriteSplittingPlugin.SetReadOnlyOnClosedConnection")
 
-        if current_conn is not None and target_driver_dialect.can_execute_query(current_conn):
+        if current_conn is not None and driver_dialect.can_execute_query(current_conn):
             try:
                 self._plugin_service.refresh_host_list()
             except Exception:
@@ -210,7 +210,7 @@ class ReadWriteSplittingPlugin(Plugin):
                 try:
                     self._switch_to_reader_connection(hosts)
                 except Exception:
-                    if not self._is_connection_usable(current_conn, target_driver_dialect):
+                    if not self._is_connection_usable(current_conn, driver_dialect):
                         self._log_and_raise_exception("ReadWriteSplittingPlugin.ErrorSwitchingToReader")
                         return
 
@@ -237,9 +237,9 @@ class ReadWriteSplittingPlugin(Plugin):
     def _switch_to_writer_connection(self, hosts: Tuple[HostInfo, ...]):
         current_host = self._plugin_service.current_host_info
         current_conn = self._plugin_service.current_connection
-        target_driver_dialect = self._plugin_service.target_driver_dialect
+        driver_dialect = self._plugin_service.driver_dialect
         if (current_host is not None and current_host.role == HostRole.WRITER and
-                self._is_connection_usable(current_conn, target_driver_dialect)):
+                self._is_connection_usable(current_conn, driver_dialect)):
             return
 
         writer_host = self._get_writer(hosts)
@@ -247,7 +247,7 @@ class ReadWriteSplittingPlugin(Plugin):
             return
 
         self._in_read_write_split = True
-        if not self._is_connection_usable(self._writer_connection, target_driver_dialect):
+        if not self._is_connection_usable(self._writer_connection, driver_dialect):
             self._get_new_writer_connection(writer_host)
         elif self._writer_connection is not None:
             self._switch_current_connection_to(self._writer_connection, writer_host)
@@ -260,13 +260,13 @@ class ReadWriteSplittingPlugin(Plugin):
     def _switch_to_reader_connection(self, hosts: Tuple[HostInfo, ...]):
         current_host = self._plugin_service.current_host_info
         current_conn = self._plugin_service.current_connection
-        target_driver_dialect = self._plugin_service.target_driver_dialect
+        driver_dialect = self._plugin_service.driver_dialect
         if (current_host is not None and current_host.role == HostRole.READER and
-                self._is_connection_usable(current_conn, target_driver_dialect)):
+                self._is_connection_usable(current_conn, driver_dialect)):
             return
 
         self._in_read_write_split = True
-        if not self._is_connection_usable(self._reader_connection, target_driver_dialect):
+        if not self._is_connection_usable(self._reader_connection, driver_dialect):
             self._initialize_reader_connection(hosts)
         elif self._reader_connection is not None and self._reader_host_info is not None:
             try:
@@ -287,7 +287,7 @@ class ReadWriteSplittingPlugin(Plugin):
         if len(hosts) == 1:
             writer_host = self._get_writer(hosts)
             if writer_host is not None:
-                if not self._is_connection_usable(self._writer_connection, self._plugin_service.target_driver_dialect):
+                if not self._is_connection_usable(self._writer_connection, self._plugin_service.driver_dialect):
                     self._get_new_writer_connection(writer_host)
                 logger.warning("ReadWriteSplittingPlugin.NoReadersFound", writer_host.url)
                 return
@@ -324,14 +324,14 @@ class ReadWriteSplittingPlugin(Plugin):
         if from_conn is None or conn is None:
             return
 
-        self._plugin_service.target_driver_dialect.transfer_session_state(from_conn, conn)
+        self._plugin_service.driver_dialect.transfer_session_state(from_conn, conn)
 
     def _close_connection_if_idle(self, internal_conn: Optional[Connection]):
         current_conn = self._plugin_service.current_connection
-        target_driver_dialect = self._plugin_service.target_driver_dialect
+        driver_dialect = self._plugin_service.driver_dialect
         try:
             if (internal_conn is not None and internal_conn != current_conn and
-                    self._is_connection_usable(internal_conn, target_driver_dialect)):
+                    self._is_connection_usable(internal_conn, driver_dialect)):
                 internal_conn.close()
                 if internal_conn == self._writer_connection:
                     self._writer_connection = None
@@ -353,8 +353,8 @@ class ReadWriteSplittingPlugin(Plugin):
         raise ReadWriteSplittingError(Messages.get(log_msg))
 
     @staticmethod
-    def _is_connection_usable(conn: Optional[Connection], target_driver_dialect: Optional[TargetDriverDialect]):
-        return conn is not None and target_driver_dialect is not None and not target_driver_dialect.is_closed(conn)
+    def _is_connection_usable(conn: Optional[Connection], driver_dialect: Optional[DriverDialect]):
+        return conn is not None and driver_dialect is not None and not driver_dialect.is_closed(conn)
 
     @staticmethod
     def _get_writer(hosts: Tuple[HostInfo, ...]) -> Optional[HostInfo]:

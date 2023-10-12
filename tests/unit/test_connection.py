@@ -29,7 +29,7 @@ from aws_wrapper.wrapper import AwsWrapperConnection
 
 
 def test_connection_basic():
-    conninfo: str = "host=localhost dbname=postgres user=postgres password=qwerty wrapper_target_driver_dialect=psycopg"
+    conninfo: str = "host=localhost dbname=postgres user=postgres password=qwerty wrapper_driver_dialect=psycopg"
     connection_mock: Connection = MagicMock(spec=psycopg.Connection)
     container_mock = MagicMock()
     connection_mock.connect.return_value = MagicMock(spec=psycopg.Connection)

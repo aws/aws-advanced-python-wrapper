@@ -27,17 +27,16 @@ from mysql.connector import CMySQLConnection, MySQLConnection
 from mysql.connector.cursor import MySQLCursor
 from mysql.connector.cursor_cext import CMySQLCursor
 
+from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import UnsupportedOperationError
-from aws_wrapper.generic_target_driver_dialect import \
-    GenericTargetDriverDialect
-from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
+from aws_wrapper.generic_driver_dialect import GenericDriverDialect
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.timeout import timeout
 
 
-class MySQLTargetDriverDialect(GenericTargetDriverDialect):
+class MySQLDriverDialect(GenericDriverDialect):
     _driver_name = "MySQL Connector Python"
     TARGET_DRIVER_CODE = "MySQL"
     AUTH_PLUGIN_PARAM = "auth_plugin"
@@ -46,7 +45,7 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
-    _dialect_code: str = TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON
+    _dialect_code: str = DriverDialectCodes.MYSQL_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
         "Connection.commit",
         "Connection.autocommit",
@@ -63,7 +62,7 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     }
 
     def is_dialect(self, connect_func: Callable) -> bool:
-        return MySQLTargetDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
+        return MySQLDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
@@ -72,22 +71,22 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
             # If there are any unread results from previous executions an error will be thrown.
             if self.can_execute_query(conn):
                 is_connected_with_timeout = timeout(
-                    MySQLTargetDriverDialect._executor,
-                    MySQLTargetDriverDialect.IS_CLOSED_TIMEOUT_SEC)(conn.is_connected)
+                    MySQLDriverDialect._executor,
+                    MySQLDriverDialect.IS_CLOSED_TIMEOUT_SEC)(conn.is_connected)
                 try:
                     return not is_connected_with_timeout()
                 except TimeoutError:
                     return False
             return False
 
-        raise UnsupportedOperationError(Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_connected"))
+        raise UnsupportedOperationError(Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "is_connected"))
 
     def get_autocommit(self, conn: Connection) -> bool:
         if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
             return conn.autocommit
 
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
     def set_autocommit(self, conn: Connection, autocommit: bool):
         if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
@@ -95,16 +94,16 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
             return
 
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
     def set_password(self, props: Properties, pwd: str):
         WrapperProperties.PASSWORD.set(props, pwd)
-        props[MySQLTargetDriverDialect.AUTH_PLUGIN_PARAM] = MySQLTargetDriverDialect.AUTH_METHOD
+        props[MySQLDriverDialect.AUTH_PLUGIN_PARAM] = MySQLDriverDialect.AUTH_METHOD
 
     def abort_connection(self, conn: Connection):
         raise UnsupportedOperationError(
             Messages.get_formatted(
-                "TargetDriverDialect.UnsupportedOperationError",
+                "DriverDialect.UnsupportedOperationError",
                 self._driver_name,
                 "abort_connection"))
 
@@ -119,7 +118,7 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
             return bool(conn.in_transaction)
 
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name,
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name,
                                    "in_transaction"))
 
     def get_connection_from_obj(self, obj: object) -> Any:

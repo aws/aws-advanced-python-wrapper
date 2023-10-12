@@ -33,7 +33,7 @@ from aws_wrapper.aws_secrets_manager_plugin import AwsSecretsManagerPlugin
 if TYPE_CHECKING:
     from boto3 import Session, client
     from aws_wrapper.pep249 import Connection
-    from aws_wrapper.dialect import Dialect
+    from aws_wrapper.database_dialect import DatabaseDialect
     from aws_wrapper.plugin_service import PluginService
 
 from types import SimpleNamespace
@@ -82,7 +82,7 @@ class TestAwsSecretsManagerPlugin(TestCase):
 
     _mock_func: Callable
     _mock_plugin_service: PluginService
-    _mock_dialect: Dialect
+    _mock_dialect: DatabaseDialect
     _mock_session: Session
     _mock_client: client
     _mock_connection: Connection

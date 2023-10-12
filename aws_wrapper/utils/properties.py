@@ -203,9 +203,9 @@ class WrapperProperties:
         "30"
     )
 
-    # Target Driver Dialect
-    TARGET_DRIVER_DIALECT = WrapperProperty(
-        "wrapper_target_driver_dialect",
+    # Driver Dialect
+    DRIVER_DIALECT = WrapperProperty(
+        "wrapper_driver_dialect",
         "A unique identifier for the target driver dialect.")
 
     # Read Write Splitting

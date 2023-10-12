@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.generic_driver_dialect import DriverDialect
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
@@ -55,7 +55,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
 
     def __init__(self, plugin_service, props):
-        dialect: TargetDriverDialect = plugin_service.target_driver_dialect
+        dialect: DriverDialect = plugin_service.driver_dialect
         if not dialect.supports_abort_connection():
             raise AwsWrapperError(Messages.get_formatted(
                 "HostMonitoringPlugin.ConfigurationNotSupported", type(dialect).__name__))
@@ -75,7 +75,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
     def connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -85,7 +85,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
     def force_connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -141,8 +141,8 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
                         self._plugin_service.set_availability(
                             self._get_monitoring_host_info().all_aliases, HostAvailability.UNAVAILABLE)
 
-                        target_driver_dialect = self._plugin_service.target_driver_dialect
-                        if target_driver_dialect is not None and not target_driver_dialect.is_closed(connection):
+                        driver_dialect = self._plugin_service.driver_dialect
+                        if driver_dialect is not None and not driver_dialect.is_closed(connection):
                             try:
                                 connection.close()
                             except Exception:
@@ -212,13 +212,13 @@ class MonitoringContext:
             self,
             monitor: Monitor,
             connection: Connection,
-            target_dialect: TargetDriverDialect,
+            target_dialect: DriverDialect,
             failure_detection_time_ms: int,
             failure_detection_interval_ms: int,
             failure_detection_count: int):
         self._monitor: Monitor = monitor
         self._connection: Connection = connection
-        self._target_dialect: TargetDriverDialect = target_dialect
+        self._target_dialect: DriverDialect = target_dialect
         self._failure_detection_time_ms: int = failure_detection_time_ms
         self._failure_detection_interval_ms: int = failure_detection_interval_ms
         self._failure_detection_count: int = failure_detection_count
@@ -462,8 +462,8 @@ class Monitor:
     def _check_host_status(self, host_check_timeout_ms: int) -> HostStatus:
         start_ns = perf_counter_ns()
         try:
-            target_driver_dialect = self._plugin_service.target_driver_dialect
-            if self._monitoring_conn is None or target_driver_dialect.is_closed(self._monitoring_conn):
+            driver_dialect = self._plugin_service.driver_dialect
+            if self._monitoring_conn is None or driver_dialect.is_closed(self._monitoring_conn):
                 props_copy: Properties = copy(self._props)
                 for key, value in self._props.items():
                     if key.startswith(Monitor._MONITORING_PROPERTY_PREFIX):
@@ -490,15 +490,15 @@ class Monitor:
             return False
 
     def _execute_conn_check(self, conn: Connection, timeout_sec: float):
-        target_driver_dialect = self._plugin_service.target_driver_dialect
-        initial_transaction_status: bool = target_driver_dialect.is_in_transaction(conn)
+        driver_dialect = self._plugin_service.driver_dialect
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         kwargs = {WrapperProperties.SOCKET_TIMEOUT_SEC.name: timeout_sec}
 
         with conn.cursor() as cursor:
-            target_driver_dialect.execute(conn, cursor, "SELECT 1", **kwargs)
+            driver_dialect.execute(conn, cursor, "SELECT 1", **kwargs)
             cursor.fetchone()
 
-        if not initial_transaction_status and target_driver_dialect.is_in_transaction(conn):
+        if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
             conn.commit()
 
 
@@ -630,7 +630,7 @@ class MonitorService:
             monitor = self._cached_monitor
 
         context = MonitoringContext(
-            monitor, conn, self._plugin_service.target_driver_dialect, failure_detection_time_ms,
+            monitor, conn, self._plugin_service.driver_dialect, failure_detection_time_ms,
             failure_detection_interval_ms, failure_detection_count)
         monitor.start_monitoring(context)
         return context

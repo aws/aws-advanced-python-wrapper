@@ -36,7 +36,7 @@ def mock_plugin_service(mocker, mock_driver_dialect, mock_conn, host_info):
     service_mock = mocker.MagicMock()
     service_mock.current_connection = mock_conn
     service_mock.current_host_info = host_info
-    type(service_mock).target_driver_dialect = mocker.PropertyMock(return_value=mock_driver_dialect)
+    type(service_mock).driver_dialect = mocker.PropertyMock(return_value=mock_driver_dialect)
     return service_mock
 
 

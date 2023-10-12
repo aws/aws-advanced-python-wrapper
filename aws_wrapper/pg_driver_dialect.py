@@ -24,15 +24,15 @@ if TYPE_CHECKING:
 
 from inspect import signature
 
+from aws_wrapper.driver_dialect import GenericDriverDialect
+from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import UnsupportedOperationError
-from aws_wrapper.target_driver_dialect import GenericTargetDriverDialect
-from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 
 
-class PgTargetDriverDialect(GenericTargetDriverDialect):
+class PgDriverDialect(GenericDriverDialect):
     _driver_name: str = "Psycopg"
     TARGET_DRIVER_CODE: str = "psycopg"
 
@@ -40,7 +40,7 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     PSYCOPG_ACTIVE_TRANSACTION_STATUS = 1
     PSYCOPG_IN_TRANSACTION_STATUS = 2
 
-    _dialect_code: str = TargetDriverDialectCodes.PSYCOPG
+    _dialect_code: str = DriverDialectCodes.PSYCOPG
     _network_bound_methods: Set[str] = {
         "Connection.commit",
         "Connection.autocommit",
@@ -58,21 +58,21 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
     }
 
     def is_dialect(self, connect_func: Callable) -> bool:
-        return PgTargetDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
+        return PgDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
             return conn.closed
 
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "closed"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "closed"))
 
     def abort_connection(self, conn: Connection):
         if isinstance(conn, psycopg.Connection):
             conn.close()
             return
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "cancel"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "cancel"))
 
     def is_in_transaction(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
@@ -80,7 +80,7 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
             return status == self.PSYCOPG_ACTIVE_TRANSACTION_STATUS or status == self.PSYCOPG_IN_TRANSACTION_STATUS
 
         raise UnsupportedOperationError(Messages.get_formatted(
-            "TargetDriverDialect.UnsupportedOperationError",
+            "DriverDialect.UnsupportedOperationError",
             self._driver_name,
             "transaction_status"))
 
@@ -92,7 +92,7 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
             return conn.read_only
 
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "read_only"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "read_only"))
 
     def set_read_only(self, conn: Connection, read_only: bool):
         if isinstance(conn, psycopg.Connection):
@@ -100,14 +100,14 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
             return
 
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "read_only"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "read_only"))
 
     def get_autocommit(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
             return conn.autocommit
 
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
     def set_autocommit(self, conn: Connection, autocommit: bool):
         if isinstance(conn, psycopg.Connection):
@@ -115,7 +115,7 @@ class PgTargetDriverDialect(GenericTargetDriverDialect):
             return
 
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         if isinstance(from_conn, psycopg.Connection) and isinstance(to_conn, psycopg.Connection):
