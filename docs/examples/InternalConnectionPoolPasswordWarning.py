@@ -27,7 +27,6 @@ if __name__ == "__main__":
         "dbname": "postgres",
         "user": "john",
         "plugins": "read_write_splitting,failover,host_monitoring",
-        "wrapper_dialect": "aurora-pg",
         "autocommit": True
     }
 
