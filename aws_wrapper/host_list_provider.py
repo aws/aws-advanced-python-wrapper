@@ -392,8 +392,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             # If variable with such a name is presented then it means it's an Aurora cluster
             result = cursor.fetchone()
             if result is not None:
-                is_reader = result[0]
-                return is_reader
+                return result[0]
         return False
 
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
