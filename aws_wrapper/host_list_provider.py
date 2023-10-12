@@ -381,8 +381,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
                 AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(self._get_host_role)
             is_reader = cursor_execute_func_with_timeout(connection)
-            if is_reader:
-                return HostRole.READER if is_reader else HostRole.WRITER
+           return HostRole.READER if is_reader else HostRole.WRITER
         except Error as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole")) from e
         raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole"))
