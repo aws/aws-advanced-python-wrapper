@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
