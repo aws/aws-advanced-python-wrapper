@@ -326,7 +326,7 @@ class AuroraMysqlDialect(MysqlDialect, TopologyAwareDatabaseDialect):
     def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                AuroraMysqlDialect._executor, AuroraMysqlDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
+                AuroraMysqlDialect._executor, MysqlDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
             return cursor_execute_func_with_timeout(conn)
         except Exception:
             pass
