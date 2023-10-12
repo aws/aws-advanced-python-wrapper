@@ -282,7 +282,7 @@ class RdsPgDialect(PgDialect):
 
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                RdsPgDialect._executor, RdsPgDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
+                RdsPgDialect._executor, PgDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
             return cursor_execute_func_with_timeout(conn)
         except Exception:
             # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
