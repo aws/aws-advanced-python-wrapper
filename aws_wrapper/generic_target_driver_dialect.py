@@ -20,10 +20,10 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
 
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
+from aws_wrapper.utils.decorators import timeout
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-from aws_wrapper.utils.decorators import timeout
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo

@@ -44,13 +44,14 @@ from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.plugin import CanReleaseResources
 from aws_wrapper.utils.cache_map import CacheMap
+from aws_wrapper.utils.decorators import \
+    preserve_transaction_status_with_timeout
 from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
                                              OldConnectionSuggestedAction)
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-from aws_wrapper.utils.decorators import preserve_transaction_status_with_timeout
 
 logger = Logger(__name__)
 

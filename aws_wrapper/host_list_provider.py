@@ -35,13 +35,13 @@ from aws_wrapper.host_availability import (HostAvailability,
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.utils.cache_map import CacheMap
+from aws_wrapper.utils.decorators import \
+    preserve_transaction_status_with_timeout
 from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.decorators import (
-    preserve_transaction_status_with_timeout, timeout)
 from aws_wrapper.utils.utils import LogUtils
 
 logger = Logger(__name__)
@@ -248,12 +248,16 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
             try:
-                query_for_topology_func_with_timeout = (timeout(AuroraHostListProvider._executor, self._max_timeout)(self._query_for_topology))
+                target_driver_dialect = self._host_list_provider_service.target_driver_dialect
+
+                query_for_topology_func_with_timeout = (preserve_transaction_status_with_timeout(AuroraHostListProvider._executor, self._max_timeout,
+                                                                                                 target_driver_dialect, conn)(
+                                                                                                     self._query_for_topology))
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
                     if self._is_primary_cluster_id and cached_hosts is None:
-                        # This cluster_id is primary and a new entry was just created in the cache. When this happens,
+                        # This cluster_id is primary and a new entry was just crseated in the cache. When this happens,
                         # we check for non-primary cluster IDs associated with the same cluster so that the topology
                         # info can be shared.
                         self._suggest_cluster_id(hosts)
@@ -380,20 +384,20 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
                 AuroraHostListProvider._executor, self._max_timeout, target_driver_dialect, connection)(self._get_host_role)
-            is_reader = cursor_execute_func_with_timeout(connection)
-           return HostRole.READER if is_reader else HostRole.WRITER
+            result = cursor_execute_func_with_timeout(connection)
+            if result is not None:
+                is_reader = result[0]
+                return HostRole.READER if is_reader else HostRole.WRITER
+
         except Error as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole")) from e
         raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole"))
 
-    def _get_host_role(self, conn: Connection) -> bool:
+    def _get_host_role(self, conn: Connection):
         with closing(conn.cursor()) as cursor:
             cursor.execute(self._dialect.is_reader_query)
             # If variable with such a name is presented then it means it's an Aurora cluster
-            result = cursor.fetchone()
-            if result is not None:
-                return result[0]
-        return False
+        return cursor.fetchone()
 
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
         if connection is None:

@@ -33,11 +33,12 @@ from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
                                             ConnectionStringHostListProvider)
 from aws_wrapper.hostinfo import HostInfo
+from aws_wrapper.utils.decorators import \
+    preserve_transaction_status_with_timeout
 from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.decorators import preserve_transaction_status_with_timeout
 from .target_driver_dialect import TargetDriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
