@@ -52,7 +52,7 @@ def conn_mock(mocker):
 
 
 @pytest.fixture
-def target_driver_dialect_mock(mocker):
+def driver_dialect_mock(mocker):
     return mocker.MagicMock()
 
 
@@ -173,7 +173,7 @@ def test_update_topology(
         plugin_service_mock,
         host_list_provider_service_mock,
         init_host_provider_func_mock,
-        target_driver_dialect_mock):
+        driver_dialect_mock):
     properties = Properties()
     WrapperProperties.ENABLE_FAILOVER.set(properties, "False")
     plugin = FailoverPlugin(plugin_service_mock, properties)
@@ -184,8 +184,8 @@ def test_update_topology(
             refresh_mock.assert_not_called()
         force_refresh_mock.assert_not_called()
 
-    target_driver_dialect_mock.is_closed.return_value = True
-    type(plugin_service_mock).target_driver_dialect = PropertyMock(return_value=target_driver_dialect_mock)
+    driver_dialect_mock.is_closed.return_value = True
+    type(plugin_service_mock).driver_dialect = PropertyMock(return_value=driver_dialect_mock)
 
     with mock.patch.object(plugin_service_mock, "force_refresh_host_list") as force_refresh_mock:
         with mock.patch.object(plugin_service_mock, "refresh_host_list") as refresh_mock:
@@ -196,7 +196,7 @@ def test_update_topology(
         force_refresh_mock.assert_not_called()
 
     type(plugin_service_mock).hosts = PropertyMock(return_value=[HostInfo("host")])
-    target_driver_dialect_mock.is_closed.return_value = False
+    driver_dialect_mock.is_closed.return_value = False
 
     with mock.patch.object(plugin_service_mock, "force_refresh_host_list") as force_refresh_mock:
         with mock.patch.object(plugin_service_mock, "refresh_host_list") as refresh_mock:
@@ -398,18 +398,18 @@ def test_invalidate_current_connection_not_in_transaction(plugin_service_mock, h
 
 def test_invalidate_current_connection_with_open_connection(plugin_service_mock, host_list_provider_service_mock,
                                                             init_host_provider_func_mock, conn_mock,
-                                                            target_driver_dialect_mock):
+                                                            driver_dialect_mock):
     is_in_transaction_mock = PropertyMock(return_value=False)
 
     type(plugin_service_mock).is_in_transaction = is_in_transaction_mock
     type(plugin_service_mock).current_connection = PropertyMock(return_value=conn_mock)
-    type(plugin_service_mock).target_driver_dialect = PropertyMock(return_value=target_driver_dialect_mock)
+    type(plugin_service_mock).driver_dialect = PropertyMock(return_value=driver_dialect_mock)
 
     plugin = FailoverPlugin(plugin_service_mock, Properties())
 
     with mock.patch.object(conn_mock, "close") as close_mock:
-        with mock.patch.object(target_driver_dialect_mock, "is_closed") as is_closed_mock:
-            target_driver_dialect_mock.is_closed.return_value = False
+        with mock.patch.object(driver_dialect_mock, "is_closed") as is_closed_mock:
+            driver_dialect_mock.is_closed.return_value = False
 
             plugin._invalidate_current_connection()
             close_mock.assert_called_once()

@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.dialect import Dialect
+    from aws_wrapper.database_dialect import DatabaseDialect
 
 from typing import Optional, Protocol
 
@@ -41,21 +41,21 @@ class ExceptionManager:
     def reset_custom_handler():
         ExceptionManager.custom_handler = None
 
-    def is_network_exception(self, dialect: Optional[Dialect], error: Optional[Exception] = None,
+    def is_network_exception(self, dialect: Optional[DatabaseDialect], error: Optional[Exception] = None,
                              sql_state: Optional[str] = None) -> bool:
         handler = self._get_handler(dialect)
         if handler is not None:
             return handler.is_network_exception(error=error, sql_state=sql_state)
         return False
 
-    def is_login_exception(self, dialect: Optional[Dialect], error: Optional[Exception] = None,
+    def is_login_exception(self, dialect: Optional[DatabaseDialect], error: Optional[Exception] = None,
                            sql_state: Optional[str] = None) -> bool:
         handler = self._get_handler(dialect)
         if handler is not None:
             return handler.is_login_exception(error=error, sql_state=sql_state)
         return False
 
-    def _get_handler(self, dialect: Optional[Dialect]) -> Optional[ExceptionHandler]:
+    def _get_handler(self, dialect: Optional[DatabaseDialect]) -> Optional[ExceptionHandler]:
         if dialect is None:
             return None
         return self.custom_handler if self.custom_handler else dialect.exception_handler

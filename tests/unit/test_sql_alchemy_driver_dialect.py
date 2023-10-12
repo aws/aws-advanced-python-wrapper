@@ -16,7 +16,7 @@ import pytest
 import sqlalchemy
 
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+from aws_wrapper.generic_driver_dialect import DriverDialect
 from aws_wrapper.sqlalchemy_driver_dialect import SqlAlchemyDriverDialect
 
 
@@ -32,7 +32,7 @@ def sqlalchemy_mock_conn(mocker):
 
 @pytest.fixture
 def underlying_dialect(mocker):
-    return mocker.MagicMock(spec=TargetDriverDialect)
+    return mocker.MagicMock(spec=DriverDialect)
 
 
 def test_sqlalchemy_abort_connection(mock_conn, underlying_dialect, sqlalchemy_mock_conn):

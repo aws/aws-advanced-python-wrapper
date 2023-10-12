@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
     from aws_wrapper.failover_result import ReaderFailoverResult, WriterFailoverResult
-    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
+    from aws_wrapper.generic_driver_dialect import DriverDialect
     from aws_wrapper.host_list_provider import HostListProviderService
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
@@ -184,7 +184,7 @@ class FailoverPlugin(Plugin):
     def connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -194,7 +194,7 @@ class FailoverPlugin(Plugin):
     def force_connect(
             self,
             target_driver_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
             is_initial_connection: bool,
@@ -210,10 +210,10 @@ class FailoverPlugin(Plugin):
         conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
                                                                           connect_func)
         if self._keep_session_state_on_failover:
-            self._saved_read_only_status = False if self._saved_read_only_status == self._plugin_service.target_driver_dialect.is_read_only(conn) \
+            self._saved_read_only_status = False if self._saved_read_only_status == self._plugin_service.driver_dialect.is_read_only(conn) \
                 else self._saved_read_only_status
             self._saved_auto_commit_status = False \
-                if self._saved_read_only_status == self._plugin_service.target_driver_dialect.get_autocommit(conn) \
+                if self._saved_read_only_status == self._plugin_service.driver_dialect.get_autocommit(conn) \
                 else self._saved_auto_commit_status
 
         if is_initial_connection:
@@ -226,8 +226,8 @@ class FailoverPlugin(Plugin):
             return
 
         conn = self._plugin_service.current_connection
-        target_driver_dialect = self._plugin_service.target_driver_dialect
-        if conn is None or (target_driver_dialect is not None and target_driver_dialect.is_closed(conn)):
+        driver_dialect = self._plugin_service.driver_dialect
+        if conn is None or (driver_dialect is not None and driver_dialect.is_closed(conn)):
             return
 
         if force_update:
@@ -236,10 +236,10 @@ class FailoverPlugin(Plugin):
             self._plugin_service.refresh_host_list()
 
     def _transfer_session_state(self, from_conn: Connection, to_conn: Connection):
-        if from_conn is None or self._plugin_service.target_driver_dialect.is_closed(from_conn) or to_conn is None:
+        if from_conn is None or self._plugin_service.driver_dialect.is_closed(from_conn) or to_conn is None:
             return
 
-        self._plugin_service.target_driver_dialect.transfer_session_state(from_conn, to_conn)
+        self._plugin_service.driver_dialect.transfer_session_state(from_conn, to_conn)
 
     def _failover(self, failed_host: Optional[HostInfo]):
         if self._failover_mode == FailoverMode.STRICT_WRITER:
@@ -312,10 +312,10 @@ class FailoverPlugin(Plugin):
             return
 
         if self._saved_read_only_status is not None:
-            self._plugin_service.target_driver_dialect.set_read_only(conn, self._saved_read_only_status)
+            self._plugin_service.driver_dialect.set_read_only(conn, self._saved_read_only_status)
 
         if self._saved_auto_commit_status is not None:
-            self._plugin_service.target_driver_dialect.set_autocommit(conn, self._saved_auto_commit_status)
+            self._plugin_service.driver_dialect.set_autocommit(conn, self._saved_auto_commit_status)
 
     def _invalidate_current_connection(self):
         conn = self._plugin_service.current_connection
@@ -329,8 +329,8 @@ class FailoverPlugin(Plugin):
             except Exception:
                 pass
 
-        target_driver_dialect = self._plugin_service.target_driver_dialect
-        if target_driver_dialect is not None and not target_driver_dialect.is_closed(conn):
+        driver_dialect = self._plugin_service.driver_dialect
+        if driver_dialect is not None and not driver_dialect.is_closed(conn):
             try:
                 conn.close()
             except Exception:

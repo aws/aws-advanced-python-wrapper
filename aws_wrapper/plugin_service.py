@@ -20,8 +20,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin import Plugin
-    from aws_wrapper.generic_target_driver_dialect import TargetDriverDialect
-    from aws_wrapper.target_driver_dialect import TargetDriverDialectManager
+    from aws_wrapper.generic_driver_dialect import DriverDialect
+    from aws_wrapper.driver_dialect import DriverDialectManager
     from threading import Event
 
 from abc import abstractmethod
@@ -31,8 +31,9 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
 from aws_wrapper.connection_plugin_chain import get_plugins
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
-from aws_wrapper.dialect import (Dialect, DialectManager,
-                                 TopologyAwareDatabaseDialect, UnknownDialect)
+from aws_wrapper.database_dialect import (DatabaseDialect, DialectManager,
+                                          TopologyAwareDatabaseDialect,
+                                          UnknownDatabaseDialect)
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
 from aws_wrapper.exception_handling import ExceptionHandler, ExceptionManager
 from aws_wrapper.host_availability import HostAvailability
@@ -111,12 +112,12 @@ class PluginService(ExceptionHandler, Protocol):
 
     @property
     @abstractmethod
-    def target_driver_dialect(self) -> TargetDriverDialect:
+    def driver_dialect(self) -> DriverDialect:
         ...
 
     @property
     @abstractmethod
-    def dialect(self) -> Dialect:
+    def dialect(self) -> DatabaseDialect:
         ...
 
     @property
@@ -178,8 +179,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             container: PluginServiceManagerContainer,
             props: Properties,
             target_func: Callable,
-            target_driver_dialect_manager: TargetDriverDialectManager,
-            target_driver_dialect: TargetDriverDialect):
+            driver_dialect_manager: DriverDialectManager,
+            driver_dialect: DriverDialect):
         self._container = container
         self._container.plugin_service = self
         self._props = props
@@ -194,9 +195,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._is_in_transaction: bool = False
         self._dialect_provider = DialectManager()
         self._target_func = target_func
-        self._target_driver_dialect_manager = target_driver_dialect_manager
-        self._target_driver_dialect = target_driver_dialect
-        self._dialect = self._dialect_provider.get_dialect(target_driver_dialect.dialect_code, props)
+        self._driver_dialect_manager = driver_dialect_manager
+        self._driver_dialect = driver_dialect
+        self._dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
 
     @property
     def hosts(self) -> Tuple[HostInfo, ...]:
@@ -222,7 +223,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             old_connection_suggested_action = \
                 self._container.plugin_manager.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
             if old_connection_suggested_action != OldConnectionSuggestedAction.PRESERVE \
-                    and not self.target_driver_dialect.is_closed(old_connection):
+                    and not self.driver_dialect.is_closed(old_connection):
                 try:
                     old_connection.close()
                 except Exception:
@@ -253,22 +254,22 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._is_in_transaction
 
     @property
-    def target_driver_dialect(self) -> TargetDriverDialect:
-        return self._target_driver_dialect
+    def driver_dialect(self) -> DriverDialect:
+        return self._driver_dialect
 
     @property
-    def dialect(self) -> Dialect:
+    def dialect(self) -> DatabaseDialect:
         return self._dialect
 
     @property
     def network_bound_methods(self) -> Set[str]:
-        return self._target_driver_dialect.network_bound_methods
+        return self._driver_dialect.network_bound_methods
 
     def update_in_transaction(self, is_in_transaction: Optional[bool] = None):
         if is_in_transaction is not None:
             self._is_in_transaction = is_in_transaction
         elif self.current_connection is not None:
-            self._is_in_transaction = self.target_driver_dialect.is_in_transaction(self.current_connection)
+            self._is_in_transaction = self.driver_dialect.is_in_transaction(self.current_connection)
         else:
             raise AwsWrapperError(Messages.get("PluginServiceImpl.UnableToUpdateTransactionStatus"))
 
@@ -291,15 +292,15 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 self._original_url,
                 self._initial_connection_host_info,
                 connection,
-                self.target_driver_dialect)
+                self.driver_dialect)
 
         if original_dialect != self._dialect:
             host_list_provider_init = self._dialect.get_host_list_provider_supplier()
             self.host_list_provider = host_list_provider_init(self, self._props)
 
     def update_driver_dialect(self, connection_provider: ConnectionProvider):
-        self._target_driver_dialect = self._target_driver_dialect_manager.get_pool_connection_driver_dialect(
-            connection_provider, self._target_driver_dialect)
+        self._driver_dialect = self._driver_dialect_manager.get_pool_connection_driver_dialect(
+            connection_provider, self._driver_dialect)
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -333,12 +334,12 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def connect(self, host_info: HostInfo, props: Properties) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.connect(
-            self._target_func, self._target_driver_dialect, host_info, props, self.current_connection is None)
+            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None)
 
     def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Optional[Event]) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.force_connect(
-            self._target_func, self._target_driver_dialect, host_info, props, self.current_connection is None)
+            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None)
 
     def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
         ...
@@ -365,7 +366,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         try:
             with closing(connection.cursor()) as cursor:
-                if not isinstance(self.dialect, UnknownDialect):
+                if not isinstance(self.dialect, UnknownDatabaseDialect):
                     cursor.execute(self.dialect.host_alias_query)
                     for row in cursor.fetchall():
                         host_info.add_alias(row[0])
@@ -443,7 +444,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def release_resources(self):
         try:
-            if self.current_connection is not None and not self.target_driver_dialect.is_closed(
+            if self.current_connection is not None and not self.driver_dialect.is_closed(
                     self.current_connection):
                 self.current_connection.close()
         except Exception:
@@ -486,9 +487,9 @@ class PluginManager(CanReleaseResources):
 
     def execute(self, target: object, method_name: str, target_driver_func: Callable, *args, **kwargs) -> Any:
         plugin_service = self._container.plugin_service
-        target_driver_dialect = plugin_service.target_driver_dialect
-        conn: Optional[Connection] = target_driver_dialect.get_connection_from_obj(target)
-        current_conn: Optional[Connection] = target_driver_dialect.unwrap_connection(plugin_service.current_connection)
+        driver_dialect = plugin_service.driver_dialect
+        conn: Optional[Connection] = driver_dialect.get_connection_from_obj(target)
+        current_conn: Optional[Connection] = driver_dialect.unwrap_connection(plugin_service.current_connection)
 
         if method_name not in ["Connection.close", "Cursor.close"] and conn is not None and conn != current_conn:
             raise AwsWrapperError(Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target))
@@ -548,28 +549,28 @@ class PluginManager(CanReleaseResources):
     def connect(
             self,
             target_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: Optional[HostInfo],
             props: Properties,
             is_initial_connection: bool) -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._CONNECT_METHOD,
             lambda plugin, func: plugin.connect(
-                target_func, target_driver_dialect, host_info, props, is_initial_connection, func),
+                target_func, driver_dialect, host_info, props, is_initial_connection, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
             lambda: None)
 
     def force_connect(
             self,
             target_func: Callable,
-            target_driver_dialect: TargetDriverDialect,
+            driver_dialect: DriverDialect,
             host_info: Optional[HostInfo],
             props: Properties,
             is_initial_connection: bool) -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._FORCE_CONNECT_METHOD,
             lambda plugin, func: plugin.force_connect(
-                target_func, target_driver_dialect, host_info, props, is_initial_connection, func),
+                target_func, driver_dialect, host_info, props, is_initial_connection, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
             lambda: None)
 

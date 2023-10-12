@@ -18,8 +18,8 @@ from abc import ABC, abstractmethod
 from concurrent.futures import Executor, ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
 
+from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import UnsupportedOperationError
-from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
@@ -30,8 +30,8 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection, Cursor
 
 
-class TargetDriverDialect(ABC):
-    _dialect_code: str = TargetDriverDialectCodes.GENERIC
+class DriverDialect(ABC):
+    _dialect_code: str = DriverDialectCodes.GENERIC
     _network_bound_methods: Set[str] = {"*"}
     _read_only: bool = False
     _autocommit: bool = False
@@ -118,7 +118,7 @@ class TargetDriverDialect(ABC):
         pass
 
 
-class GenericTargetDriverDialect(TargetDriverDialect):
+class GenericDriverDialect(DriverDialect):
     _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
     def is_dialect(self, connect_func: Callable) -> bool:
@@ -140,23 +140,23 @@ class GenericTargetDriverDialect(TargetDriverDialect):
 
     def is_closed(self, conn: Connection) -> bool:
         raise UnsupportedOperationError(
-            Messages.get_formatted("TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_closed"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "is_closed"))
 
     def abort_connection(self, conn: Connection):
         raise UnsupportedOperationError(
             Messages.get_formatted(
-                "TargetDriverDialect.UnsupportedOperationError", self._driver_name, "abort_connection"))
+                "DriverDialect.UnsupportedOperationError", self._driver_name, "abort_connection"))
 
     def is_in_transaction(self, conn: Connection) -> bool:
         raise UnsupportedOperationError(
             Messages.get_formatted(
-                "TargetDriverDialect.UnsupportedOperationError", self._driver_name, "is_in_transaction"))
+                "DriverDialect.UnsupportedOperationError", self._driver_name, "is_in_transaction"))
 
     def execute(self, conn: Connection, cursor: Cursor, query: str, *args: Any, **kwargs: Any) -> Cursor:
         socket_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
         if socket_timeout is not None:
             kwargs.pop(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
-            execute_with_timeout = timeout(GenericTargetDriverDialect._executor, socket_timeout)(
+            execute_with_timeout = timeout(GenericDriverDialect._executor, socket_timeout)(
                 lambda: cursor.execute(query, *args, **kwargs))
             return execute_with_timeout()
         else:

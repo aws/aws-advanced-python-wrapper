@@ -19,7 +19,7 @@ from sqlalchemy import PoolProxiedConnection
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pg_target_driver_dialect import PgTargetDriverDialect
+from aws_wrapper.pg_driver_dialect import PgDriverDialect
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 
 
@@ -44,7 +44,7 @@ def mock_invalid_conn(mocker):
 
 @pytest.fixture
 def dialect():
-    return PgTargetDriverDialect()
+    return PgDriverDialect()
 
 
 def test_abort_connection(dialect, mock_conn, mock_invalid_conn):

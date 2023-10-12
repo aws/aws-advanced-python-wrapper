@@ -26,15 +26,15 @@ if TYPE_CHECKING:
 
 from sqlalchemy import PoolProxiedConnection
 
-from aws_wrapper.generic_target_driver_dialect import (
-    GenericTargetDriverDialect, TargetDriverDialect)
+from aws_wrapper.generic_driver_dialect import (DriverDialect,
+                                                GenericDriverDialect)
 
 
-class SqlAlchemyDriverDialect(GenericTargetDriverDialect):
+class SqlAlchemyDriverDialect(GenericDriverDialect):
     _driver_name: str = "SQLAlchemy"
     TARGET_DRIVER_CODE: str = "sqlalchemy"
 
-    def __init__(self, underlying_driver: TargetDriverDialect):
+    def __init__(self, underlying_driver: DriverDialect):
         self._underlying_driver = underlying_driver
 
     def prepare_connect_info(self, host_info: HostInfo, props: Properties) -> Properties:
