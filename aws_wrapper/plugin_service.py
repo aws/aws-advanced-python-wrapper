@@ -373,7 +373,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(PluginServiceImpl._executor, timeout_sec,
                                                                                         target_driver_dialect, connection)(self._fill_aliases)
-            cursor_execute_func_with_timeout(connection)
+            cursor_execute_func_with_timeout(connection, host_info)
 
         except Exception as e:
             # log and ignore
