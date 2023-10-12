@@ -144,7 +144,7 @@ class MysqlDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_MYSQL, DialectCode.RDS_MYSQL)
     TIMEOUT_SEC = 3
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MySQLDatabaseDialectExecutor")
 
     @property
     def default_port(self) -> int:
