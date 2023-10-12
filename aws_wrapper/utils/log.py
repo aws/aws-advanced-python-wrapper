@@ -14,7 +14,10 @@
 
 from __future__ import annotations
 
+import logging
 from logging import getLogger
+
+from ResourceBundle import NotInResourceBundleError
 
 from aws_wrapper.utils.messages import Messages
 
@@ -24,19 +27,37 @@ class Logger:
         self.logger = getLogger(name)
 
     def debug(self, msg, *args):
+        if len(self.logger.handlers) <= 0 or not self.logger.isEnabledFor(logging.DEBUG):
+            return
+
         if args is not None and len(args) > 0:
             self.logger.debug(Messages.get_formatted(msg, *args))
         else:
-            self.logger.debug(Messages.get(msg))
+            try:
+                self.logger.debug(Messages.get(msg))
+            except NotInResourceBundleError:
+                self.logger.debug(msg)
 
     def error(self, msg, *args):
+        if len(self.logger.handlers) <= 0 or not self.logger.isEnabledFor(logging.ERROR):
+            return
+
         if args is not None and len(args) > 0:
             self.logger.error(Messages.get_formatted(msg, *args))
         else:
-            self.logger.error(Messages.get(msg))
+            try:
+                self.logger.error(Messages.get(msg))
+            except NotInResourceBundleError:
+                self.logger.error(msg)
 
     def warning(self, msg, *args):
+        if len(self.logger.handlers) <= 0 or not self.logger.isEnabledFor(logging.WARNING):
+            return
+
         if args is not None and len(args) > 0:
             self.logger.warning(Messages.get_formatted(msg, *args))
         else:
-            self.logger.warning(Messages.get(msg))
+            try:
+                self.logger.warning(Messages.get(msg))
+            except NotInResourceBundleError:
+                self.logger.warning(msg)

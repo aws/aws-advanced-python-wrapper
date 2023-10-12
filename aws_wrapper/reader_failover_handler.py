@@ -79,7 +79,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             return ReaderFailoverHandlerImpl.failed_reader_failover_result
 
         result: ReaderFailoverResult = ReaderFailoverHandlerImpl.failed_reader_failover_result
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(thread_name_prefix="ReaderFailoverHandlerExecutor") as executor:
             future = executor.submit(self._internal_failover_task, current_topology, current_host)
 
             try:
@@ -145,7 +145,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
         return ReaderFailoverHandlerImpl.failed_reader_failover_result
 
     def _get_result_from_next_task_batch(self, hosts: Tuple[HostInfo, ...], i: int) -> ReaderFailoverResult:
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(thread_name_prefix="ReaderFailoverHandlerRetrieveResultsExecutor") as executor:
             futures = [executor.submit(self.attempt_connection, hosts[i])]
             if i + 1 < len(hosts):
                 futures.append(executor.submit(self.attempt_connection, hosts[i + 1]))
