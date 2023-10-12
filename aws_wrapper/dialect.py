@@ -196,7 +196,7 @@ class PgDialect(Dialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_PG, DialectCode.RDS_PG)
     TIMEOUT_SEC = 3
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="PgDatabaseDialectExecutor")
 
     @property
     def default_port(self) -> int:
