@@ -218,20 +218,23 @@ class PgDialect(Dialect):
         return PgExceptionHandler()
 
     def is_dialect(self, conn: Connection, driver_dialect: TargetDriverDialect) -> bool:
-
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    PgDialect._executor, PgDialect.TIMEOUT_SEC, driver_dialect, conn)(aws_cursor.execute)
-                cursor_execute_func_with_timeout('SELECT 1 FROM pg_proc LIMIT 1')
-
-                if aws_cursor.fetchone() is not None:
-                    return True
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                PgDialect._executor, PgDialect.TIMEOUT_SEC, driver_dialect, conn)(self._is_dialect)
+            return cursor_execute_func_with_timeout(conn)
         except Exception:
             # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
             # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
             conn.rollback()
 
+        return False
+
+    def _is_dialect(self, conn: Connection) -> bool:
+        with closing(conn.cursor()) as cursor:
+            cursor.execute('SELECT 1 FROM pg_proc LIMIT 1')
+            # If variable with such a name is presented then it means it's an Aurora cluster
+            if cursor.fetchone() is not None:
+                return True
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
