@@ -44,7 +44,7 @@ class MySQLTargetDriverDialect(GenericTargetDriverDialect):
     AUTH_METHOD = "mysql_clear_password"
     IS_CLOSED_TIMEOUT_SEC = 3
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MySQLTargetDriverDialectExecutor")
 
     _dialect_code: str = TargetDriverDialectCodes.MYSQL_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
