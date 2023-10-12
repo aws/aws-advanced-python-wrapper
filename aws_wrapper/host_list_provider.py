@@ -114,10 +114,10 @@ class HostListProviderService(Protocol):
         ...
 
 
-class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
+class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     _topology_cache: CacheMap[str, Tuple[HostInfo, ...]] = CacheMap()
     # Maps cluster IDs to a boolean representing whether they are a primary cluster ID or not. A primary cluster ID is a
-    # cluster ID that is equivalent to a cluster URL. Topology info is shared between AuroraHostListProviders that have
+    # cluster ID that is equivalent to a cluster URL. Topology info is shared between RdsHostListProviders that have
     # the same cluster ID.
     _is_primary_cluster_id_cache: CacheMap[str, bool] = CacheMap()
     # Maps existing cluster IDs to suggested cluster IDs. This is used to update non-primary cluster IDs to primary
@@ -141,7 +141,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
         dialect = self._host_list_provider_service.dialect
         if not isinstance(dialect, db_dialect.TopologyAwareDatabaseDialect):
-            raise AwsWrapperError(Messages.get_formatted("AuroraHostListProvider.InvalidDialect", dialect))
+            raise AwsWrapperError(Messages.get_formatted("RdsHostListProvider.InvalidDialect", dialect))
         self._dialect: db_dialect.TopologyAwareDatabaseDialect = dialect
 
         self._is_primary_cluster_id: bool = False
@@ -202,83 +202,83 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):
-            message = "AuroraHostListProvider.InvalidPattern"
+            message = "RdsHostListProvider.InvalidPattern"
             logger.error(message)
             raise AwsWrapperError(Messages.get(message))
 
         url_type = self._rds_utils.identify_rds_type(host)
         if url_type == RdsUrlType.RDS_PROXY:
-            message = "AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy"
+            message = "RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy"
             logger.error(message)
             raise AwsWrapperError(Messages.get(message))
 
         if url_type == RdsUrlType.RDS_CUSTOM_CLUSTER:
-            message = "AuroraHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom"
+            message = "RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom"
             logger.error(message)
             raise AwsWrapperError(Messages.get(message))
 
     def _get_suggested_cluster_id(self, url: str) -> Optional[ClusterIdSuggestion]:
-        for key, hosts in AuroraHostListProvider._topology_cache.get_dict().items():
+        for key, hosts in RdsHostListProvider._topology_cache.get_dict().items():
             is_primary_cluster_id = \
-                AuroraHostListProvider._is_primary_cluster_id_cache.get_with_default(
+                RdsHostListProvider._is_primary_cluster_id_cache.get_with_default(
                     key, False, self._suggested_cluster_id_refresh_ns)
             if key == url:
-                return AuroraHostListProvider.ClusterIdSuggestion(url, is_primary_cluster_id)
+                return RdsHostListProvider.ClusterIdSuggestion(url, is_primary_cluster_id)
             if not hosts:
                 continue
             for host in hosts:
                 if host.url == url:
-                    logger.debug("AuroraHostListProvider.SuggestedClusterId", key, url)
-                    return AuroraHostListProvider.ClusterIdSuggestion(key, is_primary_cluster_id)
+                    logger.debug("RdsHostListProvider.SuggestedClusterId", key, url)
+                    return RdsHostListProvider.ClusterIdSuggestion(key, is_primary_cluster_id)
         return None
 
     def _get_topology(self, conn: Optional[Connection], force_update: bool = False) -> FetchTopologyResult:
         self._initialize()
 
-        suggested_primary_cluster_id = AuroraHostListProvider._cluster_ids_to_update.get(self._cluster_id)
+        suggested_primary_cluster_id = RdsHostListProvider._cluster_ids_to_update.get(self._cluster_id)
         if suggested_primary_cluster_id and self._cluster_id != suggested_primary_cluster_id:
             self._cluster_id = suggested_primary_cluster_id
             self._is_primary_cluster_id = True
 
-        cached_hosts = AuroraHostListProvider._topology_cache.get(self._cluster_id)
+        cached_hosts = RdsHostListProvider._topology_cache.get(self._cluster_id)
         if not cached_hosts or force_update:
             if not conn:
                 # Cannot fetch topology without a connection
                 # Return the original hosts passed to the connect method
-                return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
+                return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
             try:
                 driver_dialect = self._host_list_provider_service.driver_dialect
 
-                query_for_topology_func_with_timeout = (preserve_transaction_status_with_timeout(AuroraHostListProvider._executor, self._max_timeout,
+                query_for_topology_func_with_timeout = (preserve_transaction_status_with_timeout(RdsHostListProvider._executor, self._max_timeout,
                                                                                                  driver_dialect, conn)(
                                                                                                      self._query_for_topology))
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
-                    AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
+                    RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
                     if self._is_primary_cluster_id and cached_hosts is None:
                         # This cluster_id is primary and a new entry was just created in the cache. When this happens,
                         # we check for non-primary cluster IDs associated with the same cluster so that the topology
                         # info can be shared.
                         self._suggest_cluster_id(hosts)
-                    return AuroraHostListProvider.FetchTopologyResult(hosts, False)
+                    return RdsHostListProvider.FetchTopologyResult(hosts, False)
             except Exception as e:
-                raise QueryTimeoutError(Messages.get("AuroraHostListProvider.TopologyTimeout")) from e
+                raise QueryTimeoutError(Messages.get("RdsHostListProvider.TopologyTimeout")) from e
 
         if cached_hosts:
-            return AuroraHostListProvider.FetchTopologyResult(cached_hosts, True)
+            return RdsHostListProvider.FetchTopologyResult(cached_hosts, True)
         else:
-            return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
+            return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
     def _suggest_cluster_id(self, primary_cluster_id_hosts: Tuple[HostInfo, ...]):
         if not primary_cluster_id_hosts:
             return
 
         primary_cluster_id_urls = {host.url for host in primary_cluster_id_hosts}
-        for cluster_id, hosts in AuroraHostListProvider._topology_cache.get_dict().items():
-            is_primary_cluster = AuroraHostListProvider._is_primary_cluster_id_cache.get_with_default(
+        for cluster_id, hosts in RdsHostListProvider._topology_cache.get_dict().items():
+            is_primary_cluster = RdsHostListProvider._is_primary_cluster_id_cache.get_with_default(
                 cluster_id, False, self._suggested_cluster_id_refresh_ns)
-            suggested_primary_cluster_id = AuroraHostListProvider._cluster_ids_to_update.get(cluster_id)
+            suggested_primary_cluster_id = RdsHostListProvider._cluster_ids_to_update.get(cluster_id)
             if is_primary_cluster or suggested_primary_cluster_id or not hosts:
                 continue
 
@@ -288,7 +288,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     # An instance URL in this topology cache entry matches an instance URL in the primary cluster entry.
                     # The associated cluster ID should be updated to match the primary ID so that they can share
                     # topology info.
-                    AuroraHostListProvider._cluster_ids_to_update.put(
+                    RdsHostListProvider._cluster_ids_to_update.put(
                         cluster_id, self._cluster_id, self._suggested_cluster_id_refresh_ns)
                     break
 
@@ -300,7 +300,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 result = self._process_query_results(cursor)
                 return result
         except ProgrammingError as e:
-            raise AwsWrapperError(Messages.get("AuroraHostListProvider.InvalidQuery")) from e
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
 
     def _process_query_results(self, cursor: Cursor) -> Tuple[HostInfo, ...]:
         host_map = {}
@@ -317,7 +317,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 hosts.append(host)
 
         if len(writers) == 0:
-            logger.error("AuroraHostListProvider.InvalidTopology")
+            logger.error("RdsHostListProvider.InvalidTopology")
             hosts.clear()
         elif len(writers) == 1:
             hosts.append(writers[0])
@@ -333,9 +333,9 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         # should contain 4 columns: instance ID, 1/0 (writer/reader), CPU utilization, host lag in ms.
         # There might be a 5th column specifying the last update time.
         if not self._cluster_instance_template:
-            raise AwsWrapperError(Messages.get("AuroraHostListProvider.UninitializedClusterInstanceTemplate"))
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.UninitializedClusterInstanceTemplate"))
         if not self._initial_host_info:
-            raise AwsWrapperError(Messages.get("AuroraHostListProvider.UninitializedInitialHostInfo"))
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.UninitializedInitialHostInfo"))
 
         host_id: str = record[0]
         is_writer: bool = record[1]
@@ -382,15 +382,15 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                AuroraHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_role)
+                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_role)
             result = cursor_execute_func_with_timeout(connection)
             if result is not None:
                 is_reader = result[0]
                 return HostRole.READER if is_reader else HostRole.WRITER
 
         except Error as e:
-            raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole")) from e
-        raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole"))
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole")) from e
+        raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole"))
 
     def _get_host_role(self, conn: Connection):
         with closing(conn.cursor()) as cursor:
@@ -404,7 +404,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
         driver_dialect = self._host_list_provider_service.driver_dialect
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                AuroraHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._identify_connection)
+                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._identify_connection)
             result = cursor_execute_func_with_timeout(connection)
             if result:
                 host_id = result[0]
@@ -413,8 +413,8 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     return None
                 return next((host_info for host_info in hosts if host_info.host_id == host_id), None)
         except Error as e:
-            raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection")) from e
-        raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection")) from e
+        raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection"))
 
     def _identify_connection(self, conn: Connection):
         with closing(conn.cursor()) as cursor:

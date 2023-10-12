@@ -20,7 +20,7 @@ from aws_wrapper.connection_provider import ConnectionProviderManager
 from aws_wrapper.errors import (AwsWrapperError, FailoverFailedError,
                                 FailoverSuccessError, ReadWriteSplittingError,
                                 TransactionResolutionUnknownError)
-from aws_wrapper.host_list_provider import AuroraHostListProvider
+from aws_wrapper.host_list_provider import RdsHostListProvider
 from aws_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
 from aws_wrapper.utils.properties import WrapperProperties
@@ -51,9 +51,9 @@ class TestReadWriteSplitting:
 
     @pytest.fixture(autouse=True)
     def clear_caches(self):
-        AuroraHostListProvider._topology_cache.clear()
-        AuroraHostListProvider._is_primary_cluster_id_cache.clear()
-        AuroraHostListProvider._cluster_ids_to_update.clear()
+        RdsHostListProvider._topology_cache.clear()
+        RdsHostListProvider._is_primary_cluster_id_cache.clear()
+        RdsHostListProvider._cluster_ids_to_update.clear()
 
     @pytest.fixture(scope='class')
     def props(self):

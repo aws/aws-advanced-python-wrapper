@@ -58,8 +58,8 @@ it does not perform any additional work.
 
 For cases where keeping updated information on existing and available readers is necessary,
 such as during the failover procedure, it is important to have a host list provider that can re-fetch information once in a while,
-like the Aurora host list provider.
-The Aurora host list provider should be automatically used by the AWS Advanced Python Driver when the application is connecting to Aurora databases.
+like the RDS host list provider.
+The RDS host list provider should be automatically used by the AWS Advanced Python Driver when the application is connecting to Aurora databases.
 However, you can ensure that the provider is used by specifying a topology-aware dialect. For more information, see [Database Dialects](../using-the-python-driver/DatabaseDialects.md).
 
 ## Connection Changed Notification Pipeline
