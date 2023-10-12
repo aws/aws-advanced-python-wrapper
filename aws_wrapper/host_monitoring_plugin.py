@@ -510,7 +510,7 @@ class MonitoringThreadContainer:
     _monitor_map: ConcurrentDict[str, Monitor] = ConcurrentDict()
     _tasks_map: ConcurrentDict[Monitor, Future] = ConcurrentDict()
     _available_monitors: Queue[Monitor] = Queue()
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerThreadPool")
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
 
     # This logic ensures that this class is a Singleton
     def __new__(cls, *args, **kwargs):

@@ -96,7 +96,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         if writer_host is not None:
             self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
-            with ThreadPoolExecutor(thread_name_prefix="WriterFailoverHandlerThreadPool") as executor:
+            with ThreadPoolExecutor(thread_name_prefix="WriterFailoverHandlerExecutor") as executor:
                 try:
                     futures = [executor.submit(self.reconnect_to_writer, writer_host),
                                executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
