@@ -51,6 +51,9 @@ class Logger:
                 self.logger.error(msg)
 
     def warning(self, msg, *args):
+        if len(self.logger.handlers) <= 0 or not self.logger.isEnabledFor(logging.WARNING):
+            return
+
         if args is not None and len(args) > 0:
             self.logger.warning(Messages.get_formatted(msg, *args))
         else:
