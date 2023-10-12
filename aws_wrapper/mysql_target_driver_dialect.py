@@ -34,7 +34,7 @@ from aws_wrapper.target_driver_dialect_codes import TargetDriverDialectCodes
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-from aws_wrapper.utils.timeout import timeout
+from aws_wrapper.utils.decorators import timeout
 
 
 class MySQLTargetDriverDialect(GenericTargetDriverDialect):

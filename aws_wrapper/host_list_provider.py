@@ -40,7 +40,7 @@ from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.timeout import (
+from aws_wrapper.utils.decorators import (
     preserve_transaction_status_with_timeout, timeout)
 from aws_wrapper.utils.utils import LogUtils
 
