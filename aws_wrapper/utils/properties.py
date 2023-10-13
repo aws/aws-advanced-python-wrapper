@@ -226,11 +226,25 @@ class PropertiesUtils:
 
     @staticmethod
     def parse_properties(conn_info: str, **kwargs: Any) -> Properties:
-        props: Properties
-        if conn_info == "":
-            props = Properties()
-        else:
-            props = Properties(dict(x.split("=") for x in conn_info.split(" ")))
+        props: Properties = Properties()
+        to_parse = conn_info
+        while to_parse.strip() != "":
+            to_parse = to_parse.strip()
+            space_i = to_parse.find(" ")
+            equals_i = to_parse.find("=")
+            key_end = space_i if -1 < space_i < equals_i else equals_i
+            if key_end == -1:
+                raise AwsWrapperError("PropertiesUtils.ErrorParsingConnectionString", conn_info)
+
+            key = to_parse[0:key_end]
+            to_parse = to_parse[equals_i + 1:].lstrip()
+            space_i = to_parse.find(" ")
+
+            value_end = space_i if space_i > -1 else len(to_parse)
+            value = to_parse[0:value_end]
+            to_parse = to_parse[value_end:]
+            props[key] = value
+
         for key, value in kwargs.items():
             props[key] = value
         return props
