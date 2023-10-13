@@ -291,7 +291,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
         driver_dialect = self._host_list_provider_service.driver_dialect
         initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        # TODO: Set network timeout to ensure topology query does not execute indefinitely
+
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._dialect.topology_query)

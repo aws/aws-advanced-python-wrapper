@@ -102,7 +102,6 @@ class Connection:
     def close(self) -> None:
         ...
 
-    # TODO: check parameters
     def cursor(self, *args, **kwargs) -> Cursor:
         ...
 

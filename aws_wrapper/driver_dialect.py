@@ -56,13 +56,17 @@ class DriverDialectManager(DriverDialectProvider):
         SqlAlchemyPooledConnectionProvider: lambda underlying_driver: SqlAlchemyDriverDialect(underlying_driver)
     }
 
-    @property
-    def custom_dialect(self):
+    @staticmethod
+    def get_custom_dialect():
         return DriverDialectManager._custom_dialect
 
-    @custom_dialect.setter
-    def custom_dialect(self, dialect: DriverDialect):
+    @staticmethod
+    def set_custom_dialect(dialect: DriverDialect):
         DriverDialectManager._custom_dialect = dialect
+
+    @staticmethod
+    def reset_custom_dialect():
+        DriverDialectManager._custom_dialect = None
 
     def get_dialect(self, conn_func: Callable, props: Properties) -> DriverDialect:
         if self._custom_dialect is not None:
