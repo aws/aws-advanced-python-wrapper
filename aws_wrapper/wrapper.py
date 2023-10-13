@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Iterator, List, Optional, Union
 
-from aws_wrapper.driver_dialect import DriverDialectManager
+from aws_wrapper.driver_dialect_manager import DriverDialectManager
 from aws_wrapper.errors import AwsWrapperError, FailoverSuccessError
 from aws_wrapper.pep249 import Connection, Cursor, Error
 from aws_wrapper.plugin import CanReleaseResources

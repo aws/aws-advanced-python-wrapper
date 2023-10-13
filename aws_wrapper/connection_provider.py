@@ -17,9 +17,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple
 
 if TYPE_CHECKING:
+    from aws_wrapper.driver_dialect import DriverDialect
     from aws_wrapper.hostinfo import HostInfo, HostRole
     from aws_wrapper.pep249 import Connection
-    from aws_wrapper.driver_dialect import DriverDialect
 
 from threading import Lock
 

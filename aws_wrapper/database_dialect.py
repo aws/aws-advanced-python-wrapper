@@ -23,8 +23,8 @@ from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
 
 if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
+    from .driver_dialect import DriverDialect
     from .exception_handling import ExceptionHandler
-    from .generic_driver_dialect import DriverDialect
 
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.host_list_provider import (AuroraHostListProvider,
@@ -36,7 +36,7 @@ from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 from aws_wrapper.utils.rdsutils import RdsUtils
-from .driver_dialect import DriverDialectCodes
+from .driver_dialect_codes import DriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
 from .utils.utils import Utils

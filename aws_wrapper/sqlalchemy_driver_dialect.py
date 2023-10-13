@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from aws_wrapper.driver_dialect import DriverDialect
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.utils.messages import Messages
 
@@ -26,11 +27,8 @@ if TYPE_CHECKING:
 
 from sqlalchemy import PoolProxiedConnection
 
-from aws_wrapper.generic_driver_dialect import (DriverDialect,
-                                                GenericDriverDialect)
 
-
-class SqlAlchemyDriverDialect(GenericDriverDialect):
+class SqlAlchemyDriverDialect(DriverDialect):
     _driver_name: str = "SQLAlchemy"
     TARGET_DRIVER_CODE: str = "sqlalchemy"
 
