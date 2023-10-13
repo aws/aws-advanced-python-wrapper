@@ -73,8 +73,8 @@ When the AWS Advanced Python Driver throws a `TransactionResolutionUnknownError`
 [PostgreSQL Failover Sample Code](../../examples/PGFailover.py)
 [MySQL Failover Sample Code](../../examples/MySQLFailover.py)
 
->### :warning: Warnings About Proper Usage of the AWS Advanced Python Driver
-> 
+> [!WARNING]\
+>### Warnings About Proper Usage of the AWS Advanced Python Driver
 >1. A common practice when using Python drivers is to wrap invocations against a Connection object in a try-except block, and dispose of the Connection object if an Exception is hit. If this practice is left unaltered, the application will lose the fast-failover functionality offered by the AWS Advanced Python Driver. When failover occurs, the AWS Advanced Python Driver internally establishes a ready-to-use connection inside the original Connection object before throwing an exception to the user. If this Connection object is disposed of, the newly established connection will be thrown away. The correct practice is to check the exception type for failover errors and reuse the Connection object if the error type indicates successful failover. The [PostgreSQL Failover Sample Code](../../examples/PGFailover.py) demonstrates this practice. See the section about [Failover Errors](#failover-errors) for more details.
 <br><br>
 >2. We highly recommended that you use the cluster and read-only cluster endpoints instead of the direct instance endpoints of your Aurora cluster, unless you are confident in your application's use of instance endpoints. Although the AWS Advanced Python Driver will correctly failover to the new writer instance when using instance endpoints, use of these endpoints is discouraged because individual instances can spontaneously change reader/writer status when failover occurs. the AWS Advanced Python Driver will always connect directly to the instance specified if an instance endpoint is provided, so a write-safe connection cannot be assumed if the application uses instance endpoints.

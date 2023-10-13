@@ -66,12 +66,11 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
 
 ## Debugging Aurora Integration Tests - Pycharm
 
-> :warning: The integration tests can only be debugged in Pycharm if you are using Pycharm Professional. Pycharm
+> [!WARNING]\
+> The integration tests can only be debugged in Pycharm if you are using Pycharm Professional. Pycharm
 > Professional can be downloaded separately from Pycharm Community. You will either need to get a license or sign up for
-> a
-> temporary trial. If you want to debug the integration tests but cannot get a license, you will need to use VSCode,
-> which
-> does not require a license.
+> a temporary trial. If you want to debug the integration tests but cannot get a license, you will need to use VSCode,
+> which does not require a license.
 
 1. Follow steps 1-5 from [Run Integration Tests](#running-aurora-integration-tests). Make sure you set the DEBUG_ENV
    environment variable to PYCHARM.
