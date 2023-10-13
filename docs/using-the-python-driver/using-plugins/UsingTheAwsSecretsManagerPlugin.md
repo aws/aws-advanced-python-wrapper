@@ -3,7 +3,8 @@
 The AWS Advanced Python Driver supports usage of database credentials stored as secrets in the [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/) through the AWS Secrets Manager Connection Plugin. When you create a new connection with this plugin enabled, the plugin will retrieve the secret and the connection will be created with the credentials inside that secret.
 
 ## Enabling the AWS Secrets Manager Connection Plugin
-> :warning: **Note:** To use this plugin, you must install [`boto3`](https://aws.amazon.com/sdk-for-python/) in your project. These parameters are required for the AWS JDBC Driver to pass database credentials to the underlying driver.
+> [!WARNING]\
+> To use this plugin, you must install [`boto3`](https://aws.amazon.com/sdk-for-python/) in your project. These parameters are required for the AWS JDBC Driver to pass database credentials to the underlying driver.
 > You can install it via `pip install boto3`.
 
 To enable the AWS Secrets Manager Connection Plugin, add the plugin code `aws_secrets_manager` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) value.
@@ -11,7 +12,8 @@ To enable the AWS Secrets Manager Connection Plugin, add the plugin code `aws_se
 ## AWS Secrets Manager Connection Plugin Parameters
 The following properties are required for the AWS Secrets Manager Connection Plugin to retrieve database credentials from the AWS Secrets Manager.
 
-> **Note:** To use this plugin, you will need to set the following AWS Secrets Manager specific parameters.
+> [!IMPORTANT]\
+>To use this plugin, you will need to set the following AWS Secrets Manager specific parameters.
 
 | Parameter                   | Value  |                          Required                           | Description                                             | Example     | Default Value |
 |-----------------------------|:------:|:-----------------------------------------------------------:|:--------------------------------------------------------|:------------|---------------|
