@@ -80,10 +80,10 @@ class QueueUtils:
 
 class Utils:
     @staticmethod
-    def initialize_class(full_class_name: str):
+    def initialize_class(full_class_name: str, *args):
         try:
             parts = full_class_name.split('.')
             m = import_module(".".join(parts[:-1]))
-            return getattr(m, parts[-1])()
+            return getattr(m, parts[-1])(*args)
         except ModuleNotFoundError:
             return None
