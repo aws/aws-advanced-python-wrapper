@@ -14,17 +14,14 @@
 
 from __future__ import annotations
 
-from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Type,
-                    Union)
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Union
 
-from aws_wrapper.connection_provider import SqlAlchemyPooledConnectionProvider
-from aws_wrapper.sqlalchemy_driver_dialect import SqlAlchemyDriverDialect
 from aws_wrapper.utils.utils import Utils
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_driver_dialect import DriverDialect
+    from aws_wrapper.connection_provider import ConnectionProvider
 
-from aws_wrapper.connection_provider import ConnectionProvider
 from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.generic_driver_dialect import GenericDriverDialect
@@ -52,8 +49,8 @@ class DriverDialectManager(DriverDialectProvider):
         DriverDialectCodes.GENERIC: "aws_wrapper.generic_driver_dialect.GenericDriverDialect",
     }
 
-    pool_connection_driver_dialect: Dict[Type, Callable] = {
-        SqlAlchemyPooledConnectionProvider: lambda underlying_driver: SqlAlchemyDriverDialect(underlying_driver)
+    pool_connection_driver_dialect: Dict[str, str] = {
+        "SqlAlchemyPooledConnectionProvider": "aws_wrapper.sqlalchemy_driver_dialect.SqlAlchemyDriverDialect"
     }
 
     @staticmethod
@@ -110,7 +107,10 @@ class DriverDialectManager(DriverDialectProvider):
 
     def get_pool_connection_driver_dialect(self, connection_provider: ConnectionProvider,
                                            underlying_driver_dialect: DriverDialect) -> DriverDialect:
-        pool_connection_driver_dialect_builder = self.pool_connection_driver_dialect.get(type(connection_provider))
-        if pool_connection_driver_dialect_builder is not None:
-            return pool_connection_driver_dialect_builder(underlying_driver_dialect)
+        provider_class: str = connection_provider.__class__.__name__
+        pool_connection_driver_dialect = self.pool_connection_driver_dialect.get(provider_class)
+        if pool_connection_driver_dialect is not None:
+            dialect = Utils.initialize_class(pool_connection_driver_dialect)
+            if dialect is not None:
+                return dialect(underlying_driver_dialect)
         return underlying_driver_dialect

@@ -15,10 +15,10 @@
 import psycopg
 import pytest
 
-from aws_wrapper.connection_provider import (
-    PoolKey, SqlAlchemyPooledConnectionProvider)
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_wrapper.sql_alchemy_connection_provider import (
+    PoolKey, SqlAlchemyPooledConnectionProvider)
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.sliding_expiration_cache import SlidingExpirationCache
 
