@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import sys
+from importlib import import_module
 from logging import DEBUG, Formatter, Logger, StreamHandler
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Optional, Tuple
@@ -75,3 +76,14 @@ class QueueUtils:
             q.queue.clear()
             q.all_tasks_done.notify_all()
             q.unfinished_tasks = 0
+
+
+class Utils:
+    @staticmethod
+    def initialize_class(full_class_name: str):
+        try:
+            parts = full_class_name.split('.')
+            m = import_module(".".join(parts[:-1]))
+            return getattr(m, parts[-1])()
+        except ModuleNotFoundError:
+            return None

@@ -14,20 +14,20 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Type
+from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Type,
+                    Union)
 
-from aws_wrapper.connection_provider import (
-    ConnectionProvider, SqlAlchemyPooledConnectionProvider)
+from aws_wrapper.connection_provider import SqlAlchemyPooledConnectionProvider
 from aws_wrapper.sqlalchemy_driver_dialect import SqlAlchemyDriverDialect
+from aws_wrapper.utils.utils import Utils
 
 if TYPE_CHECKING:
     from aws_wrapper.generic_driver_dialect import DriverDialect
 
+from aws_wrapper.connection_provider import ConnectionProvider
 from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import AwsWrapperError
 from aws_wrapper.generic_driver_dialect import GenericDriverDialect
-from aws_wrapper.mysql_driver_dialect import MySQLDriverDialect
-from aws_wrapper.pg_driver_dialect import PgDriverDialect
 from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
@@ -46,10 +46,10 @@ class DriverDialectProvider(Protocol):
 
 class DriverDialectManager(DriverDialectProvider):
     _custom_dialect: Optional[DriverDialect] = None
-    known_dialects_by_code: Dict[str, DriverDialect] = {
-        DriverDialectCodes.PSYCOPG: PgDriverDialect(),
-        DriverDialectCodes.MYSQL_CONNECTOR_PYTHON: MySQLDriverDialect(),
-        DriverDialectCodes.GENERIC: GenericDriverDialect(),
+    known_dialects_by_code: Dict[str, str] = {
+        DriverDialectCodes.PSYCOPG: "aws_wrapper.pg_driver_dialect.PgDriverDialect",
+        DriverDialectCodes.MYSQL_CONNECTOR_PYTHON: "aws_wrapper.mysql_driver_dialect.MySQLDriverDialect",
+        DriverDialectCodes.GENERIC: "aws_wrapper.generic_driver_dialect.GenericDriverDialect",
     }
 
     pool_connection_driver_dialect: Dict[Type, Callable] = {
@@ -76,7 +76,7 @@ class DriverDialectManager(DriverDialectProvider):
             else:
                 logger.warning("DriverDialectManager.CustomDialectNotSupported")
 
-        result: Optional[DriverDialect]
+        result: Optional[str]
         dialect_code: Optional[str] = WrapperProperties.DRIVER_DIALECT.get(props)
         if dialect_code:
             result = DriverDialectManager.known_dialects_by_code.get(dialect_code)
@@ -85,19 +85,24 @@ class DriverDialectManager(DriverDialectProvider):
                     "DriverDialectManager.UnknownDialectCode",
                     dialect_code))
             self._log_dialect(dialect_code, result)
-            return result
+            dialect = Utils.initialize_class(result)
+            if dialect is None:
+                raise AwsWrapperError(Messages.get_formatted(
+                    "DriverDialectManager.InitializationError",
+                    dialect_code))
+            return dialect
 
         for key, value in DriverDialectManager.known_dialects_by_code.items():
-            if value.is_dialect(conn_func):
+            dialect = Utils.initialize_class(value)
+            if dialect is not None and dialect.is_dialect(conn_func):
                 self._log_dialect(key, value)
-                return value
+                return dialect
 
-        result = GenericDriverDialect()
-        self._log_dialect(DriverDialectCodes.GENERIC, result)
-        return result
+        self._log_dialect(DriverDialectCodes.GENERIC, "generic")
+        return GenericDriverDialect()
 
     @staticmethod
-    def _log_dialect(dialect_code: str, driver_dialect: DriverDialect):
+    def _log_dialect(dialect_code: str, driver_dialect: Union[DriverDialect, str]):
         logger.debug(
             "DriverDialectManager.UseDialect",
             dialect_code,
