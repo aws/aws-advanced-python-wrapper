@@ -31,7 +31,8 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
 from aws_wrapper.connection_plugin_chain import get_plugins
 from aws_wrapper.connection_provider import (ConnectionProvider,
                                              ConnectionProviderManager)
-from aws_wrapper.database_dialect import (DatabaseDialect, DialectManager,
+from aws_wrapper.database_dialect import (DatabaseDialect,
+                                          DatabaseDialectManager,
                                           TopologyAwareDatabaseDialect,
                                           UnknownDatabaseDialect)
 from aws_wrapper.errors import AwsWrapperError, UnsupportedOperationError
@@ -193,7 +194,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._initial_connection_host_info: Optional[HostInfo] = None
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
-        self._dialect_provider = DialectManager()
+        self._dialect_provider = DatabaseDialectManager()
         self._target_func = target_func
         self._driver_dialect_manager = driver_dialect_manager
         self._driver_dialect = driver_dialect

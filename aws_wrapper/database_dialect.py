@@ -124,7 +124,7 @@ class DatabaseDialect(Protocol):
         ...
 
 
-class DialectProvider(Protocol):
+class DatabaseDialectProvider(Protocol):
     def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[DatabaseDialect]:
         """
         Returns the dialect identified by analyzing the AwsWrapperProperties.DIALECT property (if set) or the target
@@ -389,7 +389,7 @@ class UnknownDatabaseDialect(DatabaseDialect):
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
 
-class DialectManager(DialectProvider):
+class DatabaseDialectManager(DatabaseDialectProvider):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
     _known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
     _known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {DialectCode.MYSQL: MysqlDatabaseDialect(),
@@ -409,18 +409,18 @@ class DialectManager(DialectProvider):
 
     @staticmethod
     def get_custom_dialect():
-        return DialectManager._custom_dialect
+        return DatabaseDialectManager._custom_dialect
 
     @staticmethod
     def set_custom_dialect(dialect: DatabaseDialect):
-        DialectManager._custom_dialect = dialect
+        DatabaseDialectManager._custom_dialect = dialect
 
     @staticmethod
     def reset_custom_dialect():
-        DialectManager._custom_dialect = None
+        DatabaseDialectManager._custom_dialect = None
 
     def reset_endpoint_cache(self):
-        DialectManager._known_endpoint_dialects.clear()
+        DatabaseDialectManager._known_endpoint_dialects.clear()
 
     def get_dialect(self, driver_dialect: str, props: Properties) -> DatabaseDialect:
         self._can_update = False
@@ -435,12 +435,12 @@ class DialectManager(DialectProvider):
         url = PropertiesUtils.get_url(props)
 
         if user_dialect_setting is None:
-            dialect_code = DialectManager._known_endpoint_dialects.get(url)
+            dialect_code = DatabaseDialectManager._known_endpoint_dialects.get(url)
         else:
             dialect_code = DialectCode.from_string(user_dialect_setting)
 
         if dialect_code is not None:
-            dialect: Optional[DatabaseDialect] = DialectManager._known_dialects_by_code.get(dialect_code)
+            dialect: Optional[DatabaseDialect] = DatabaseDialectManager._known_dialects_by_code.get(dialect_code)
             if dialect:
                 self._dialect_code = dialect_code
                 self._dialect = dialect
@@ -455,17 +455,17 @@ class DialectManager(DialectProvider):
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCode.AURORA_MYSQL
-                self._dialect = DialectManager._known_dialects_by_code[DialectCode.AURORA_MYSQL]
+                self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.AURORA_MYSQL]
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
                 self._dialect_code = DialectCode.RDS_MYSQL
-                self._dialect = DialectManager._known_dialects_by_code[DialectCode.RDS_MYSQL]
+                self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.RDS_MYSQL]
                 self._log_current_dialect()
                 return self._dialect
             self._can_update = True
             self._dialect_code = DialectCode.MYSQL
-            self._dialect = DialectManager._known_dialects_by_code[DialectCode.MYSQL]
+            self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.MYSQL]
             self._log_current_dialect()
             return self._dialect
 
@@ -473,23 +473,23 @@ class DialectManager(DialectProvider):
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
                 self._dialect_code = DialectCode.AURORA_PG
-                self._dialect = DialectManager._known_dialects_by_code[DialectCode.AURORA_PG]
+                self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.AURORA_PG]
                 return self._dialect
             if rds_type.is_rds:
                 self._can_update = True
                 self._dialect_code = DialectCode.RDS_PG
-                self._dialect = DialectManager._known_dialects_by_code[DialectCode.RDS_PG]
+                self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.RDS_PG]
                 self._log_current_dialect()
                 return self._dialect
             self._can_update = True
             self._dialect_code = DialectCode.PG
-            self._dialect = DialectManager._known_dialects_by_code[DialectCode.PG]
+            self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.PG]
             self._log_current_dialect()
             return self._dialect
 
         self._can_update = True
         self._dialect_code = DialectCode.UNKNOWN
-        self._dialect = DialectManager._known_dialects_by_code[DialectCode.UNKNOWN]
+        self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.UNKNOWN]
         self._log_current_dialect()
         return self._dialect
 
@@ -510,7 +510,7 @@ class DialectManager(DialectProvider):
         dialect_candidates = self._dialect.dialect_update_candidates if self._dialect is not None else None
         if dialect_candidates is not None:
             for dialect_code in dialect_candidates:
-                dialect_candidate = DialectManager._known_dialects_by_code.get(dialect_code)
+                dialect_candidate = DatabaseDialectManager._known_dialects_by_code.get(dialect_code)
                 if dialect_candidate is None:
                     raise AwsWrapperError(Messages.get_formatted("DialectManager.UnknownDialectCode", dialect_code))
 
@@ -525,10 +525,10 @@ class DialectManager(DialectProvider):
                 self._can_update = False
                 self._dialect_code = dialect_code
                 self._dialect = dialect_candidate
-                DialectManager._known_endpoint_dialects.put(url, dialect_code, DialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+                DatabaseDialectManager._known_endpoint_dialects.put(url, dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
                 if host_info is not None:
-                    DialectManager._known_endpoint_dialects.put(
-                        host_info.url, dialect_code, DialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+                    DatabaseDialectManager._known_endpoint_dialects.put(
+                        host_info.url, dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
 
                 self._log_current_dialect()
                 return self._dialect
@@ -537,10 +537,10 @@ class DialectManager(DialectProvider):
             raise AwsWrapperError(Messages.get("DialectManager.UnknownDialect"))
 
         self._can_update = False
-        DialectManager._known_endpoint_dialects.put(url, self._dialect_code, DialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+        DatabaseDialectManager._known_endpoint_dialects.put(url, self._dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
         if host_info is not None:
-            DialectManager._known_endpoint_dialects.put(
-                host_info.url, self._dialect_code, DialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+            DatabaseDialectManager._known_endpoint_dialects.put(
+                host_info.url, self._dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
         self._log_current_dialect()
         return self._dialect
 
