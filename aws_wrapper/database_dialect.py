@@ -392,25 +392,24 @@ class UnknownDatabaseDialect(DatabaseDialect):
 
 class DatabaseDialectManager(DatabaseDialectProvider):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
+    _TIMEOUT_SEC = 3
     _known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
-    TIMEOUT_SEC = 3
+    _known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {DialectCode.MYSQL: MysqlDatabaseDialect(),
+                                                                   DialectCode.PG: PgDatabaseDialect(),
+                                                                   DialectCode.RDS_MYSQL: RdsMysqlDialect(),
+                                                                   DialectCode.RDS_PG: RdsPgDialect(),
+                                                                   DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
+                                                                   DialectCode.AURORA_PG: AuroraPgDialect(),
+                                                                   DialectCode.UNKNOWN: UnknownDatabaseDialect()}
+    _custom_dialect: Optional[DatabaseDialect] = None
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DatabaseDialectManagerExecutor")
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DialectManagerExecutor")
-
-    def __init__(self, rds_helper: Optional[RdsUtils] = None, custom_dialect: Optional[DatabaseDialect] = None) -> None:
+    def __init__(self, rds_helper: Optional[RdsUtils] = None):
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
         self._can_update: bool = False
         self._dialect: DatabaseDialect = UnknownDatabaseDialect()
         self._dialect_code: DialectCode = DialectCode.UNKNOWN
-        self._custom_dialect: Optional[DatabaseDialect] = custom_dialect if custom_dialect else None
-        self._known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
-        self._known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {DialectCode.MYSQL: MysqlDatabaseDialect(),
-                                                                            DialectCode.PG: PgDatabaseDialect(),
-                                                                            DialectCode.RDS_MYSQL: RdsMysqlDialect(),
-                                                                            DialectCode.RDS_PG: RdsPgDialect(),
-                                                                            DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
-                                                                            DialectCode.AURORA_PG: AuroraPgDialect(),
-                                                                            DialectCode.UNKNOWN: UnknownDatabaseDialect()}
+
 
     @staticmethod
     def get_custom_dialect():
@@ -520,7 +519,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                     raise AwsWrapperError(Messages.get_formatted("DialectManager.UnknownDialectCode", dialect_code))
 
                 cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    DatabaseDialectManager._executor, DatabaseDialectManager.TIMEOUT_SEC, driver_dialect, conn)(
+                    DatabaseDialectManager._executor, DatabaseDialectManager._TIMEOUT_SEC, driver_dialect, conn)(
                     dialect_candidate.is_dialect)
                 is_dialect = cursor_execute_func_with_timeout(conn)
 
