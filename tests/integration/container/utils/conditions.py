@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, List
 if TYPE_CHECKING:
     from .database_engine import DatabaseEngine
     from .database_engine_deployment import DatabaseEngineDeployment
-    from .test_driver import TestDriver
     from .test_environment_features import TestEnvironmentFeatures
 
 import pytest
@@ -41,11 +40,6 @@ def enable_on_engines(requested_engines: List[DatabaseEngine]):
         current_engine not in requested_engines,
         reason=f"This test is not supported for {current_engine.value}"
     )
-
-
-def enable_on_drivers(enabled_drivers: List[TestDriver]):
-    # TODO: Finish implementing
-    ...
 
 
 def enable_on_num_instances(min_instances=-1, max_instances=-1):
@@ -80,11 +74,6 @@ def disable_on_engines(requested_engines: List[DatabaseEngine]):
         current_engine in requested_engines,
         reason=f"This test is not supported for {current_engine.value}"
     )
-
-
-def disable_on_drivers(disabled_drivers: List[TestDriver]):
-    # TODO: Finish implementing
-    ...
 
 
 def disable_on_features(disable_on_test_features: List[TestEnvironmentFeatures]):

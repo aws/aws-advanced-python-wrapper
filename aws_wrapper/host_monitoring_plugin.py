@@ -540,7 +540,6 @@ class MonitoringThreadContainer:
                 if not available_monitor.is_stopped:
                     return available_monitor
 
-                # TODO: Investigate how to cancel the future. This will only cancel it if it isn't currently running
                 self._tasks_map.compute_if_present(available_monitor, MonitoringThreadContainer._cancel)
 
             supplied_monitor = monitor_supplier()
@@ -562,9 +561,9 @@ class MonitoringThreadContainer:
         return monitor
 
     @staticmethod
-    def _cancel(_, future: Future) -> None:
-        # TODO: Investigate how to cancel the future. This will only cancel it if it isn't currently running
+    def _cancel(monitor, future: Future) -> None:
         future.cancel()
+        monitor.stop()
         return None
 
     def get_monitor(self, alias: str) -> Optional[Monitor]:

@@ -66,8 +66,6 @@ class Plugin(ABC):
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         return
 
-    # TODO: Should we pass in the old/new Connection, and/or the old/new HostInfo?
-    #  Would this be useful info for the plugins?
     def notify_connection_changed(self, changes: Set[ConnectionEvent]) \
             -> OldConnectionSuggestedAction:
         return OldConnectionSuggestedAction.NO_OPINION

@@ -21,6 +21,9 @@ from aws_wrapper.utils.properties import Properties, PropertiesUtils
                          [pytest.param(Properties({"user": "postgres", "password": "kwargs_password"}),
                                        "user=postgres password=conninfo_password",
                                        dict(password="kwargs_password")),
+                          pytest.param(Properties({"user": "postgres", "password": "kwargs_password"}),
+                                       "   user  =  postgres    password=conninfo_password ",
+                                       dict(password="kwargs_password")),
                           pytest.param(Properties({"user": "postgres"}), "", dict(user="postgres")),
                           pytest.param(Properties({"user": "postgres"}), "user=postgres", {})])
 def test_parse_properties(expected, conn_info, kwargs):

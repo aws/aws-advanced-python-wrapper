@@ -84,10 +84,6 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         if not target:
             raise Error(Messages.get("Wrapper.RequiredTargetDriver"))
 
-        # TODO: fix target str parsing functionality
-        if isinstance(target, str):
-            target = eval(target)
-
         if not callable(target):
             raise Error(Messages.get("Wrapper.ConnectMethod"))
         target_func: Callable = target
