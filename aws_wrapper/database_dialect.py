@@ -392,6 +392,7 @@ class UnknownDatabaseDialect(DatabaseDialect):
 
 class DatabaseDialectManager(DatabaseDialectProvider):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
+    _known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
     TIMEOUT_SEC = 3
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DialectManagerExecutor")
@@ -410,12 +411,6 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                                                                             DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
                                                                             DialectCode.AURORA_PG: AuroraPgDialect(),
                                                                             DialectCode.UNKNOWN: UnknownDatabaseDialect()}
-
-    def __init__(self, rds_helper: Optional[RdsUtils] = None):
-        self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
-        self._can_update: bool = False
-        self._dialect: DatabaseDialect = UnknownDatabaseDialect()
-        self._dialect_code: DialectCode = DialectCode.UNKNOWN
 
     @staticmethod
     def get_custom_dialect():

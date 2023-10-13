@@ -287,7 +287,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return method_name in self.network_bound_methods
 
     def update_dialect(self, connection: Optional[Connection] = None):
-        # Updates both database dialects as well as driver dialect
+        # Updates both database dialects and driver dialect
 
         connection = self.current_connection if connection is None else connection
         if connection is None:
@@ -374,8 +374,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         driver_dialect = self._driver_dialect
         try:
             timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
-            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(PluginServiceImpl._executor, timeout_sec,
-                                                                                        driver_dialect, connection)(self._fill_aliases)
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(PluginServiceImpl._executor,
+                                                                                        timeout_sec, driver_dialect,
+                                                                                        connection)(self._fill_aliases)
             cursor_execute_func_with_timeout(connection, host_info)
 
         except Exception as e:
@@ -388,7 +389,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def _fill_aliases(self, conn: Connection, host_info: HostInfo) -> bool:
         with closing(conn.cursor()) as cursor:
-            if not isinstance(self.dialect, UnknownDialect):
+            if not isinstance(self.dialect, UnknownDatabaseDialect):
                 cursor.execute(self.dialect.host_alias_query)
                 # If variable with such a name is presented then it means it's an Aurora cluster
                 for row in cursor.fetchall():
