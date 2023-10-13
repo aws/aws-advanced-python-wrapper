@@ -410,7 +410,6 @@ class DatabaseDialectManager(DatabaseDialectProvider):
         self._dialect: DatabaseDialect = UnknownDatabaseDialect()
         self._dialect_code: DialectCode = DialectCode.UNKNOWN
 
-
     @staticmethod
     def get_custom_dialect():
         return DatabaseDialectManager._custom_dialect
