@@ -63,9 +63,7 @@ def timeout(executor: Executor, timeout_sec):
             future = executor.submit(func, *args, **kwargs)
 
             # raises TimeoutError on timeout
-            result = future.result(timeout=timeout_sec)
-
-            return result
+            return future.result(timeout=timeout_sec)
 
         return func_wrapper
 
