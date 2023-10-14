@@ -391,7 +391,6 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         with closing(conn.cursor()) as cursor:
             if not isinstance(self.dialect, UnknownDatabaseDialect):
                 cursor.execute(self.dialect.host_alias_query)
-                # If variable with such a name is presented then it means it's an Aurora cluster
                 for row in cursor.fetchall():
                     host_info.add_alias(row[0])
                 return True
