@@ -419,10 +419,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     def _identify_connection(self, conn: Connection):
         with closing(conn.cursor()) as cursor:
             cursor.execute(self._dialect.host_id_query)
-            # If variable with such a name is presented then it means it's an Aurora cluster
-            result = cursor.fetchone()
-            if result is not None:
-                return result
+            return cursor.fetchone()
         return None
 
     @dataclass()
