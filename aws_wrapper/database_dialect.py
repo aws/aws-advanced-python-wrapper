@@ -153,7 +153,7 @@ class MysqlDatabaseDialect(DatabaseDialect):
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
-        return Utils.initialize_class("aws_wrapper.mysql_exception_handler.MySQLExceptionHandler")
+        return Utils.initialize_class("aws_wrapper.utils.mysql_exception_handler.MySQLExceptionHandler")
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -197,7 +197,7 @@ class PgDatabaseDialect(DatabaseDialect):
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
-        return Utils.initialize_class("aws_wrapper.pg_exception_handler.PgExceptionHandler")
+        return Utils.initialize_class("aws_wrapper.utils.pg_exception_handler.PgExceptionHandler")
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
