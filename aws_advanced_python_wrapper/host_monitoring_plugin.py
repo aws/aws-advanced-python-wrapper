@@ -32,14 +32,16 @@ from typing import Any, Callable, ClassVar, Dict, FrozenSet, Optional, Set
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
-from aws_advanced_python_wrapper.plugin import CanReleaseResources, Plugin, PluginFactory
+from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
+                                                PluginFactory)
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
-                                                             OldConnectionSuggestedAction)
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.notifications import (
+    ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.utils import QueueUtils
 

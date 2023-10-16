@@ -15,7 +15,8 @@
 from enum import Enum, auto
 from typing import Optional
 
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 class FailoverMode(Enum):

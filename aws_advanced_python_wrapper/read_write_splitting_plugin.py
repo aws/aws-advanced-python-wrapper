@@ -32,8 +32,8 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.notifications import (ConnectionEvent,
-                                                             OldConnectionSuggestedAction)
+from aws_advanced_python_wrapper.utils.notifications import (
+    ConnectionEvent, OldConnectionSuggestedAction)
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 logger = Logger(__name__)

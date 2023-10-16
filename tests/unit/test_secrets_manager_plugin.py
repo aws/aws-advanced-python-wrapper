@@ -28,7 +28,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from aws_advanced_python_wrapper.aws_secrets_manager_plugin import AwsSecretsManagerPlugin
+from aws_advanced_python_wrapper.aws_secrets_manager_plugin import \
+    AwsSecretsManagerPlugin
 
 if TYPE_CHECKING:
     from boto3 import Session, client

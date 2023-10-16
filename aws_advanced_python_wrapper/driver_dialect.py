@@ -27,7 +27,8 @@ from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.properties import (Properties, PropertiesUtils,
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          PropertiesUtils,
                                                           WrapperProperties)
 
 

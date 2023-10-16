@@ -27,10 +27,12 @@ from sqlalchemy import QueuePool, pool
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import SlidingExpirationCache
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
+    SlidingExpirationCache
 
 
 class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources):

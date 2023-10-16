@@ -14,7 +14,8 @@
 
 import pytest
 
-from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesUtils
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          PropertiesUtils)
 
 
 @pytest.mark.parametrize("expected, conn_info, kwargs",

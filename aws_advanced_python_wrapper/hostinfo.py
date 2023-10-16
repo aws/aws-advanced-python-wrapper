@@ -17,8 +17,8 @@ from datetime import datetime
 from enum import Enum, auto
 from typing import ClassVar, FrozenSet, Optional, Set
 
-from aws_advanced_python_wrapper.host_availability import (HostAvailability,
-                                                           HostAvailabilityStrategy)
+from aws_advanced_python_wrapper.host_availability import (
+    HostAvailability, HostAvailabilityStrategy)
 
 
 class HostRole(Enum):

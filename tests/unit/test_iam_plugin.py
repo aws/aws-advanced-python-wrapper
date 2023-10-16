@@ -23,7 +23,8 @@ import pytest
 
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin, TokenInfo
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 _GENERATED_TOKEN = "generated_token"
 _TEST_TOKEN = "test_token"

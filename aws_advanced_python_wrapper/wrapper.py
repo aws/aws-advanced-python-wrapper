@@ -16,16 +16,19 @@ from __future__ import annotations
 
 from typing import Any, Callable, Iterator, List, Optional, Union
 
-from aws_advanced_python_wrapper.driver_dialect_manager import DriverDialectManager
-from aws_advanced_python_wrapper.errors import AwsWrapperError, FailoverSuccessError
+from aws_advanced_python_wrapper.driver_dialect_manager import \
+    DriverDialectManager
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                FailoverSuccessError)
 from aws_advanced_python_wrapper.pep249 import Connection, Cursor, Error
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
-from aws_advanced_python_wrapper.plugin_service import (PluginManager, PluginService,
-                                                        PluginServiceImpl,
-                                                        PluginServiceManagerContainer)
+from aws_advanced_python_wrapper.plugin_service import (
+    PluginManager, PluginService, PluginServiceImpl,
+    PluginServiceManagerContainer)
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesUtils
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          PropertiesUtils)
 
 logger = Logger(__name__)
 

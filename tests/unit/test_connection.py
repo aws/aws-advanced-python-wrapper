@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
 from aws_advanced_python_wrapper.hostinfo import HostInfo
-from aws_advanced_python_wrapper.plugin_service import (PluginServiceImpl,
-                                                        PluginServiceManagerContainer)
+from aws_advanced_python_wrapper.plugin_service import (
+    PluginServiceImpl, PluginServiceManagerContainer)
 from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
 
 

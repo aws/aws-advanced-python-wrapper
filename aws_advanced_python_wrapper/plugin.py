@@ -29,8 +29,8 @@ from typing import Any, Callable, Dict, Protocol, Set
 
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
-                                                             OldConnectionSuggestedAction)
+from aws_advanced_python_wrapper.utils.notifications import (
+    ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
 
 
 class Plugin(ABC):

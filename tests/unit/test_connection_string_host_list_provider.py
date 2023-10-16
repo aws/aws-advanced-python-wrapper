@@ -15,7 +15,8 @@
 import pytest
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.host_list_provider import ConnectionStringHostListProvider
+from aws_advanced_python_wrapper.host_list_provider import \
+    ConnectionStringHostListProvider
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.properties import Properties
 

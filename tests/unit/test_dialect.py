@@ -17,15 +17,14 @@ from unittest.mock import patch
 import psycopg
 import pytest
 
-from aws_advanced_python_wrapper.database_dialect import (AuroraMysqlDialect, AuroraPgDialect,
-                                                          DatabaseDialectManager, DialectCode,
-                                                          MysqlDatabaseDialect,
-                                                          PgDatabaseDialect, RdsMysqlDialect,
-                                                          RdsPgDialect, TargetDriverType,
-                                                          UnknownDatabaseDialect)
+from aws_advanced_python_wrapper.database_dialect import (
+    AuroraMysqlDialect, AuroraPgDialect, DatabaseDialectManager, DialectCode,
+    MysqlDatabaseDialect, PgDatabaseDialect, RdsMysqlDialect, RdsPgDialect,
+    TargetDriverType, UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 @pytest.fixture

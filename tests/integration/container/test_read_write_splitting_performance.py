@@ -22,7 +22,8 @@ from typing import TYPE_CHECKING, List
 import pytest
 
 from aws_advanced_python_wrapper.connect_time_plugin import ConnectTimePlugin
-from aws_advanced_python_wrapper.connection_provider import ConnectionProviderManager
+from aws_advanced_python_wrapper.connection_provider import \
+    ConnectionProviderManager
 from aws_advanced_python_wrapper.execute_time_plugin import ExecuteTimePlugin
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider

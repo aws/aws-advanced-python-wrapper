@@ -30,7 +30,8 @@ if TYPE_CHECKING:
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from tests.integration.container.utils.conditions import enable_on_features
 from tests.integration.container.utils.performance_utility import (
     PerformanceUtil, PerfStatBase)

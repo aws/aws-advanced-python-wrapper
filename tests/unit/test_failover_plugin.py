@@ -26,17 +26,20 @@ from typing import Dict, FrozenSet, Set
 from unittest import mock
 from unittest.mock import MagicMock, PropertyMock
 
-from aws_advanced_python_wrapper.errors import (FailoverSuccessError,
-                                                TransactionResolutionUnknownError)
-from aws_advanced_python_wrapper.failover_plugin import FailoverMode, FailoverPlugin
+from aws_advanced_python_wrapper.errors import (
+    FailoverSuccessError, TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.failover_plugin import (FailoverMode,
+                                                         FailoverPlugin)
 from aws_advanced_python_wrapper.failover_result import (ReaderFailoverResult,
                                                          WriterFailoverResult)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
-from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
+from aws_advanced_python_wrapper.host_list_provider import \
+    HostListProviderService
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249 import Error
 from aws_advanced_python_wrapper.utils.notifications import HostEvent
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 @pytest.fixture

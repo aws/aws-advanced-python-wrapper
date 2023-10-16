@@ -30,19 +30,19 @@ from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
                     Set, Tuple)
 
 from aws_advanced_python_wrapper.connection_plugin_chain import get_plugins
-from aws_advanced_python_wrapper.connection_provider import (ConnectionProvider,
-                                                             ConnectionProviderManager)
-from aws_advanced_python_wrapper.database_dialect import (DatabaseDialect,
-                                                          DatabaseDialectManager,
-                                                          TopologyAwareDatabaseDialect,
-                                                          UnknownDatabaseDialect)
-from aws_advanced_python_wrapper.errors import AwsWrapperError, UnsupportedOperationError
-from aws_advanced_python_wrapper.exception_handling import ExceptionHandler, ExceptionManager
+from aws_advanced_python_wrapper.connection_provider import (
+    ConnectionProvider, ConnectionProviderManager)
+from aws_advanced_python_wrapper.database_dialect import (
+    DatabaseDialect, DatabaseDialectManager, TopologyAwareDatabaseDialect,
+    UnknownDatabaseDialect)
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                UnsupportedOperationError)
+from aws_advanced_python_wrapper.exception_handling import (ExceptionHandler,
+                                                            ExceptionManager)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
-from aws_advanced_python_wrapper.host_list_provider import (ConnectionStringHostListProvider,
-                                                            HostListProvider,
-                                                            HostListProviderService,
-                                                            StaticHostListProvider)
+from aws_advanced_python_wrapper.host_list_provider import (
+    ConnectionStringHostListProvider, HostListProvider,
+    HostListProviderService, StaticHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
@@ -50,9 +50,10 @@ from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
-                                                             OldConnectionSuggestedAction)
-from aws_advanced_python_wrapper.utils.properties import (Properties, PropertiesUtils,
+from aws_advanced_python_wrapper.utils.notifications import (
+    ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          PropertiesUtils,
                                                           WrapperProperties)
 
 logger = Logger(__name__)

@@ -28,7 +28,8 @@ from aws_advanced_python_wrapper.connection_plugin_chain import get_plugins
 from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
 from aws_advanced_python_wrapper.execute_time_plugin import ExecuteTimePlugin
 from aws_advanced_python_wrapper.failover_plugin import FailoverPlugin
-from aws_advanced_python_wrapper.host_monitoring_plugin import HostMonitoringPlugin
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    HostMonitoringPlugin
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
 from aws_advanced_python_wrapper.utils.properties import Properties
 

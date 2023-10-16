@@ -27,19 +27,23 @@ from aws_advanced_python_wrapper.aurora_connection_tracker_plugin import \
     AuroraConnectionTrackerPluginFactory
 from aws_advanced_python_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
-from aws_advanced_python_wrapper.connect_time_plugin import ConnectTimePluginFactory
+from aws_advanced_python_wrapper.connect_time_plugin import \
+    ConnectTimePluginFactory
 from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.execute_time_plugin import ExecuteTimePluginFactory
+from aws_advanced_python_wrapper.execute_time_plugin import \
+    ExecuteTimePluginFactory
 from aws_advanced_python_wrapper.failover_plugin import FailoverPluginFactory
-from aws_advanced_python_wrapper.host_monitoring_plugin import HostMonitoringPluginFactory
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    HostMonitoringPluginFactory
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_advanced_python_wrapper.read_write_splitting_plugin import \
     ReadWriteSplittingPluginFactory
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsPluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
     "iam": IamAuthPluginFactory,

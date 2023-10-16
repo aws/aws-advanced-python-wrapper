@@ -16,7 +16,8 @@ from datetime import datetime, timedelta
 from enum import Enum, auto
 
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 class HostAvailability(Enum):

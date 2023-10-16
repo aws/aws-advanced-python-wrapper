@@ -28,8 +28,8 @@ from time import sleep, time
 
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.reader_failover_handler import (ReaderFailoverHandler,
-                                                                 ReaderFailoverHandlerImpl)
+from aws_advanced_python_wrapper.reader_failover_handler import (
+    ReaderFailoverHandler, ReaderFailoverHandlerImpl)
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 

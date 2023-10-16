@@ -32,7 +32,8 @@ from typing import Optional
 from aws_advanced_python_wrapper.failover_result import ReaderFailoverResult
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
+from aws_advanced_python_wrapper.utils.failover_mode import (FailoverMode,
+                                                             get_failover_mode)
 from aws_advanced_python_wrapper.utils.log import Logger
 
 logger = Logger(__name__)

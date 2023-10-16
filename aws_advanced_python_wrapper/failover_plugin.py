@@ -25,24 +25,26 @@ if TYPE_CHECKING:
 
 from typing import Any, Callable, Dict, Optional, Set
 
-from aws_advanced_python_wrapper.errors import (AwsWrapperError, FailoverFailedError,
-                                                FailoverSuccessError,
-                                                TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.errors import (
+    AwsWrapperError, FailoverFailedError, FailoverSuccessError,
+    TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
-from aws_advanced_python_wrapper.reader_failover_handler import (ReaderFailoverHandler,
-                                                                 ReaderFailoverHandlerImpl)
+from aws_advanced_python_wrapper.reader_failover_handler import (
+    ReaderFailoverHandler, ReaderFailoverHandlerImpl)
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsHelper
-from aws_advanced_python_wrapper.utils.failover_mode import FailoverMode, get_failover_mode
+from aws_advanced_python_wrapper.utils.failover_mode import (FailoverMode,
+                                                             get_failover_mode)
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import HostEvent
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.writer_failover_handler import (WriterFailoverHandler,
-                                                                 WriterFailoverHandlerImpl)
+from aws_advanced_python_wrapper.writer_failover_handler import (
+    WriterFailoverHandler, WriterFailoverHandlerImpl)
 
 logger = Logger(__name__)
 

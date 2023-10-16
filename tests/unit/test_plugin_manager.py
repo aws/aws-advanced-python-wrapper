@@ -32,8 +32,8 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
 from aws_advanced_python_wrapper.plugin import Plugin
 from aws_advanced_python_wrapper.plugin_service import PluginManager
-from aws_advanced_python_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
-                                                             OldConnectionSuggestedAction)
+from aws_advanced_python_wrapper.utils.notifications import (
+    ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 

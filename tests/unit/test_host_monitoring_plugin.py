@@ -16,11 +16,13 @@ import psycopg
 import pytest
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.host_monitoring_plugin import HostMonitoringPlugin
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    HostMonitoringPlugin
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249 import Error
 from aws_advanced_python_wrapper.utils.notifications import HostEvent
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 @pytest.fixture

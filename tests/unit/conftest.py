@@ -12,9 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from aws_advanced_python_wrapper.connection_provider import ConnectionProviderManager
+from aws_advanced_python_wrapper.connection_provider import \
+    ConnectionProviderManager
 from aws_advanced_python_wrapper.database_dialect import DatabaseDialectManager
-from aws_advanced_python_wrapper.driver_dialect_manager import DriverDialectManager
+from aws_advanced_python_wrapper.driver_dialect_manager import \
+    DriverDialectManager
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
 from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl

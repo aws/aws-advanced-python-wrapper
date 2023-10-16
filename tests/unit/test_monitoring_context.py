@@ -18,7 +18,8 @@ import psycopg
 import pytest
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.host_monitoring_plugin import MonitoringContext
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    MonitoringContext
 
 
 @pytest.fixture

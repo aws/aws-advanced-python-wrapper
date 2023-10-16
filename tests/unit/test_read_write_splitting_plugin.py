@@ -20,10 +20,12 @@ import pytest
 from aws_advanced_python_wrapper.errors import FailoverSuccessError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import Error
-from aws_advanced_python_wrapper.read_write_splitting_plugin import ReadWriteSplittingPlugin
+from aws_advanced_python_wrapper.read_write_splitting_plugin import \
+    ReadWriteSplittingPlugin
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
-from aws_advanced_python_wrapper.utils.notifications import OldConnectionSuggestedAction
+from aws_advanced_python_wrapper.utils.notifications import \
+    OldConnectionSuggestedAction
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 default_props = Properties()

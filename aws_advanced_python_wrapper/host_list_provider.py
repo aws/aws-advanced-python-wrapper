@@ -28,18 +28,21 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 
 import aws_advanced_python_wrapper.database_dialect as db_dialect
-from aws_advanced_python_wrapper.errors import (AwsWrapperError, QueryTimeoutError,
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                QueryTimeoutError,
                                                 UnsupportedOperationError)
-from aws_advanced_python_wrapper.host_availability import (HostAvailability,
-                                                           create_host_availability_strategy)
+from aws_advanced_python_wrapper.host_availability import (
+    HostAvailability, create_host_availability_strategy)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
+from aws_advanced_python_wrapper.pep249 import (Connection, Cursor, Error,
+                                                ProgrammingError)
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.utils import LogUtils
