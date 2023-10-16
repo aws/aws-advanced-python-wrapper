@@ -37,7 +37,7 @@ Driver Dialect codes specify which driver dialect class to use.
 
 If you are interested in using the AWS Advanced Python Driver but your desired target driver has unique features incompatible with the generic dialect, it is possible to create a custom target driver dialect.
 
-To create a custom target driver dialect, implement the [`TargetDriverDialect`](../../aws_wrapper/driver_dialect.py) interface. See the following classes for examples:
+To create a custom target driver dialect, implement the [`DriverDialect`](../../aws_wrapper/driver_dialect.py) interface. See the following classes for examples:
 
 - [PgDriverDialect](../../aws_wrapper/pg_driver_dialect.py)
     - This is a dialect that should work with [Psycopg](https://github.com/psycopg/psycopg).
@@ -47,6 +47,6 @@ To create a custom target driver dialect, implement the [`TargetDriverDialect`](
 Once the custom driver dialect class has been created, tell the AWS Advanced Python Driver to use it by setting the `custom_dialect` attribute in the `DriverDialectManager` class. It is not necessary to set the `wrapper_driver_dialect` parameter. See below for an example:
 
 ```python
-custom_driver_dialect: TargetDriverDialect = CustomTargetDriverDialect()
+custom_driver_dialect: DriverDialect = CustomDriverDialect()
 DriverDialectManager.custom_dialect = custom_driver_dialect
 ```

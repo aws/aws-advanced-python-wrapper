@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import psycopg
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_driver_dialect import DriverDialect
+    from aws_wrapper.driver_dialect import DriverDialect
     from aws_wrapper.pep249 import Connection
 
 from typing import Any, Callable, Dict, List, Optional, Set

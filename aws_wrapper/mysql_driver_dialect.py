@@ -27,16 +27,16 @@ from mysql.connector import CMySQLConnection, MySQLConnection
 from mysql.connector.cursor import MySQLCursor
 from mysql.connector.cursor_cext import CMySQLCursor
 
+from aws_wrapper.driver_dialect import DriverDialect
 from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import UnsupportedOperationError
-from aws_wrapper.generic_driver_dialect import GenericDriverDialect
 from aws_wrapper.utils.decorators import timeout
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 
 
-class MySQLDriverDialect(GenericDriverDialect):
+class MySQLDriverDialect(DriverDialect):
     _driver_name = "MySQL Connector Python"
     TARGET_DRIVER_CODE = "MySQL"
     AUTH_PLUGIN_PARAM = "auth_plugin"

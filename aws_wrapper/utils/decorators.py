@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from concurrent.futures import Executor
 
-    from aws_wrapper.generic_driver_dialect import DriverDialect
+    from aws_wrapper.driver_dialect import DriverDialect
     from aws_wrapper.pep249 import Connection
 
 

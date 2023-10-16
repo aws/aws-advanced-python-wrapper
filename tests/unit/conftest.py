@@ -14,7 +14,7 @@
 
 from aws_wrapper.connection_provider import ConnectionProviderManager
 from aws_wrapper.database_dialect import DatabaseDialectManager
-from aws_wrapper.driver_dialect import DriverDialectManager
+from aws_wrapper.driver_dialect_manager import DriverDialectManager
 from aws_wrapper.exception_handling import ExceptionManager
 from aws_wrapper.host_list_provider import AuroraHostListProvider
 from aws_wrapper.plugin_service import PluginServiceImpl

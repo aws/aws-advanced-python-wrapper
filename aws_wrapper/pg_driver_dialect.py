@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 from inspect import signature
 
-from aws_wrapper.driver_dialect import GenericDriverDialect
+from aws_wrapper.driver_dialect import DriverDialect
 from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.utils.messages import Messages
@@ -32,7 +32,7 @@ from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
 
 
-class PgDriverDialect(GenericDriverDialect):
+class PgDriverDialect(DriverDialect):
     _driver_name: str = "Psycopg"
     TARGET_DRIVER_CODE: str = "psycopg"
 

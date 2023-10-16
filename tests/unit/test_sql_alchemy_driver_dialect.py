@@ -15,8 +15,8 @@
 import pytest
 import sqlalchemy
 
+from aws_wrapper.driver_dialect import DriverDialect
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.generic_driver_dialect import DriverDialect
 from aws_wrapper.sqlalchemy_driver_dialect import SqlAlchemyDriverDialect
 
 

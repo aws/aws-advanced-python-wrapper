@@ -19,7 +19,7 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional,
                     Set, Tuple)
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_driver_dialect import DriverDialect
+    from aws_wrapper.driver_dialect import DriverDialect
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.pep249 import Connection
 

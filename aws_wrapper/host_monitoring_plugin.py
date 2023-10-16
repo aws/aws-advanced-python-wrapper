@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_driver_dialect import DriverDialect
+    from aws_wrapper.driver_dialect import DriverDialect
     from aws_wrapper.hostinfo import HostInfo
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService

@@ -25,7 +25,7 @@ from typing import (TYPE_CHECKING, ClassVar, Optional, Protocol, Tuple,
                     runtime_checkable)
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_driver_dialect import DriverDialect
+    from aws_wrapper.driver_dialect import DriverDialect
 
 import aws_wrapper.database_dialect as db_dialect
 from aws_wrapper.errors import (AwsWrapperError, QueryTimeoutError,

@@ -18,10 +18,10 @@ from contextlib import closing
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
+    from aws_wrapper.driver_dialect import DriverDialect
+    from aws_wrapper.driver_dialect_manager import DriverDialectManager
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin import Plugin
-    from aws_wrapper.generic_driver_dialect import DriverDialect
-    from aws_wrapper.driver_dialect import DriverDialectManager
     from threading import Event
 
 from abc import abstractmethod
