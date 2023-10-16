@@ -27,8 +27,8 @@ if __name__ == "__main__":
             autocommit=True
     ) as awsconn, awsconn.cursor() as awscursor:
         awscursor.execute("CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
-        awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (0, 'Jane Doe', 200))
-        awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (1, 'John Smith', 200))
+        awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
+        awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
         awscursor.execute("SELECT * FROM bank_test")
 
         res = awscursor.fetchall()

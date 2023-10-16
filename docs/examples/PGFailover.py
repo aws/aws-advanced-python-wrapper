@@ -74,9 +74,9 @@ if __name__ == "__main__":
         execute_queries_with_failover_handling(
             awsconn, "CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
         execute_queries_with_failover_handling(
-            awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, 'Jane Doe', 200))
+            awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
         execute_queries_with_failover_handling(
-            awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, 'John Smith', 200))
+            awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
 
         cursor = execute_queries_with_failover_handling(awsconn, "SELECT * FROM bank_test")
         res = cursor.fetchall()

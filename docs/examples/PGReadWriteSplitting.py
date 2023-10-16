@@ -87,7 +87,7 @@ if __name__ == "__main__":
     }
 
     """
-    Optional: configure read-write-splitting to use internal connection pools.
+    Optional: configure read/write splitting to use internal connection pools.
     The arguments passed to SqlAlchemyConnectionProvider are optional, see  UsingTheReadWriteSplittingPlugin.md
     for more info.
     """
@@ -100,9 +100,9 @@ if __name__ == "__main__":
         execute_queries_with_failover_handling(
             conn, "CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
         execute_queries_with_failover_handling(
-            conn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, 'Jane Doe', 200))
+            conn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
         execute_queries_with_failover_handling(
-            conn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, 'John Smith', 200))
+            conn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
 
     """ Example step: open connection and perform transaction """
     try:
@@ -110,9 +110,9 @@ if __name__ == "__main__":
             configure_initial_session_states(conn)
 
             execute_queries_with_failover_handling(
-                conn, "UPDATE bank_test SET account_balance=account_balance - 100 WHERE name=%s", ('Jane Doe',))
+                conn, "UPDATE bank_test SET account_balance=account_balance - 100 WHERE name=%s", ("Jane Doe",))
             execute_queries_with_failover_handling(
-                conn, "UPDATE bank_test SET account_balance=account_balance + 100 WHERE name=%s", ('John Smith',))
+                conn, "UPDATE bank_test SET account_balance=account_balance + 100 WHERE name=%s", ("John Smith",))
 
             # Internally switch to a reader connection
             conn.read_only = True
