@@ -12,3 +12,4 @@ Powershell
 autocommit
 hostname
 [Kk]eepalive
+[Bb]ackoff
