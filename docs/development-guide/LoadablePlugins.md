@@ -9,7 +9,7 @@ Plugins let users:
 - measure execution time
 - and more
 
-The Aws Advanced Python Driver has several built-in plugins; you can [see the list here](/docs/using-the-python-driver/UsingThePythonDriver.md#list-of-available-plugins).
+The AWS Advanced Python Driver has several built-in plugins; you can [see the list here](/docs/using-the-python-driver/UsingThePythonDriver.md#list-of-available-plugins).
 
 ## Available Services
 
@@ -19,8 +19,9 @@ Plugins are notified by the connection plugin manager when changes to the databa
 
 To use a custom plugin, you must:
 1. Create a custom plugin.
-2. Register the custom plugin to a wrapper profile.
-3. Specify the custom plugin to use in `wrapperProfileName`.
+2. Create a corresponding custom plugin factory.
+3. In `connection_plugin_chain.py`, add an entry in the `PLUGIN_FACTORIES` `Dict`. The key should be a short name for the plugin (without spaces), and the value should be the `PluginFactory` class you created in step 2. You can also optionally add an entry to the `PLUGIN_FACTORY_WEIGHTS` `Dict`. The weight that you give your custom plugin will determine the order that the plugin will be loaded in the plugin chain if the `auto_sort_wrapper_plugin_order` connection property is enabled. This property is enabled by default.
+4. When creating a connection, in the `plugins` connection parameter, include the plugin name that you added to `PLUGIN_FACTORIES` in step 3. This will ensure that your plugin is included in the plugin chain. See [Registering a Custom Plugin](#registering-a-custom-plugin) for more info.
 
 ### Creating Custom Plugins
 
@@ -40,7 +41,7 @@ A `PluginFactory` implementation is also required for the new custom plugin. Thi
 
 ### Subscribed Methods
 
-The `subscribed_methods` attribute specifies a set of Python methods that a plugin is subscribed to in the form of a set of strings (`Set[str]`). All plugins must implement the `subscribed_methods` attribute.
+The `subscribed_methods` attribute specifies a set of Python methods that a plugin is subscribed to in the form of a set of strings (`Set[str]`). All plugins must implement/define the `subscribed_methods` attribute.
 
 When executing a Python method, the plugin manager will only call a specific plugin method if the Python method is within its set of subscribed methods. For example, the [ReadWriteSplittingPlugin](/aws_wrapper/read_write_splitting_plugin.py) subscribes to Python methods and setters that change the read-only value of the connection, but does not subscribe to other common `Connection` or `Cursor` methods. Consequently, this plugin will not be triggered by method calls like `Connection.commit` or `Cursor.execute`.
 
@@ -61,13 +62,40 @@ Plugins can also subscribe to the following pipelines:
 
 A custom plugin can subscribe to all Python methods being executed by setting the Plugin's `subscribed_methods` attribute to `{"*"}`. In this case, the plugin will be active in every workflow. We recommend that you be aware of the performance impact of subscribing to all Python methods, especially if your plugin regularly performs demanding tasks for common Python method calls.
 
-### Register the Custom Plugin
-The `DriverConfigurationProfiles` manages the plugin profiles.
-To register a new custom plugin, call `DriverConfigurationProfiles.addOrReplaceProfile()` as follows:
+### Registering a Custom Plugin
+To register your custom plugin:
+- In `connection_plugin_chain.py`, add an entry in the `PLUGIN_FACTORIES` `Dict`. The key should be a short name for the plugin (without spaces), and the value should be the `PluginFactory` class you created in step 2. You can also optionally add an entry to the `PLUGIN_FACTORY_WEIGHTS` `Dict`. The weight that you give your custom plugin will determine the order that the plugin will be loaded in the plugin chain if the `auto_sort_wrapper_plugin_order` connection property is enabled. This property is enabled by default.
+- When creating a connection, in the `plugins` connection parameter, include the plugin name that you added to `PLUGIN_FACTORIES` in step 3. This will ensure that your plugin is included in the plugin chain.
 
-```java
-properties.setProperty("wrapperProfileName", "foo");
-DriverConfigurationProfiles.addOrReplaceProfile("foo", Collections.singletonList(FooPluginFactory.class));
+```python
+    # In my_plugin.py
+    class MyPlugin(Plugin):
+        def __init__(self, plugin_service: PluginService, props: Properties):
+            self._plugin_service = plugin_service
+            self._props = props
+
+    class MyPluginFactory(PluginFactory):
+        def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+            return MyPlugin(plugin_service, props)
+
+    # In connection_plugin_chain.py:
+    PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
+        # ...
+        "my_plugin": MyPluginFactory
+    }
+
+    # In app.py
+    params = {
+        "plugins": "aurora_connection_tracker,my_plugin"
+        # Add other connection properties below...
+    }
+    
+    # If using MySQL:
+    conn = AwsWrapperConnection.connect(mysql.connector.connect, **params)
+    
+    # If using Postgres:
+    conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
+    
 ```
 
 ## What is Not Allowed in Plugins
@@ -114,8 +142,8 @@ class BadPlugin(Plugin):
         # Bad Practice #2: using driver-specific parameters.
         # Not all drivers support the same configuration parameters. For instance, MySQL Connector/Python uses the
         # "database" parameter to specify which database to connect to, but psycopg uses "dbname".
-        if props.get("database") is None:
-            props["database"] = "default_database"
+        if props.get("dbname") is None:
+            props["dbname"] = "default_database"
 
         # Bad Practice #3: Making direct connections
         return psycopg.Connection.connect(**props)

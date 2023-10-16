@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 
 from abc import abstractmethod
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
-from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
-                    Set, Tuple)
+from typing import (Any, Callable, Dict, FrozenSet, Optional, Protocol, Set,
+                    Tuple)
 
 from aws_advanced_python_wrapper.connection_plugin_chain import get_plugins
 from aws_advanced_python_wrapper.connection_provider import (
