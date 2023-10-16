@@ -402,7 +402,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                                                                    DialectCode.AURORA_PG: AuroraPgDialect(),
                                                                    DialectCode.UNKNOWN: UnknownDatabaseDialect()}
     _custom_dialect: Optional[DatabaseDialect] = None
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="UnknownDatabaseDialectExecutor")
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DatabaseDialectManagerExecutor")
 
     def __init__(self, rds_helper: Optional[RdsUtils] = None):
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
