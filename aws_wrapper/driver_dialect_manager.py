@@ -17,12 +17,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Union
 
 if TYPE_CHECKING:
-    from aws_wrapper.generic_driver_dialect import DriverDialect
     from aws_wrapper.connection_provider import ConnectionProvider
 
+from aws_wrapper.driver_dialect import DriverDialect
 from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.generic_driver_dialect import GenericDriverDialect
 from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
@@ -95,7 +94,7 @@ class DriverDialectManager(DriverDialectProvider):
                 return dialect
 
         self._log_dialect(DriverDialectCodes.GENERIC, "generic")
-        return GenericDriverDialect()
+        return DriverDialect()
 
     @staticmethod
     def _log_dialect(dialect_code: str, driver_dialect: Union[DriverDialect, str]):
