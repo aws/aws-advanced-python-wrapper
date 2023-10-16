@@ -31,9 +31,9 @@ from typing import Any, List, Optional
 import boto3
 from botocore.config import Config
 
-from aws_wrapper.errors import UnsupportedOperationError
-from aws_wrapper.utils.log import Logger
-from aws_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.errors import UnsupportedOperationError
+from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.messages import Messages
 from .database_engine import DatabaseEngine
 from .driver_helper import DriverHelper
 from .test_driver import TestDriver

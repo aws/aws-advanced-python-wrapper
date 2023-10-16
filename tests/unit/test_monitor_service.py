@@ -15,11 +15,11 @@
 import psycopg
 import pytest
 
-from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.host_monitoring_plugin import (MonitoringThreadContainer,
-                                                MonitorService)
-from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.host_monitoring_plugin import (MonitoringThreadContainer,
+                                                                MonitorService)
+from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def monitor_service_with_container(mock_plugin_service, thread_container):
 @pytest.fixture(autouse=True)
 def setup_teardown(mocker, mock_thread_container, mock_plugin_service, mock_monitor):
     mock_thread_container.get_or_create_monitor.return_value = mock_monitor
-    mocker.patch("aws_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
+    mocker.patch("aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
 
     yield
 

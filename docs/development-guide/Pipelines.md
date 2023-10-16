@@ -52,7 +52,7 @@ setting a host list provider in a plugin within the pipeline would override any 
 The host list providers are used to retrieve host information about the database server,
 either from the connection string or by querying the database server.
 For simple use cases where having up-to-date information on all existing database readers is not necessary,
-using a simple host list provider such as the [Connection String Host List Provider](../../aws_wrapper/host_list_provider.py) would be sufficient.
+using a simple host list provider such as the [Connection String Host List Provider](../../aws_advanced_python_wrapper/host_list_provider.py) would be sufficient.
 The connection string host list provider parses the host and port information from the connection string during initialization,
 it does not perform any additional work.
 
@@ -67,7 +67,7 @@ However, you can ensure that the provider is used by specifying a topology-aware
 Plugins can subscribe to this pipeline to perform special handling when the current connection has changed. Once 
 subscribed, plugins should override the `notify_connection_changed` method to implement any desired logic. This method 
 will be called whenever the current connection changes. Plugins can also provide suggestions of what to do with the old 
-connection by returning a [suggested action](../../aws_wrapper/utils/notifications.py).
+connection by returning a [suggested action](../../aws_advanced_python_wrapper/utils/notifications.py).
 
 ## Host List Changed Notification Pipeline
 

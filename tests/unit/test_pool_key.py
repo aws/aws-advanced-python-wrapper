@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from aws_wrapper.sql_alchemy_connection_provider import PoolKey
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import PoolKey
 
 
 def test_eq():

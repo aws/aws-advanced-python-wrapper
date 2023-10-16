@@ -14,7 +14,7 @@
 
 import time
 
-from aws_wrapper.utils.cache_map import CacheMap
+from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 
 
 def test_get():

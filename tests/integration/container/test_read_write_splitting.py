@@ -15,15 +15,15 @@
 import pytest
 from sqlalchemy import PoolProxiedConnection
 
-from aws_wrapper import AwsWrapperConnection
-from aws_wrapper.connection_provider import ConnectionProviderManager
-from aws_wrapper.errors import (AwsWrapperError, FailoverFailedError,
-                                FailoverSuccessError, ReadWriteSplittingError,
-                                TransactionResolutionUnknownError)
-from aws_wrapper.host_list_provider import RdsHostListProvider
-from aws_wrapper.sql_alchemy_connection_provider import \
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.connection_provider import ConnectionProviderManager
+from aws_advanced_python_wrapper.errors import (AwsWrapperError, FailoverFailedError,
+                                                FailoverSuccessError, ReadWriteSplittingError,
+                                                TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
-from aws_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from tests.integration.container.utils.aurora_test_utility import \
     AuroraTestUtility
 from tests.integration.container.utils.conditions import (

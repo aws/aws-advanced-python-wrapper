@@ -14,7 +14,7 @@
 import typing
 from typing import Any, Dict, Iterable, List
 
-from aws_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.messages import Messages
 from .test_instance_info import TestInstanceInfo
 
 

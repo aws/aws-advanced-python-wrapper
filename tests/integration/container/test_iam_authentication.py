@@ -29,8 +29,8 @@ from typing import Callable
 
 import pytest
 
-from aws_wrapper import AwsWrapperConnection
-from aws_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from tests.integration.container.utils.conditions import (disable_on_features,
                                                           enable_on_features)
 from tests.integration.container.utils.driver_helper import DriverHelper

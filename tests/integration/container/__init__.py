@@ -14,7 +14,7 @@
 
 from logging import DEBUG, getLogger
 
-from aws_wrapper.utils.utils import LogUtils
+from aws_advanced_python_wrapper.utils.utils import LogUtils
 
 
 def set_logger(name=__name__, level=DEBUG, format_string=None):
@@ -22,4 +22,4 @@ def set_logger(name=__name__, level=DEBUG, format_string=None):
 
 
 set_logger()
-set_logger('aws_wrapper')
+set_logger('aws_advanced_python_wrapper')

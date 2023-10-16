@@ -20,11 +20,11 @@ from typing import Dict, Set
 import psycopg
 import pytest
 
-from aws_wrapper.host_availability import HostAvailability
-from aws_wrapper.hostinfo import HostInfo, HostRole
-from aws_wrapper.stale_dns_plugin import StaleDnsHelper
-from aws_wrapper.utils.notifications import HostEvent
-from aws_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsHelper
+from aws_advanced_python_wrapper.utils.notifications import HostEvent
+from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 @pytest.fixture

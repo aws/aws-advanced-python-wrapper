@@ -16,8 +16,8 @@ from collections.abc import Hashable
 
 import pytest
 
-from aws_wrapper.host_availability import HostAvailability
-from aws_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 
 
 def test_host_info_defaults():

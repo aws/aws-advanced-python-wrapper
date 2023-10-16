@@ -14,7 +14,7 @@
 
 import time
 
-from aws_wrapper.utils.sliding_expiration_cache import SlidingExpirationCache
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache import SlidingExpirationCache
 
 
 def test_compute_if_absent():

@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING, List
 
 import pytest
 
-from aws_wrapper.errors import (FailoverSuccessError,
-                                TransactionResolutionUnknownError)
-from aws_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.errors import (FailoverSuccessError,
+                                                TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from .utils.conditions import (disable_on_features, enable_on_features,
                                enable_on_num_instances)
 from .utils.proxy_helper import ProxyHelper
@@ -30,8 +30,8 @@ if TYPE_CHECKING:
     from .utils.test_instance_info import TestInstanceInfo
     from .utils.test_driver import TestDriver
 
-from aws_wrapper.utils.log import Logger
-from aws_wrapper.wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
 from .utils.aurora_test_utility import AuroraTestUtility
 from .utils.driver_helper import DriverHelper
 from .utils.test_environment import TestEnvironment

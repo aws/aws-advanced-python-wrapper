@@ -14,7 +14,7 @@
 
 import pytest
 
-from aws_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
 us_east_region_cluster = "database-test-name.cluster-XYZ.us-east-2.rds.amazonaws.com"
 us_east_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.us-east-2.rds.amazonaws.com"

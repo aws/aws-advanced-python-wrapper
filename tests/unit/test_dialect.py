@@ -17,15 +17,15 @@ from unittest.mock import patch
 import psycopg
 import pytest
 
-from aws_wrapper.database_dialect import (AuroraMysqlDialect, AuroraPgDialect,
-                                          DatabaseDialectManager, DialectCode,
-                                          MysqlDatabaseDialect,
-                                          PgDatabaseDialect, RdsMysqlDialect,
-                                          RdsPgDialect, TargetDriverType,
-                                          UnknownDatabaseDialect)
-from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.database_dialect import (AuroraMysqlDialect, AuroraPgDialect,
+                                                          DatabaseDialectManager, DialectCode,
+                                                          MysqlDatabaseDialect,
+                                                          PgDatabaseDialect, RdsMysqlDialect,
+                                                          RdsPgDialect, TargetDriverType,
+                                                          UnknownDatabaseDialect)
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
 
 
 @pytest.fixture
@@ -118,7 +118,7 @@ def test_mysql_is_dialect(mock_conn, mock_cursor, mock_session, mysql_dialect):
     assert not mysql_dialect.is_dialect(mock_conn)
 
 
-@patch('aws_wrapper.database_dialect.super')
+@patch('aws_advanced_python_wrapper.database_dialect.super')
 def test_rds_mysql_is_dialect(mock_super, mock_cursor, mock_conn, rds_mysql_dialect):
     mock_super().is_dialect.return_value = True
 
@@ -148,7 +148,7 @@ def test_aurora_mysql_is_dialect(mock_conn, mock_cursor):
     assert dialect.is_dialect(mock_conn) is True
 
 
-@patch('aws_wrapper.database_dialect.super')
+@patch('aws_advanced_python_wrapper.database_dialect.super')
 def test_aurora_pg_is_dialect(mock_super, mock_conn, mock_cursor):
     aurora_pg_dialect = AuroraPgDialect()
     mock_conn.cursor.return_value = mock_cursor
@@ -169,7 +169,7 @@ def test_aurora_pg_is_dialect(mock_super, mock_conn, mock_cursor):
     assert not aurora_pg_dialect.is_dialect(mock_conn)
 
 
-@patch('aws_wrapper.database_dialect.super')
+@patch('aws_advanced_python_wrapper.database_dialect.super')
 def test_rds_pg_is_dialect(mock_super, mock_cursor, mock_conn, rds_pg_dialect):
     mock_super().is_dialect.return_value = True
 

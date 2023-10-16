@@ -18,10 +18,10 @@ from time import perf_counter_ns, sleep
 import psycopg
 import pytest
 
-from aws_wrapper.host_monitoring_plugin import (Monitor, MonitoringContext,
-                                                MonitoringThreadContainer)
-from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.host_monitoring_plugin import (Monitor, MonitoringContext,
+                                                                MonitoringThreadContainer)
+from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
 
 
 @pytest.fixture
@@ -176,7 +176,7 @@ def test_run_host_unavailable(
     executor = ThreadPoolExecutor()
     context = MonitoringContext(monitor, mock_conn, mock_driver_dialect, 30, 10, 3)
 
-    mocker.patch("aws_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=TimeoutError())
+    mocker.patch("aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=TimeoutError())
     monitor.start_monitoring(context)
     future = executor.submit(monitor.run)
     wait([future], 3)
@@ -205,7 +205,7 @@ def test_run__no_contexts(mocker, mock_monitor_service, monitor):
 
 def test_check_connection_status__valid_then_invalid(mocker, monitor):
     mock_execute_conn_check = mocker.patch(
-        "aws_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=[None, TimeoutError()])
+        "aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=[None, TimeoutError()])
 
     status = monitor._check_host_status(30)  # Initiate a monitoring connection
     assert status.is_available
@@ -217,7 +217,7 @@ def test_check_connection_status__valid_then_invalid(mocker, monitor):
 
 
 def test_check_connection_status__conn_check_throws_exception(mocker, monitor):
-    mocker.patch("aws_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=Exception())
+    mocker.patch("aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=Exception())
 
     status = monitor._check_host_status(30)  # Initiate a monitoring connection
     assert status.is_available

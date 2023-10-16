@@ -42,7 +42,7 @@ The Host Monitoring Connection Plugin may create new monitoring connections to c
 
 ```python
 import psycopg
-from aws_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection
 
 conn = AwsWrapperConnection.connect(
     psycopg.Connection.connect,
@@ -54,7 +54,7 @@ conn = AwsWrapperConnection.connect(
     # Configure the timeout values for all non-monitoring connections.
     connect_timeout=30, socket_timeout=30,
     # Configure different timeout values for the monitoring connections.
-    monitoring-connect_timeout=10, monitoring-socket_timeout=10)
+    monitoring - connect_timeout = 10, monitoring - socket_timeout = 10)
 ```
 
 > [!IMPORTANT]\

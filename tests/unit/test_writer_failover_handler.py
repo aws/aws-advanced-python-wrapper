@@ -23,16 +23,16 @@ import psycopg
 import pytest
 
 if TYPE_CHECKING:
-    from aws_wrapper.pep249 import Connection
+    from aws_advanced_python_wrapper.pep249 import Connection
 
-from aws_wrapper.errors import FailoverError
-from aws_wrapper.failover_result import (ReaderFailoverResult,
-                                         WriterFailoverResult)
-from aws_wrapper.host_availability import HostAvailability
-from aws_wrapper.hostinfo import HostInfo, HostRole
-from aws_wrapper.utils.properties import Properties
-from aws_wrapper.writer_failover_handler import (WriterFailoverHandler,
-                                                 WriterFailoverHandlerImpl)
+from aws_advanced_python_wrapper.errors import FailoverError
+from aws_advanced_python_wrapper.failover_result import (ReaderFailoverResult,
+                                                         WriterFailoverResult)
+from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.writer_failover_handler import (WriterFailoverHandler,
+                                                                 WriterFailoverHandlerImpl)
 
 
 @pytest.fixture

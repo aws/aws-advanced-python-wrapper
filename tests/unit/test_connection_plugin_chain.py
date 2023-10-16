@@ -17,20 +17,20 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from aws_wrapper.plugin import Plugin
+    from aws_advanced_python_wrapper.plugin import Plugin
 
 from typing import List
 
 import pytest
 
-from aws_wrapper.connect_time_plugin import ConnectTimePlugin
-from aws_wrapper.connection_plugin_chain import get_plugins
-from aws_wrapper.default_plugin import DefaultPlugin
-from aws_wrapper.execute_time_plugin import ExecuteTimePlugin
-from aws_wrapper.failover_plugin import FailoverPlugin
-from aws_wrapper.host_monitoring_plugin import HostMonitoringPlugin
-from aws_wrapper.iam_plugin import IamAuthPlugin
-from aws_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.connect_time_plugin import ConnectTimePlugin
+from aws_advanced_python_wrapper.connection_plugin_chain import get_plugins
+from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
+from aws_advanced_python_wrapper.execute_time_plugin import ExecuteTimePlugin
+from aws_advanced_python_wrapper.failover_plugin import FailoverPlugin
+from aws_advanced_python_wrapper.host_monitoring_plugin import HostMonitoringPlugin
+from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
+from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 @pytest.fixture

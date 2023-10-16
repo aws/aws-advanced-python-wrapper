@@ -21,10 +21,10 @@ from typing import TYPE_CHECKING, List
 
 import pytest
 
-from aws_wrapper.connect_time_plugin import ConnectTimePlugin
-from aws_wrapper.connection_provider import ConnectionProviderManager
-from aws_wrapper.execute_time_plugin import ExecuteTimePlugin
-from aws_wrapper.sql_alchemy_connection_provider import \
+from aws_advanced_python_wrapper.connect_time_plugin import ConnectTimePlugin
+from aws_advanced_python_wrapper.connection_provider import ConnectionProviderManager
+from aws_advanced_python_wrapper.execute_time_plugin import ExecuteTimePlugin
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
 from tests.integration.container.utils.driver_helper import DriverHelper
 
@@ -32,8 +32,8 @@ if TYPE_CHECKING:
     from tests.integration.container.utils.test_environment import TestEnvironment
     from tests.integration.container.utils.test_driver import TestDriver
 
-from aws_wrapper import AwsWrapperConnection
-from aws_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.utils.properties import Properties
 from tests.integration.container.utils.conditions import enable_on_features
 from tests.integration.container.utils.performance_utility import (
     PerformanceUtil, PerfStatBase)

@@ -21,16 +21,16 @@ import psycopg
 import pytest
 
 if TYPE_CHECKING:
-    from aws_wrapper.failover_result import ReaderFailoverResult
-    from aws_wrapper.pep249 import Connection
+    from aws_advanced_python_wrapper.failover_result import ReaderFailoverResult
+    from aws_advanced_python_wrapper.pep249 import Connection
 
 from time import sleep, time
 
-from aws_wrapper.host_availability import HostAvailability
-from aws_wrapper.hostinfo import HostInfo, HostRole
-from aws_wrapper.reader_failover_handler import (ReaderFailoverHandler,
-                                                 ReaderFailoverHandlerImpl)
-from aws_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.reader_failover_handler import (ReaderFailoverHandler,
+                                                                 ReaderFailoverHandlerImpl)
+from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 @pytest.fixture
