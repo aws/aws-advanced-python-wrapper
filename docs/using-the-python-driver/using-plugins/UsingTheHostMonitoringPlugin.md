@@ -54,7 +54,7 @@ conn = AwsWrapperConnection.connect(
     # Configure the timeout values for all non-monitoring connections.
     connect_timeout=30, socket_timeout=30,
     # Configure different timeout values for the monitoring connections.
-    monitoring - connect_timeout = 10, monitoring - socket_timeout = 10)
+    monitoring-connect_timeout=10, monitoring-socket_timeout=10)
 ```
 
 > [!IMPORTANT]\
