@@ -27,8 +27,8 @@ if TYPE_CHECKING:
     from .exception_handling import ExceptionHandler
 
 from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.host_list_provider import (AuroraHostListProvider,
-                                            ConnectionStringHostListProvider)
+from aws_wrapper.host_list_provider import (ConnectionStringHostListProvider,
+                                            RdsHostListProvider)
 from aws_wrapper.hostinfo import HostInfo
 from aws_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
@@ -302,7 +302,7 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
-        return lambda provider_service, props: AuroraHostListProvider(provider_service, props)
+        return lambda provider_service, props: RdsHostListProvider(provider_service, props)
 
 
 class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
@@ -351,7 +351,7 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
-        return lambda provider_service, props: AuroraHostListProvider(provider_service, props)
+        return lambda provider_service, props: RdsHostListProvider(provider_service, props)
 
 
 class UnknownDatabaseDialect(DatabaseDialect):

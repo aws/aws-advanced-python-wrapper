@@ -16,14 +16,14 @@ from aws_wrapper.connection_provider import ConnectionProviderManager
 from aws_wrapper.database_dialect import DatabaseDialectManager
 from aws_wrapper.driver_dialect_manager import DriverDialectManager
 from aws_wrapper.exception_handling import ExceptionManager
-from aws_wrapper.host_list_provider import AuroraHostListProvider
+from aws_wrapper.host_list_provider import RdsHostListProvider
 from aws_wrapper.plugin_service import PluginServiceImpl
 
 
 def pytest_runtest_setup(item):
-    AuroraHostListProvider._topology_cache.clear()
-    AuroraHostListProvider._is_primary_cluster_id_cache.clear()
-    AuroraHostListProvider._cluster_ids_to_update.clear()
+    RdsHostListProvider._topology_cache.clear()
+    RdsHostListProvider._is_primary_cluster_id_cache.clear()
+    RdsHostListProvider._cluster_ids_to_update.clear()
     PluginServiceImpl._host_availability_expiring_cache.clear()
     DatabaseDialectManager._known_endpoint_dialects.clear()
 

@@ -89,7 +89,7 @@ class WrapperProperties:
     TCP_KEEPALIVE_PROBES = WrapperProperty(
         "tcp_keepalive_probes", "Number of keepalive probes to send before concluding that the connection is invalid.")
 
-    # AuroraHostListProvider
+    # RdsHostListProvider
     TOPOLOGY_REFRESH_MS = WrapperProperty(
         "topology_refresh_ms",
         """Cluster topology refresh rate in milliseconds. The cached topology for the cluster will be invalidated after the
