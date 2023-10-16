@@ -22,9 +22,10 @@ from typing import TYPE_CHECKING, List
 import pytest
 
 from aws_wrapper.connect_time_plugin import ConnectTimePlugin
-from aws_wrapper.connection_provider import (
-    ConnectionProviderManager, SqlAlchemyPooledConnectionProvider)
+from aws_wrapper.connection_provider import ConnectionProviderManager
 from aws_wrapper.execute_time_plugin import ExecuteTimePlugin
+from aws_wrapper.sql_alchemy_connection_provider import \
+    SqlAlchemyPooledConnectionProvider
 from tests.integration.container.utils.driver_helper import DriverHelper
 
 if TYPE_CHECKING:

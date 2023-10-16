@@ -24,9 +24,8 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
     from aws_wrapper.plugin_service import PluginService
     from aws_wrapper.utils.properties import Properties
+    from aws_wrapper.connection_provider import ConnectionProviderManager
 
-from aws_wrapper.connection_provider import (
-    ConnectionProviderManager, SqlAlchemyPooledConnectionProvider)
 from aws_wrapper.errors import (AwsWrapperError, FailoverError,
                                 ReadWriteSplittingError)
 from aws_wrapper.hostinfo import HostInfo, HostRole
@@ -45,6 +44,7 @@ class ReadWriteSplittingPlugin(Plugin):
                                      "connect",
                                      "notify_connection_changed",
                                      "Connection.set_read_only"}
+    _POOL_PROVIDER_CLASS_NAME = "aws_wrapper.sql_alchemy_connection_provider.SqlAlchemyPooledConnectionProvider"
 
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
@@ -178,7 +178,7 @@ class ReadWriteSplittingPlugin(Plugin):
     def _get_new_writer_connection(self, writer_host: HostInfo):
         conn = self._plugin_service.connect(writer_host, self._properties)
         provider = self._conn_provider_manager.get_connection_provider(writer_host, self._properties)
-        self._is_writer_conn_from_internal_pool = isinstance(provider, SqlAlchemyPooledConnectionProvider)
+        self._is_writer_conn_from_internal_pool = (ReadWriteSplittingPlugin._POOL_PROVIDER_CLASS_NAME in str(type(provider)))
         self._set_writer_connection(conn, writer_host)
         self._switch_current_connection_to(conn, writer_host)
 
@@ -302,7 +302,7 @@ class ReadWriteSplittingPlugin(Plugin):
                 try:
                     conn = self._plugin_service.connect(host, self._properties)
                     provider = self._conn_provider_manager.get_connection_provider(host, self._properties)
-                    self._is_reader_conn_from_internal_pool = isinstance(provider, SqlAlchemyPooledConnectionProvider)
+                    self._is_reader_conn_from_internal_pool = (ReadWriteSplittingPlugin._POOL_PROVIDER_CLASS_NAME in str(type(provider)))
                     reader_host = host
                     break
                 except Exception:
