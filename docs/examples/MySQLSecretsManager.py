@@ -14,13 +14,13 @@
 
 from __future__ import annotations
 
-import psycopg
+import mysql.connector
 
 from aws_wrapper import AwsWrapperConnection
 
 if __name__ == "__main__":
     with AwsWrapperConnection.connect(
-            psycopg.Connection.connect,
+            mysql.connector.Connect,
             host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
             database="mysql",
             secrets_manager_secret_id="arn:aws:secretsmanager:<Region>:<AccountId>:secret:Secre78tName-6RandomCharacters",
