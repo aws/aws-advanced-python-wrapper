@@ -156,6 +156,10 @@ class MySQLDriverDialect(DriverDialect):
         if host_info.is_port_specified():
             driver_props["port"] = str(host_info.port)
 
+        db = WrapperProperties.DATABASE.get(original_props)
+        if db is not None:
+            driver_props["database"] = db
+
         connect_timeout = WrapperProperties.CONNECT_TIMEOUT_SEC.get(original_props)
         if connect_timeout is not None:
             driver_props["connect_timeout"] = connect_timeout
