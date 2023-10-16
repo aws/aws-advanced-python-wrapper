@@ -257,7 +257,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 if hosts is not None and len(hosts) > 0:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
                     if self._is_primary_cluster_id and cached_hosts is None:
-                        # This cluster_id is primary and a new entry was just crseated in the cache. When this happens,
+                        # This cluster_id is primary and a new entry was just created in the cache. When this happens,
                         # we check for non-primary cluster IDs associated with the same cluster so that the topology
                         # info can be shared.
                         self._suggest_cluster_id(hosts)
