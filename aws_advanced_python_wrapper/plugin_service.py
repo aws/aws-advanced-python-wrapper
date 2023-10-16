@@ -486,7 +486,6 @@ class PluginManager(CanReleaseResources):
 
     def __init__(self, container: PluginServiceManagerContainer, props: Properties):
         self._props: Properties = props
-        self._plugins: List[Plugin] = []
         self._function_cache: Dict[str, Callable] = {}
         self._container = container
         self._container.plugin_manager = self
