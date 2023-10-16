@@ -20,10 +20,10 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
 
 from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import UnsupportedOperationError
+from aws_wrapper.utils.decorators import timeout
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-from aws_wrapper.utils.timeout import timeout
 
 if TYPE_CHECKING:
     from aws_wrapper.hostinfo import HostInfo
@@ -119,7 +119,7 @@ class DriverDialect(ABC):
 
 
 class GenericDriverDialect(DriverDialect):
-    _executor: ClassVar[Executor] = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="GenericDriverDialectExecutor")
 
     def is_dialect(self, connect_func: Callable) -> bool:
         return True

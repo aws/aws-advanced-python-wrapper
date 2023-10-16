@@ -30,10 +30,10 @@ from mysql.connector.cursor_cext import CMySQLCursor
 from aws_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_wrapper.errors import UnsupportedOperationError
 from aws_wrapper.generic_driver_dialect import GenericDriverDialect
+from aws_wrapper.utils.decorators import timeout
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import (Properties, PropertiesUtils,
                                           WrapperProperties)
-from aws_wrapper.utils.timeout import timeout
 
 
 class MySQLDriverDialect(GenericDriverDialect):
@@ -43,7 +43,7 @@ class MySQLDriverDialect(GenericDriverDialect):
     AUTH_METHOD = "mysql_clear_password"
     IS_CLOSED_TIMEOUT_SEC = 3
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MySQLDriverDialectExecutor")
 
     _dialect_code: str = DriverDialectCodes.MYSQL_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {

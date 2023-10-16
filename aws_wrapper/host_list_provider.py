@@ -35,12 +35,13 @@ from aws_wrapper.host_availability import (HostAvailability,
 from aws_wrapper.hostinfo import HostInfo, HostRole
 from aws_wrapper.pep249 import Connection, Cursor, Error, ProgrammingError
 from aws_wrapper.utils.cache_map import CacheMap
+from aws_wrapper.utils.decorators import \
+    preserve_transaction_status_with_timeout
 from aws_wrapper.utils.log import Logger
 from aws_wrapper.utils.messages import Messages
 from aws_wrapper.utils.properties import Properties, WrapperProperties
 from aws_wrapper.utils.rds_url_type import RdsUrlType
 from aws_wrapper.utils.rdsutils import RdsUtils
-from aws_wrapper.utils.timeout import timeout
 from aws_wrapper.utils.utils import LogUtils
 
 logger = Logger(__name__)
@@ -123,7 +124,7 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
     # cluster IDs so that connections to the same clusters can share topology info.
     _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="AuroraHostListProviderExecutor")
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
@@ -247,8 +248,11 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                 return AuroraHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
             try:
-                query_for_topology_func_with_timeout = (
-                    timeout(AuroraHostListProvider._executor, self._max_timeout)(self._query_for_topology))
+                driver_dialect = self._host_list_provider_service.driver_dialect
+
+                query_for_topology_func_with_timeout = (preserve_transaction_status_with_timeout(AuroraHostListProvider._executor, self._max_timeout,
+                                                                                                 driver_dialect, conn)(
+                                                                                                     self._query_for_topology))
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     AuroraHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
@@ -289,17 +293,12 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
                     break
 
     def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
-        driver_dialect = self._host_list_provider_service.driver_dialect
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._dialect.topology_query)
-                res = self._process_query_results(cursor)
-                if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                    # this condition is True when autocommit is False and the query started a new transaction.
-                    conn.commit()
-                return res
+
+                result = self._process_query_results(cursor)
+                return result
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.InvalidQuery")) from e
 
@@ -380,42 +379,48 @@ class AuroraHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def get_host_role(self, connection: Connection) -> HostRole:
         driver_dialect = self._host_list_provider_service.driver_dialect
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(connection)
 
         try:
-            with closing(connection.cursor()) as cursor:
-                cursor_execute_func_with_timeout = timeout(
-                    AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
-                cursor_execute_func_with_timeout(self._dialect.is_reader_query)
-                result = cursor.fetchone()
-                if not initial_transaction_status and driver_dialect.is_in_transaction(connection):
-                    # this condition is True when autocommit is False and the query started a new transaction.
-                    connection.commit()
-                if result:
-                    is_reader = result[0]
-                    return HostRole.READER if is_reader else HostRole.WRITER
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                AuroraHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_role)
+            result = cursor_execute_func_with_timeout(connection)
+            if result is not None:
+                is_reader = result[0]
+                return HostRole.READER if is_reader else HostRole.WRITER
+
         except Error as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole")) from e
         raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorGettingHostRole"))
 
+    def _get_host_role(self, conn: Connection):
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._dialect.is_reader_query)
+            return cursor.fetchone()
+
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
         if connection is None:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
+
+        driver_dialect = self._host_list_provider_service.driver_dialect
         try:
-            with closing(connection.cursor()) as cursor:
-                cursor_execute_func_with_timeout = timeout(
-                    AuroraHostListProvider._executor, self._max_timeout)(cursor.execute)
-                cursor_execute_func_with_timeout(self._dialect.host_id_query)
-                result = cursor.fetchone()
-                if result:
-                    host_id = result[0]
-                    hosts = self.refresh()
-                    if not hosts:
-                        return None
-                    return next((host_info for host_info in hosts if host_info.host_id == host_id), None)
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                AuroraHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._identify_connection)
+            result = cursor_execute_func_with_timeout(connection)
+            if result:
+                host_id = result[0]
+                hosts = self.refresh()
+                if not hosts:
+                    return None
+                return next((host_info for host_info in hosts if host_info.host_id == host_id), None)
         except Error as e:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection")) from e
         raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
+
+    def _identify_connection(self, conn: Connection):
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._dialect.host_id_query)
+            return cursor.fetchone()
+        return None
 
     @dataclass()
     class ClusterIdSuggestion:

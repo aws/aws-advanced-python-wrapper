@@ -20,6 +20,36 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from concurrent.futures import Executor
 
+    from aws_wrapper.generic_driver_dialect import DriverDialect
+    from aws_wrapper.pep249 import Connection
+
+
+def preserve_transaction_status_with_timeout(executor: Executor, timeout_sec, driver_dialect: DriverDialect, conn: Connection):
+    """
+    Timeout decorator, timeout in seconds
+    """
+
+    def preserve_transaction_status_with_timeout_decorator(func):
+        @functools.wraps(func)
+        def func_wrapper(*args, **kwargs):
+
+            initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
+
+            future = executor.submit(func, *args, **kwargs)
+
+            # raises TimeoutError on timeout
+            result = future.result(timeout=timeout_sec)
+
+            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                # this condition is True when autocommit is False and the query started a new transaction.
+                conn.commit()
+
+            return result
+
+        return func_wrapper
+
+    return preserve_transaction_status_with_timeout_decorator
+
 
 def timeout(executor: Executor, timeout_sec):
     """
@@ -29,6 +59,7 @@ def timeout(executor: Executor, timeout_sec):
     def timeout_decorator(func):
         @functools.wraps(func)
         def func_wrapper(*args, **kwargs):
+
             future = executor.submit(func, *args, **kwargs)
 
             # raises TimeoutError on timeout
