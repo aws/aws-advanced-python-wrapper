@@ -87,7 +87,7 @@ if __name__ == "__main__":
     }
 
     """
-    Optional: configure read-write splitting to use internal connection pools.
+    Optional: configure read-write-splitting to use internal connection pools.
     The arguments passed to SqlAlchemyConnectionProvider are optional, see  UsingTheReadWriteSplittingPlugin.md
     for more info.
     """

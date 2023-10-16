@@ -6,7 +6,7 @@ The Read-Write-Splitting Plugin adds functionality to switch between writer and 
 
 The Read-Write-Splitting Plugin is not loaded by default. To load the plugin, include `read_write_splitting` in the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) connection parameter:
 
-```
+```python
 params = {
     "plugins": "read_write_splitting,failover,host_monitoring",
     # Add other connection properties below...
@@ -23,7 +23,8 @@ conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 
 When using the Read-Write-Splitting Plugin against Aurora clusters, you do not have to supply multiple instance URLs in the connection string. Instead, supply only the URL for the initial connection. The Read-Write-Splitting Plugin will automatically discover the URLs for the other instances in the cluster and will use this info to switch between the writer/reader when `read_only` is set. Note however that you must set the [`cluster_instance_host_pattern`](./UsingTheFailoverPlugin.md#failover-parameters) if you are connecting using an IP address or custom domain.
 
-> :warning: **NOTE:** you must set the [`cluster_instance_host_pattern`](./UsingTheFailoverPlugin.md#failover-parameters) if you are connecting using an IP address or custom domain.
+> ![IMPORTANT]\
+> you must set the [`cluster_instance_host_pattern`](./UsingTheFailoverPlugin.md#failover-parameters) if you are connecting using an IP address or custom domain.
 
 ### Using the Read-Write-Splitting Plugin against non-Aurora clusters
 
@@ -31,11 +32,13 @@ The Read-Write-Splitting Plugin is not currently supported for non-Aurora cluste
 
 ### Internal connection pooling
 
-> :warning: If internal connection pools are enabled, database passwords may not be verified with every connection request. The initial connection request for each database instance in the cluster will verify the password, but subsequent requests may return a cached pool connection without re-verifying the password. This behavior is inherent to the nature of connection pools and not a bug with the driver. `ConnectionProviderManager.release_resources` can be called to close all pools and remove all cached pool connections. See [InternalConnectionPoolPasswordWarning.java](../../examples/InternalConnectionPoolPasswordWarning.py) for more details.
+> [!IMPORTANT]\
+> If internal connection pools are enabled, database passwords may not be verified with every connection request. The initial connection request for each database instance in the cluster will verify the password, but subsequent requests may return a cached pool connection without re-verifying the password. This behavior is inherent to the nature of connection pools and not a bug with the driver. `ConnectionProviderManager.release_resources` can be called to close all pools and remove all cached pool connections. See [InternalConnectionPoolPasswordWarning.java](../../examples/InternalConnectionPoolPasswordWarning.py) for more details.
 
 When `read_only` is first set on an `AwsWrapperConnection` object, the Read-Write-Splitting Plugin will internally open a physical connection to a reader. The reader connection will then be cached for the given `AwsWrapperConnection`. Future `read_only` settings for the same `AwsWrapperConnection` will not open a new physical connection. However, other `AwsWrapperConnection` objects will need to open their own reader connections when `read_only` is first set. If your application frequently sets `read_only` on many `AwsWrapperConnection` objects, you can enable internal connection pooling to improve performance. When enabled, the AWS Advanced Python Driver will maintain an internal connection pool for each instance in the cluster. This allows the Read-Write-Splitting Plugin to reuse connections that were established by previous `AwsWrapperConnection` objects.
 
-> Note: Initial connections to a cluster URL will not be pooled because it can be problematic to pool a URL that resolves to different instances over time. The main benefit of internal connection pools occurs when `read_only` is set. When `read_only` is set, an internal pool will be created for the instance that the plugin switches to, regardless of the initial connection URL. Connections for that instance can then be reused in the future.
+> [!NOTE]\
+> Initial connections to a cluster URL will not be pooled because it can be problematic to pool a URL that resolves to different instances over time. The main benefit of internal connection pools occurs when `read_only` is set. When `read_only` is set, an internal pool will be created for the instance that the plugin switches to, regardless of the initial connection URL. Connections for that instance can then be reused in the future.
 
 The AWS Advanced Python Driver currently uses [SqlAlchemy](https://docs.sqlalchemy.org/en/20/core/pooling.html) to create and maintain its internal connection pools. The [Postgres](../../examples/PGReadWriteSplitting.py) or [MySQL](../../examples/MySQLReadWriteSplitting.py) sample code provides a useful example of how to enable this feature. The steps are as follows:
 
@@ -43,9 +46,10 @@ The AWS Advanced Python Driver currently uses [SqlAlchemy](https://docs.sqlalche
     - The first optional argument takes in a `Callable` that can be used to return custom parameter settings for the connection pool. See [here](https://docs.sqlalchemy.org/en/20/core/pooling.html#sqlalchemy.pool.QueuePool) for a list of available parameters. Note that you should not set the `creator` parameter - this parameter will be set automatically by the AWS Advanced Python Driver. This is done to follow desired behavior and ensure that the Read-Write-Splitting Plugin can successfully establish connections to new instances.
     - The second optional argument takes in a `Callable` that can be used to define custom key generation for the internal connection pools. Key generation is used to define when new connection pools are created; a new pool will be created each time a connection is requested with a unique key. By default, a new pool will be created for each unique instance-user combination. If you would like to define a different key system, you should pass in a `Callable` defining this logic. The `Callable` should take in a `HostInfo` and `Dict` specifying the connection properties and return a string representing the desired connection pool key. A simple example is shown below. Please see the [Postgres](../../examples/PGReadWriteSplitting.py) or [MySQL](../../examples/MySQLReadWriteSplitting.py) sample code for a full example.
 
-    > :warning: If you do not include the username in the connection pool key, connection pools may be shared between different users. As a result, an initial connection established with a privileged user may be returned to a connection request with a lower-privilege user without re-verifying credentials. This behavior is inherent to the nature of connection pools and not a bug with the driver. `ConnectionProviderManager.release_resources` can be called to close all pools and remove all cached pool connections.
+    > [!IMPORTANT]\
+    > If you do not include the username in the connection pool key, connection pools may be shared between different users. As a result, an initial connection established with a privileged user may be returned to a connection request with a lower-privilege user without re-verifying credentials. This behavior is inherent to the nature of connection pools and not a bug with the driver. `ConnectionProviderManager.release_resources` can be called to close all pools and remove all cached pool connections.
 
-    ```
+    ```python
     def get_pool_key(host_info: HostInfo, props: Dict[str, Any]):
       # Include the URL, user, and database in the connection pool key so that a new
       # connection pool will be opened for each different instance-user-database combination.
@@ -68,7 +72,8 @@ The AWS Advanced Python Driver currently uses [SqlAlchemy](https://docs.sqlalche
 
 5. When you are finished using all connections, call `ConnectionProviderManager.release_resources()`.
 
-> :warning: **Note:** You must call `ConnectionProviderManager.release_resources` to close the internal connection pools when you are finished using all connections. Unless `ConnectionProviderManager.release_resources` is called, the AWS Advanced Python Driver will keep the pools open so that they can be shared between connections.
+> [!IMPORTANT]\
+> You must call `ConnectionProviderManager.release_resources` to close the internal connection pools when you are finished using all connections. Unless `ConnectionProviderManager.release_resources` is called, the AWS Advanced Python Driver will keep the pools open so that they can be shared between connections.
 
 ### Example
 [Postgres Read-Write-Splitting sample code](../../examples/PGReadWriteSplitting.py)  
@@ -79,7 +84,7 @@ By default, the Read-Write-Splitting Plugin randomly selects a reader instance t
 
 To indicate which connection strategy to use, the `reader_host_selector_strategy` parameter can be set to one of the connection strategies in the table below. The following is an example of enabling the least connections strategy:
 
-```
+```python
 params = {
     "reader_host_selector_strategy": "least_connections",
     # Add other connection properties below...
@@ -92,10 +97,10 @@ conn = AwsWrapperConnection.connect(mysql.connector.connect, **params)
 conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 ```
 
-| Connection Strategy | Configuration Parameter                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Default Value |
-|---------------------|-------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `random`            | This strategy does not have configuration parameters. | The random strategy is the default connection strategy. When switching to a reader connection, the reader instance will be chosen randomly from the available database instances.                                                                                                                                                                                                                                                                                                                                                                                 | N/A           |
-| `least_connections` | This strategy does not have configuration parameters. | The least connections strategy will select reader instances based on which database instance has the least number of currently active connections. Note that this strategy is only available when internal connection pools are enabled - if you set the connection property without enabling internal pools, an exception will be thrown.                                                                                                                                                                                                                        | N/A           |
+| Connection Strategy | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Default Value |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `random`            | The random strategy is the default connection strategy. When switching to a reader connection, the reader instance will be chosen randomly from the available database instances.                                                                                                                                                                                                                                                                                                                                                                                 | N/A           |
+| `least_connections` | The least connections strategy will select reader instances based on which database instance has the least number of currently active connections. Note that this strategy is only available when internal connection pools are enabled - if you set the connection property without enabling internal pools, an exception will be thrown.                                                                                                                                                                                                                        | N/A           |
 
 
 ### Limitations
