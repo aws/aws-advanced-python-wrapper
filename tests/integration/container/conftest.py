@@ -16,13 +16,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from aws_wrapper.connection_provider import ConnectionProviderManager
-from aws_wrapper.database_dialect import DatabaseDialectManager
-from aws_wrapper.driver_dialect_manager import DriverDialectManager
-from aws_wrapper.exception_handling import ExceptionManager
-from aws_wrapper.host_list_provider import RdsHostListProvider
-from aws_wrapper.plugin_service import PluginServiceImpl
-from aws_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.connection_provider import \
+    ConnectionProviderManager
+from aws_advanced_python_wrapper.database_dialect import DatabaseDialectManager
+from aws_advanced_python_wrapper.driver_dialect_manager import \
+    DriverDialectManager
+from aws_advanced_python_wrapper.exception_handling import ExceptionManager
+from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
+from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
+from aws_advanced_python_wrapper.utils.log import Logger
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver

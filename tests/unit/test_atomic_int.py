@@ -14,7 +14,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 
-from aws_wrapper.utils.atomic import AtomicInt
+from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 
 
 def test_set_and_get():

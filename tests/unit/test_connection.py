@@ -20,12 +20,12 @@ from unittest.mock import MagicMock, patch
 import psycopg
 
 if TYPE_CHECKING:
-    from aws_wrapper.pep249 import Connection
+    from aws_advanced_python_wrapper.pep249 import Connection
 
-from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.plugin_service import (PluginServiceImpl,
-                                        PluginServiceManagerContainer)
-from aws_wrapper.wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.plugin_service import (
+    PluginServiceImpl, PluginServiceManagerContainer)
+from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
 
 
 def test_connection_basic():

@@ -12,6 +12,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import aws_wrapper
+import aws_advanced_python_wrapper
 
-aws_wrapper.set_logger()
+aws_advanced_python_wrapper.set_logger()

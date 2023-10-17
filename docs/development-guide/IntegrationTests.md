@@ -56,7 +56,7 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
        - `curl -sSL https://install.python-poetry.org | python3 -`
    - Windows (Powershell):
        - `(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -`
-3. Execute `poetry install` to install the aws_wrapper module and the required dependencies
+3. Execute `poetry install` to install the `aws_advanced_python_wrapper` module and the required dependencies
 4. Open a git bash terminal in VSCode or Pycharm by opening the terminal window, clicking the dropdown, and then
    selecting “git bash”. The terminal window can be opened using “View → Tool Windows → Terminal” in Pycharm or “View →
    Terminal” in VSCode.

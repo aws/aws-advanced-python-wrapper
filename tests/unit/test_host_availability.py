@@ -16,10 +16,11 @@ from time import sleep
 
 import pytest
 
-from aws_wrapper.host_availability import (
+from aws_advanced_python_wrapper.host_availability import (
     ExponentialBackoffHostAvailabilityStrategy, HostAvailability,
     HostAvailabilityStrategy, create_host_availability_strategy)
-from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 def test_create_default_availability_strategy_given_empty_properties():

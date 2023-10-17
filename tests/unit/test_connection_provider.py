@@ -14,10 +14,10 @@
 import psycopg
 import pytest
 
-from aws_wrapper.connection_provider import (ConnectionProviderManager,
-                                             DriverConnectionProvider)
-from aws_wrapper.hostinfo import HostInfo, HostRole
-from aws_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.connection_provider import (
+    ConnectionProviderManager, DriverConnectionProvider)
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 @pytest.fixture

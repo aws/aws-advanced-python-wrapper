@@ -42,7 +42,7 @@ The Host Monitoring Connection Plugin may create new monitoring connections to c
 
 ```python
 import psycopg
-from aws_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection
 
 conn = AwsWrapperConnection.connect(
     psycopg.Connection.connect,

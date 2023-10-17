@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
 
 import mysql.connector
-
 from aws_wrapper import AwsWrapperConnection
 from aws_wrapper.connection_provider import (
     ConnectionProviderManager, SqlAlchemyPooledConnectionProvider)

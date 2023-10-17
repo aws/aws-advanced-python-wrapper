@@ -20,12 +20,12 @@ from typing import FrozenSet, List
 import psycopg
 import pytest
 
-from aws_wrapper.host_monitoring_plugin import (MonitoringContext,
-                                                MonitoringThreadContainer,
-                                                MonitorService)
-from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.utils.atomic import AtomicInt
-from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.host_monitoring_plugin import (
+    MonitoringContext, MonitoringThreadContainer, MonitorService)
+from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.utils.atomic import AtomicInt
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 @pytest.fixture
@@ -122,7 +122,7 @@ def test_start_monitoring__connections_to_different_hosts(
 
     try:
         mock_create_monitor = mocker.patch(
-            "aws_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
+            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
         contexts = start_monitoring(num_conns, services, host_alias_list)
         expected_start_monitoring_calls = [mocker.call(context) for context in contexts]
         mock_monitor.start_monitoring.assert_has_calls(expected_start_monitoring_calls, True)
@@ -148,7 +148,7 @@ def test_start_monitoring__connections_to_same_host(
 
     try:
         mock_create_monitor = mocker.patch(
-            "aws_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
+            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
         contexts = start_monitoring(num_conns, services, host_alias_list)
         expected_start_monitoring_calls = [mocker.call(context) for context in contexts]
         mock_monitor.start_monitoring.assert_has_calls(expected_start_monitoring_calls, True)

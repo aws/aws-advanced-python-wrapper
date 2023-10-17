@@ -25,12 +25,13 @@ import pytest
 from tests.integration.container.utils.driver_helper import DriverHelper
 
 if TYPE_CHECKING:
-    from aws_wrapper.pep249 import Connection
+    from aws_advanced_python_wrapper.pep249 import Connection
     from tests.integration.container.utils.test_driver import TestDriver
 
-from aws_wrapper import AwsWrapperConnection
-from aws_wrapper.utils.atomic import AtomicInt
-from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.utils.atomic import AtomicInt
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from tests.integration.container.utils.conditions import enable_on_features
 from tests.integration.container.utils.performance_utility import (
     PerformanceUtil, PerfStatBase)

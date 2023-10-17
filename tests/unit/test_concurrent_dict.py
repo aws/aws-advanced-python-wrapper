@@ -16,8 +16,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from aws_wrapper.utils.atomic import AtomicInt
-from aws_wrapper.utils.concurrent import ConcurrentDict
+from aws_advanced_python_wrapper.utils.atomic import AtomicInt
+from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
 
 
 @pytest.fixture

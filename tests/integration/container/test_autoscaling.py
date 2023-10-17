@@ -24,12 +24,13 @@ if TYPE_CHECKING:
     from tests.integration.container.utils.test_driver import TestDriver
     from tests.integration.container.utils.test_instance_info import TestInstanceInfo
 
-from aws_wrapper import AwsWrapperConnection
-from aws_wrapper.connection_provider import ConnectionProviderManager
-from aws_wrapper.errors import FailoverSuccessError
-from aws_wrapper.sql_alchemy_connection_provider import \
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.connection_provider import \
+    ConnectionProviderManager
+from aws_advanced_python_wrapper.errors import FailoverSuccessError
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
-from aws_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from tests.integration.container.utils.aurora_test_utility import \
     AuroraTestUtility
 from tests.integration.container.utils.conditions import (

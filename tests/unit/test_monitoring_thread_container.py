@@ -14,8 +14,9 @@
 
 import pytest
 
-from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.host_monitoring_plugin import MonitoringThreadContainer
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    MonitoringThreadContainer
 
 
 @pytest.fixture

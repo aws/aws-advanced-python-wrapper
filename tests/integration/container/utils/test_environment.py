@@ -29,8 +29,8 @@ from typing import Any, Dict, List, Optional
 
 from toxiproxy import Toxiproxy  # type: ignore
 
-from aws_wrapper.errors import UnsupportedOperationError
-from aws_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.errors import UnsupportedOperationError
+from aws_advanced_python_wrapper.utils.messages import Messages
 from .database_engine import DatabaseEngine
 from .proxy_info import ProxyInfo
 from .test_driver import TestDriver

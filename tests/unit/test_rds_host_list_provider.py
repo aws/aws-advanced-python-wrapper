@@ -18,11 +18,12 @@ from datetime import datetime, timedelta
 import psycopg
 import pytest
 
-from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.host_list_provider import RdsHostListProvider
-from aws_wrapper.hostinfo import HostInfo, HostRole
-from aws_wrapper.pep249 import Error, ProgrammingError
-from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.pep249 import Error, ProgrammingError
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 @pytest.fixture(autouse=True)

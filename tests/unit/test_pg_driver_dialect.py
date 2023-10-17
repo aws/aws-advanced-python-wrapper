@@ -17,10 +17,11 @@ import pytest
 from mysql.connector import CMySQLConnection
 from sqlalchemy import PoolProxiedConnection
 
-from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostinfo import HostInfo
-from aws_wrapper.pg_driver_dialect import PgDriverDialect
-from aws_wrapper.utils.properties import Properties, WrapperProperties
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 @pytest.fixture

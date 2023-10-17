@@ -35,7 +35,7 @@ import pytest
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
 
-from aws_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection
 from tests.integration.container.utils.aurora_test_utility import \
     AuroraTestUtility
 from .utils.conditions import disable_on_features

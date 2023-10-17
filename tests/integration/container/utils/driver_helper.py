@@ -17,8 +17,8 @@ from typing import Any, Callable, Dict, Optional
 import mysql.connector
 import psycopg
 
-from aws_wrapper.errors import UnsupportedOperationError
-from aws_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.errors import UnsupportedOperationError
+from aws_advanced_python_wrapper.utils.messages import Messages
 from .test_driver import TestDriver
 from .test_environment import TestEnvironment
 

@@ -35,7 +35,7 @@ Please visit [this page](./docs/using-the-python-driver/UsingThePythonDriver.md#
 To start using the driver with Psycopg, you need to pass Psycopg's connect function to the `AwsWrapperConnection#connect` method as shown in the following example:
 
 ```python
-from aws_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection
 from psycopg import Connection
 
 with AwsWrapperConnection.connect(
@@ -58,7 +58,7 @@ You can either pass the connection configuration entirely through the connection
 To use the driver with MySQL Connection/Python, see the following example:
 
 ```python
-from aws_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection
 from mysql.connector import Connect
 
 with AwsWrapperConnection.connect(

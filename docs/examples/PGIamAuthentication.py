@@ -14,7 +14,7 @@
 
 import psycopg
 
-from aws_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection
 
 if __name__ == "__main__":
     with AwsWrapperConnection.connect(

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 from toxiproxy.api import APIConsumer  # type: ignore
 from toxiproxy.exceptions import NotFound  # type: ignore
 
-from aws_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.log import Logger
 from .test_environment import TestEnvironment
 
 

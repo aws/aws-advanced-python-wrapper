@@ -19,22 +19,22 @@ from typing import TYPE_CHECKING
 import psycopg
 
 if TYPE_CHECKING:
-    from aws_wrapper.driver_dialect import DriverDialect
-    from aws_wrapper.pep249 import Connection
+    from aws_advanced_python_wrapper.driver_dialect import DriverDialect
+    from aws_advanced_python_wrapper.pep249 import Connection
 
 from typing import Any, Callable, Dict, List, Optional, Set
 
 import pytest
 
-from aws_wrapper.default_plugin import DefaultPlugin
-from aws_wrapper.errors import AwsWrapperError
-from aws_wrapper.hostinfo import HostInfo, HostRole
-from aws_wrapper.iam_plugin import IamAuthPlugin
-from aws_wrapper.plugin import Plugin
-from aws_wrapper.plugin_service import PluginManager
-from aws_wrapper.utils.notifications import (ConnectionEvent, HostEvent,
-                                             OldConnectionSuggestedAction)
-from aws_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
+from aws_advanced_python_wrapper.plugin import Plugin
+from aws_advanced_python_wrapper.plugin_service import PluginManager
+from aws_advanced_python_wrapper.utils.notifications import (
+    ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
+from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 @pytest.fixture

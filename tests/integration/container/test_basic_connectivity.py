@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
 import pytest
 
-from aws_wrapper.utils.properties import WrapperProperties
-from aws_wrapper.wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
 from tests.integration.container.utils.aurora_test_utility import \
     AuroraTestUtility
 from tests.integration.container.utils.database_engine_deployment import \

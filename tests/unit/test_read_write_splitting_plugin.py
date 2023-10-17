@@ -17,14 +17,16 @@ from typing import List
 import psycopg
 import pytest
 
-from aws_wrapper.errors import FailoverSuccessError
-from aws_wrapper.hostinfo import HostInfo, HostRole
-from aws_wrapper.pep249 import Error
-from aws_wrapper.read_write_splitting_plugin import ReadWriteSplittingPlugin
-from aws_wrapper.sql_alchemy_connection_provider import \
+from aws_advanced_python_wrapper.errors import FailoverSuccessError
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.pep249 import Error
+from aws_advanced_python_wrapper.read_write_splitting_plugin import \
+    ReadWriteSplittingPlugin
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
-from aws_wrapper.utils.notifications import OldConnectionSuggestedAction
-from aws_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.notifications import \
+    OldConnectionSuggestedAction
+from aws_advanced_python_wrapper.utils.properties import Properties
 
 default_props = Properties()
 writer_host = HostInfo(host="instance0", role=HostRole.WRITER)

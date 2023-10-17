@@ -19,11 +19,12 @@ from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 import mysql.connector
 
 if TYPE_CHECKING:
-    from aws_wrapper.pep249 import Connection
+    from aws_advanced_python_wrapper.pep249 import Connection
 
-from aws_wrapper import AwsWrapperConnection
-from aws_wrapper.errors import (FailoverFailedError, FailoverSuccessError,
-                                TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.errors import (
+    FailoverFailedError, FailoverSuccessError,
+    TransactionResolutionUnknownError)
 
 
 def configure_initial_session_states(conn: Connection):

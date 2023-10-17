@@ -200,7 +200,7 @@ public class ContainerHelper {
     }
 
     return container
-        .withFileSystemBind("../../../aws_wrapper", "/app/aws_wrapper", BindMode.READ_ONLY)
+        .withFileSystemBind("../../../aws_advanced_python_wrapper", "/app/aws_advanced_python_wrapper", BindMode.READ_ONLY)
         .withFileSystemBind("../../../README.md", "/app/README.md", BindMode.READ_ONLY)
         .withFileSystemBind("../../../pyproject.toml", "/app/pyproject.toml", BindMode.READ_ONLY)
         .withFileSystemBind("../../../poetry.lock", "/app/poetry.lock", BindMode.READ_ONLY)

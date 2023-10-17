@@ -32,15 +32,15 @@ pip install mysql-connector-python
 To start using the driver with Psycopg, you need to pass Psycopg's connect function to the `AwsWrapperConnection#connect` method as shown in the following example:
 
 ```python
-from aws_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection
 from psycopg import Connection
 
 awsconn = AwsWrapperConnection.connect(
-        Connection.connect,
-        "host=database.cluster-xyz.us-east-1.rds.amazonaws.com dbname=db user=john password=pwd",
-        plugins="failover",
-        wrapper_dialect="aurora-pg",
-        autocommit=True
+    Connection.connect,
+    "host=database.cluster-xyz.us-east-1.rds.amazonaws.com dbname=db user=john password=pwd",
+    plugins="failover",
+    wrapper_dialect="aurora-pg",
+    autocommit=True
 )
 ```
 The `AwsWrapperConnection#connect` method accepts the connection configuration through both the connection string and the keyword arguments.
@@ -78,8 +78,8 @@ See this simple PostgreSQL example:
 
 ```python
 import psycopg
-from aws_wrapper import AwsWrapperConnection
-from aws_wrapper.errors import FailoverSuccessError
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.errors import FailoverSuccessError
 
 with AwsWrapperConnection.connect(
         psycopg.Connection.connect,
@@ -88,12 +88,12 @@ with AwsWrapperConnection.connect(
     try:
         with awsconn.cursor() as cursor:
             cursor.execute(sql)
-    
+
     except FailoverSuccessError:
         # Query execution failed and AWS Advanced Python Driver successfully failed over to an available instance.
         # The old cursor is no longer reusable and the application needs to reconfigure sessions states.
         reconfigure_session_states(awsconn)
-        
+
         # Retry query
         with awsconn.cursor() as cursor:
             cursor.execute(sql)
