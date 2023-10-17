@@ -52,6 +52,18 @@ def conn_utils():
 
 
 def pytest_runtest_setup(item):
+    RdsHostListProvider._topology_cache.clear()
+    RdsHostListProvider._is_primary_cluster_id_cache.clear()
+    RdsHostListProvider._cluster_ids_to_update.clear()
+    PluginServiceImpl._host_availability_expiring_cache.clear()
+    DatabaseDialectManager._known_endpoint_dialects.clear()
+
+    ConnectionProviderManager.release_resources()
+    ConnectionProviderManager.reset_provider()
+    DatabaseDialectManager.reset_custom_dialect()
+    DriverDialectManager.reset_custom_dialect()
+    ExceptionManager.reset_custom_handler()
+
     if hasattr(item, "callspec"):
         current_driver = item.callspec.params.get("test_driver")
         TestEnvironment.get_current().set_current_driver(current_driver)
@@ -107,17 +119,6 @@ def pytest_runtest_setup(item):
             writer_ip = socket.gethostbyname(writer_endpoint)
 
         assert cluster_ip == writer_ip
-
-        RdsHostListProvider._topology_cache.clear()
-        RdsHostListProvider._is_primary_cluster_id_cache.clear()
-        RdsHostListProvider._cluster_ids_to_update.clear()
-        PluginServiceImpl._host_availability_expiring_cache.clear()
-        DatabaseDialectManager._known_endpoint_dialects.clear()
-
-        ConnectionProviderManager.reset_provider()
-        DatabaseDialectManager.reset_custom_dialect()
-        DriverDialectManager.reset_custom_dialect()
-        ExceptionManager.reset_custom_handler()
 
 
 def pytest_generate_tests(metafunc):

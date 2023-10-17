@@ -79,12 +79,6 @@ class TestReadWriteSplitting:
         WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.set(props_copy, f"?.{endpoint_suffix}")
         return props_copy
 
-    @pytest.fixture(autouse=True)
-    def cleanup_connection_provider(self):
-        yield
-        ConnectionProviderManager.release_resources()
-        ConnectionProviderManager.reset_provider()
-
     def test_connect_to_writer__switch_read_only(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -254,8 +248,7 @@ class TestReadWriteSplitting:
         with pytest.raises(AwsWrapperError):
             conn.read_only = True
 
-    # @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
-    @pytest.mark.skip
+    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_set_read_only_false__all_instances_down(
             self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, aurora_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)

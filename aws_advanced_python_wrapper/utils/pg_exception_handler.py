@@ -16,7 +16,7 @@ from typing import List, Optional
 
 from psycopg.errors import (ConnectionTimeout,
                             InvalidAuthorizationSpecification, InvalidPassword,
-                            OperationalError)
+                            OperationalError, Error)
 
 from aws_advanced_python_wrapper.errors import QueryTimeoutError
 from aws_advanced_python_wrapper.exception_handling import ExceptionHandler
@@ -43,7 +43,7 @@ class PgExceptionHandler(ExceptionHandler):
     _PASSWORD_AUTHENTICATION_FAILED_MSG = "password authentication failed"
     _PAM_AUTHENTICATION_FAILED_MSG = "PAM authentication failed"
     _CONNECTION_FAILED = "connection failed"
-    _CONNECTION_POINTER_NULL = "consuming input failed: connection pointer is NULL"
+    _CONNECTION_POINTER_NULL = "consuming input failed"
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):

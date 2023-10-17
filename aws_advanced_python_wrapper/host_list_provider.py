@@ -304,6 +304,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 return result
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
+        except Exception as e:
+            logger.warning(f"\n == UNCAUGHT EXCEPTION DURING QUERY: {e} == ")
+            raise e
 
     def _process_query_results(self, cursor: Cursor) -> Tuple[HostInfo, ...]:
         host_map = {}
