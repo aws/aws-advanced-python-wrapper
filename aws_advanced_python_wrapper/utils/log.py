@@ -27,7 +27,7 @@ class Logger:
         self.logger = getLogger(name)
 
     def debug(self, msg, *args):
-        if len(self.logger.handlers) <= 0 or not self.logger.isEnabledFor(logging.DEBUG):
+        if (len(self.logger.handlers) <= 0 and len(self.logger.parent.handlers) <= 0) or not self.logger.isEnabledFor(logging.DEBUG):
             return
 
         if args is not None and len(args) > 0:
@@ -39,7 +39,7 @@ class Logger:
                 self.logger.debug(msg)
 
     def error(self, msg, *args):
-        if len(self.logger.handlers) <= 0 or not self.logger.isEnabledFor(logging.ERROR):
+        if (len(self.logger.handlers) <= 0 and len(self.logger.parent.handlers) <= 0) or not self.logger.isEnabledFor(logging.ERROR):
             return
 
         if args is not None and len(args) > 0:
@@ -51,7 +51,7 @@ class Logger:
                 self.logger.error(msg)
 
     def warning(self, msg, *args):
-        if len(self.logger.handlers) <= 0 or not self.logger.isEnabledFor(logging.WARNING):
+        if (len(self.logger.handlers) <= 0 and len(self.logger.parent.handlers) <= 0) or not self.logger.isEnabledFor(logging.WARNING):
             return
 
         if args is not None and len(args) > 0:
