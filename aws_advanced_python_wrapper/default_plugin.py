@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
+
+from aws_advanced_python_wrapper.utils.decorators import timeout
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.connection_provider import (ConnectionProvider,
@@ -23,9 +25,9 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
     from aws_advanced_python_wrapper.plugin_service import PluginService
     from aws_advanced_python_wrapper.pep249 import Connection
-    from aws_advanced_python_wrapper.utils.properties import Properties
 
 import copy
+from concurrent.futures import Executor, ThreadPoolExecutor
 from typing import Any, Callable, Set
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -33,15 +35,23 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 class DefaultPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
     _CLOSE_METHOD = "Connection.close"
+    _executor: ClassVar[Executor] = ThreadPoolExecutor()
 
-    def __init__(self, plugin_service: PluginService, connection_provider_manager: ConnectionProviderManager):
+    def __init__(
+            self,
+            plugin_service: PluginService,
+            connection_provider_manager: ConnectionProviderManager,
+            props: Properties):
         self._plugin_service: PluginService = plugin_service
         self._connection_provider_manager = connection_provider_manager
+        self._socket_timeout = WrapperProperties.SOCKET_TIMEOUT_SEC.get(props)
 
     def connect(
             self,
@@ -87,7 +97,12 @@ class DefaultPlugin(Plugin):
             self._connection_provider_manager.default_provider)
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
-        result = execute_func()
+        if method_name in self._plugin_service.network_bound_methods and self._socket_timeout is not None:
+            execute_with_timeout = timeout(DefaultPlugin._executor, self._socket_timeout)(execute_func)
+            result = execute_with_timeout()
+        else:
+            result = execute_func()
+
         if method_name != DefaultPlugin._CLOSE_METHOD and self._plugin_service.current_connection is not None:
             self._plugin_service.update_in_transaction()
 
