@@ -43,7 +43,7 @@ class PgExceptionHandler(ExceptionHandler):
     _PASSWORD_AUTHENTICATION_FAILED_MSG = "password authentication failed"
     _PAM_AUTHENTICATION_FAILED_MSG = "PAM authentication failed"
     _CONNECTION_FAILED = "connection failed"
-    _CONNECTION_POINTER_NULL = "consuming input failed: connection pointer is NULL"
+    _CONSUMING_INPUT_FAILED = "consuming input failed"
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
@@ -62,7 +62,7 @@ class PgExceptionHandler(ExceptionHandler):
             # Check the error message if this is a generic error
             error_msg: str = error.args[0]
             # self._CONNECTION_POINTER_NULL is thrown when the host monitoring plugin aborts an unavailable connection
-            return self._CONNECTION_FAILED in error_msg or self._CONNECTION_POINTER_NULL in error_msg
+            return self._CONNECTION_FAILED in error_msg or self._CONSUMING_INPUT_FAILED in error_msg
 
         return False
 
