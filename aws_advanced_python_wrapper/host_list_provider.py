@@ -253,9 +253,8 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             try:
                 driver_dialect = self._host_list_provider_service.driver_dialect
 
-                query_for_topology_func_with_timeout = (preserve_transaction_status_with_timeout(RdsHostListProvider._executor, self._max_timeout,
-                                                                                                 driver_dialect, conn)(
-                                                                                                     self._query_for_topology))
+                query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
+                    RdsHostListProvider._executor, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
