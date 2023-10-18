@@ -223,14 +223,9 @@ class AwsWrapperCursor(Cursor):
             *args: Any,
             **kwargs: Any
     ) -> AwsWrapperCursor:
-        driver_dialect = self._plugin_service.driver_dialect
         try:
-            return self._plugin_manager.execute(
-                self.target_cursor,
-                "Cursor.execute",
-                lambda: driver_dialect.execute(
-                    self.connection, self._target_cursor, *args, **kwargs),
-                self.connection, self._target_cursor, *args, **kwargs)
+            return self._plugin_manager.execute(self.target_cursor, "Cursor.execute",
+                                                lambda: self.target_cursor.execute(*args, **kwargs), *args, **kwargs)
         except FailoverSuccessError as e:
             self._target_cursor = self.connection.target_connection.cursor()
             raise e

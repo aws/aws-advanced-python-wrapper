@@ -16,8 +16,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-from aws_advanced_python_wrapper.utils.decorators import timeout
-
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.connection_provider import (ConnectionProvider,
                                                                  ConnectionProviderManager)
@@ -97,12 +95,7 @@ class DefaultPlugin(Plugin):
             self._connection_provider_manager.default_provider)
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
-        if method_name in self._plugin_service.network_bound_methods and self._socket_timeout is not None:
-            execute_with_timeout = timeout(DefaultPlugin._executor, self._socket_timeout)(execute_func)
-            result = execute_with_timeout()
-        else:
-            result = execute_func()
-
+        result = self._plugin_service.driver_dialect.execute(method_name, execute_func, *args, **kwargs)
         if method_name != DefaultPlugin._CLOSE_METHOD and self._plugin_service.current_connection is not None:
             self._plugin_service.update_in_transaction()
 

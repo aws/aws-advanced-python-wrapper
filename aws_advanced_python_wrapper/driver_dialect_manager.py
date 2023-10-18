@@ -81,7 +81,7 @@ class DriverDialectManager(DriverDialectProvider):
                     "DriverDialectManager.UnknownDialectCode",
                     dialect_code))
             self._log_dialect(dialect_code, result)
-            dialect = Utils.initialize_class(result)
+            dialect = Utils.initialize_class(result, props)
             if dialect is None:
                 raise AwsWrapperError(Messages.get_formatted(
                     "DriverDialectManager.InitializationError",
@@ -89,13 +89,13 @@ class DriverDialectManager(DriverDialectProvider):
             return dialect
 
         for key, value in DriverDialectManager.known_dialects_by_code.items():
-            dialect = Utils.initialize_class(value)
+            dialect = Utils.initialize_class(value, props)
             if dialect is not None and dialect.is_dialect(conn_func):
                 self._log_dialect(key, value)
                 return dialect
 
         self._log_dialect(DriverDialectCodes.GENERIC, "generic")
-        return DriverDialect()
+        return DriverDialect(props)
 
     @staticmethod
     def _log_dialect(dialect_code: str, driver_dialect: Union[DriverDialect, str]):

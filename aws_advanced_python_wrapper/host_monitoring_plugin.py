@@ -494,10 +494,9 @@ class Monitor:
     def _execute_conn_check(self, conn: Connection, timeout_sec: float):
         driver_dialect = self._plugin_service.driver_dialect
         initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        kwargs = {WrapperProperties.SOCKET_TIMEOUT_SEC.name: timeout_sec}
 
         with conn.cursor() as cursor:
-            driver_dialect.execute(conn, cursor, "SELECT 1", **kwargs)
+            driver_dialect.execute("Cursor.execute", lambda: cursor.execute("SELECT 1"), exec_timeout=timeout_sec)
             cursor.fetchone()
 
         if not initial_transaction_status and driver_dialect.is_in_transaction(conn):

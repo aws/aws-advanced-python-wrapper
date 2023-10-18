@@ -45,7 +45,7 @@ def mock_invalid_conn(mocker):
 
 @pytest.fixture
 def dialect():
-    return PgDriverDialect()
+    return PgDriverDialect(Properties())
 
 
 def test_abort_connection(dialect, mock_conn, mock_invalid_conn):

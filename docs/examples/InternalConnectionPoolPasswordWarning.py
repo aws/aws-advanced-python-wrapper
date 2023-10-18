@@ -13,9 +13,10 @@
 #  limitations under the License.
 
 import psycopg
-from aws_wrapper import AwsWrapperConnection
 from aws_wrapper.connection_provider import (
     ConnectionProviderManager, SqlAlchemyPooledConnectionProvider)
+
+from aws_wrapper import AwsWrapperConnection
 
 if __name__ == "__main__":
     params = {

@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -39,6 +39,9 @@ class DriverDialect(ABC):
     _read_only: bool = False
     _autocommit: bool = False
     _driver_name: str = "Generic"
+
+    def __init__(self, props: Properties):
+        self._props = props
 
     @property
     def driver_name(self):
@@ -111,15 +114,24 @@ class DriverDialect(ABC):
             Messages.get_formatted(
                 "DriverDialect.UnsupportedOperationError", self._driver_name, "is_in_transaction"))
 
-    def execute(self, conn: Connection, cursor: Cursor, query: str, *args: Any, **kwargs: Any) -> Cursor:
-        socket_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
-        if socket_timeout is not None:
-            kwargs.pop(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
-            execute_with_timeout = timeout(DriverDialect._executor, socket_timeout)(
-                lambda: cursor.execute(query, *args, **kwargs))
+    def execute(
+            self,
+            method_name: str,
+            exec_func: Callable,
+            *args: Any,
+            exec_timeout: Optional[float] = None,
+            **kwargs: Any) -> Cursor:
+        if method_name not in self._network_bound_methods:
+            return exec_func()
+
+        if exec_timeout is None:
+            exec_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
+
+        if exec_timeout is not None:
+            execute_with_timeout = timeout(DriverDialect._executor, exec_timeout)(exec_func)
             return execute_with_timeout()
         else:
-            return cursor.execute(query, *args, **kwargs)
+            return exec_func()
 
     def get_connection_from_obj(self, obj: object) -> Any:
         if hasattr(obj, "connection"):
