@@ -308,7 +308,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def update_driver_dialect(self, connection_provider: ConnectionProvider):
         self._driver_dialect = self._driver_dialect_manager.get_pool_connection_driver_dialect(
-            connection_provider, self._driver_dialect)
+            connection_provider, self._driver_dialect, self._props)
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         plugin_manager: PluginManager = self._container.plugin_manager

@@ -35,8 +35,11 @@ class DriverDialectProvider(Protocol):
     def get_dialect(self, conn_func: Callable, props: Properties) -> DriverDialect:
         ...
 
-    def get_pool_connection_driver_dialect(self, connection_provider: ConnectionProvider,
-                                           underlying_driver_dialect: DriverDialect) -> DriverDialect:
+    def get_pool_connection_driver_dialect(
+            self,
+            connection_provider: ConnectionProvider,
+            underlying_driver_dialect: DriverDialect,
+            props: Properties) -> DriverDialect:
         ...
 
 
@@ -104,12 +107,15 @@ class DriverDialectManager(DriverDialectProvider):
             dialect_code,
             driver_dialect)
 
-    def get_pool_connection_driver_dialect(self, connection_provider: ConnectionProvider,
-                                           underlying_driver_dialect: DriverDialect) -> DriverDialect:
+    def get_pool_connection_driver_dialect(
+            self,
+            connection_provider: ConnectionProvider,
+            underlying_driver_dialect: DriverDialect,
+            props: Properties) -> DriverDialect:
         provider_class: str = connection_provider.__class__.__name__
         pool_connection_driver_dialect = self.pool_connection_driver_dialect.get(provider_class)
         if pool_connection_driver_dialect is not None:
-            dialect = Utils.initialize_class(pool_connection_driver_dialect, underlying_driver_dialect)
+            dialect = Utils.initialize_class(pool_connection_driver_dialect, underlying_driver_dialect, props)
             if dialect is not None:
                 return dialect
         return underlying_driver_dialect
