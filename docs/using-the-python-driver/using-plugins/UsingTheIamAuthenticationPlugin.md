@@ -39,4 +39,6 @@ IAM database authentication use is limited to certain database engines. For more
 | `iam_expiration`   | Integer |    No    | This property will override the default expiration time that is assigned to the generated IAM token. The default expiration time is set to be 15 minutes.                                                                                                                                              | `600`                                               |
 
 ## Sample code
+
 [PGIamAuthentication.py](../../examples/PGIamAuthentication.py)
+[MySQLIamAuthentication.py](../../examples/MySQLIamAuthentication.py)
