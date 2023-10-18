@@ -4,8 +4,10 @@ The AWS Advanced Python Driver supports usage of database credentials stored as 
 
 ## Enabling the AWS Secrets Manager Connection Plugin
 > [!WARNING]\
-> To use this plugin, you must install [`boto3`](https://aws.amazon.com/sdk-for-python/) in your project. These parameters are required for the AWS JDBC Driver to pass database credentials to the underlying driver.
+> To use this plugin, you must install [`boto3`](https://aws.amazon.com/sdk-for-python/) in your project. These parameters are required for the AWS Advanced Python Driver to pass database credentials to the underlying driver.
 > You can install it via `pip install boto3`.
+
+The AWS Secret Manager plugin requires authentication via AWS Credentials. These credentials can be defined in `~/.aws/credentials` or set as environment variables. All users must set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Users who are using temporary security credentials will also need to additionally set `AWS_SESSION_TOKEN`.
 
 To enable the AWS Secrets Manager Connection Plugin, add the plugin code `aws_secrets_manager` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) value.
 
