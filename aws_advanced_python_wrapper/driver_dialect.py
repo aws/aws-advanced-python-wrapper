@@ -24,7 +24,8 @@ from abc import ABC
 from concurrent.futures import Executor, ThreadPoolExecutor
 
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
-from aws_advanced_python_wrapper.errors import UnsupportedOperationError
+from aws_advanced_python_wrapper.errors import (QueryTimeoutError,
+                                                UnsupportedOperationError)
 from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -125,11 +126,14 @@ class DriverDialect(ABC):
             return exec_func()
 
         if exec_timeout is None:
-            exec_timeout = kwargs.get(WrapperProperties.SOCKET_TIMEOUT_SEC.name)
+            exec_timeout = WrapperProperties.SOCKET_TIMEOUT_SEC.get_float(self._props)
 
         if exec_timeout is not None:
-            execute_with_timeout = timeout(DriverDialect._executor, exec_timeout)(exec_func)
-            return execute_with_timeout()
+            try:
+                execute_with_timeout = timeout(DriverDialect._executor, exec_timeout)(exec_func)
+                return execute_with_timeout()
+            except TimeoutError as e:
+                raise QueryTimeoutError(Messages.get_formatted("DriverDialect.ExecuteTimeout", method_name)) from e
         else:
             return exec_func()
 

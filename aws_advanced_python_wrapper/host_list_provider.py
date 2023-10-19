@@ -34,11 +34,9 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.host_availability import (
     HostAvailability, create_host_availability_strategy)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.pep249 import (Connection, Cursor, Error,
-                                                ProgrammingError)
+from aws_advanced_python_wrapper.pep249 import (Connection, Cursor, ProgrammingError)
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
-from aws_advanced_python_wrapper.utils.decorators import \
-    preserve_transaction_status_with_timeout
+from aws_advanced_python_wrapper.utils.decorators import preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -264,8 +262,10 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                         # info can be shared.
                         self._suggest_cluster_id(hosts)
                     return RdsHostListProvider.FetchTopologyResult(hosts, False)
+            except TimeoutError as e:
+                raise QueryTimeoutError(Messages.get("RdsHostListProvider.QueryForTopologyTimeout")) from e
             except Exception as e:
-                raise QueryTimeoutError(Messages.get("RdsHostListProvider.TopologyTimeout")) from e
+                raise AwsWrapperError(Messages.get("RdsHostListProvider.QueryForTopologyError")) from e
 
         if cached_hosts:
             return RdsHostListProvider.FetchTopologyResult(cached_hosts, True)
@@ -389,9 +389,11 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             if result is not None:
                 is_reader = result[0]
                 return HostRole.READER if is_reader else HostRole.WRITER
-
-        except Error as e:
+        except TimeoutError as e:
+            raise QueryTimeoutError(Messages.get("RdsHostListProvider.GetHostRoleTimeout")) from e
+        except Exception as e:
             raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole")) from e
+
         raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole"))
 
     def _get_host_role(self, conn: Connection):
@@ -414,7 +416,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 if not hosts:
                     return None
                 return next((host_info for host_info in hosts if host_info.host_id == host_id), None)
-        except Error as e:
+        except TimeoutError as e:
+            raise QueryTimeoutError(Messages.get("RdsHostListProvider.IdentifyConnectionTimeout")) from e
+        except Exception as e:
             raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection")) from e
         raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection"))
 

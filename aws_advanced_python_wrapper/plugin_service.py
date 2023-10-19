@@ -36,6 +36,7 @@ from aws_advanced_python_wrapper.database_dialect import (
     DatabaseDialect, DatabaseDialectManager, TopologyAwareDatabaseDialect,
     UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                QueryTimeoutError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.exception_handling import (ExceptionHandler,
                                                             ExceptionManager)
@@ -378,7 +379,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
                 PluginServiceImpl._executor, timeout_sec, driver_dialect, connection)(self._fill_aliases)
             cursor_execute_func_with_timeout(connection, host_info)
-
+        except TimeoutError as e:
+            raise QueryTimeoutError(Messages.get("PluginServiceImpl.FillAliasesTimeout")) from e
         except Exception as e:
             # log and ignore
             logger.debug("PluginServiceImpl.FailedToRetrieveHostPort", e)
