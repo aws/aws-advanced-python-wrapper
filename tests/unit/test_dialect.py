@@ -191,15 +191,15 @@ def test_rds_pg_is_dialect(mock_super, mock_cursor, mock_conn, rds_pg_dialect):
 
 
 def test_get_dialect_custom_dialect(mock_custom_dialect, mock_driver_dialect):
-    manager = DatabaseDialectManager()
+    manager = DatabaseDialectManager(Properties())
     manager._custom_dialect = mock_custom_dialect
 
     assert mock_custom_dialect == manager.get_dialect(mock_driver_dialect, Properties())
 
 
 def test_get_dialect_user_setting(mock_driver_dialect):
-    manager = DatabaseDialectManager()
     props = Properties({"host": "localhost", WrapperProperties.DIALECT.name: "custom"})
+    manager = DatabaseDialectManager(props)
 
     with pytest.raises(AwsWrapperError):
         manager.get_dialect(mock_driver_dialect, props)
@@ -215,8 +215,8 @@ def test_get_dialect_user_setting(mock_driver_dialect):
 
 
 def test_get_dialect_aurora_mysql(mock_driver_dialect):
-    manager = DatabaseDialectManager()
     props = Properties({"host": "my-database.cluster-xyz.us-east-2.rds.amazonaws.com"})
+    manager = DatabaseDialectManager(props)
 
     with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.MYSQL):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), AuroraMysqlDialect)
@@ -226,8 +226,8 @@ def test_get_dialect_aurora_mysql(mock_driver_dialect):
 
 
 def test_get_dialect_rds_mysql(mock_driver_dialect):
-    manager = DatabaseDialectManager()
     props = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
+    manager = DatabaseDialectManager(props)
 
     with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.MYSQL):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), RdsMysqlDialect)
@@ -237,8 +237,8 @@ def test_get_dialect_rds_mysql(mock_driver_dialect):
 
 
 def test_get_dialect_mysql(mock_driver_dialect):
-    manager = DatabaseDialectManager()
     props = Properties({"host": "localhost"})
+    manager = DatabaseDialectManager(props)
 
     with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.MYSQL):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), MysqlDatabaseDialect)
@@ -248,8 +248,8 @@ def test_get_dialect_mysql(mock_driver_dialect):
 
 
 def test_get_dialect_aurora_pg(mock_driver_dialect):
-    manager = DatabaseDialectManager()
     props = Properties({"host": "my-database.cluster-xyz.us-east-2.rds.amazonaws.com"})
+    manager = DatabaseDialectManager(props)
 
     with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.POSTGRES):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), AuroraPgDialect)
@@ -259,8 +259,8 @@ def test_get_dialect_aurora_pg(mock_driver_dialect):
 
 
 def test_get_dialect_mysql_pg(mock_driver_dialect):
-    manager = DatabaseDialectManager()
     props = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
+    manager = DatabaseDialectManager(props)
 
     with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.POSTGRES):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), RdsPgDialect)
@@ -270,8 +270,8 @@ def test_get_dialect_mysql_pg(mock_driver_dialect):
 
 
 def test_get_dialect_pg(mock_driver_dialect):
-    manager = DatabaseDialectManager()
     props = Properties({"host": "localhost"})
+    manager = DatabaseDialectManager(props)
 
     with patch.object(manager, '_get_target_driver_type', return_value=TargetDriverType.POSTGRES):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), PgDatabaseDialect)
@@ -281,8 +281,8 @@ def test_get_dialect_pg(mock_driver_dialect):
 
 
 def test_get_dialect_unknown_dialect(mock_driver_dialect):
-    manager = DatabaseDialectManager()
     props = Properties({"host": "localhost"})
+    manager = DatabaseDialectManager(props)
 
     with patch.object(manager, '_get_target_driver_type', return_value=None):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), UnknownDatabaseDialect)
@@ -292,7 +292,7 @@ def test_get_dialect_unknown_dialect(mock_driver_dialect):
 
 
 def test_query_for_dialect_cannot_update(mock_dialect, mock_conn, mock_driver_dialect):
-    manager = DatabaseDialectManager()
+    manager = DatabaseDialectManager(Properties())
     manager._dialect = mock_dialect
 
     assert mock_dialect == manager.query_for_dialect("", None, mock_conn, mock_driver_dialect)
@@ -300,7 +300,7 @@ def test_query_for_dialect_cannot_update(mock_dialect, mock_conn, mock_driver_di
 
 
 def test_query_for_dialect_errors(mock_conn, mock_dialect, mock_candidate, mock_driver_dialect):
-    manager = DatabaseDialectManager()
+    manager = DatabaseDialectManager(Properties())
     manager._can_update = True
     mock_dialect.dialect_update_candidates = frozenset({mock_candidate})
     manager._dialect = mock_dialect
@@ -314,7 +314,7 @@ def test_query_for_dialect_errors(mock_conn, mock_dialect, mock_candidate, mock_
 
 
 def test_query_for_dialect_no_update_candidates(mock_dialect, mock_conn, mock_driver_dialect):
-    manager = DatabaseDialectManager()
+    manager = DatabaseDialectManager(Properties())
     mock_dialect.dialect_update_candidates = None
     manager._can_update = True
     manager._dialect_code = DialectCode.PG
@@ -326,7 +326,7 @@ def test_query_for_dialect_no_update_candidates(mock_dialect, mock_conn, mock_dr
 
 
 def test_query_for_dialect_pg(mock_conn, mock_cursor, mock_driver_dialect):
-    manager = DatabaseDialectManager()
+    manager = DatabaseDialectManager(Properties())
     manager._can_update = True
     manager._dialect = PgDatabaseDialect()
     mock_conn.cursor.return_value = mock_cursor
@@ -340,7 +340,7 @@ def test_query_for_dialect_pg(mock_conn, mock_cursor, mock_driver_dialect):
 
 
 def test_query_for_dialect_mysql(mock_conn, mock_cursor, mock_driver_dialect):
-    manager = DatabaseDialectManager()
+    manager = DatabaseDialectManager(Properties())
     manager._can_update = True
     manager._dialect = MysqlDatabaseDialect()
     mock_conn.cursor.return_value = mock_cursor

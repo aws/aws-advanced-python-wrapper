@@ -201,7 +201,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._initial_connection_host_info: Optional[HostInfo] = None
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
-        self._dialect_provider = DatabaseDialectManager()
+        self._dialect_provider = DatabaseDialectManager(props)
         self._target_func = target_func
         self._driver_dialect_manager = driver_dialect_manager
         self._driver_dialect = driver_dialect
