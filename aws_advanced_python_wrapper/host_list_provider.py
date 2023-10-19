@@ -34,9 +34,11 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.host_availability import (
     HostAvailability, create_host_availability_strategy)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.pep249 import (Connection, Cursor, ProgrammingError)
+from aws_advanced_python_wrapper.pep249 import (Connection, Cursor,
+                                                ProgrammingError)
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
-from aws_advanced_python_wrapper.utils.decorators import preserve_transaction_status_with_timeout
+from aws_advanced_python_wrapper.utils.decorators import \
+    preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
