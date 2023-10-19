@@ -87,7 +87,7 @@ def get_plugins(
     if plugin_codes != "":
         plugins = create_plugins_from_list(plugin_codes.split(","), plugin_service, props)
 
-    plugins.append(DefaultPlugin(plugin_service, connection_provider_manager, props))
+    plugins.append(DefaultPlugin(plugin_service, connection_provider_manager))
 
     return plugins
 

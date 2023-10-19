@@ -21,12 +21,11 @@ if TYPE_CHECKING:
     from aws_wrapper.pep249 import Connection
 
 import mysql.connector
+from aws_wrapper import AwsWrapperConnection
 from aws_wrapper.connection_provider import (
     ConnectionProviderManager, SqlAlchemyPooledConnectionProvider)
 from aws_wrapper.errors import (FailoverFailedError, FailoverSuccessError,
                                 TransactionResolutionUnknownError)
-
-from aws_wrapper import AwsWrapperConnection
 
 
 def configure_pool(host_info: HostInfo, props: Dict[str, Any]) -> Dict[str, Any]:

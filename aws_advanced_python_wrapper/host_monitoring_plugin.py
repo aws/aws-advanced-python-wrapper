@@ -494,7 +494,8 @@ class Monitor:
     def _execute_conn_check(self, conn: Connection, timeout_sec: float):
         driver_dialect = self._plugin_service.driver_dialect
         with conn.cursor() as cursor:
-            driver_dialect.execute("Cursor.execute", lambda: cursor.execute("SELECT 1"), exec_timeout=timeout_sec)
+            query = "SELECT 1"
+            driver_dialect.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
             cursor.fetchone()
 
 
