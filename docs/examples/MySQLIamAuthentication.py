@@ -31,7 +31,6 @@ if __name__ == "__main__":
         awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
         awscursor.execute("SELECT * FROM bank_test")
 
-        res = awscursor.fetchall()
         for record in awscursor:
             print(record)
         awscursor.execute("DROP TABLE bank_test")
