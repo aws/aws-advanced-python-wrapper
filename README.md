@@ -110,6 +110,29 @@ The following table lists the common connection properties used with the AWS Adv
 Technical documentation regarding the functionality of the AWS Advanced Python Driver will be maintained in this GitHub repository. Since the AWS Advanced Python Driver requires an underlying Python driver, please refer to the individual driver's documentation for driver-specific information.
 To find all the documentation and concrete examples on how to use the AWS Advanced Python Driver, please refer to the [AWS Advanced Python Driver Documentation](./docs/Documentation.md) page.
 
+### Known Limitations
+
+#### Amazon RDS Blue/Green Deployments
+
+This driver currently does not support switchover in Amazon RDS Blue/Green Deployments. In order to execute a Blue/Green deployment with the driver,
+please ensure your application is coded to retry the database connection. Retry will allow the driver to re-establish a connection to an available
+database instance. Without a retry, the driver will not be able to identify an available database instance after  blue/green switchover has occurred.
+
+#### MySQL Connector/Python C Extension
+
+When connecting to Aurora MySQL clusters, it is recommended to use the Python implementation of the MySQL Connector/Python driver by setting the `use_pure` connection argument to `True`.
+The AWS Advanced Python Driver internally calls the MySQL Connector/Python's `is_connected` method to verify the connection. The [MySQL Connector/Python's C extension](https://dev.mysql.com/doc/connector-python/en/connector-python-cext.html) uses a network blocking implementation of the `is_connected` method.
+In the event of a network failure where the host can no longer be reached, the `is_connected` call may hang indefinitely and will require users to forcibly interrupt the application.
+
+#### MySQL Support for the IAM Authentication Plugin
+
+The official MySQL Connector/Python [offers a Python implementation and a C implementation](https://dev.mysql.com/doc/connector-python/en/connector-python-example-connecting.html#:~:text=Using%20the%20Connector/Python%20Python%20or%20C%20Extension) of the driver that can be toggled using the `use_pure` connection argument.
+The [IAM Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md) is incompatible with the Python implementation of the driver due to its 255-character password limit.
+The IAM Authentication Plugin generates a temporary AWS IAM token to authenticate users. Passing this token to the Python implementation of the driver will result in the following error:
+`struct.error: ubyte format requires 0 <= number <= 255`. To avoid this error, we recommend you set `use_pure` to `False` when using the IAM Authentication Plugin.
+However, as noted in the [MySQL Connector/Python C Extension](#mysql-connectorpython-c-extension) section, doing so may cause the application to indefinitely hang if there is a network failure.
+Unfortunately, due to conflicting limitations, you will need to decide if using the IAM plugin is worth this risk for your application.
+
 ## Getting Help and Opening Issues
 
 If you encounter a bug with the AWS Advanced Python Driver, we would like to hear about it.
