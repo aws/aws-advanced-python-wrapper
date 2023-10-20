@@ -71,9 +71,10 @@ class MySQLDriverDialect(DriverDialect):
             # is_connected validates the connection using a ping().
             # If there are any unread results from previous executions an error will be thrown.
             if self.can_execute_query(conn):
-                is_connected_with_timeout = timeout(
-                    MySQLDriverDialect._executor,
-                    MySQLDriverDialect.IS_CLOSED_TIMEOUT_SEC)(conn.is_connected)
+                socket_timeout = WrapperProperties.SOCKET_TIMEOUT_SEC.get_float(self._props)
+                timeout_sec = socket_timeout if socket_timeout > 0 else MySQLDriverDialect.IS_CLOSED_TIMEOUT_SEC
+                is_connected_with_timeout = timeout(MySQLDriverDialect._executor, timeout_sec)(conn.is_connected)
+
                 try:
                     return not is_connected_with_timeout()
                 except TimeoutError:

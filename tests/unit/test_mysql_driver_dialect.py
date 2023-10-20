@@ -26,7 +26,7 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 
 @pytest.fixture
 def dialect():
-    return MySQLDriverDialect()
+    return MySQLDriverDialect(Properties())
 
 
 @pytest.fixture

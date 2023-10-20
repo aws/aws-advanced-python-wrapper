@@ -61,7 +61,6 @@ class PgExceptionHandler(ExceptionHandler):
                 return False
             # Check the error message if this is a generic error
             error_msg: str = error.args[0]
-            # self._CONNECTION_POINTER_NULL is thrown when the host monitoring plugin aborts an unavailable connection
             return self._CONNECTION_FAILED in error_msg or self._CONSUMING_INPUT_FAILED in error_msg
 
         return False

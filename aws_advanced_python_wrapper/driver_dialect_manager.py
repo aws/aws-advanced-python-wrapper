@@ -35,8 +35,11 @@ class DriverDialectProvider(Protocol):
     def get_dialect(self, conn_func: Callable, props: Properties) -> DriverDialect:
         ...
 
-    def get_pool_connection_driver_dialect(self, connection_provider: ConnectionProvider,
-                                           underlying_driver_dialect: DriverDialect) -> DriverDialect:
+    def get_pool_connection_driver_dialect(
+            self,
+            connection_provider: ConnectionProvider,
+            underlying_driver_dialect: DriverDialect,
+            props: Properties) -> DriverDialect:
         ...
 
 
@@ -81,7 +84,7 @@ class DriverDialectManager(DriverDialectProvider):
                     "DriverDialectManager.UnknownDialectCode",
                     dialect_code))
             self._log_dialect(dialect_code, result)
-            dialect = Utils.initialize_class(result)
+            dialect = Utils.initialize_class(result, props)
             if dialect is None:
                 raise AwsWrapperError(Messages.get_formatted(
                     "DriverDialectManager.InitializationError",
@@ -89,13 +92,13 @@ class DriverDialectManager(DriverDialectProvider):
             return dialect
 
         for key, value in DriverDialectManager.known_dialects_by_code.items():
-            dialect = Utils.initialize_class(value)
+            dialect = Utils.initialize_class(value, props)
             if dialect is not None and dialect.is_dialect(conn_func):
                 self._log_dialect(key, value)
                 return dialect
 
         self._log_dialect(DriverDialectCodes.GENERIC, "generic")
-        return DriverDialect()
+        return DriverDialect(props)
 
     @staticmethod
     def _log_dialect(dialect_code: str, driver_dialect: Union[DriverDialect, str]):
@@ -104,12 +107,15 @@ class DriverDialectManager(DriverDialectProvider):
             dialect_code,
             driver_dialect)
 
-    def get_pool_connection_driver_dialect(self, connection_provider: ConnectionProvider,
-                                           underlying_driver_dialect: DriverDialect) -> DriverDialect:
+    def get_pool_connection_driver_dialect(
+            self,
+            connection_provider: ConnectionProvider,
+            underlying_driver_dialect: DriverDialect,
+            props: Properties) -> DriverDialect:
         provider_class: str = connection_provider.__class__.__name__
         pool_connection_driver_dialect = self.pool_connection_driver_dialect.get(provider_class)
         if pool_connection_driver_dialect is not None:
-            dialect = Utils.initialize_class(pool_connection_driver_dialect, underlying_driver_dialect)
+            dialect = Utils.initialize_class(pool_connection_driver_dialect, underlying_driver_dialect, props)
             if dialect is not None:
                 return dialect
         return underlying_driver_dialect

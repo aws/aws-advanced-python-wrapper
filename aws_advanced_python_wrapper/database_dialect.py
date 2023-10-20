@@ -14,10 +14,6 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor
-from contextlib import closing
-from enum import Enum, auto
 from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
                     Protocol, Tuple, runtime_checkable)
 
@@ -26,7 +22,13 @@ if TYPE_CHECKING:
     from .driver_dialect import DriverDialect
     from .exception_handling import ExceptionHandler
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from abc import abstractmethod
+from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from contextlib import closing
+from enum import Enum, auto
+
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import (
     ConnectionStringHostListProvider, RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -393,7 +395,6 @@ class UnknownDatabaseDialect(DatabaseDialect):
 
 class DatabaseDialectManager(DatabaseDialectProvider):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
-    _TIMEOUT_SEC = 3
     _known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
     _known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {DialectCode.MYSQL: MysqlDatabaseDialect(),
                                                                    DialectCode.PG: PgDatabaseDialect(),
@@ -405,7 +406,8 @@ class DatabaseDialectManager(DatabaseDialectProvider):
     _custom_dialect: Optional[DatabaseDialect] = None
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DatabaseDialectManagerExecutor")
 
-    def __init__(self, rds_helper: Optional[RdsUtils] = None):
+    def __init__(self, props: Properties, rds_helper: Optional[RdsUtils] = None):
+        self._props: Properties = props
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
         self._can_update: bool = False
         self._dialect: DatabaseDialect = UnknownDatabaseDialect()
@@ -451,7 +453,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                 self._log_current_dialect()
                 return dialect
             else:
-                raise AwsWrapperError(Messages.get_formatted("DialectManager.UnknownDialectCode", str(dialect_code)))
+                raise AwsWrapperError(Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", str(dialect_code)))
 
         host: str = props["host"]
         target_driver_type: TargetDriverType = self._get_target_driver_type(driver_dialect)
@@ -516,12 +518,18 @@ class DatabaseDialectManager(DatabaseDialectProvider):
             for dialect_code in dialect_candidates:
                 dialect_candidate = DatabaseDialectManager._known_dialects_by_code.get(dialect_code)
                 if dialect_candidate is None:
-                    raise AwsWrapperError(Messages.get_formatted("DialectManager.UnknownDialectCode", dialect_code))
+                    raise AwsWrapperError(Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", dialect_code))
 
-                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                    DatabaseDialectManager._executor, DatabaseDialectManager._TIMEOUT_SEC, driver_dialect, conn)(
-                    dialect_candidate.is_dialect)
-                is_dialect = cursor_execute_func_with_timeout(conn)
+                timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
+                try:
+                    cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                        DatabaseDialectManager._executor,
+                        timeout_sec,
+                        driver_dialect,
+                        conn)(dialect_candidate.is_dialect)
+                    is_dialect = cursor_execute_func_with_timeout(conn)
+                except TimeoutError as e:
+                    raise QueryTimeoutError("DatabaseDialectManager.QueryForDialectTimeout") from e
 
                 if not is_dialect:
                     continue
@@ -539,7 +547,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                 return self._dialect
 
         if self._dialect_code is None or self._dialect_code == DialectCode.UNKNOWN:
-            raise AwsWrapperError(Messages.get("DialectManager.UnknownDialect"))
+            raise AwsWrapperError(Messages.get("DatabaseDialectManager.UnknownDialect"))
 
         self._can_update = False
         DatabaseDialectManager._known_endpoint_dialects.put(url, self._dialect_code,
@@ -552,4 +560,4 @@ class DatabaseDialectManager(DatabaseDialectProvider):
 
     def _log_current_dialect(self):
         dialect_class = "<null>" if self._dialect is None else type(self._dialect).__name__
-        logger.debug("DialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update)
+        logger.debug("DatabaseDialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update)

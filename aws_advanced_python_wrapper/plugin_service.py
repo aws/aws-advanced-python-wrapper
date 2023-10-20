@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from threading import Event
 
 from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
                     Set, Tuple)
 
@@ -36,6 +36,7 @@ from aws_advanced_python_wrapper.database_dialect import (
     DatabaseDialect, DatabaseDialectManager, TopologyAwareDatabaseDialect,
     UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                QueryTimeoutError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.exception_handling import (ExceptionHandler,
                                                             ExceptionManager)
@@ -201,7 +202,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._initial_connection_host_info: Optional[HostInfo] = None
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
-        self._dialect_provider = DatabaseDialectManager()
+        self._dialect_provider = DatabaseDialectManager(props)
         self._target_func = target_func
         self._driver_dialect_manager = driver_dialect_manager
         self._driver_dialect = driver_dialect
@@ -308,7 +309,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def update_driver_dialect(self, connection_provider: ConnectionProvider):
         self._driver_dialect = self._driver_dialect_manager.get_pool_connection_driver_dialect(
-            connection_provider, self._driver_dialect)
+            connection_provider, self._driver_dialect, self._props)
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -375,11 +376,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         driver_dialect = self._driver_dialect
         try:
             timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
-            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(PluginServiceImpl._executor,
-                                                                                        timeout_sec, driver_dialect,
-                                                                                        connection)(self._fill_aliases)
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                PluginServiceImpl._executor, timeout_sec, driver_dialect, connection)(self._fill_aliases)
             cursor_execute_func_with_timeout(connection, host_info)
-
+        except TimeoutError as e:
+            raise QueryTimeoutError(Messages.get("PluginServiceImpl.FillAliasesTimeout")) from e
         except Exception as e:
             # log and ignore
             logger.debug("PluginServiceImpl.FailedToRetrieveHostPort", e)

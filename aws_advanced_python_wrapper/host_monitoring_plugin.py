@@ -22,7 +22,8 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
-from concurrent.futures import Executor, Future, ThreadPoolExecutor
+from concurrent.futures import (Executor, Future, ThreadPoolExecutor,
+                                TimeoutError)
 from copy import copy
 from dataclasses import dataclass
 from queue import Queue
@@ -493,15 +494,10 @@ class Monitor:
 
     def _execute_conn_check(self, conn: Connection, timeout_sec: float):
         driver_dialect = self._plugin_service.driver_dialect
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        kwargs = {WrapperProperties.SOCKET_TIMEOUT_SEC.name: timeout_sec}
-
         with conn.cursor() as cursor:
-            driver_dialect.execute(conn, cursor, "SELECT 1", **kwargs)
+            query = "SELECT 1"
+            driver_dialect.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
             cursor.fetchone()
-
-        if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-            conn.commit()
 
 
 class MonitoringThreadContainer:

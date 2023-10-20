@@ -32,7 +32,8 @@ class SqlAlchemyDriverDialect(DriverDialect):
     _driver_name: str = "SQLAlchemy"
     TARGET_DRIVER_CODE: str = "sqlalchemy"
 
-    def __init__(self, underlying_driver: DriverDialect):
+    def __init__(self, underlying_driver: DriverDialect, props: Properties):
+        super().__init__(props)
         self._underlying_driver = underlying_driver
 
     def prepare_connect_info(self, host_info: HostInfo, props: Properties) -> Properties:

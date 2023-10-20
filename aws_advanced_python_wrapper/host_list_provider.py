@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,7 +34,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.host_availability import (
     HostAvailability, create_host_availability_strategy)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.pep249 import (Connection, Cursor, Error,
+from aws_advanced_python_wrapper.pep249 import (Connection, Cursor,
                                                 ProgrammingError)
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.decorators import \
@@ -253,9 +253,8 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             try:
                 driver_dialect = self._host_list_provider_service.driver_dialect
 
-                query_for_topology_func_with_timeout = (preserve_transaction_status_with_timeout(RdsHostListProvider._executor, self._max_timeout,
-                                                                                                 driver_dialect, conn)(
-                                                                                                     self._query_for_topology))
+                query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
+                    RdsHostListProvider._executor, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
@@ -265,8 +264,8 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                         # info can be shared.
                         self._suggest_cluster_id(hosts)
                     return RdsHostListProvider.FetchTopologyResult(hosts, False)
-            except Exception as e:
-                raise QueryTimeoutError(Messages.get("RdsHostListProvider.TopologyTimeout")) from e
+            except TimeoutError as e:
+                raise QueryTimeoutError(Messages.get("RdsHostListProvider.QueryForTopologyTimeout")) from e
 
         if cached_hosts:
             return RdsHostListProvider.FetchTopologyResult(cached_hosts, True)
@@ -390,9 +389,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             if result is not None:
                 is_reader = result[0]
                 return HostRole.READER if is_reader else HostRole.WRITER
+        except TimeoutError as e:
+            raise QueryTimeoutError(Messages.get("RdsHostListProvider.GetHostRoleTimeout")) from e
 
-        except Error as e:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole")) from e
         raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole"))
 
     def _get_host_role(self, conn: Connection):
@@ -415,8 +414,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 if not hosts:
                     return None
                 return next((host_info for host_info in hosts if host_info.host_id == host_id), None)
-        except Error as e:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection")) from e
+        except TimeoutError as e:
+            raise QueryTimeoutError(Messages.get("RdsHostListProvider.IdentifyConnectionTimeout")) from e
+
         raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection"))
 
     def _identify_connection(self, conn: Connection):
