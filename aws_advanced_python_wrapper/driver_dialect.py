@@ -128,7 +128,7 @@ class DriverDialect(ABC):
         if exec_timeout is None:
             exec_timeout = WrapperProperties.SOCKET_TIMEOUT_SEC.get_float(self._props)
 
-        if exec_timeout is not None:
+        if exec_timeout > 0:
             try:
                 execute_with_timeout = timeout(DriverDialect._executor, exec_timeout)(exec_func)
                 return execute_with_timeout()
