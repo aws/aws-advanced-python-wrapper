@@ -266,8 +266,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                     return RdsHostListProvider.FetchTopologyResult(hosts, False)
             except TimeoutError as e:
                 raise QueryTimeoutError(Messages.get("RdsHostListProvider.QueryForTopologyTimeout")) from e
-            except Exception as e:
-                raise AwsWrapperError(Messages.get("RdsHostListProvider.QueryForTopologyError")) from e
 
         if cached_hosts:
             return RdsHostListProvider.FetchTopologyResult(cached_hosts, True)
@@ -393,8 +391,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 return HostRole.READER if is_reader else HostRole.WRITER
         except TimeoutError as e:
             raise QueryTimeoutError(Messages.get("RdsHostListProvider.GetHostRoleTimeout")) from e
-        except Exception as e:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole")) from e
 
         raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole"))
 
@@ -420,8 +416,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 return next((host_info for host_info in hosts if host_info.host_id == host_id), None)
         except TimeoutError as e:
             raise QueryTimeoutError(Messages.get("RdsHostListProvider.IdentifyConnectionTimeout")) from e
-        except Exception as e:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection")) from e
+
         raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection"))
 
     def _identify_connection(self, conn: Connection):
