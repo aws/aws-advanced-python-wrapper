@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime

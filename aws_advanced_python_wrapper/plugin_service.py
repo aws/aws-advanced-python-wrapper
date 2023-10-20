@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from threading import Event
 
 from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from typing import (Any, Callable, Dict, FrozenSet, List, Optional, Protocol,
                     Set, Tuple)
 

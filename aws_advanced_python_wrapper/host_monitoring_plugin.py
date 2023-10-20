@@ -22,7 +22,8 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
-from concurrent.futures import Executor, Future, ThreadPoolExecutor
+from concurrent.futures import (Executor, Future, ThreadPoolExecutor,
+                                TimeoutError)
 from copy import copy
 from dataclasses import dataclass
 from queue import Queue

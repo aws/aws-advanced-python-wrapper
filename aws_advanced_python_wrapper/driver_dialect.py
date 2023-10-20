@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection, Cursor
 
 from abc import ABC
-from concurrent.futures import Executor, ThreadPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import (QueryTimeoutError,

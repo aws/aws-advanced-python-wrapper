@@ -12,16 +12,17 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import time
+from concurrent.futures import TimeoutError
 from datetime import datetime, timedelta
 
 import psycopg
 import pytest
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.pep249 import Error, ProgrammingError
+from aws_advanced_python_wrapper.pep249 import ProgrammingError
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -43,16 +44,6 @@ def mock_topology_query(mock_conn, mock_cursor, records):
 def mock_default_behavior(mock_provider_service, mock_conn, mock_cursor):
     mock_provider_service.current_connection = mock_conn
     mock_topology_query(mock_conn, mock_cursor, [("new-host-id", True)])
-
-
-def mock_hang():
-    time.sleep(1.5)
-
-
-@pytest.fixture
-def mock_hanging_behavior(mock_provider_service, mock_conn, mock_cursor):
-    mock_conn.cursor.side_effect = mock_hang
-    mock_provider_service.current_connection = mock_conn
 
 
 @pytest.fixture
@@ -118,12 +109,12 @@ def test_get_topology_force_update(
     spy.assert_called_once()
 
 
-def test_get_topology_timeout(mocker, mock_provider_service, initial_hosts, props, mock_hanging_behavior):
-    props["query_timeout"] = 1
+def test_get_topology_timeout(mocker, mock_cursor, mock_provider_service, initial_hosts, props):
     provider = RdsHostListProvider(mock_provider_service, props)
     spy = mocker.spy(provider, "_query_for_topology")
 
-    with pytest.raises(AwsWrapperError):
+    mock_cursor.execute.side_effect = TimeoutError()
+    with pytest.raises(QueryTimeoutError):
         provider.force_refresh()
 
     spy.assert_called_once()
@@ -303,8 +294,8 @@ def test_identify_connection_errors(mock_provider_service, mock_conn, mock_curso
     with pytest.raises(AwsWrapperError):
         provider.identify_connection(mock_conn)
 
-    mock_cursor.execute.side_effect = Error()
-    with pytest.raises(AwsWrapperError):
+    mock_cursor.execute.side_effect = TimeoutError()
+    with pytest.raises(QueryTimeoutError):
         provider.identify_connection(mock_conn)
 
 
@@ -368,8 +359,8 @@ def test_get_host_role(mock_provider_service, mock_conn, mock_cursor, props):
     with pytest.raises(AwsWrapperError):
         provider.get_host_role(mock_conn)
 
-    mock_cursor.execute.side_effect = Error()
-    with pytest.raises(AwsWrapperError):
+    mock_cursor.execute.side_effect = TimeoutError()
+    with pytest.raises(QueryTimeoutError):
         provider.get_host_role(mock_conn)
 
 

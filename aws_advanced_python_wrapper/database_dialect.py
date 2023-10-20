@@ -14,10 +14,6 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor
-from contextlib import closing
-from enum import Enum, auto
 from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
                     Protocol, Tuple, runtime_checkable)
 
@@ -25,6 +21,11 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from .driver_dialect import DriverDialect
     from .exception_handling import ExceptionHandler
+
+from abc import abstractmethod
+from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from contextlib import closing
+from enum import Enum, auto
 
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
