@@ -17,15 +17,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 if TYPE_CHECKING:
-    from aws_wrapper.hostinfo import HostInfo
-    from aws_wrapper.pep249 import Connection
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
+    from aws_advanced_python_wrapper.pep249 import Connection
 
 import psycopg
-from aws_wrapper import AwsWrapperConnection
-from aws_wrapper.connection_provider import (
-    ConnectionProviderManager, SqlAlchemyPooledConnectionProvider)
-from aws_wrapper.errors import (FailoverFailedError, FailoverSuccessError,
-                                TransactionResolutionUnknownError)
+
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.connection_provider import \
+    ConnectionProviderManager
+from aws_advanced_python_wrapper.errors import (
+    FailoverFailedError, FailoverSuccessError,
+    TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
+    SqlAlchemyPooledConnectionProvider
 
 
 def configure_pool(host_info: HostInfo, props: Dict[str, Any]) -> Dict[str, Any]:
