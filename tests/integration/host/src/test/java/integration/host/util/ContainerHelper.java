@@ -173,7 +173,7 @@ public class ContainerHelper {
                   builder -> appendExtraCommandsToBuilder.apply(
                       builder
                           .from(testContainerImageName)
-                          .run("apt-get", "install", "curl", "gcc")
+                          .run("apt-get", "install", "curl", "gcc", "libpq5")
                           .run("mkdir", "app")
                           .workDir("/app")
                           .run("curl", "-sSL", "https://install.python-poetry.org", "--output", "/app/poetry.py")
@@ -189,7 +189,7 @@ public class ContainerHelper {
                   builder -> appendExtraCommandsToBuilder.apply(
                       builder
                           .from(testContainerImageName)
-                          .run("apt-get", "install", "curl", "gcc")
+                          .run("apt-get", "install", "curl", "gcc", "libpq5")
                           .run("mkdir", "app")
                           .workDir("/app")
                           .run("curl", "-sSL", "https://install.python-poetry.org", "--output", "/app/poetry.py")
@@ -201,6 +201,7 @@ public class ContainerHelper {
 
     return container
         .withFileSystemBind("../../../aws_advanced_python_wrapper", "/app/aws_advanced_python_wrapper", BindMode.READ_ONLY)
+        .withFileSystemBind("../../../resources", "/app/resources/", BindMode.READ_ONLY)
         .withFileSystemBind("../../../README.md", "/app/README.md", BindMode.READ_ONLY)
         .withFileSystemBind("../../../pyproject.toml", "/app/pyproject.toml", BindMode.READ_ONLY)
         .withFileSystemBind("../../../poetry.lock", "/app/poetry.lock", BindMode.READ_ONLY)
