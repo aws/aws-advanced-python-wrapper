@@ -26,8 +26,10 @@ from .pep249 import Error
 from .utils.messages import Messages
 
 
-# Interface for a strategy defining how to pick a host from a list of hosts
 class HostSelector(Protocol):
+    """
+    Interface for a strategy defining how to pick a host from a list of hosts.
+    """
 
     def get_host(self, hosts: Tuple[HostInfo, ...], role: HostRole) -> HostInfo:
         ...

@@ -320,6 +320,13 @@ class ReadWriteSplittingPlugin(Plugin):
         logger.debug("ReadWriteSplittingPlugin.SwitchedFromWriterToReader", reader_host.url)
 
     def _transfer_session_state(self, conn: Connection):
+        """
+        Transfers basic session state from one connection to another, except for the read-only status.
+        This method is only called when :py:meth:`~ReadWriteSplittingPlugin.read_only` is being called;
+        the read-only status will be updated when the :py:meth:`~ReadWriteSplittingPlugin.read_only` call continues down the plugin chain.
+
+        :param conn: the connection to transfer states to.
+        """
         from_conn: Optional[Connection] = self._plugin_service.current_connection
         if from_conn is None or conn is None:
             return

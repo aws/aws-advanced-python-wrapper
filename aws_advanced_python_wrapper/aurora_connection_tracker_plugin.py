@@ -42,6 +42,13 @@ class OpenedConnectionTracker:
     _rds_utils = RdsUtils()
 
     def populate_opened_connection_set(self, host_info: HostInfo, conn: Connection):
+        """
+        Keep track of all opened connections to their respective hosts.
+
+        :param host_info: host information of the given connection.
+        :param conn: currenlty opened connection.
+        :return:
+        """
         aliases: FrozenSet[str] = host_info.as_aliases()
         host: str = host_info.as_alias()
 
@@ -58,7 +65,8 @@ class OpenedConnectionTracker:
         self._track_connection(instance_endpoint, conn)
 
     def invalidate_all_connections(self, host_info: Optional[HostInfo] = None, node: Optional[FrozenSet[str]] = None):
-        """Invalidates all opened connections pointing to the same node in a daemon thread.
+        """
+        Invalidates all opened connections pointing to the same node in a daemon thread.
 
         Parameters:
             host_info (HostInfo): The HostInfo object containing the url of the node.

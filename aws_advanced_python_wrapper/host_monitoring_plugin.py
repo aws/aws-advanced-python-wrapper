@@ -211,6 +211,11 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
 
 
 class MonitoringContext:
+    """
+    Monitoring context for each connection.
+    This contains each connection's criteria for whether a server should be considered unhealthy.
+    The context is shared between the main thread and the monitor thread.
+    """
     def __init__(
             self,
             monitor: Monitor,
@@ -276,15 +281,36 @@ class MonitoringContext:
             logger.debug("MonitorContext.ExceptionAbortingConnection", e)
 
     def update_host_status(
-            self, url: str, status_check_start_time_ns: int, status_check_end_time_ns: int, is_available: bool):
+            self, host: str, status_check_start_time_ns: int, status_check_end_time_ns: int, is_available: bool):
+        """
+        Update whether the connection is still valid if the total elapsed time has passed the grace period.
+
+        :param host: the host for logging purposes.
+        :param status_check_start_time_ns: the time when connection status check started in nanoseconds.
+        :param status_check_end_time_ns: the time when connection status check ended in nanoseconds.
+        :param is_available: whether the connection is valid.
+        :return:
+        """
         if not self._is_active:
             return
         total_elapsed_time_ns = status_check_end_time_ns - self._monitor_start_time_ns
         if total_elapsed_time_ns > (self._failure_detection_time_ms * 1_000_000):
-            self._set_host_availability(url, is_available, status_check_start_time_ns, status_check_end_time_ns)
+            self._set_host_availability(host, is_available, status_check_start_time_ns, status_check_end_time_ns)
 
     def _set_host_availability(
-            self, url: str, is_available: bool, status_check_start_time_ns: int, status_check_end_time_ns: int):
+            self, host: str, is_available: bool, status_check_start_time_ns: int, status_check_end_time_ns: int):
+        """
+        Set whether the connection to the server is still available based on the monitoring settings set in connection properties.
+        The monitoring settings include:
+        - failure_detection_time_ms
+        - failure_detection_interval_ms
+        - failure_detection_count
+
+        :param host: the host for logging purposes.
+        :param is_available: whether the connection is still available.
+        :param status_check_start_time_ns: the time when connection status check started in nanoseconds.
+        :param status_check_end_time_ns: the time when connection status check ended in nanoseconds.
+        """
         if is_available:
             self._current_failure_count = 0
             self._unavailable_host_start_time_ns = 0
@@ -299,16 +325,19 @@ class MonitoringContext:
             self._failure_detection_interval_ms * max(0, self._failure_detection_count)
 
         if unavailable_host_duration_ns > (max_unavailable_host_duration_ms * 1_000_000):
-            logger.debug("MonitorContext.HostUnavailable", url)
+            logger.debug("MonitorContext.HostUnavailable", host)
             self._is_host_unavailable = True
             self._abort_connection()
             return
 
-        logger.debug("MonitorContext.HostNotResponding", url, self._current_failure_count)
+        logger.debug("MonitorContext.HostNotResponding", host, self._current_failure_count)
         return
 
 
 class Monitor:
+    """
+     This class uses a background thread to monitor a particular server with one or more active :py:class:`Connection`.
+    """
     _INACTIVE_SLEEP_MS = 100
     _MIN_HOST_CHECK_TIMEOUT_MS = 3000
     _MONITORING_PROPERTY_PREFIX = "monitoring-"
@@ -501,6 +530,10 @@ class Monitor:
 
 
 class MonitoringThreadContainer:
+    """
+    This singleton class keeps track of all the monitoring threads and handles the creation and clean up of each monitoring thread.
+    """
+
     _instance: ClassVar[Optional[MonitoringThreadContainer]] = None
     _lock: ClassVar[RLock] = RLock()
     _usage_count: ClassVar[AtomicInt] = AtomicInt()

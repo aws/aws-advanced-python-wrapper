@@ -47,6 +47,15 @@ class StaleDnsHelper:
 
     def get_verified_connection(self, is_initial_connection: bool, host_list_provider_service: HostListProviderService, host_info: HostInfo,
                                 props: Properties, connect_func: Callable) -> Connection:
+        """
+        Ensure the connection created is not a stale writer connection that
+        :param is_initial_connection:
+        :param host_list_provider_service:
+        :param host_info:
+        :param props:
+        :param connect_func:
+        :return:
+        """
         if not self._rds_helper.is_writer_cluster_dns(host_info.host):
             return connect_func()
 

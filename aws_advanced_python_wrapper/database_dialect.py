@@ -93,6 +93,10 @@ class TopologyAwareDatabaseDialect(Protocol):
 
 
 class DatabaseDialect(Protocol):
+    """
+    Database dialects help the AWS Advanced Python Driver determine what kind of underlying database is being used,
+    and configure details unique to specific databases.
+    """
 
     @property
     @abstractmethod
