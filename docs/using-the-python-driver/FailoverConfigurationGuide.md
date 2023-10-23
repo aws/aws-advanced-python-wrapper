@@ -10,7 +10,7 @@ A failover time profile refers to a specific combination of failover parameters 
 #### Example of the configuration for a normal failover time profile:
 | Parameter                                    | Value |
 |----------------------------------------------|-------|
-| `failover_timeout_sec`                       | `180` |
+| `failover_timeout_sec`                       | `300` |
 | `failover_writer_reconnect_interval_sec`     | `2`   |
 | `failover_reader_connect_timeout_sec`        | `30`  |
 | `failover_cluster_topology_refresh_rate_sec` | `2`   |
@@ -24,13 +24,12 @@ A failover time profile refers to a specific combination of failover parameters 
 | `failover_cluster_topology_refresh_rate_sec` | `2`   |
 
 ### Writer Cluster Endpoints After Failover
-Connecting to a writer cluster endpoint after failover can result in a faulty connection because DNS causes a delay in changing the writer cluster. On the AWS DNS server, this change is updated usually between 15-20 seconds, but the other DNS servers sitting between the application and the AWS DNS server may not be updated in time. Using the stale DNS data will most likely cause problems for users, so it is important to keep this is mind.
+Connecting to a writer cluster endpoint after failover can result in a faulty connection because there can be a delay before the endpoint is updated to point to the new writer. On the AWS DNS server, this change is usually updated after 15-20 seconds, but the other DNS servers sitting between the application and the AWS DNS server may take longer to update. Using the stale DNS data will most likely cause problems for users, so it is important to keep this in mind.
+### 2-Host Clusters
+Using failover with a 2-host cluster is not beneficial because during the failover process involving one writer host and one reader host, the two hosts simply switch roles; the reader becomes the writer and the writer becomes the reader. If failover is triggered because one of the hosts has a problem, this problem will persist because there aren't any extra hosts to take the responsibility of the one that is broken. Three or more database hosts are recommended to improve the stability of the cluster.
 
-### 2-Node Clusters
-Using failover with a 2-node cluster is not beneficial because during the failover process involving one writer node and one reader node, the two nodes simply switch roles; the reader becomes the writer and the writer becomes the reader. If failover is triggered because one of the nodes has a problem, this problem will persist because there aren't any extra nodes to take the responsibility of the one that is broken. Three or more database nodes are recommended to improve the stability of the cluster.
-
-### Node Availability
-It seems as though just one node, the one triggering the failover, will be unavailable during the failover process; this is actually not true. When failover is triggered, all nodes become unavailable for a short time. This is because the control plane, which orchestrates the failover process, first shuts down all nodes, then starts the writer node, and finally starts and connects the remaining nodes to the writer. In short, failover requires each node to be reconfigured and thus, all nodes must become unavailable for a short period of time. One additional note to point out is that if your failover time is aggressive, then this may cause failover to fail because some nodes may still be unavailable by the time your failover times out.
+### Host Availability
+A common misconception about failover is the expectation that only one host will be unavailable during the failover process; this is actually not true. When failover is triggered, all hosts become unavailable for a short time. This is because the control plane, which orchestrates the failover process, first shuts down all hosts, then starts the writer host, and finally starts and connects the remaining hosts to the writer. In short, failover requires each host to be reconfigured and thus, all hosts become unavailable for a short period of time. With this in mind, please note that aggressive failover configurations may cause failover to fail because some hosts may still be unavailable when your failover timeout setting is reached.
 
 ### Monitor Failures and Investigate
 If you are experiencing difficulties with the failover plugin, try the following:
