@@ -20,36 +20,36 @@ Plugins are notified by the connection plugin manager when changes to the databa
 To use a custom plugin, you must:
 1. Create a custom plugin.
 2. Create a corresponding custom plugin factory.
-3. In `connection_plugin_chain.py`, add an entry in the `PLUGIN_FACTORIES` `Dict`. The key should be a short name for the plugin (without spaces), and the value should be the `PluginFactory` class you created in step 2. You can also optionally add an entry to the `PLUGIN_FACTORY_WEIGHTS` `Dict`. The weight that you give your custom plugin will determine the order that the plugin will be loaded in the plugin chain if the `auto_sort_wrapper_plugin_order` connection property is enabled. This property is enabled by default.
+3. In `connection_plugin_chain.py`, add an entry in the `PLUGIN_FACTORIES` `Dict`. The key should be a short name for the plugin (without spaces), and the value should be the `PluginFactory` class you created in step 2. You can also optionally add an entry to the `PLUGIN_FACTORY_WEIGHTS` `Dict`. The weight that you give your custom plugin will determine the order that the plugin will be loaded in the plugin chain if the `auto_sort_wrapper_plugin_order` connection property is enabled. More information on this property can be found [here](/docs/using-the-python-driver#connection-plugin-manager-parameters).
 4. When creating a connection, in the `plugins` connection parameter, include the plugin name that you added to `PLUGIN_FACTORIES` in step 3. This will ensure that your plugin is included in the plugin chain. See [Registering a Custom Plugin](#registering-a-custom-plugin) for more info.
 
 ### Creating Custom Plugins
 
-To create a custom plugin, create a new class that extends the [Plugin](/aws_wrapper/plugin.py) class.
+To create a custom plugin, create a new class that extends the [Plugin](/aws_advanced_python_wrapper/plugin.py) class.
 
-The `Plugin` class provides a simple implementation for all `Plugin` methods. By default, requested Python methods will be called without additional operations. This is helpful when the custom plugin only needs to override one (or a few) methods from the `Plugin` interface.
+The `Plugin` class provides a simple implementation for all `Plugin` methods. By default, requested Python database methods will be called without additional operations. This is helpful when the custom plugin only needs to override one (or a few) methods from the `Plugin` interface.
 See the following classes for examples:
 
-- [IamAuthPlugin](/aws_wrapper/iam_plugin.py)
+- [IamAuthPlugin](/aws_advanced_python_wrapper/iam_plugin.py)
     - The `IamAuthPlugin` class only overrides the `connect` method because the plugin is only concerned with creating
       database connections with IAM database credentials.
 
-- [ExecuteTimePlugin](/aws_wrapper/execute_time_plugin.py)
+- [ExecuteTimePlugin](/aws_advanced_python_wrapper/execute_time_plugin.py)
     - The `ExecuteTimePlugin` only overrides the `execute` method because it is only concerned with elapsed time during execution. It does not establish new connections or set up any host list provider.
 
-A `PluginFactory` implementation is also required for the new custom plugin. This factory class is used to register and initialize custom plugins. See [ExecuteTimePluginFactory](/aws_wrapper/execute_time_plugin.py) for a simple implementation example.
+A `PluginFactory` implementation is also required for the new custom plugin. This factory class is used to register and initialize custom plugins. See [ExecuteTimePluginFactory](/aws_advanced_python_wrapper/execute_time_plugin.py) for a simple implementation example.
 
 ### Subscribed Methods
 
-The `subscribed_methods` attribute specifies a set of Python methods that a plugin is subscribed to in the form of a set of strings (`Set[str]`). All plugins must implement/define the `subscribed_methods` attribute.
+When executing a Python method, the plugin manager will only call a specific plugin method if the Python method is within its set of subscribed methods. For example, the [ReadWriteSplittingPlugin](/aws_advanced_python_wrapper/read_write_splitting_plugin.py) subscribes to Python methods and setters that change the read-only value of the connection, but does not subscribe to other common `Connection` or `Cursor` methods. Consequently, this plugin will not be triggered by method calls like `Connection.commit` or `Cursor.execute`.
 
-When executing a Python method, the plugin manager will only call a specific plugin method if the Python method is within its set of subscribed methods. For example, the [ReadWriteSplittingPlugin](/aws_wrapper/read_write_splitting_plugin.py) subscribes to Python methods and setters that change the read-only value of the connection, but does not subscribe to other common `Connection` or `Cursor` methods. Consequently, this plugin will not be triggered by method calls like `Connection.commit` or `Cursor.execute`.
+The `subscribed_methods` attribute specifies the set of Python methods that a plugin is subscribed to in the form of a set of strings (`Set[str]`). All plugins must implement/define the `subscribed_methods` attribute.
 
 Plugins can subscribe to any of the standard PEP249 [Connection methods](https://peps.python.org/pep-0249/#connection-methods) or [Cursor methods](https://peps.python.org/pep-0249/#cursor-methods). They can also subscribe to the target driver methods listed in the corresponding driver dialect's `_network_bound_methods` attribute:
-- [Postgres network bound methods](/aws_wrapper/pg_driver_dialect.py)
-- [MySQL network bound methods](/aws_wrapper/mysql_driver_dialect.py)
+- [Postgres network bound methods](/aws_advanced_python_wrapper/pg_driver_dialect.py)
+- [MySQL network bound methods](/aws_advanced_python_wrapper/mysql_driver_dialect.py)
 
-Plugins can also subscribe to the following pipelines:
+Plugins can also subscribe to specific [pipelines](./Pipelines.md) by including the subscription key in their `subscribed_methods` attribute and implementing the equivalent pipeline method:
 
 | Pipeline                                                                                            | Method Name / Subscription Key |
 |-----------------------------------------------------------------------------------------------------|:------------------------------:|

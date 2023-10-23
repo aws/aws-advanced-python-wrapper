@@ -40,9 +40,10 @@ Plugins are loaded and managed through the Connection Plugin Manager and may be 
 
 ### Connection Plugin Manager Parameters
 
-| Parameter | Value | Required | Description                                                                      | Default Value                          |
-|-----------|-------|----------|----------------------------------------------------------------------------------|----------------------------------------|
-| `plugins` | `str` | No       | Comma separated list of connection plugin codes. <br><br>Example: `failover,efm` | `auroraConnectionTracker,failover,efm` | 
+| Parameter         | Value | Required | Description                                                                                                                                                                   | Default Value                          |
+|-------------------|-------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `plugins`         | `str` | No       | Comma separated list of connection plugin codes. <br><br>Example: `failover,efm`                                                                                              | `auroraConnectionTracker,failover,efm` | 
+| `auto_sort_wrapper_plugin_order | `str` | No       | Certain plugins require a specific plugin chain ordering to function correctly. When enabled, this property automatically sorts the requested plugins into the correct order. | `True`                                   |
 
 ### List of Available Plugins
 
