@@ -59,7 +59,7 @@ class PgDriverDialect(DriverDialect):
     }
 
     def is_dialect(self, connect_func: Callable) -> bool:
-        return PgDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
+        return True # Temporary change
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
@@ -70,7 +70,7 @@ class PgDriverDialect(DriverDialect):
 
     def abort_connection(self, conn: Connection):
         if isinstance(conn, psycopg.Connection):
-            conn.close()
+            conn.cancel()
             return
         raise UnsupportedOperationError(
             Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "cancel"))

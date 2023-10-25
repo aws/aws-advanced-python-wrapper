@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from importlib import import_module
 from logging import DEBUG, Formatter, Logger, StreamHandler
 from queue import Empty, Queue
@@ -26,17 +27,24 @@ if TYPE_CHECKING:
 
 class LogUtils:
     @staticmethod
+    def thread_id_filter(record):
+        record.thread_id = threading.get_native_id()
+        return record
+
+    @staticmethod
     def setup_logger(logger: Logger, level: int = DEBUG, format_string: Optional[str] = None):
+
         for handler in logger.handlers:
             if isinstance(handler, StreamHandler):
                 return
 
         if format_string is None:
             format_string = \
-                "%(asctime)s.%(msecs)03d %(name)-12s:%(funcName)s [%(levelname)-8s] - %(threadName)s - %(message)s"
+                "%(asctime)s.%(msecs)03d %(name)-12s:%(funcName)s [%(levelname)-8s] - %(threadName)s - %(thread_id)d - %(message)s"
 
         handler = StreamHandler(stream=sys.stdout)
         handler.setFormatter(Formatter(format_string))
+        handler.addFilter(LogUtils.thread_id_filter)
         handler.setLevel(level)
 
         logger.setLevel(level)

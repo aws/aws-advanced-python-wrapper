@@ -42,8 +42,12 @@ class PgExceptionHandler(ExceptionHandler):
 
     _PASSWORD_AUTHENTICATION_FAILED_MSG = "password authentication failed"
     _PAM_AUTHENTICATION_FAILED_MSG = "PAM authentication failed"
-    _CONNECTION_FAILED = "connection failed"
-    _CONSUMING_INPUT_FAILED = "consuming input failed"
+    _NETWORK_ERROR_MSGS = [
+        "connection failed",
+        "connection is closed",
+        "consuming input failed",
+        "server closed the connection"
+    ]
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
@@ -61,7 +65,9 @@ class PgExceptionHandler(ExceptionHandler):
                 return False
             # Check the error message if this is a generic error
             error_msg: str = error.args[0]
-            return self._CONNECTION_FAILED in error_msg or self._CONSUMING_INPUT_FAILED in error_msg
+            for msg in PgExceptionHandler._NETWORK_ERROR_MSGS:
+                if msg in error_msg:
+                    return True
 
         return False
 

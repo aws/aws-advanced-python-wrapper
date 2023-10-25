@@ -18,10 +18,10 @@ flake8-type-checking = "^2.4.1"
 isort = "^5.12.0"
 pep8-naming = "^0.13.3"
 SQLAlchemy = "^2.0.21"
-psycopg = "^3.1.9"
-#psycopg = {path = "./resources/psycopg-3.2.0.dev1.tar.gz"}
+#psycopg = "^3.1.9"
+psycopg = {path = "./resources/psycopg-3.2.0.dev1.tar.gz"}
+#psycopg-binary = "^3.1.9"
 psycopg-c = {path = "./resources/psycopg-c-3.2.0.dev1.tar.gz"}
-#psycopg-binary = {path = "/Users/karenc/Documents/code/python/psycopg/psycopg_c"}
 mysql-connector-python = "^8.1.0"
 
 [tool.poetry.group.test.dependencies]

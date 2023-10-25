@@ -516,11 +516,19 @@ class PluginManager(CanReleaseResources):
         if conn is None and method_name in ["Connection.close", "Cursor.close"]:
             return
 
-        return self._execute_with_subscribed_plugins(
+        if method_name in ["Connection.close", "Cursor.close"]:
+            logger.debug("executing close")
+
+        rs = self._execute_with_subscribed_plugins(
             method_name,
             # next_plugin_func is defined later in make_pipeline
             lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args, **kwargs),
             target_driver_func)
+
+        if method_name in ["Connection.close", "Cursor.close"]:
+            logger.debug("done executing close")
+
+        return rs
 
     def _execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):
         pipeline_func: Optional[Callable] = self._function_cache.get(method_name)

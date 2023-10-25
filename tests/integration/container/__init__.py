@@ -23,3 +23,6 @@ def set_logger(name=__name__, level=DEBUG, format_string=None):
 
 set_logger()
 set_logger('aws_advanced_python_wrapper')
+set_logger('psycopg')
+set_logger('psycopg-c')
+set_logger('psycopg_c')

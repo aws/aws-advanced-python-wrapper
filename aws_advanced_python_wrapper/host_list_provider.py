@@ -250,11 +250,10 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 # Return the original hosts passed to the connect method
                 return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
+            driver_dialect = self._host_list_provider_service.driver_dialect
             try:
-                driver_dialect = self._host_list_provider_service.driver_dialect
-
-                query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
-                    RdsHostListProvider._executor, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
+                qe = ThreadPoolExecutor(thread_name_prefix="QueryTopologyExecutor")
+                query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(qe, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
@@ -265,6 +264,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                         self._suggest_cluster_id(hosts)
                     return RdsHostListProvider.FetchTopologyResult(hosts, False)
             except TimeoutError as e:
+                qe.shutdown(wait=False)
                 raise QueryTimeoutError(Messages.get("RdsHostListProvider.QueryForTopologyTimeout")) from e
 
         if cached_hosts:
