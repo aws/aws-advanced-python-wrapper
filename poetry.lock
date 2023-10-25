@@ -946,13 +946,13 @@ test = ["assertpy (>=1.1)", "beautifulsoup4 (>=4.11.1)", "black (>=22.1.0)", "fl
 
 [[package]]
 name = "pytest-html-merger"
-version = "0.0.8"
+version = "0.0.9"
 description = "Pytest HTML reports merging utility"
 optional = false
 python-versions = ">=3.6.0"
 files = [
-    {file = "pytest_html_merger-0.0.8-py3-none-any.whl", hash = "sha256:e82dcdef090a04f5a01a6f517b78e1a6f6c1338c171e7657b0d0cf384b63354c"},
-    {file = "pytest_html_merger-0.0.8.tar.gz", hash = "sha256:2cae62ff9ed1f005e308ed1720237ef14e9b4f429b4a7ca81dcbbfe089c94f00"},
+    {file = "pytest_html_merger-0.0.9-py3-none-any.whl", hash = "sha256:e84bae4bc433c4808e7574fc1e9b2a1dd2871b44e375bb6be4d1dec980a6a6ae"},
+    {file = "pytest_html_merger-0.0.9.tar.gz", hash = "sha256:b3b1bccc59d26e7829e1f32848c1c2fdb0beaa657c1be4f0aacdd39df13fc777"},
 ]
 
 [package.dependencies]
@@ -1247,4 +1247,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "c71d76a8f88185a4336e7661286d24049c389101f2f27611dc38ffb20c35fc05"
+content-hash = "3590ff250e48caacadba7a610070e3f39f46b7670b91b9c188c786167944c13d"
