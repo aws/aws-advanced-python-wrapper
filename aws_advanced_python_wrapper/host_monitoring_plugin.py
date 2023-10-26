@@ -500,7 +500,7 @@ class Monitor:
             cursor.fetchone()
 
 
-class MonitoringThreadContainer:
+class MonitoringThreadContainer(CanReleaseResources):
     _instance: ClassVar[Optional[MonitoringThreadContainer]] = None
     _lock: ClassVar[RLock] = RLock()
     _usage_count: ClassVar[AtomicInt] = AtomicInt()
@@ -508,7 +508,6 @@ class MonitoringThreadContainer:
     _monitor_map: ConcurrentDict[str, Monitor] = ConcurrentDict()
     _tasks_map: ConcurrentDict[Monitor, Future] = ConcurrentDict()
     _available_monitors: Queue[Monitor] = Queue()
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
 
     # This logic ensures that this class is a Singleton
     def __new__(cls, *args, **kwargs):
@@ -519,6 +518,9 @@ class MonitoringThreadContainer:
                     cls._usage_count.set(0)
         cls._usage_count.get_and_increment()
         return cls._instance
+
+    def __init__(self):
+        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
 
     def get_or_create_monitor(self, host_aliases: FrozenSet[str], monitor_supplier: Callable) -> Monitor:
         if not host_aliases:
@@ -544,7 +546,7 @@ class MonitoringThreadContainer:
             if supplied_monitor is None:
                 raise AwsWrapperError(Messages.get("MonitoringThreadContainer.SupplierMonitorNone"))
             self._tasks_map.compute_if_absent(
-                supplied_monitor, lambda _: MonitoringThreadContainer._executor.submit(supplied_monitor.run))
+                supplied_monitor, lambda _: self._executor.submit(supplied_monitor.run))
             return supplied_monitor
 
         if monitor is None:
@@ -575,8 +577,7 @@ class MonitoringThreadContainer:
         self._monitor_map.remove_matching_values([monitor])
         self._tasks_map.compute_if_present(monitor, MonitoringThreadContainer._cancel)
 
-    @staticmethod
-    def release_instance():
+    def release_resources(self):
         if MonitoringThreadContainer._instance is None:
             return
 
@@ -586,6 +587,8 @@ class MonitoringThreadContainer:
                     MonitoringThreadContainer._instance._release_resources()
                     MonitoringThreadContainer._instance = None
                     MonitoringThreadContainer._usage_count.set(0)
+
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     def _release_resources(self):
         self._monitor_map.clear()
@@ -598,7 +601,7 @@ class MonitoringThreadContainer:
         QueueUtils.clear(self._available_monitors)
 
 
-class MonitorService:
+class MonitorService(CanReleaseResources):
     def __init__(self, plugin_service: PluginService):
         self._plugin_service: PluginService = plugin_service
         self._thread_container: MonitoringThreadContainer = MonitoringThreadContainer()
@@ -649,8 +652,8 @@ class MonitorService:
                 return
 
     def release_resources(self):
+        self._thread_container.release_resources()
         self._thread_container = None
-        MonitoringThreadContainer.release_instance()
 
     def notify_unused(self, monitor: Monitor):
         self._thread_container.release_monitor(monitor)

@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Optional, Set
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -26,6 +26,7 @@ from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import (QueryTimeoutError,
                                                 UnsupportedOperationError)
+from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -33,8 +34,7 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
 
-class DriverDialect(ABC):
-    _executor: ClassVar[Executor] = ThreadPoolExecutor()
+class DriverDialect(ABC, CanReleaseResources):
     _dialect_code: str = DriverDialectCodes.GENERIC
     _network_bound_methods: Set[str] = {"*"}
     _read_only: bool = False
@@ -43,6 +43,7 @@ class DriverDialect(ABC):
 
     def __init__(self, props: Properties):
         self._props = props
+        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="DriverDialectExecutor")
 
     @property
     def driver_name(self):
@@ -130,7 +131,7 @@ class DriverDialect(ABC):
 
         if exec_timeout > 0:
             try:
-                execute_with_timeout = timeout(DriverDialect._executor, exec_timeout)(exec_func)
+                execute_with_timeout = timeout(self._executor, exec_timeout)(exec_func)
                 return execute_with_timeout()
             except TimeoutError as e:
                 raise QueryTimeoutError(Messages.get_formatted("DriverDialect.ExecuteTimeout", method_name)) from e
@@ -148,3 +149,6 @@ class DriverDialect(ABC):
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         return
+
+    def release_resources(self):
+        self._executor.shutdown(wait=False, cancel_futures=True)

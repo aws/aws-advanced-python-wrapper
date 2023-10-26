@@ -104,7 +104,7 @@ def verify_concurrency(mock_monitor, mock_executor, mock_future, counter, concur
     concurrent_counter.set(0)
 
     while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.release_instance()
+        MonitoringThreadContainer.release_resources()
 
 
 def test_start_monitoring__connections_to_different_hosts(

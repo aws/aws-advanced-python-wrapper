@@ -173,6 +173,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.close",
                                      lambda: self.target_connection.close(), exc_type, exc_val, exc_tb)
+        self.release_resources()
 
 
 class AwsWrapperCursor(Cursor):

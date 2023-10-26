@@ -68,7 +68,7 @@ def mock_monitor_supplier(mocker, mock_monitor1, mock_monitor2):
 def release_container():
     yield
     while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.release_instance()
+        MonitoringThreadContainer.release_resources()
 
 
 def test_get_or_create_monitor__monitor_created(
@@ -199,10 +199,10 @@ def test_release_instance(mocker, container, mock_monitor1, mock_future):
     assert container2 is container
     assert 2 == container._usage_count.get()
 
-    container2.release_instance()
+    container2.release_resources()
     spy.assert_not_called()
 
-    container.release_instance()
+    container.release_resources()
     assert 0 == len(container._monitor_map)
     assert 0 == len(container._tasks_map)
     mock_future.cancel.assert_called_once()

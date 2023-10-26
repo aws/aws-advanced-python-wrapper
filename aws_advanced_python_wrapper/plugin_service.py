@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from contextlib import closing
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -181,8 +181,6 @@ class PluginService(ExceptionHandler, Protocol):
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
-
     def __init__(
             self,
             container: PluginServiceManagerContainer,
@@ -196,17 +194,18 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._original_url = PropertiesUtils.get_url(props)
         self._host_list_provider: HostListProvider = ConnectionStringHostListProvider(self, props)
 
+        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
         self._hosts: Tuple[HostInfo, ...] = ()
         self._current_connection: Optional[Connection] = None
         self._current_host_info: Optional[HostInfo] = None
         self._initial_connection_host_info: Optional[HostInfo] = None
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
-        self._dialect_provider = DatabaseDialectManager(props)
+        self._database_dialect_manager = DatabaseDialectManager(props)
         self._target_func = target_func
         self._driver_dialect_manager = driver_dialect_manager
         self._driver_dialect = driver_dialect
-        self._dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
+        self._dialect = self._database_dialect_manager.get_dialect(driver_dialect.dialect_code, props)
 
     @property
     def hosts(self) -> Tuple[HostInfo, ...]:
@@ -297,7 +296,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         original_dialect = self._dialect
         self._dialect = \
-            self._dialect_provider.query_for_dialect(
+            self._database_dialect_manager.query_for_dialect(
                 self._original_url,
                 self._initial_connection_host_info,
                 connection,
@@ -377,7 +376,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         try:
             timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                PluginServiceImpl._executor, timeout_sec, driver_dialect, connection)(self._fill_aliases)
+                self._executor, timeout_sec, driver_dialect, connection)(self._fill_aliases)
             cursor_execute_func_with_timeout(connection, host_info)
         except TimeoutError as e:
             raise QueryTimeoutError(Messages.get("PluginServiceImpl.FillAliasesTimeout")) from e
@@ -470,9 +469,19 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             # ignore
             pass
 
-        host_list_provider = self.host_list_provider
+        host_list_provider = self._host_list_provider
         if host_list_provider is not None and isinstance(host_list_provider, CanReleaseResources):
             host_list_provider.release_resources()
+
+        database_dialect_manager = self._database_dialect_manager
+        if database_dialect_manager is not None and isinstance(database_dialect_manager, CanReleaseResources):
+            database_dialect_manager.release_resources()
+
+        driver_dialect = self._driver_dialect
+        if driver_dialect is not None and isinstance(driver_dialect, CanReleaseResources):
+            driver_dialect.release_resources()
+
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
 
 class PluginManager(CanReleaseResources):

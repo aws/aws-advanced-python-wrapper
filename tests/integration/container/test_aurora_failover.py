@@ -23,7 +23,8 @@ from aws_advanced_python_wrapper.errors import (
     FailoverSuccessError, TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from .utils.conditions import (disable_on_features, enable_on_features,
-                               enable_on_num_instances)
+                               enable_on_num_instances, disable_on_engines)
+from .utils.database_engine import DatabaseEngine
 from .utils.proxy_helper import ProxyHelper
 
 if TYPE_CHECKING:
@@ -240,6 +241,7 @@ class TestAuroraFailover:
             assert idle_connection.is_closed is True
 
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
+    @disable_on_engines([DatabaseEngine.MYSQL])
     def test_failover__socket_timeout(
             self,
             test_driver: TestDriver,

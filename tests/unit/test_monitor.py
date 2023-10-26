@@ -92,7 +92,7 @@ def monitor(mock_plugin_service, mock_monitor_service, host_info, props):
 def release_container():
     yield
     while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.release_instance()
+        MonitoringThreadContainer.release_resources()
 
 
 def test_start_monitoring(monitor, mock_monitoring_context):
@@ -201,7 +201,7 @@ def test_run__no_contexts(mocker, mock_monitor_service, monitor):
 
     assert container._monitor_map.get(host_alias) is None
     assert container._tasks_map.get(monitor) is None
-    MonitoringThreadContainer.release_instance()
+    MonitoringThreadContainer.release_resources()
 
 
 def test_check_connection_status__valid_then_invalid(mocker, monitor):

@@ -14,13 +14,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
+from typing import TYPE_CHECKING, Any, Callable, Set
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
 
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 from inspect import signature
 
 from mysql.connector import CMySQLConnection, MySQLConnection
@@ -43,8 +43,6 @@ class MySQLDriverDialect(DriverDialect):
     AUTH_PLUGIN_PARAM = "auth_plugin"
     AUTH_METHOD = "mysql_clear_password"
     IS_CLOSED_TIMEOUT_SEC = 3
-
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MySQLDriverDialectExecutor")
 
     _dialect_code: str = DriverDialectCodes.MYSQL_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
@@ -73,7 +71,7 @@ class MySQLDriverDialect(DriverDialect):
             if self.can_execute_query(conn):
                 socket_timeout = WrapperProperties.SOCKET_TIMEOUT_SEC.get_float(self._props)
                 timeout_sec = socket_timeout if socket_timeout > 0 else MySQLDriverDialect.IS_CLOSED_TIMEOUT_SEC
-                is_connected_with_timeout = timeout(MySQLDriverDialect._executor, timeout_sec)(conn.is_connected)
+                is_connected_with_timeout = timeout(self._executor, timeout_sec)(conn.is_connected)
 
                 try:
                     return not is_connected_with_timeout()

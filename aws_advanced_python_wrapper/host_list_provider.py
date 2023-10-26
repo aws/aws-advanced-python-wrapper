@@ -13,6 +13,10 @@
 #  limitations under the License.
 
 from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Protocol, Tuple, runtime_checkable
+
+if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 
 import uuid
 from abc import abstractmethod
@@ -21,11 +25,6 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from threading import RLock
-from typing import (TYPE_CHECKING, ClassVar, Optional, Protocol, Tuple,
-                    runtime_checkable)
-
-if TYPE_CHECKING:
-    from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 
 import aws_advanced_python_wrapper.database_dialect as db_dialect
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
@@ -36,6 +35,7 @@ from aws_advanced_python_wrapper.host_availability import (
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import (Connection, Cursor,
                                                 ProgrammingError)
+from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
@@ -117,7 +117,7 @@ class HostListProviderService(Protocol):
         ...
 
 
-class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
+class RdsHostListProvider(DynamicHostListProvider, HostListProvider, CanReleaseResources):
     _topology_cache: CacheMap[str, Tuple[HostInfo, ...]] = CacheMap()
     # Maps cluster IDs to a boolean representing whether they are a primary cluster ID or not. A primary cluster ID is a
     # cluster ID that is equivalent to a cluster URL. Topology info is shared between RdsHostListProviders that have
@@ -127,12 +127,11 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     # cluster IDs so that connections to the same clusters can share topology info.
     _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="AuroraHostListProviderExecutor")
-
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
         self._props: Properties = props
 
+        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="RdsHostListProviderExecutor")
         self._max_timeout = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(self._props)
         self._rds_utils: RdsUtils = RdsUtils()
         self._hosts: Tuple[HostInfo, ...] = ()
@@ -254,7 +253,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 driver_dialect = self._host_list_provider_service.driver_dialect
 
                 query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
-                    RdsHostListProvider._executor, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
+                    self._executor, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
@@ -384,7 +383,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_role)
+                self._executor, self._max_timeout, driver_dialect, connection)(self._get_host_role)
             result = cursor_execute_func_with_timeout(connection)
             if result is not None:
                 is_reader = result[0]
@@ -406,7 +405,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         driver_dialect = self._host_list_provider_service.driver_dialect
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._identify_connection)
+                self._executor, self._max_timeout, driver_dialect, connection)(self._identify_connection)
             result = cursor_execute_func_with_timeout(connection)
             if result:
                 host_id = result[0]
@@ -423,7 +422,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         with closing(conn.cursor()) as cursor:
             cursor.execute(self._dialect.host_id_query)
             return cursor.fetchone()
-        return None
+
+    def release_resources(self):
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     @dataclass()
     class ClusterIdSuggestion:

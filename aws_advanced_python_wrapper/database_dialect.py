@@ -14,8 +14,8 @@
 
 from __future__ import annotations
 
-from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
-                    Protocol, Tuple, runtime_checkable)
+from typing import (TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple,
+                    runtime_checkable)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -40,6 +40,7 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from .driver_dialect_codes import DriverDialectCodes
+from .plugin import CanReleaseResources
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
 from .utils.utils import Utils
@@ -393,7 +394,7 @@ class UnknownDatabaseDialect(DatabaseDialect):
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
 
-class DatabaseDialectManager(DatabaseDialectProvider):
+class DatabaseDialectManager(DatabaseDialectProvider, CanReleaseResources):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
     _known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
     _known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {DialectCode.MYSQL: MysqlDatabaseDialect(),
@@ -404,12 +405,12 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                                                                    DialectCode.AURORA_PG: AuroraPgDialect(),
                                                                    DialectCode.UNKNOWN: UnknownDatabaseDialect()}
     _custom_dialect: Optional[DatabaseDialect] = None
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DatabaseDialectManagerExecutor")
 
     def __init__(self, props: Properties, rds_helper: Optional[RdsUtils] = None):
         self._props: Properties = props
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
         self._can_update: bool = False
+        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="DatabaseDialectManagerExecutor")
         self._dialect: DatabaseDialect = UnknownDatabaseDialect()
         self._dialect_code: DialectCode = DialectCode.UNKNOWN
 
@@ -453,7 +454,8 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                 self._log_current_dialect()
                 return dialect
             else:
-                raise AwsWrapperError(Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", str(dialect_code)))
+                raise AwsWrapperError(
+                    Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", str(dialect_code)))
 
         host: str = props["host"]
         target_driver_type: TargetDriverType = self._get_target_driver_type(driver_dialect)
@@ -518,12 +520,13 @@ class DatabaseDialectManager(DatabaseDialectProvider):
             for dialect_code in dialect_candidates:
                 dialect_candidate = DatabaseDialectManager._known_dialects_by_code.get(dialect_code)
                 if dialect_candidate is None:
-                    raise AwsWrapperError(Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", dialect_code))
+                    raise AwsWrapperError(
+                        Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", dialect_code))
 
                 timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
                 try:
                     cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                        DatabaseDialectManager._executor,
+                        self._executor,
                         timeout_sec,
                         driver_dialect,
                         conn)(dialect_candidate.is_dialect)
@@ -537,8 +540,8 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                 self._can_update = False
                 self._dialect_code = dialect_code
                 self._dialect = dialect_candidate
-                DatabaseDialectManager._known_endpoint_dialects.put(url, dialect_code,
-                                                                    DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+                DatabaseDialectManager._known_endpoint_dialects.put(
+                    url, dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
                 if host_info is not None:
                     DatabaseDialectManager._known_endpoint_dialects.put(
                         host_info.url, dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
@@ -560,4 +563,8 @@ class DatabaseDialectManager(DatabaseDialectProvider):
 
     def _log_current_dialect(self):
         dialect_class = "<null>" if self._dialect is None else type(self._dialect).__name__
-        logger.debug("DatabaseDialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update)
+        logger.debug(
+            "DatabaseDialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update)
+
+    def release_resources(self):
+        self._executor.shutdown(wait=False, cancel_futures=True)
