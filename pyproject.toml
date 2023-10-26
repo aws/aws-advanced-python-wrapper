@@ -20,7 +20,7 @@ pep8-naming = "^0.13.3"
 SQLAlchemy = "^2.0.21"
 psycopg = "^3.1.9"
 psycopg-binary = "^3.1.9"
-mysql-connector-python = "^8.1.0"
+mysql-connector-python = "^8.2.0"
 
 [tool.poetry.group.test.dependencies]
 boto3 = "^1.28.70"
@@ -35,7 +35,7 @@ toxiproxy-python = "^0.1.1"
 parameterized = "^0.9.0"
 psycopg = "^3.1.9"
 psycopg-binary = "^3.1.9"
-mysql-connector-python = "^8.1.0"
+mysql-connector-python = "^8.2.0"
 
 [tool.isort]
 sections = "FUTURE,STDLIB,THIRDPARTY,FIRSTPARTY,LOCALFOLDER"
