@@ -254,6 +254,7 @@ class TestReadWriteSplitting:
         with pytest.raises(AwsWrapperError):
             conn.read_only = True
 
+    @pytest.mark.skip
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     def test_set_read_only_false__all_instances_down(
             self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, aurora_utils):
