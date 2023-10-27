@@ -18,10 +18,11 @@ Plugins are notified by the connection plugin manager when changes to the databa
 ## Using Custom Plugins
 
 To use a custom plugin, you must:
-1. Create a custom plugin.
-2. Create a corresponding custom plugin factory.
-3. In `connection_plugin_chain.py`, add an entry in the `PLUGIN_FACTORIES` `Dict`. The key should be a short name for the plugin (without spaces), and the value should be the `PluginFactory` class you created in step 2. You can also optionally add an entry to the `PLUGIN_FACTORY_WEIGHTS` `Dict`. The weight that you give your custom plugin will determine the order that the plugin will be loaded in the plugin chain if the `auto_sort_wrapper_plugin_order` connection property is enabled. More information on this property can be found [here](/docs/using-the-python-driver#connection-plugin-manager-parameters).
-4. When creating a connection, in the `plugins` connection parameter, include the plugin name that you added to `PLUGIN_FACTORIES` in step 3. This will ensure that your plugin is included in the plugin chain. See [Registering a Custom Plugin](#registering-a-custom-plugin) for more info.
+1. Create the custom plugin.
+2. Create a corresponding plugin factory.
+3. Follow the steps in [Registering a Custom Plugin](#registering-a-custom-plugin).
+
+A short example of these steps is provided [below](#Example).
 
 ### Creating Custom Plugins
 
@@ -63,30 +64,40 @@ Plugins can also subscribe to specific [pipelines](./Pipelines.md) by including 
 A custom plugin can subscribe to all Python methods being executed by setting the Plugin's `subscribed_methods` attribute to `{"*"}`. In this case, the plugin will be active in every workflow. We recommend that you be aware of the performance impact of subscribing to all Python methods, especially if your plugin regularly performs demanding tasks for common Python method calls.
 
 ### Registering a Custom Plugin
-To register your custom plugin:
-- In `connection_plugin_chain.py`, add an entry in the `PLUGIN_FACTORIES` `Dict`. The key should be a short name for the plugin (without spaces), and the value should be the `PluginFactory` class you created in step 2. You can also optionally add an entry to the `PLUGIN_FACTORY_WEIGHTS` `Dict`. The weight that you give your custom plugin will determine the order that the plugin will be loaded in the plugin chain if the `auto_sort_wrapper_plugin_order` connection property is enabled. This property is enabled by default.
-- When creating a connection, in the `plugins` connection parameter, include the plugin name that you added to `PLUGIN_FACTORIES` in step 3. This will ensure that your plugin is included in the plugin chain.
+To register a custom plugin, follow these steps:
+- Import `def register_plugin(plugin_code: str, plugin_factory: Type[PluginFactory], weight: int = WEIGHT_RELATIVE_TO_PRIOR_PLUGIN)` from `connection_plugin_chain.py`, and call it with the appropriate arguments: 
+  - The first argument specifies a short name for the plugin that will be used when specifying the `plugins` connection parameter. The name should not contain spaces. In the example below, we will use `custom_plugin`.
+  - The second argument should be the `PluginFactory` class you created for the custom plugin. Note that the class itself should be passed rather than an instance of the class.
+  - The third (optional) argument specifies a weight for the custom plugin. The weight will determine the plugin's ordering in the plugin chain if the `auto_sort_wrapper_plugin_order` property is enabled. All plugins with unspecified weight will be ordered according to the `plugins` parameter setting. More information on this property can be found [here](/docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters).
+- When creating a connection, in the `plugins` parameter, include the plugin name that you specified as the first argument to `register_plugin`. This will ensure that your plugin is included in the plugin chain.
 
+### Example
 ```python
-    # In my_plugin.py
-    class MyPlugin(Plugin):
+    from aws_advanced_python_wrapper.connection_plugin_chain import register_plugin
+
+    # In custom_plugin.py
+    class CustomPlugin(Plugin):
         def __init__(self, plugin_service: PluginService, props: Properties):
             self._plugin_service = plugin_service
             self._props = props
-
-    class MyPluginFactory(PluginFactory):
+            
+        @property
+        def subscribed_methods(self) -> Set[str]:
+            return {"notify_connection_changed"}
+        
+        def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
+            print("The connection has changed.")
+            return OldConnectionSuggestedAction.NO_OPINION
+        
+        
+    class CustomPluginFactory(PluginFactory):
         def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-            return MyPlugin(plugin_service, props)
-
-    # In connection_plugin_chain.py:
-    PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
-        # ...
-        "my_plugin": MyPluginFactory
-    }
+            return CustomPlugin(plugin_service, props)
 
     # In app.py
+    register_plugin("custom_plugin", CustomPluginFactory)
     params = {
-        "plugins": "aurora_connection_tracker,my_plugin"
+        "plugins": "aurora_connection_tracker,custom_plugin"
         # Add other connection properties below...
     }
     

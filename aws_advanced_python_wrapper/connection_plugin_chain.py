@@ -74,6 +74,11 @@ PLUGIN_FACTORY_WEIGHTS: Dict[Type[PluginFactory], int] = {
 logger = Logger(__name__)
 
 
+def register_plugin(
+        plugin_code: str, plugin_factory: Type[PluginFactory], weight: int = WEIGHT_RELATIVE_TO_PRIOR_PLUGIN):
+    PLUGIN_FACTORIES[plugin_code] = plugin_factory
+    PLUGIN_FACTORY_WEIGHTS[plugin_factory] = weight
+
 def get_plugins(
         plugin_service: PluginService,
         connection_provider_manager: ConnectionProviderManager,
