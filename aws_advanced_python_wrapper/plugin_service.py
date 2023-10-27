@@ -47,6 +47,7 @@ from aws_advanced_python_wrapper.host_list_provider import (
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
+from aws_advanced_python_wrapper.utils.daemon_thread_pool import DaemonThreadPool
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -194,7 +195,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._original_url = PropertiesUtils.get_url(props)
         self._host_list_provider: HostListProvider = ConnectionStringHostListProvider(self, props)
 
-        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
+        self._executor = DaemonThreadPool()
         self._hosts: Tuple[HostInfo, ...] = ()
         self._current_connection: Optional[Connection] = None
         self._current_host_info: Optional[HostInfo] = None
@@ -481,7 +482,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if driver_dialect is not None and isinstance(driver_dialect, CanReleaseResources):
             driver_dialect.release_resources()
 
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        self._executor.shutdown(wait=False)
 
 
 class PluginManager(CanReleaseResources):

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from .exception_handling import ExceptionHandler
 
 from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 from contextlib import closing
 from enum import Enum, auto
 
@@ -42,6 +42,7 @@ from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from .driver_dialect_codes import DriverDialectCodes
 from .plugin import CanReleaseResources
 from .utils.cache_map import CacheMap
+from .utils.daemon_thread_pool import DaemonThreadPool
 from .utils.messages import Messages
 from .utils.utils import Utils
 
@@ -410,7 +411,7 @@ class DatabaseDialectManager(DatabaseDialectProvider, CanReleaseResources):
         self._props: Properties = props
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
         self._can_update: bool = False
-        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="DatabaseDialectManagerExecutor")
+        self._executor = DaemonThreadPool()
         self._dialect: DatabaseDialect = UnknownDatabaseDialect()
         self._dialect_code: DialectCode = DialectCode.UNKNOWN
 
@@ -567,4 +568,4 @@ class DatabaseDialectManager(DatabaseDialectProvider, CanReleaseResources):
             "DatabaseDialectManager.CurrentDialectCanUpdate", self._dialect_code, dialect_class, self._can_update)
 
     def release_resources(self):
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        self._executor.shutdown(wait=False)

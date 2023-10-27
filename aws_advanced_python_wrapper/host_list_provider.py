@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Optional, Protocol, Tuple, runtime_checkable
 
 if TYPE_CHECKING:
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 
 import uuid
 from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
@@ -37,6 +38,7 @@ from aws_advanced_python_wrapper.pep249 import (Connection, Cursor,
                                                 ProgrammingError)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
+from aws_advanced_python_wrapper.utils.daemon_thread_pool import DaemonThreadPool
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -131,7 +133,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider, CanReleaseR
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
         self._props: Properties = props
 
-        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="RdsHostListProviderExecutor")
+        self._executor = DaemonThreadPool()
         self._max_timeout = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(self._props)
         self._rds_utils: RdsUtils = RdsUtils()
         self._hosts: Tuple[HostInfo, ...] = ()
@@ -424,7 +426,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider, CanReleaseR
             return cursor.fetchone()
 
     def release_resources(self):
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        self._executor.shutdown(wait=False)
 
     @dataclass()
     class ClusterIdSuggestion:

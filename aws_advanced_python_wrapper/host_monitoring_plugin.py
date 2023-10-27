@@ -37,6 +37,7 @@ from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
+from aws_advanced_python_wrapper.utils.daemon_thread_pool import DaemonThreadPool
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
@@ -520,7 +521,7 @@ class MonitoringThreadContainer(CanReleaseResources):
         return cls._instance
 
     def __init__(self):
-        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
+        self._executor = DaemonThreadPool()
 
     def get_or_create_monitor(self, host_aliases: FrozenSet[str], monitor_supplier: Callable) -> Monitor:
         if not host_aliases:
@@ -588,7 +589,7 @@ class MonitoringThreadContainer(CanReleaseResources):
                     MonitoringThreadContainer._instance = None
                     MonitoringThreadContainer._usage_count.set(0)
 
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        self._executor.shutdown(wait=False)
 
     def _release_resources(self):
         self._monitor_map.clear()

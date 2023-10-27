@@ -12,7 +12,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from time import sleep
 from typing import FrozenSet, List
@@ -24,6 +23,7 @@ from aws_advanced_python_wrapper.host_monitoring_plugin import (
     MonitoringContext, MonitoringThreadContainer, MonitorService)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
+from aws_advanced_python_wrapper.utils.daemon_thread_pool import DaemonThreadPool
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -103,9 +103,6 @@ def verify_concurrency(mock_monitor, mock_executor, mock_future, counter, concur
     assert concurrent_counter.get() > 0
     concurrent_counter.set(0)
 
-    while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.release_resources()
-
 
 def test_start_monitoring__connections_to_different_hosts(
         mocker,
@@ -122,11 +119,12 @@ def test_start_monitoring__connections_to_different_hosts(
 
     try:
         mock_create_monitor = mocker.patch(
-            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
+            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor",
+            return_value=mock_monitor)
         contexts = start_monitoring(num_conns, services, host_alias_list)
         expected_start_monitoring_calls = [mocker.call(context) for context in contexts]
         mock_monitor.start_monitoring.assert_has_calls(expected_start_monitoring_calls, True)
-        assert num_conns == len(MonitoringThreadContainer()._monitor_map)
+        assert num_conns == len(MonitoringThreadContainer._monitor_map)
         expected_create_monitor_calls = [mocker.call(host_info, props)] * num_conns
         mock_create_monitor.assert_has_calls(expected_create_monitor_calls)
     finally:
@@ -148,11 +146,12 @@ def test_start_monitoring__connections_to_same_host(
 
     try:
         mock_create_monitor = mocker.patch(
-            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
+            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor",
+            return_value=mock_monitor)
         contexts = start_monitoring(num_conns, services, host_alias_list)
         expected_start_monitoring_calls = [mocker.call(context) for context in contexts]
         mock_monitor.start_monitoring.assert_has_calls(expected_start_monitoring_calls, True)
-        assert 1 == len(MonitoringThreadContainer()._monitor_map)
+        assert 1 == len(MonitoringThreadContainer._monitor_map)
         expected_create_monitor_calls = [mocker.call(host_info, props)]
         mock_create_monitor.assert_has_calls(expected_create_monitor_calls)
     finally:
@@ -250,16 +249,17 @@ def start_monitoring(counter, concurrent_counter, start_monitoring_thread):
             host_aliases_list: List[FrozenSet[str]]) -> List[MonitoringContext]:
         barrier = Barrier(num_threads)
         futures = []
-        with ThreadPoolExecutor(num_threads) as executor:
-            for i in range(num_threads):
-                future = executor.submit(
-                    start_monitoring_thread,
-                    barrier,
-                    counter,
-                    concurrent_counter,
-                    services[i],
-                    host_aliases_list[i])
-                futures.append(future)
+        executor = DaemonThreadPool(num_threads)
+        for i in range(num_threads):
+            future = executor.submit(
+                start_monitoring_thread,
+                barrier,
+                counter,
+                concurrent_counter,
+                services[i],
+                host_aliases_list[i])
+            futures.append(future)
+        executor.shutdown(wait=True)
         return [future.result() for future in futures]
     return _start_monitoring
 
@@ -304,15 +304,16 @@ def start_monitoring_thread(
 def stop_monitoring(counter, concurrent_counter):
     def _stop_monitoring(num_threads: int, services: List[MonitorService], contexts: List[MonitoringContext]):
         barrier = Barrier(num_threads)
-        with ThreadPoolExecutor(num_threads) as executor:
-            for i in range(num_threads):
-                executor.submit(
-                    stop_monitoring_thread,
-                    barrier,
-                    counter,
-                    concurrent_counter,
-                    services[i],
-                    contexts[i])
+        executor = DaemonThreadPool(num_threads)
+        for i in range(num_threads):
+            executor.submit(
+                stop_monitoring_thread,
+                barrier,
+                counter,
+                concurrent_counter,
+                services[i],
+                contexts[i])
+        executor.shutdown(wait=True)
     return _stop_monitoring
 
 

@@ -21,12 +21,13 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection, Cursor
 
 from abc import ABC
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import (QueryTimeoutError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
+from aws_advanced_python_wrapper.utils.daemon_thread_pool import DaemonThreadPool
 from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -43,7 +44,7 @@ class DriverDialect(ABC, CanReleaseResources):
 
     def __init__(self, props: Properties):
         self._props = props
-        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="DriverDialectExecutor")
+        self._executor = DaemonThreadPool()
 
     @property
     def driver_name(self):
@@ -151,4 +152,4 @@ class DriverDialect(ABC, CanReleaseResources):
         return
 
     def release_resources(self):
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        self._executor.shutdown(wait=False)

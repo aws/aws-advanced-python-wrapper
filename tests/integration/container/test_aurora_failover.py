@@ -241,7 +241,6 @@ class TestAuroraFailover:
             assert idle_connection.is_closed is True
 
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
-    @disable_on_engines([DatabaseEngine.MYSQL])
     def test_failover__socket_timeout(
             self,
             test_driver: TestDriver,
