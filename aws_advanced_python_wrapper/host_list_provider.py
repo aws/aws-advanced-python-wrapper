@@ -251,10 +251,11 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
             driver_dialect = self._host_list_provider_service.driver_dialect
+            cursor = conn.cursor()
             try:
                 qe = ThreadPoolExecutor(thread_name_prefix="QueryTopologyExecutor")
                 query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(qe, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
-                hosts = query_for_topology_func_with_timeout(conn)
+                hosts = query_for_topology_func_with_timeout(cursor)
                 if hosts is not None and len(hosts) > 0:
                     RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
                     if self._is_primary_cluster_id and cached_hosts is None:
@@ -264,7 +265,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                         self._suggest_cluster_id(hosts)
                     return RdsHostListProvider.FetchTopologyResult(hosts, False)
             except TimeoutError as e:
-                qe.shutdown(wait=False)
+                cursor.close()
                 raise QueryTimeoutError(Messages.get("RdsHostListProvider.QueryForTopologyTimeout")) from e
 
         if cached_hosts:
@@ -294,13 +295,13 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                         cluster_id, self._cluster_id, self._suggested_cluster_id_refresh_ns)
                     break
 
-    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+    def _query_for_topology(self, cursor: Cursor) -> Optional[Tuple[HostInfo, ...]]:
         try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self._dialect.topology_query)
+            cursor.execute(self._dialect.topology_query)
 
-                result = self._process_query_results(cursor)
-                return result
+            result = self._process_query_results(cursor)
+            cursor.close()
+            return result
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
 
