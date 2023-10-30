@@ -65,7 +65,7 @@ A custom plugin can subscribe to all Python methods being executed by setting th
 
 ### Registering a Custom Plugin
 To register a custom plugin, follow these steps:
-- Import `def register_plugin(plugin_code: str, plugin_factory: Type[PluginFactory], weight: int = WEIGHT_RELATIVE_TO_PRIOR_PLUGIN)` from `connection_plugin_chain.py`, and call it with the appropriate arguments: 
+- Import and call `PluginManager.register_plugin(plugin_code: str, plugin_factory: Type[PluginFactory], weight: int = WEIGHT_RELATIVE_TO_PRIOR_PLUGIN)` with the appropriate arguments: 
   - The first argument specifies a short name for the plugin that will be used when specifying the `plugins` connection parameter. The name should not contain spaces. In the example below, we will use `custom_plugin`.
   - The second argument should be the `PluginFactory` class you created for the custom plugin. Note that the class itself should be passed rather than an instance of the class.
   - The third (optional) argument specifies a weight for the custom plugin. The weight will determine the plugin's ordering in the plugin chain if the `auto_sort_wrapper_plugin_order` property is enabled. All plugins with unspecified weight will be ordered according to the `plugins` parameter setting. More information on this property can be found [here](/docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters).
@@ -73,7 +73,7 @@ To register a custom plugin, follow these steps:
 
 ### Example
 ```python
-    from aws_advanced_python_wrapper.connection_plugin_chain import register_plugin
+    from aws_advanced_python_wrapper.plugin_service import PluginManager
 
     # In custom_plugin.py
     class CustomPlugin(Plugin):
@@ -95,7 +95,7 @@ To register a custom plugin, follow these steps:
             return CustomPlugin(plugin_service, props)
 
     # In app.py
-    register_plugin("custom_plugin", CustomPluginFactory)
+    PluginManager.register_plugin("custom_plugin", CustomPluginFactory)
     params = {
         "plugins": "aurora_connection_tracker,custom_plugin"
         # Add other connection properties below...

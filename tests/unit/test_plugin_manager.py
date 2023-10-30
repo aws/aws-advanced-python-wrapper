@@ -16,18 +16,22 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import psycopg
-
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.pep249 import Connection
 
 from typing import Any, Callable, Dict, List, Optional, Set
 
+import psycopg
 import pytest
 
+from aws_advanced_python_wrapper.connect_time_plugin import ConnectTimePlugin
 from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
 from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.execute_time_plugin import ExecuteTimePlugin
+from aws_advanced_python_wrapper.failover_plugin import FailoverPlugin
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    HostMonitoringPlugin
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
 from aws_advanced_python_wrapper.plugin import Plugin
@@ -72,11 +76,63 @@ def default_conn_provider(mocker):
     return mocker.MagicMock()
 
 
+@pytest.fixture
+def plugin_manager(mocker):
+    return PluginManager(mocker.MagicMock(), Properties())
+
+
 @pytest.fixture(autouse=True)
 def setup(mock_conn, container, mock_plugin_service, mock_driver_dialect):
     container.plugin_service.current_connection = mock_conn
     container.plugin_service.driver_dialect.get_connection_from_obj.return_value = mock_conn
     container.plugin_service.driver_dialect.unwrap_connection.return_value = mock_conn
+
+
+def test_sort_plugins(mocker):
+    props = Properties(plugins="iam,host_monitoring,failover")
+    plugin_manager = PluginManager(mocker.MagicMock(), props)
+
+    plugins = plugin_manager.get_plugins()
+
+    assert plugins is not None
+    assert 4 == len(plugins)
+
+    assert isinstance(plugins[0], FailoverPlugin)
+    assert isinstance(plugins[1], HostMonitoringPlugin)
+    assert isinstance(plugins[2], IamAuthPlugin)
+    assert isinstance(plugins[3], DefaultPlugin)
+
+
+def test_preserve_plugin_order(mocker):
+    props = Properties(plugins="iam,host_monitoring,failover", auto_sort_wrapper_plugin_order=False)
+    plugin_manager = PluginManager(mocker.MagicMock(), props)
+
+    plugins = plugin_manager.get_plugins()
+
+    assert plugins is not None
+    assert 4 == len(plugins)
+
+    assert isinstance(plugins[0], IamAuthPlugin)
+    assert isinstance(plugins[1], HostMonitoringPlugin)
+    assert isinstance(plugins[2], FailoverPlugin)
+    assert isinstance(plugins[3], DefaultPlugin)
+
+
+def test_sort_plugins_with_stick_to_prior(mocker):
+    props = Properties(plugins="iam,execute_time,connect_time,host_monitoring,failover")
+    plugin_manager = PluginManager(mocker.MagicMock(), props)
+
+    plugins = plugin_manager.get_plugins()
+
+    assert plugins is not None
+    assert 6 == len(plugins)
+
+    assert isinstance(plugins[0], FailoverPlugin)
+    assert isinstance(plugins[1], HostMonitoringPlugin)
+    assert isinstance(plugins[2], IamAuthPlugin)
+    assert isinstance(plugins[3], ExecuteTimePlugin)
+    assert isinstance(plugins[4], ConnectTimePlugin)
+    assert isinstance(plugins[5], DefaultPlugin)
 
 
 def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect):

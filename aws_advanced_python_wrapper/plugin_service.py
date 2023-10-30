@@ -14,38 +14,53 @@
 
 from __future__ import annotations
 
-from contextlib import closing
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, List, Type
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.driver_dialect_manager import DriverDialectManager
     from aws_advanced_python_wrapper.pep249 import Connection
-    from aws_advanced_python_wrapper.plugin import Plugin
+    from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
     from threading import Event
 
 from abc import abstractmethod
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from contextlib import closing
 from typing import (Any, Callable, Dict, FrozenSet, Optional, Protocol, Set,
                     Tuple)
 
-from aws_advanced_python_wrapper.connection_plugin_chain import get_plugins
+from aws_advanced_python_wrapper.aurora_connection_tracker_plugin import \
+    AuroraConnectionTrackerPluginFactory
+from aws_advanced_python_wrapper.aws_secrets_manager_plugin import \
+    AwsSecretsManagerPluginFactory
+from aws_advanced_python_wrapper.connect_time_plugin import \
+    ConnectTimePluginFactory
 from aws_advanced_python_wrapper.connection_provider import (
     ConnectionProvider, ConnectionProviderManager)
 from aws_advanced_python_wrapper.database_dialect import (
     DatabaseDialect, DatabaseDialectManager, TopologyAwareDatabaseDialect,
     UnknownDatabaseDialect)
+from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.exception_handling import (ExceptionHandler,
                                                             ExceptionManager)
+from aws_advanced_python_wrapper.execute_time_plugin import \
+    ExecuteTimePluginFactory
+from aws_advanced_python_wrapper.failover_plugin import FailoverPluginFactory
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.host_list_provider import (
     ConnectionStringHostListProvider, HostListProvider,
     HostListProviderService, StaticHostListProvider)
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    HostMonitoringPluginFactory
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
+from aws_advanced_python_wrapper.read_write_splitting_plugin import \
+    ReadWriteSplittingPluginFactory
+from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsPluginFactory
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
@@ -484,13 +499,39 @@ class PluginManager(CanReleaseResources):
     _GET_HOST_INFO_BY_STRATEGY_METHOD: str = "get_host_info_by_strategy"
     _INIT_HOST_LIST_PROVIDER_METHOD: str = "init_host_provider"
 
+    PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
+        "iam": IamAuthPluginFactory,
+        "aws_secrets_manager": AwsSecretsManagerPluginFactory,
+        "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
+        "host_monitoring": HostMonitoringPluginFactory,
+        "failover": FailoverPluginFactory,
+        "read_write_splitting": ReadWriteSplittingPluginFactory,
+        "stale_dns": StaleDnsPluginFactory,
+        "connect_time": ConnectTimePluginFactory,
+        "execute_time": ExecuteTimePluginFactory,
+    }
+
+    WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
+
+    PLUGIN_FACTORY_WEIGHTS: Dict[Type[PluginFactory], int] = {
+        AuroraConnectionTrackerPluginFactory: 100,
+        StaleDnsPluginFactory: 200,
+        ReadWriteSplittingPluginFactory: 300,
+        FailoverPluginFactory: 400,
+        HostMonitoringPluginFactory: 500,
+        IamAuthPluginFactory: 600,
+        AwsSecretsManagerPluginFactory: 700,
+        ConnectTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
+        ExecuteTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN
+    }
+
     def __init__(self, container: PluginServiceManagerContainer, props: Properties):
         self._props: Properties = props
         self._function_cache: Dict[str, Callable] = {}
         self._container = container
         self._container.plugin_manager = self
         self._connection_provider_manager = ConnectionProviderManager()
-        self._plugins = get_plugins(self._container.plugin_service, self._connection_provider_manager, self._props)
+        self._plugins = self.get_plugins()
 
     @property
     def num_plugins(self) -> int:
@@ -502,6 +543,72 @@ class PluginManager(CanReleaseResources):
 
     def get_current_connection_provider(self, host_info: HostInfo, properties: Properties):
         return self.connection_provider_manager.get_connection_provider(host_info, properties)
+
+    @staticmethod
+    def register_plugin(
+            plugin_code: str, plugin_factory: Type[PluginFactory], weight: int = WEIGHT_RELATIVE_TO_PRIOR_PLUGIN):
+        PluginManager.PLUGIN_FACTORIES[plugin_code] = plugin_factory
+        PluginManager.PLUGIN_FACTORY_WEIGHTS[plugin_factory] = weight
+
+    def get_plugins(self) -> List[Plugin]:
+        plugins: List[Plugin] = []
+
+        plugin_codes = WrapperProperties.PLUGINS.get(self._props)
+        if plugin_codes is None:
+            plugin_codes = WrapperProperties.DEFAULT_PLUGINS
+
+        if plugin_codes != "":
+            plugins = self.create_plugins_from_list(plugin_codes.split(","))
+
+        plugins.append(DefaultPlugin(self._container.plugin_service, self._connection_provider_manager))
+
+        return plugins
+
+    def create_plugins_from_list(self, plugin_code_list: List[str]) -> List[Plugin]:
+        factory_types: List[Type[PluginFactory]] = []
+        for plugin_code in plugin_code_list:
+            plugin_code = plugin_code.strip()
+            if plugin_code not in PluginManager.PLUGIN_FACTORIES:
+                raise AwsWrapperError(Messages.get_formatted("PluginManager.InvalidPlugin", plugin_code))
+
+            factory_types.append(PluginManager.PLUGIN_FACTORIES[plugin_code])
+
+        if len(factory_types) <= 0:
+            return []
+
+        auto_sort_plugins = WrapperProperties.AUTO_SORT_PLUGIN_ORDER.get(self._props)
+        if auto_sort_plugins:
+            weights = PluginManager.get_factory_weights(factory_types)
+            factory_types.sort(key=lambda factory_type: weights[factory_type])
+            plugin_code_list.sort(key=lambda plugin_code: weights[PluginManager.PLUGIN_FACTORIES[plugin_code]])
+            logger.debug("ConnectionPluginChain.ResortedPlugins", plugin_code_list)
+
+        plugins: List[Plugin] = []
+        for factory_type in factory_types:
+            factory = object.__new__(factory_type)
+            plugin = factory.get_instance(self._container.plugin_service, self._props)
+            plugins.append(plugin)
+
+        return plugins
+
+    @staticmethod
+    def get_factory_weights(factory_types: List[Type[PluginFactory]]) -> Dict[Type[PluginFactory], int]:
+        last_weight = 0
+        weights: Dict[Type[PluginFactory], int] = {}
+        for factory_type in factory_types:
+            weight = PluginManager.PLUGIN_FACTORY_WEIGHTS[factory_type]
+            if weight is None or weight == PluginManager.WEIGHT_RELATIVE_TO_PRIOR_PLUGIN:
+                # This plugin factory is unknown, or it has relative (to prior plugin factory) weight.
+                last_weight += 1
+                weights[factory_type] = last_weight
+            else:
+                # Otherwise, use the wight assigned to this plugin factory
+                weights[factory_type] = weight
+
+                # Remember this weight for subsequent factories that may have relative (to this plugin factory) weight.
+                last_weight = weight
+
+        return weights
 
     def execute(self, target: object, method_name: str, target_driver_func: Callable, *args, **kwargs) -> Any:
         plugin_service = self._container.plugin_service
