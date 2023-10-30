@@ -271,8 +271,8 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                         # currently connected reader is in the middle of failover. It is not yet connected to a new writer and works
                         # as a standalone host. The handler must wait until the reader connects to the entire cluster to fetch the
                         # cluster topologym
-                        logger.debug("WriterFailoverHandler.StandaloneNode", "None" if self._current_reader_host is None else
-                        self._current_reader_host.url)
+                        logger.debug("WriterFailoverHandler.StandaloneNode",
+                                     "None" if self._current_reader_host is None else self._current_reader_host.url)
                     else:
                         self._current_topology = current_topology
                         writer_candidate: Optional[HostInfo] = self.get_writer(self._current_topology)

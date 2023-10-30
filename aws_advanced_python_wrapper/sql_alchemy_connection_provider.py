@@ -98,10 +98,10 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
 
     def _num_connections(self, host_info: HostInfo) -> int:
         """
-        Returns the number of active connection pools.
+        Returns the number of active connections to a specific host.
 
-        :param host_info: 
-        :return:
+        :param host_info: Information about a specific host.
+        :return: number of connections opened in the connection pool to the given host.
         """
         num_connections = 0
         for pool_key, cache_item in SqlAlchemyPooledConnectionProvider._database_pools.items():
