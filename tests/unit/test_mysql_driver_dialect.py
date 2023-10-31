@@ -105,6 +105,7 @@ def test_get_connection_from_obj(dialect, mocker, mock_conn, mock_invalid_conn):
 def test_prepare_connect_info(dialect):
     host_info = HostInfo("localhost", 3306)
     original_props = Properties({
+        WrapperProperties.DATABASE.name: "default_db",
         WrapperProperties.CONNECT_TIMEOUT_SEC.name: "30",
         WrapperProperties.PLUGINS.name: "failover",
         "some_driver_prop": "45"
@@ -112,6 +113,7 @@ def test_prepare_connect_info(dialect):
     expected_props = Properties({
         "host": host_info.host,
         "port": str(host_info.port),
+        "database": "default_db",
         "connect_timeout": "30",
         "some_driver_prop": "45"
     })

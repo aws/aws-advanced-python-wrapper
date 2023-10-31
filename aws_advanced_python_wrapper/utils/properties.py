@@ -251,8 +251,7 @@ class PropertiesUtils:
 
     @staticmethod
     def remove_wrapper_props(props: Properties):
-        persisting_properties = [WrapperProperties.USER.name, WrapperProperties.PASSWORD.name,
-                                 WrapperProperties.DATABASE.name]
+        persisting_properties = [WrapperProperties.USER.name, WrapperProperties.PASSWORD.name]
 
         for attr_name, attr_val in WrapperProperties.__dict__.items():
             if isinstance(attr_val, WrapperProperty):
