@@ -135,6 +135,12 @@ def test_sort_plugins_with_stick_to_prior(mocker):
     assert isinstance(plugins[5], DefaultPlugin)
 
 
+def test_unknown_profile(mocker):
+    props = Properties(profile_name="unknown_profile")
+    with pytest.raises(AwsWrapperError):
+        PluginManager(mocker.MagicMock(), props)
+
+
 def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect):
     calls = []
     args = [10, "arg2", 3.33]
