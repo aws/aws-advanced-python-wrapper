@@ -73,10 +73,11 @@ class HostListProvider(Protocol):
 @runtime_checkable
 class DynamicHostListProvider(HostListProvider, Protocol):
     """
-    A marker interface for providers that can fetch a host list, and it changes depending on database status.
+    A marker interface for providers that can fetch a host list that may change over time depending on database status.
 
-    A good example of such provider would be DB cluster provider (Aurora DB clusters, patroni DB clusters, etc.)
-    where cluster topology (nodes, their roles, their statuses) changes over time.
+    DynamicHostListProvider instances should be used if the database has a cluster configuration where the
+    cluster topology (the instances in the cluster, their roles, and their statuses) can change over time. Examples
+    include Aurora DB clusters and Patroni DB clusters, among others.
     """
     ...
 
@@ -84,8 +85,8 @@ class DynamicHostListProvider(HostListProvider, Protocol):
 @runtime_checkable
 class StaticHostListProvider(HostListProvider, Protocol):
     """
-    A marker interface for providers that fetch node lists, and it never changes since after.
-    An example of such provider is a provider that use connection string as a source.
+    A marker interface for providers that determine the host list once while initializing and assume the host list does not change.
+    An example would be a provider that parses the connection string to determine host information.
     """
     ...
 
@@ -253,13 +254,16 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def _get_topology(self, conn: Optional[Connection], force_update: bool = False) -> FetchTopologyResult:
         """
-        Get cluster topology. It may require an extra call to database to fetch the latest topology.
-        A cached copy of topology is returned if it's not yet outdated, unless `force_update` is True.
+        Get topology information for the database cluster. This method executes a database query if `force_update` is True,
+        if there is no information for the cluster in the cache, or if the cached topology is outdated.
+        Otherwise, the cached topology will be returned.
 
-        :param conn: A connection to database to fetch the latest topology, if needed.
-        :param force_update: If True, it forces a service to ignore cached copy of topology and to fetch a new one.
-        :return: a list of hosts that describes cluster topology. A writer is always at position 0 of the list.
-        Returns an empty list if isn't available or is invalid (doesn't contain a writer).
+        :param conn: the connection to use to fetch topology information, if necessary.
+        :param force_update: set to true to force the driver to query the database for
+        up-to-date topology information instead of relying on any cached information.
+        :return: a :py:class:`FetchTopologyResult` object containing the topology information
+        and whether the information came from the cache or a database query.
+        If the database was queried and the results did not include a writer instance, the topology information tuple will be empty.
         """
         self._initialize()
 
@@ -339,7 +343,8 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         """
         Form a list of hosts from the results of the topology query.
         :param cursor: The Cursor object containing a reference to the results of the topology query.
-        :return: a list of hosts representing the topology; empty list if the topology query returned an invalid topology (no writer instance).
+        :return: a tuple of hosts representing the database topology.
+        An empty tuple will be returned if the query results did not include a writer instance.
         """
         host_map = {}
         for record in cursor:
@@ -368,10 +373,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def _create_host(self, record: Tuple) -> HostInfo:
         """
-        Creates an instance of HostSpec which captures details about a connectable host.
-
-        :param record: a record containing information about a host in the topology.
-        :return: a :py:class:`HostInfo` object representing the host.
+        Convert a topology query record into a :py:class:`HostInfo` object containing the information for a database instance in the cluster.
+        :param record: a query record containing information about a database instance in the cluster.
+        :return: a :py:class:`HostInfo` object representing a database instance in the cluster.
         """
 
         # According to TopologyAwareDatabaseDialect.topology_query the result set

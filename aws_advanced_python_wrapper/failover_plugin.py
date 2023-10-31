@@ -322,7 +322,7 @@ class FailoverPlugin(Plugin):
         """
         Restores partial session state from saved values to a connection.
 
-        :param conn: The connection to transfer state to
+        :param conn: The connection to transfer state to.
         """
         if conn is None:
             return
@@ -382,7 +382,7 @@ class FailoverPlugin(Plugin):
 
     def _connect_to(self, host: HostInfo):
         """
-        Connects this dynamic failover connection proxy to the host pointed out by the given host index.
+        Connects this dynamic failover connection proxy to the specified host.
 
         :param host: The host to connect to.
         """

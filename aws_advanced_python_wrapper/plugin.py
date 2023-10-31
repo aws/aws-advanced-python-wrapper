@@ -35,7 +35,7 @@ from aws_advanced_python_wrapper.utils.notifications import (
 
 class Plugin(ABC):
     """
-    Interface for connection plugins. This class implements ways to execute a database API and to clean up used resources before closing the plugin.
+    Interface for connection plugins. This class implements ways to execute a database API.
     """
 
     @property

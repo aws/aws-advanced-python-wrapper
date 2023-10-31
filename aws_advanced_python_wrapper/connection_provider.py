@@ -84,7 +84,7 @@ class ConnectionProvider(Protocol):
         :param driver_dialect: a dialect that handles target driver specific implementation.
         :param host_info: the host details for the desired connection.
         :param properties: the connection properties.
-        :return: the established connection resulting from the given connection information
+        :return: the established connection resulting from the given connection information.
         """
         ...
 

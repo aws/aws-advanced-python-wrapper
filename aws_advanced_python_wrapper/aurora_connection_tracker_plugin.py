@@ -43,12 +43,12 @@ class OpenedConnectionTracker:
 
     def populate_opened_connection_set(self, host_info: HostInfo, conn: Connection):
         """
-        Keep track of all opened connections to their respective hosts.
+        Add the given connection to the set of tracked connections.
 
         :param host_info: host information of the given connection.
-        :param conn: currenlty opened connection.
-        :return:
+        :param conn: currently opened connection.
         """
+
         aliases: FrozenSet[str] = host_info.as_aliases()
         host: str = host_info.as_alias()
 
@@ -64,25 +64,24 @@ class OpenedConnectionTracker:
 
         self._track_connection(instance_endpoint, conn)
 
-    def invalidate_all_connections(self, host_info: Optional[HostInfo] = None, node: Optional[FrozenSet[str]] = None):
+    def invalidate_all_connections(self, host_info: Optional[HostInfo] = None, host: Optional[FrozenSet[str]] = None):
         """
         Invalidates all opened connections pointing to the same node in a daemon thread.
 
-        Parameters:
-            host_info (HostInfo): The HostInfo object containing the url of the node.
-            node (Set[str]): The set of aliases representing a node.
+       :param host_info: the :py:class:`HostInfo` object containing the URL of the node.
+       :param host: the set of aliases representing a specific host.
         """
 
         if host_info:
-            self.invalidate_all_connections(node=frozenset(host_info.as_alias()))
-            self.invalidate_all_connections(node=host_info.as_aliases())
+            self.invalidate_all_connections(host=frozenset(host_info.as_alias()))
+            self.invalidate_all_connections(host=host_info.as_aliases())
             return
 
         instance_endpoint: Optional[str] = None
-        if node is None:
+        if host is None:
             return
 
-        for instance in node:
+        for instance in host:
             if instance is not None and self._rds_utils.is_rds_instance(instance):
                 instance_endpoint = instance
                 break

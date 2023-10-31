@@ -69,9 +69,6 @@ class ReaderFailoverHandler:
 
 
 class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
-    """
-
-    """
     failed_reader_failover_result = ReaderFailoverResult(None, False, None, None)
 
     def __init__(

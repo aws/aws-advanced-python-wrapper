@@ -35,8 +35,7 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 
 class DriverDialect(ABC):
     """
-    Driver dialects helps set up specific configuration parameters to the connection properties
-    so the AWS Advanced Python Driver can properly pass database calls to an underlying Python driver.
+    Driver dialects help the driver-agnostic AWS Python Driver interface with the driver-specific functionality of the underlying Python Driver.
     """
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor()
