@@ -49,8 +49,7 @@ class WriterFailoverHandler:
     @abstractmethod
     def failover(self, current_topology: Tuple[HostInfo, ...]) -> WriterFailoverResult:
         """
-        Called to start writer Failover Process. This process tries to connect to any reader.
-        If no reader is available then driver may also try to connect to a writer host, down hosts, and the current reader host.
+        Called to start Writer Failover Process. This process tries to establish a connection to a writer instance after failover has occurred.
 
         :param current_topology: The current cluster topology.
         :return: The results of this process.
@@ -63,10 +62,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
     An implementation of :py:class`WriterFailoverHandler`.
 
     Writer Failover Process goal is to re-establish connection to a writer.
-    Connection to a writer ay be disrupted either by temporary network issue, or due to writer host unavailability during cluster failover.
-    This handler tries both approaches in parallel:
-        1. try to re-connect to the same writer host,
-        2. try to update cluster topology and connect to a newly elected writer.
+    Connection to a writer may be disrupted either by temporary network issue, or due to writer host unavailability during cluster failover.
+    This handler tries two approaches in parallel:
+        1. try to re-connect to the writer host that originally failed.
+        2. try to update the cluster topology using a reader connection, and use that information to connect to a newly elected writer.
     """
     failed_writer_failover_result = WriterFailoverResult(False, False, None, None, None, None)
     _current_connection: Optional[Connection] = None
@@ -153,10 +152,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
     def reconnect_to_writer(self, initial_writer_host: HostInfo):
         """
-        Task A: Reconnect to the current writer.
+        Task A: Attempt to reconnect to the writer that originally failed.
 
-        :param initial_writer_host: The writer host used to establish the initial connection.
-        :return: The :py:class:`WriterFailoverResult` of the failover process.
+        :param initial_writer_host: the writer host that originally failed.
+        :return: the :py:class:`WriterFailoverResult` of the failover process.
         """
         logger.debug("WriterFailoverHandler.TaskAAttemptReconnectToWriterInstance", initial_writer_host.url)
 
@@ -211,10 +210,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
     def wait_for_new_writer(self, current_topology: Tuple[HostInfo, ...], current_host: HostInfo) -> WriterFailoverResult:
         """
-        Task B: Connect to the newly elected writer.
+        Task B: Attempt to connect to a newly elected writer.
         :param current_topology: the latest topology.
         :param current_host: the current host.
-        :return: The :py:class:`WriterFailoverResult` of the process.
+        :return: the :py:class:`WriterFailoverResult` of the process.
         """
         logger.debug("WriterFailoverHandler.TaskBAttemptConnectionToNewWriterInstance")
         self._current_topology = current_topology
@@ -258,8 +257,8 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
     def refresh_topology_and_connect_to_new_writer(self, initial_writer_host: HostInfo) -> bool:
         """
         Re-fetch topology and wait for a new writer.
-        :param initial_writer_host: the host used to establish the initial connection.
-        :return:
+        :param initial_writer_host: the writer host that originally failed.
+        :return: `True` if a connection to a newly elected writer was  successfully established. `False` otherwise.
         """
         while not self._timeout_event.is_set():
             try:
@@ -270,7 +269,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                     if len(current_topology) == 1:
                         # currently connected reader is in the middle of failover. It is not yet connected to a new writer and works
                         # as a standalone host. The handler must wait until the reader connects to the entire cluster to fetch the
-                        # cluster topologym
+                        # cluster topology
                         logger.debug("WriterFailoverHandler.StandaloneNode",
                                      "None" if self._current_reader_host is None else self._current_reader_host.url)
                     else:
@@ -321,7 +320,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
     def close_reader_connection(self) -> None:
         """
-        Close the reader connection if not done so already, and mark the relevant fields as null.
+        Close the reader connection if not done so already, and set the relevant fields to None.
         """
         try:
             if self._current_reader_connection is not None:

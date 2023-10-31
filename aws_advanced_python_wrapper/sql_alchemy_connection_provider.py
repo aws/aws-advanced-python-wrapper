@@ -39,7 +39,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     """
     This class can be passed to :py:method:`ConnectionProviderManager.connection_provider` to enable internal connection pools
     for each database instance in a cluster. By maintaining internal connection pools,
-    the driver can improve performance by reusing old connection objections.
+    the driver can improve performance by reusing old connection objects.
     """
     _POOL_EXPIRATION_CHECK_NS: ClassVar[int] = 30 * 60_000_000_000  # 30 minutes
     _LEAST_CONNECTIONS: ClassVar[str] = "least_connections"
@@ -98,9 +98,9 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
 
     def _num_connections(self, host_info: HostInfo) -> int:
         """
-        Returns the number of active connections to a specific host.
+        Returns the number of active pooled connections to a specific host.
 
-        :param host_info: Information about a specific host.
+        :param host_info: the host to analyze.
         :return: number of connections opened in the connection pool to the given host.
         """
         num_connections = 0

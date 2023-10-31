@@ -432,7 +432,7 @@ class FailoverPlugin(Plugin):
         """
         Checks whether the given exception is a network exception and should trigger the failover process.
 
-        :param ex: The exception raised during method call.
+        :param ex: The exception raised during the method call.
         :return: `True` if the exception should trigger failover. `False` otherwise.
         """
         if not self._is_failover_enabled():

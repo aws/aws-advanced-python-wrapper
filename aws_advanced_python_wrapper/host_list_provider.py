@@ -325,10 +325,10 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
         """
-        Obtain a cluster topology from database.
+        Query the database for topology information.
 
-        :param conn: a connection to database to fetch the latest topology.
-        :return: a list of {@link HostSpec} objects representing the topology.
+        :param conn: the connection to use to fetch topology information.
+        :return: a tuple of :py:class:`HostInfo` objects representing the database topology. If the query results did not include a writer instance, an empty tuple will be returned.
         """
         try:
             with closing(conn.cursor()) as cursor:
@@ -412,12 +412,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
         """
-        Refresh the current topology. It may require an extra call to database to fetch the latest topology.
-        This method may return a cached copy of topology is returned if it's not yet outdated.
-
-        :param connection: A connection to database to fetch the latest topology, if needed.
-        :return: a list of hosts that describes cluster topology. A writer is always at position 0 of the list.
-        Returns an empty list if isn't available or is invalid (doesn't contain a writer).
+        Get topology information for the database cluster. This method executes a database query if there is no information for the cluster in the cache, or if the cached topology is outdated. Otherwise, the cached topology will be returned.
+        :param conn: the connection to use to fetch topology information, if necessary.
+        :return: a tuple of hosts representing the database topology. An empty tuple will be returned if the query results did not include a writer instance.
         """
         self._initialize()
         connection = connection if connection else self._host_list_provider_service.current_connection
@@ -428,11 +425,10 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
         """
-        Execute the topology query to fetch the latest topology. This method ignores the cached topology.
+        Execute a database query to retrieve information for the current cluster topology. Any cached topology information will be ignored.
 
-        :param connection: A connection to database to fetch the latest topology.
-        :return: a list of hosts that describes cluster topology. A writer is always at position 0 of the list.
-        Returns an empty list if isn't available or is invalid (doesn't contain a writer).
+        :param connection: the connection to use to fetch topology information.
+        :return: a tuple of hosts representing the database topology. An empty tuple will be returned if the query results did not include a writer instance.
         """
 
         self._initialize()

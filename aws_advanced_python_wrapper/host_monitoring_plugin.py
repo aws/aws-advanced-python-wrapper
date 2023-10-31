@@ -336,7 +336,7 @@ class MonitoringContext:
 
 class Monitor:
     """
-     This class uses a background thread to monitor a particular server with one or more active :py:class:`Connection`.
+     This class uses a background thread to monitor a particular server with one or more active :py:class:`Connection`  objects.
     """
     _INACTIVE_SLEEP_MS = 100
     _MIN_HOST_CHECK_TIMEOUT_MS = 3000

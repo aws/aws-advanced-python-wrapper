@@ -106,7 +106,7 @@ class Plugin(ABC):
         Returns a boolean indicating if this py:class:`ConnectionPlugin` implements the specified host selection strategy
         for the given role in :py:method:`ConnectionPlugin.get_host_info_by_strategy`.
 
-        :param role: the desired host role strategy.
+        :param role: the desired role of the selected host - either a reader host or a writer host.
         :param strategy: the strategy that should be used to pick a host (eg "random").
         :return: `True` if this py:class:`ConnectionPlugin` supports the selection of a host with the requested role and strategy
         via :py:method:`ConnectionPlugin.get_host_info_by_strategy`. Otherwise, return `False`.
@@ -119,9 +119,9 @@ class Plugin(ABC):
         :py:method:`ConnectionPlugin.accepts_strategy` should be called first to evaluate if this py:class:`ConnectionPlugin` supports the selection
         of a host with the requested role and strategy.
 
-        :param role: the desired host role strategy.
+        :param role: the desired role of the selected host - either a reader host or a writer host.
         :param strategy: the strategy that should be used to pick a host (eg "random").
-        :return: a py:class:`HostInfo` with teh requested role.
+        :return: a py:class:`HostInfo` with the requested role.
         """
         raise UnsupportedOperationError(Messages.get_formatted("Plugin.UnsupportedMethod", "get_host_info_by_strategy"))
 
@@ -142,7 +142,6 @@ class PluginFactory(Protocol):
 class CanReleaseResources(Protocol):
     def release_resources(self):
         """
-        Release all dangling resources held by the connection plugins associated with a single connection.
-        This step allows all connection plugins a chance to clean up any dangling resources or perform any last tasks before shutting down.
+        Release all dangling resources held by the class implementing this method. This step allows implementing classes to clean up remaining resources or perform other cleanup tasks before shutting down.
         """
         pass

@@ -161,25 +161,25 @@ class PluginService(ExceptionHandler, Protocol):
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         """
-        Returns a boolean indicating if this :py:class:`ConnectionPlugin` implements the specified host selection strategy
-        for the given role in :py:method:`ConnectionPlugin.get_host_info_by_strategy`.
+        Returns a boolean indicating if any of the configured :py:class:`ConnectionPlugin` or :py:class:`ConnectionProvider` objects implement the specified host selection strategy
+        for the given role in  :py:method:`ConnectionPlugin.get_host_info_by_strategy` or :py:method:`ConnectionProvider.get_host_info_by_strategy`.
 
-        :param role: the desired host role strategy.
+        :param role: the desired role of the selected host - either a reader host or a writer host.
         :param strategy: the strategy that should be used to pick a host (eg "random").
-        :return: `True` if this :py:class:`ConnectionPlugin` supports the selection of a host with the requested role and strategy
-        via :py:method:`ConnectionPlugin.get_host_info_by_strategy`. Otherwise, return `False`.
+        :return: `True` if any of the configured :py:class:`ConnectionPlugin` or :py:class:`ConnectionProvider` objects support the selection of a host with the requested role and strategy
+        via :py:method:`ConnectionPlugin.get_host_info_by_strategy` or :py:method:`ConnectionProvider.get_host_info_by_strategy`. Otherwise, return `False`.
         """
         ...
 
     def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
         """
         Selects a :py:class:`HostInfo` with the requested role from available hosts using the requested strategy.
-        :py:method:`ConnectionPlugin.accepts_strategy` should be called first to evaluate if this :py:class:`ConnectionPlugin` supports the selection
+        :py:method:`PluginService.accepts_strategy` should be called first to evaluate if any of the configured :py:class:`ConnectionPlugin` or :py:class:`ConnectionProvider` objects support the selection
         of a host with the requested role and strategy.
 
-        :param role: the desired host role strategy.
+        :param role: the desired role of the selected host - either a reader host or a writer host.
         :param strategy: the strategy that should be used to pick a host (eg "random").
-        :return: a py:class:`HostInfo` with teh requested role.
+        :return: a py:class:`HostInfo` with the requested role.
         """
         ...
 
@@ -201,7 +201,6 @@ class PluginService(ExceptionHandler, Protocol):
 
         :param host_info: the host details for the desired connection.
         :param props: the connection properties.
-        the database or has already established a physical connection in the past.
         :return: a :py:class`Connection` to the requested host.
         """
         ...
@@ -214,8 +213,7 @@ class PluginService(ExceptionHandler, Protocol):
 
         :param host_info: the host details for the desired connection.
         :param props: the connection properties.
-        the database or has already established a physical connection in the past.
-        :return:
+        :return: a :py:class`Connection` to the requested host.
         """
         ...
 
