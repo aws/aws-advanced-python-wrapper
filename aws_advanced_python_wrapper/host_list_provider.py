@@ -58,6 +58,12 @@ class HostListProvider(Protocol):
         ...
 
     def get_host_role(self, connection: Connection) -> HostRole:
+        """
+        Evaluates the host role of the given connection - either a writer or a reader.
+
+        :param connection: a connection to the database instance whose role should be determined.
+        :return: the role of the given connection - either a writer or a reader.
+        """
         ...
 
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
@@ -66,11 +72,22 @@ class HostListProvider(Protocol):
 
 @runtime_checkable
 class DynamicHostListProvider(HostListProvider, Protocol):
+    """
+    A marker interface for providers that can fetch a host list that may change over time depending on database status.
+
+    DynamicHostListProvider instances should be used if the database has a cluster configuration where the
+    cluster topology (the instances in the cluster, their roles, and their statuses) can change over time. Examples
+    include Aurora DB clusters and Patroni DB clusters, among others.
+    """
     ...
 
 
 @runtime_checkable
 class StaticHostListProvider(HostListProvider, Protocol):
+    """
+    A marker interface for providers that determine the host list once while initializing and assume the host list does not change.
+    An example would be a provider that parses the connection string to determine host information.
+    """
     ...
 
 
@@ -165,7 +182,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 host=self._props.get("host"),
                 port=self._props.get("port", HostInfo.NO_PORT),
                 host_availability_strategy=host_availability_strategy)
-            self._initial_hosts: Tuple[HostInfo, ...] = (self._initial_host_info, )
+            self._initial_hosts: Tuple[HostInfo, ...] = (self._initial_host_info,)
             self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
 
             self._cluster_instance_template: HostInfo
@@ -236,6 +253,18 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         return None
 
     def _get_topology(self, conn: Optional[Connection], force_update: bool = False) -> FetchTopologyResult:
+        """
+        Get topology information for the database cluster. This method executes a database query if `force_update` is True,
+        if there is no information for the cluster in the cache, or if the cached topology is outdated.
+        Otherwise, the cached topology will be returned.
+
+        :param conn: the connection to use to fetch topology information, if necessary.
+        :param force_update: set to true to force the driver to query the database for
+        up-to-date topology information instead of relying on any cached information.
+        :return: a :py:class:`FetchTopologyResult` object containing the topology information
+        and whether the information came from the cache or a database query.
+        If the database was queried and the results did not include a writer instance, the topology information tuple will be empty.
+        """
         self._initialize()
 
         suggested_primary_cluster_id = RdsHostListProvider._cluster_ids_to_update.get(self._cluster_id)
@@ -295,6 +324,13 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                     break
 
     def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+        """
+        Query the database for topology information.
+
+        :param conn: the connection to use to fetch topology information.
+        :return: a tuple of :py:class:`HostInfo` objects representing the database topology. If the query results did not include a writer instance,
+        an empty tuple will be returned.
+        """
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._dialect.topology_query)
@@ -305,6 +341,12 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
 
     def _process_query_results(self, cursor: Cursor) -> Tuple[HostInfo, ...]:
+        """
+        Form a list of hosts from the results of the topology query.
+        :param cursor: The Cursor object containing a reference to the results of the topology query.
+        :return: a tuple of hosts representing the database topology.
+        An empty tuple will be returned if the query results did not include a writer instance.
+        """
         host_map = {}
         for record in cursor:
             host = self._create_host(record)
@@ -331,6 +373,12 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         return tuple(hosts)
 
     def _create_host(self, record: Tuple) -> HostInfo:
+        """
+        Convert a topology query record into a :py:class:`HostInfo` object containing the information for a database instance in the cluster.
+        :param record: a query record containing information about a database instance in the cluster.
+        :return: a :py:class:`HostInfo` object representing a database instance in the cluster.
+        """
+
         # According to TopologyAwareDatabaseDialect.topology_query the result set
         # should contain 4 columns: instance ID, 1/0 (writer/reader), CPU utilization, host lag in ms.
         # There might be a 5th column specifying the last update time.
@@ -364,6 +412,15 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         return host_info
 
     def refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+        """
+        Get topology information for the database cluster.
+        This method executes a database query if there is no information for the cluster in the cache, or if the cached topology is outdated.
+        Otherwise, the cached topology will be returned.
+
+        :param connection: the connection to use to fetch topology information, if necessary.
+        :return: a tuple of hosts representing the database topology.
+        An empty tuple will be returned if the query results did not include a writer instance.
+        """
         self._initialize()
         connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, False)
@@ -372,6 +429,14 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         return tuple(self._hosts)
 
     def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+        """
+        Execute a database query to retrieve information for the current cluster topology. Any cached topology information will be ignored.
+
+        :param connection: the connection to use to fetch topology information.
+        :return: a tuple of hosts representing the database topology.
+        An empty tuple will be returned if the query results did not include a writer instance.
+        """
+
         self._initialize()
         connection = connection if connection else self._host_list_provider_service.current_connection
         topology = self._get_topology(connection, True)
@@ -400,6 +465,11 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             return cursor.fetchone()
 
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
+        """
+        Identify which host the given connection points to.
+        :param connection: an opened connection.
+        :return: a :py:class:`HostInfo` object containing host information for the given connection.
+        """
         if connection is None:
             raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
 
@@ -454,7 +524,7 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
             port=self._props.get("port", HostInfo.NO_PORT),
             host_availability_strategy=create_host_availability_strategy(self._props))
 
-        self._hosts += (self._initial_host_info, )
+        self._hosts += (self._initial_host_info,)
 
         self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
         self._is_initialized = True

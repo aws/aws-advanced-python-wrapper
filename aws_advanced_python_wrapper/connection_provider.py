@@ -38,12 +38,37 @@ logger = Logger(__name__)
 class ConnectionProvider(Protocol):
 
     def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
+        """
+        Indicates whether this ConnectionProvider can provide connections for the given host and
+        properties. Some :py:class:`ConnectionProvider` implementations may not be able to handle certain connection properties.
+
+        :param host_info: the :py:class:`HostInfo` containing the host-port information for the host to connect to.
+        :param properties: the connection properties.
+        :return: `True` if this :py:class:`ConnectionProvider` can provide connections for the given host. `False` otherwise.
+        """
         ...
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
+        """
+        Indicates whether the given selection strategy is supported by the connection provider.
+
+        :param role: determines if the connection provider should return a reader host or a writer host.
+        :param strategy: the host selection strategy to use.
+        :return: whether the host selection strategy is supported.
+        """
         ...
 
     def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
+        """
+        Return a reader or a writer host using the specified strategy.
+
+        This method should raise an :py:class:`AwsWrapperError` if the specified strategy is unsupported.
+
+        :param hosts: the list of hosts to select from.
+        :param role: determines if the connection provider should return a reader or a writer host.
+        :param strategy: the host selection strategy to use.
+        :return: the host selected using the specified strategy.
+        """
         ...
 
     def connect(
@@ -52,6 +77,15 @@ class ConnectionProvider(Protocol):
             driver_dialect: DriverDialect,
             host_info: HostInfo,
             properties: Properties) -> Connection:
+        """
+        Called once per connection that needs to be created.
+
+        :param target_func: the `Connect` method used by target driver dialect.
+        :param driver_dialect: a dialect that handles target driver specific implementation.
+        :param host_info: the host details for the desired connection.
+        :param properties: the connection properties.
+        :return: the established connection resulting from the given connection information.
+        """
         ...
 
 
@@ -96,10 +130,26 @@ class ConnectionProviderManager:
 
     @staticmethod
     def set_connection_provider(connection_provider: ConnectionProvider):
+        """
+        Setter that can optionally be called to request a non-default :py:class:`ConnectionProvider`.
+        The requested :py:class:`ConnectionProvider` will be used to establish future connections unless it does not support a requested host,
+        in which case the default :py:class:`ConnectionProvider` will be used. See :py:method:`ConnectionProvider.accepts_host_info` for more details.
+        :param connection_provider: the :py:class:`ConnectionProvider` to use to establish new connections.
+        """
         with ConnectionProviderManager._lock:
             ConnectionProviderManager._conn_provider = connection_provider
 
     def get_connection_provider(self, host_info: HostInfo, properties: Properties) -> ConnectionProvider:
+        """
+        Get the :py:class:`ConnectionProvider` to use to establish a connection using the given host details and properties.
+        If a non-default :py:class:`ConnectionProvider` has been set using :py:method:`ConnectionProvider.set_connection_provider`
+        and :py:method:`ConnectionProvider.accepts_host_info` returns `True`, the non-default :py:class:`ConnectionProvider` will be returned.
+        Otherwise, the default :py:class:`ConnectionProvider` will be returned.
+
+        :param host_info: the host info for the connection that will be established.
+        :param properties: the connection properties.
+        :return: the :py:class:`ConnectionProvider` to use to establish a connection using the given host details and properties.
+        """
         if ConnectionProviderManager._conn_provider is None:
             return self.default_provider
 
@@ -111,6 +161,13 @@ class ConnectionProviderManager:
         return self._default_provider
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
+        """
+        Indicates whether the given selection strategy is supported by the connection provider.
+
+        :param role: determines if the connection provider should return a reader host or a writer host.
+        :param strategy: the host selection strategy to use.
+        :return: whether the host selection strategy is supported.
+        """
         accepts_strategy: bool = False
         if ConnectionProviderManager._conn_provider is not None:
             with ConnectionProviderManager._lock:
@@ -122,6 +179,16 @@ class ConnectionProviderManager:
         return accepts_strategy
 
     def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
+        """
+        Return a reader or a writer host using the specified strategy.
+
+        This method should raise an :py:class:`AwsWrapperError` if the specified strategy is unsupported.
+
+        :param hosts: the list of hosts to select from.
+        :param role: determines if the connection provider should return a reader or a writer host.
+        :param strategy: the host selection strategy to use.
+        :return: the host selected using the specified strategy.
+        """
         if ConnectionProviderManager._conn_provider is not None:
             with ConnectionProviderManager._lock:
                 if ConnectionProviderManager._conn_provider is not None \
@@ -132,12 +199,19 @@ class ConnectionProviderManager:
 
     @staticmethod
     def reset_provider():
+        """
+        Clears the non-default :py:class:`ConnectionProvider` if it has been set.
+        """
         if ConnectionProviderManager._conn_provider is not None:
             with ConnectionProviderManager._lock:
                 ConnectionProviderManager._conn_provider = None
 
     @staticmethod
     def release_resources():
+        """
+        Releases any resources held by the available :py:class:`ConnectionProvider` instances.
+        :return:
+        """
         if ConnectionProviderManager._conn_provider is not None:
             with ConnectionProviderManager._lock:
                 if isinstance(ConnectionProviderManager._conn_provider, CanReleaseResources):

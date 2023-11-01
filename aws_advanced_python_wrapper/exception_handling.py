@@ -24,9 +24,21 @@ from typing import Optional, Protocol
 
 class ExceptionHandler(Protocol):
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        """
+        Checks whether the given error is caused by a network related issue.
+        :param error: The error raised by the target driver.
+        :param sql_state: The SQL State associated with the error.
+        :return: True if the error is caused by a network related issue, False otherwise.
+        """
         pass
 
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        """
+        Checks whether the given error is caused by failing to authenticate the user.
+        :param error: The error raised by the target driver.
+        :param sql_state: The SQL State associated with the error.
+        :return: True if the error is caused by a login issue, False otherwise.
+        """
         pass
 
 

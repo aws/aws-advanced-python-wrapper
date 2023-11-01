@@ -40,12 +40,31 @@ logger = Logger(__name__)
 
 
 class ReaderFailoverHandler:
+    """
+    Interface for Reader Failover Process handler. This handler implements all necessary logic to try to reconnect to another reader host.
+    """
+
     @abstractmethod
     def failover(self, current_topology: Tuple[HostInfo, ...], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
+        """
+        Called to start Reader Failover Process. This process tries to connect to any reader.
+        If no reader is available then driver may also try to connect to a writer host, down hosts, and the current reader host.
+
+        :param current_topology: The current cluster topology.
+        :param current_host: The :py:class:`HostInfo` containing information regarding the current connection.
+        :return: The results of this process.
+        """
         pass
 
     @abstractmethod
     def get_reader_connection(self, hosts: Tuple[HostInfo, ...]) -> ReaderFailoverResult:
+        """
+        Called to get any available reader connection. If no reader is available then result of process is unsuccessful.
+        This process will not attempt to connect to the writer host.
+
+        :param hosts: The current cluster topology.
+        :return: The results of the failover process.
+        """
         pass
 
 
@@ -99,18 +118,22 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
                 result = self._failover_internal(topology, current_host)
                 if result is not None and result.is_connected:
                     if not self._strict_reader_failover:
-                        return result  # any node is fine
+                        return result  # any host is fine
 
-                    # need to ensure that the new connection is to a reader node
+                    # need to ensure that the new connection is to a reader host
 
                     self._plugin_service.force_refresh_host_list(result.connection)
                     if result.new_host is not None:
                         topology = self._plugin_service.hosts
-                        for node in topology:
+                        for host in topology:
                             # found new connection host in the latest topology
-                            if node.url == result.new_host.url and node.role == HostRole.READER:
+                            if host.url == result.new_host.url and host.role == HostRole.READER:
                                 return result
 
+                    # New host is not found in the latest topology. There are few possible reasons for that.
+                    # - Host is not yet presented in the topology due to failover process in progress
+                    # - Host is in the topology but its role isn't a READER (that is not acceptable option due to this.strictReader setting)
+                    # Need to continue this loop and to make another try to connect to a reader.
                     if result.connection is not None:
                         result.connection.close()
 

@@ -112,6 +112,11 @@ class AwsSecretsManagerPlugin(Plugin):
             raise AwsWrapperError(Messages.get_formatted("AwsSecretsManagerPlugin.FailedLogin", e)) from e
 
     def _update_secret(self, force_refetch: bool = False) -> bool:
+        """
+        Called to update credentials from the cache, or from the AWS Secrets Manager service.
+        :param force_refetch: Allows ignoring cached credentials and force fetches the latest credentials from the service.
+        :return: `True`, if credentials were fetched from the service.
+        """
         fetched: bool = False
 
         self._secret: Optional[SimpleNamespace] = AwsSecretsManagerPlugin._secrets_cache.get(self._secret_key)
@@ -130,6 +135,11 @@ class AwsSecretsManagerPlugin(Plugin):
         return fetched
 
     def _fetch_latest_credentials(self):
+        """
+        Fetches the current credentials from AWS Secrets Manager service.
+
+        :return: a Secret object containing the credentials fetched from the AWS Secrets Manager service.
+        """
         session = self._session if self._session else boto3.Session()
         client = session.client(
             'secretsmanager',
@@ -145,6 +155,12 @@ class AwsSecretsManagerPlugin(Plugin):
         return loads(secret.get("SecretString"), object_hook=lambda d: SimpleNamespace(**d))
 
     def _apply_secret_to_properties(self, properties: Properties):
+        """
+        Updates credentials in provided properties. Other plugins in the plugin chain may change them if needed.
+        Eventually, credentials will be used to open a new connection in :py:class:`DefaultConnectionPlugin`.
+
+        :param properties: Properties to store credentials.
+        """
         if self._secret:
             WrapperProperties.USER.set(properties, self._secret.username)
             WrapperProperties.PASSWORD.set(properties, self._secret.password)

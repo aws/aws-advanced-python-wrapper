@@ -34,6 +34,10 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 
 
 class DriverDialect(ABC):
+    """
+    Driver dialects help the driver-agnostic AWS Python Driver interface with the driver-specific functionality of the underlying Python Driver.
+    """
+
     _executor: ClassVar[Executor] = ThreadPoolExecutor()
     _dialect_code: str = DriverDialectCodes.GENERIC
     _network_bound_methods: Set[str] = {"*"}

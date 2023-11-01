@@ -50,6 +50,10 @@ logger = Logger(__name__)
 
 
 class FailoverPlugin(Plugin):
+    """
+    This plugin provides cluster-aware failover features.
+    The plugin switches connections upon detecting communication related exceptions and/or cluster topology changes.
+    """
     _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
                                      "connect",
                                      "force_connect",
@@ -174,14 +178,14 @@ class FailoverPlugin(Plugin):
 
         current_host = self._plugin_service.current_host_info
         if current_host is not None:
-            if self._is_node_still_valid(current_host.url, changes):
+            if self._is_host_still_valid(current_host.url, changes):
                 return
 
             for alias in current_host.aliases:
-                if self._is_node_still_valid(alias + '/', changes):
+                if self._is_host_still_valid(alias + '/', changes):
                     return
 
-            logger.debug("FailoverPlugin.InvalidNode", current_host)
+            logger.debug("FailoverPlugin.InvalidHost", current_host)
 
     def connect(
             self,
@@ -244,6 +248,11 @@ class FailoverPlugin(Plugin):
         self._plugin_service.driver_dialect.transfer_session_state(from_conn, to_conn)
 
     def _failover(self, failed_host: Optional[HostInfo]):
+        """
+        Initiates the failover procedure. This process tries to establish a new connection to an instance in the topology.
+
+        :param failed_host: The host with network errors.
+        """
         if self._failover_mode == FailoverMode.STRICT_WRITER:
             self._failover_writer()
         else:
@@ -310,6 +319,11 @@ class FailoverPlugin(Plugin):
         self._plugin_service.refresh_host_list()
 
     def restore_session_state(self, conn: Optional[Connection]):
+        """
+        Restores partial session state from saved values to a connection.
+
+        :param conn: The connection to transfer state to.
+        """
         if conn is None:
             return
 
@@ -320,6 +334,9 @@ class FailoverPlugin(Plugin):
             self._plugin_service.driver_dialect.set_autocommit(conn, self._saved_auto_commit_status)
 
     def _invalidate_current_connection(self):
+        """
+        Invalidate the current connection before switching to a new connection.
+        """
         conn = self._plugin_service.current_connection
         if conn is None:
             return
@@ -364,6 +381,11 @@ class FailoverPlugin(Plugin):
             self._failover(self._plugin_service.current_host_info)
 
     def _connect_to(self, host: HostInfo):
+        """
+        Connects this dynamic failover connection proxy to the specified host.
+
+        :param host: The host to connect to.
+        """
         try:
             connection_for_host = self._plugin_service.connect(host, self._properties)
             current_connection = self._plugin_service.current_connection
@@ -407,6 +429,12 @@ class FailoverPlugin(Plugin):
         return self._get_writer(topology)
 
     def _should_exception_trigger_connection_switch(self, ex: Exception) -> bool:
+        """
+        Checks whether the given exception is a network exception and should trigger the failover process.
+
+        :param ex: The exception raised during the method call.
+        :return: `True` if the exception should trigger failover. `False` otherwise.
+        """
         if not self._is_failover_enabled():
             logger.debug("FailoverPlugin.FailoverDisabled")
             return False
@@ -422,7 +450,7 @@ class FailoverPlugin(Plugin):
         return None
 
     @staticmethod
-    def _is_node_still_valid(host: str, changes: Dict[str, Set[HostEvent]]):
+    def _is_host_still_valid(host: str, changes: Dict[str, Set[HostEvent]]):
         if host in changes:
             options = changes.get(host)
             return options is not None and \
@@ -432,15 +460,35 @@ class FailoverPlugin(Plugin):
 
     @staticmethod
     def _can_direct_execute(method_name):
+        """
+        Check whether the method provided can be executed directly without the failover functionality.
+
+        :param method_name: The name of the method that is being called.
+        :return: `True` if the method can be executed directly; `False` otherwise.
+        """
         return method_name == "Connection.close" or \
             method_name == "Connection.is_closed" or \
             method_name == "Cursor.close"
 
     @staticmethod
     def _allowed_on_closed_connection(method_name: str):
+        """
+        Checks if the given method is allowed on closed connections.
+
+        :param method_name: The method being executed at the moment.
+        :return: `True` if the given method is allowed on closed connections.
+        """
         return method_name == "Connection.autocommit"
 
     def _requires_update_topology(self, method_name: str):
+        """
+        Not all method calls require an updated topology, especially ones that don't require network connection.
+        Updating the topology may execute the topology query in the middle of another query execution,
+        this introduces overhead and may not be supported by all drivers.
+
+        :param method_name: The method being executed at the moment.
+        :return: `True` if the given method requires an updated topology before executing. `False` otherwise.
+        """
         return method_name in FailoverPlugin._METHODS_REQUIRE_UPDATED_TOPOLOGY
 
 
