@@ -142,6 +142,7 @@ class PluginFactory(Protocol):
 class CanReleaseResources(Protocol):
     def release_resources(self):
         """
-        Release all dangling resources held by the class implementing this method. This step allows implementing classes to clean up remaining resources or perform other cleanup tasks before shutting down.
+        Release all dangling resources held by the class implementing this method.
+        This step allows implementing classes to clean up remaining resources or perform other cleanup tasks before shutting down.
         """
         pass

@@ -161,21 +161,23 @@ class PluginService(ExceptionHandler, Protocol):
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         """
-        Returns a boolean indicating if any of the configured :py:class:`ConnectionPlugin` or :py:class:`ConnectionProvider` objects implement the specified host selection strategy
-        for the given role in  :py:method:`ConnectionPlugin.get_host_info_by_strategy` or :py:method:`ConnectionProvider.get_host_info_by_strategy`.
+        Returns a boolean indicating if any of the configured :py:class:`ConnectionPlugin` or :py:class:`ConnectionProvider` objects implement the
+        specified host selection strategy for the given role in  :py:method:`ConnectionPlugin.get_host_info_by_strategy`
+        or :py:method:`ConnectionProvider.get_host_info_by_strategy`.
 
         :param role: the desired role of the selected host - either a reader host or a writer host.
         :param strategy: the strategy that should be used to pick a host (eg "random").
-        :return: `True` if any of the configured :py:class:`ConnectionPlugin` or :py:class:`ConnectionProvider` objects support the selection of a host with the requested role and strategy
-        via :py:method:`ConnectionPlugin.get_host_info_by_strategy` or :py:method:`ConnectionProvider.get_host_info_by_strategy`. Otherwise, return `False`.
+        :return: `True` if any of the configured :py:class:`ConnectionPlugin` or :py:class:`ConnectionProvider` objects support the selection of a
+        host with the requested role and strategy via :py:method:`ConnectionPlugin.get_host_info_by_strategy`
+        or :py:method:`ConnectionProvider.get_host_info_by_strategy`. Otherwise, return `False`.
         """
         ...
 
     def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
         """
         Selects a :py:class:`HostInfo` with the requested role from available hosts using the requested strategy.
-        :py:method:`PluginService.accepts_strategy` should be called first to evaluate if any of the configured :py:class:`ConnectionPlugin` or :py:class:`ConnectionProvider` objects support the selection
-        of a host with the requested role and strategy.
+        :py:method:`PluginService.accepts_strategy` should be called first to evaluate if any of the configured :py:class:`ConnectionPlugin`
+        or :py:class:`ConnectionProvider` objects support the selection of a host with the requested role and strategy.
 
         :param role: the desired role of the selected host - either a reader host or a writer host.
         :param strategy: the strategy that should be used to pick a host (eg "random").
@@ -550,6 +552,9 @@ class PluginManager(CanReleaseResources):
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
 
+    # The final list of plugins will be sorted by weight, starting from the lowest values up to
+    # the highest values. The first plugin of the list will have the lowest weight, and the
+    # last one will have the highest weight.
     PLUGIN_FACTORY_WEIGHTS: Dict[Type[PluginFactory], int] = {
         AuroraConnectionTrackerPluginFactory: 100,
         StaleDnsPluginFactory: 200,

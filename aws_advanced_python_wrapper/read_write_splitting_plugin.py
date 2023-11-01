@@ -322,7 +322,7 @@ class ReadWriteSplittingPlugin(Plugin):
     def _transfer_session_state(self, conn: Connection):
         """
         Transfers partial session state from one connection to another, excluding the read-only status.
-        This method is only called when the connection's `read_only` property is being set. 
+        This method is only called when the connection's `read_only` property is being set.
         The read-only status will be updated when the call to set `read_only` continues down the plugin chain.
 
         :param conn: the connection to transfer states to.
