@@ -30,7 +30,7 @@ def test_compute_if_absent():
     assert "a" == result2
     assert "a" == cache.get(1)
 
-    time.sleep(0.05)
+    time.sleep(0.07)  # Python may sleep slightly less than the given value
     result3 = cache.compute_if_absent(1, lambda _: "b", 5)
     assert "b" == result3
     assert "b" == cache.get(1)
@@ -54,7 +54,7 @@ def test_remove():
     result = cache.compute_if_absent("non_expired_item", lambda _: non_expired_item, 15_000_000_000)
     assert non_expired_item == result
 
-    time.sleep(0.05)
+    time.sleep(0.07)  # Python may sleep slightly less than the given value
     cache.remove("item_to_remove")
 
     assert cache.get("item_to_remove") is None
