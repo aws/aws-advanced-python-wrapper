@@ -53,8 +53,15 @@ def failure_count():
 
 
 @pytest.fixture
-def context(mock_monitor, mock_conn, mock_dialect, failure_time_ms, failure_interval_ms, failure_count):
-    return MonitoringContext(mock_monitor, mock_conn, mock_dialect, failure_time_ms, failure_interval_ms, failure_count)
+def context(mock_monitor, mock_conn, mock_dialect, failure_time_ms,
+            failure_interval_ms, failure_count, mock_aborted_connection_counter):
+    return MonitoringContext(mock_monitor, mock_conn, mock_dialect, failure_time_ms,
+                             failure_interval_ms, failure_count, mock_aborted_connection_counter)
+
+
+@pytest.fixture
+def mock_aborted_connection_counter(mocker):
+    return mocker.MagicMock()
 
 
 def test_set_monitor_start_time(context, failure_time_ms):

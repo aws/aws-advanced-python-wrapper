@@ -77,6 +77,8 @@ from aws_advanced_python_wrapper.utils.notifications import (
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
                                                           WrapperProperties)
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
+    TelemetryContext, TelemetryFactory, TelemetryTraceLevel)
 
 logger = Logger(__name__)
 
@@ -240,6 +242,9 @@ class PluginService(ExceptionHandler, Protocol):
         ...
 
     def get_connection_provider_manager(self) -> ConnectionProviderManager:
+        ...
+
+    def get_telemetry_factory(self) -> TelemetryFactory:
         ...
 
 
@@ -482,6 +487,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def get_connection_provider_manager(self) -> ConnectionProviderManager:
         return self._container.plugin_manager.connection_provider_manager
 
+    def get_telemetry_factory(self) -> TelemetryFactory:
+        return self._container.plugin_manager.telemetry_factory
+
     def _update_host_availability(self, hosts: Tuple[HostInfo, ...]):
         for host in hosts:
             availability: Optional[HostAvailability] = self._host_availability_expiring_cache.get(host.url)
@@ -589,12 +597,14 @@ class PluginManager(CanReleaseResources):
         FederatedAuthPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN
     }
 
-    def __init__(self, container: PluginServiceManagerContainer, props: Properties):
+    def __init__(
+            self, container: PluginServiceManagerContainer, props: Properties, telemetry_factory: TelemetryFactory):
         self._props: Properties = props
         self._function_cache: Dict[str, Callable] = {}
         self._container = container
         self._container.plugin_manager = self
         self._connection_provider_manager = ConnectionProviderManager()
+        self._telemetry_factory = telemetry_factory
         self._plugins = self.get_plugins()
 
     @property
@@ -604,6 +614,10 @@ class PluginManager(CanReleaseResources):
     @property
     def connection_provider_manager(self) -> ConnectionProviderManager:
         return self._connection_provider_manager
+
+    @property
+    def telemetry_factory(self) -> TelemetryFactory:
+        return self._telemetry_factory
 
     def get_current_connection_provider(self, host_info: HostInfo, properties: Properties):
         return self.connection_provider_manager.get_connection_provider(host_info, properties)
@@ -697,11 +711,32 @@ class PluginManager(CanReleaseResources):
         if conn is None and method_name in ["Connection.close", "Cursor.close"]:
             return
 
-        return self._execute_with_subscribed_plugins(
-            method_name,
-            # next_plugin_func is defined later in make_pipeline
-            lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args, **kwargs),
-            target_driver_func)
+        context: TelemetryContext
+        context = self._telemetry_factory.open_telemetry_context(method_name, TelemetryTraceLevel.TOP_LEVEL)
+        context.set_attribute("python_call", method_name)
+
+        try:
+            result = self._execute_with_subscribed_plugins(
+                method_name,
+                # next_plugin_func is defined later in make_pipeline
+                lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args, **kwargs),
+                target_driver_func)
+
+            context.set_success(True)
+
+            return result
+        except Exception as e:
+            context.set_success(False)
+            raise e
+        finally:
+            context.close_context()
+
+    def _execute_with_telemetry(self, plugin_name: str, func: Callable):
+        context = self._telemetry_factory.open_telemetry_context(plugin_name, TelemetryTraceLevel.NESTED)
+        try:
+            return func()
+        finally:
+            context.close_context()
 
     def _execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):
         pipeline_func: Optional[Callable] = self._function_cache.get(method_name)
@@ -735,16 +770,19 @@ class PluginManager(CanReleaseResources):
         else:
             return pipeline_func
 
-    def _create_base_pipeline_func(self, plugin):
+    def _create_base_pipeline_func(self, plugin: Plugin):
         # The plugin passed here will be the DefaultPlugin, which is the last plugin in the pipeline
         # The second arg to plugin_func is the next call in the pipeline. Here, it is the target driver function
-        return lambda plugin_func, target_driver_func: plugin_func(plugin, target_driver_func)
+        plugin_name = plugin.__class__.__name__
+        return lambda plugin_func, target_driver_func: self._execute_with_telemetry(
+            plugin_name, lambda: plugin_func(plugin, target_driver_func))
 
-    def _extend_pipeline_func(self, plugin, pipeline_so_far):
+    def _extend_pipeline_func(self, plugin: Plugin, pipeline_so_far: Callable):
         # Defines the call to a plugin that precedes the DefaultPlugin in the pipeline
         # The second arg to plugin_func effectively appends the tail end of the pipeline to the current plugin's call
-        return lambda plugin_func, target_driver_func: \
-            plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func))
+        plugin_name = plugin.__class__.__name__
+        return lambda plugin_func, target_driver_func: self._execute_with_telemetry(
+            plugin_name, lambda: plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func)))
 
     def connect(
             self,
@@ -753,12 +791,16 @@ class PluginManager(CanReleaseResources):
             host_info: Optional[HostInfo],
             props: Properties,
             is_initial_connection: bool) -> Connection:
-        return self._execute_with_subscribed_plugins(
-            PluginManager._CONNECT_METHOD,
-            lambda plugin, func: plugin.connect(
-                target_func, driver_dialect, host_info, props, is_initial_connection, func),
-            # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
-            lambda: None)
+        context = self._telemetry_factory.open_telemetry_context("connect", TelemetryTraceLevel.NESTED)
+        try:
+            return self._execute_with_subscribed_plugins(
+                PluginManager._CONNECT_METHOD,
+                lambda plugin, func: plugin.connect(
+                    target_func, driver_dialect, host_info, props, is_initial_connection, func),
+                # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
+                lambda: None)
+        finally:
+            context.close_context()
 
     def force_connect(
             self,
@@ -836,10 +878,14 @@ class PluginManager(CanReleaseResources):
         return None
 
     def init_host_provider(self, props: Properties, host_list_provider_service: HostListProviderService):
-        return self._execute_with_subscribed_plugins(
-            PluginManager._INIT_HOST_LIST_PROVIDER_METHOD,
-            lambda plugin, func: plugin.init_host_provider(props, host_list_provider_service, func),
-            lambda: None)
+        context = self._telemetry_factory.open_telemetry_context("init_host_provider", TelemetryTraceLevel.NESTED)
+        try:
+            return self._execute_with_subscribed_plugins(
+                PluginManager._INIT_HOST_LIST_PROVIDER_METHOD,
+                lambda plugin, func: plugin.init_host_provider(props, host_list_provider_service, func),
+                lambda: None)
+        finally:
+            context.close_context()
 
     def release_resources(self):
         """

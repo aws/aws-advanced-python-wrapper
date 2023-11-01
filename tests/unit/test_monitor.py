@@ -86,6 +86,11 @@ def release_container():
         MonitoringThreadContainer.release_instance()
 
 
+@pytest.fixture
+def mock_aborted_connection_counter(mocker):
+    return mocker.MagicMock()
+
+
 def test_start_monitoring(monitor, mock_monitoring_context):
     current_time = perf_counter_ns()
     assert 0 != monitor._context_last_used_ns
@@ -128,7 +133,8 @@ def test_run_host_available(
         monitoring_conn_props,
         mock_plugin_service,
         mock_conn,
-        mock_driver_dialect):
+        mock_driver_dialect,
+        mock_aborted_connection_counter):
     remove_delays()
     host_alias = "host-1"
     container = MonitoringThreadContainer()
@@ -136,7 +142,9 @@ def test_run_host_available(
     container._tasks_map.put_if_absent(monitor, mocker.MagicMock())
 
     executor = ThreadPoolExecutor()
-    context = MonitoringContext(monitor, mock_conn, mock_driver_dialect, 10, 1, 3)
+    context = MonitoringContext(monitor, mock_conn, mock_driver_dialect,
+                                10, 1, 3,
+                                mock_aborted_connection_counter)
     monitor.start_monitoring(context)
 
     future = executor.submit(monitor.run)
@@ -160,7 +168,8 @@ def test_ensure_stopped_monitor_removed_from_map(
         monitoring_conn_props,
         mock_plugin_service,
         mock_conn,
-        mock_driver_dialect):
+        mock_driver_dialect,
+        mock_aborted_connection_counter):
     remove_delays()
     host_alias = "host-1"
     container = MonitoringThreadContainer()
@@ -168,7 +177,8 @@ def test_ensure_stopped_monitor_removed_from_map(
     container._tasks_map.put_if_absent(monitor, mocker.MagicMock())
 
     executor = ThreadPoolExecutor()
-    context = MonitoringContext(monitor, mock_conn, mock_driver_dialect, 10, 1, 3)
+    context = MonitoringContext(monitor, mock_conn, mock_driver_dialect,
+                                10, 1, 3, mock_aborted_connection_counter)
 
     mocker.patch(
         "aws_advanced_python_wrapper.host_monitoring_plugin.Monitor.sleep", side_effect=InterruptedError())
@@ -189,10 +199,12 @@ def test_run_host_unavailable(
         monitoring_conn_props,
         mock_plugin_service,
         mock_conn,
-        mock_driver_dialect):
+        mock_driver_dialect,
+        mock_aborted_connection_counter):
     remove_delays()
     executor = ThreadPoolExecutor()
-    context = MonitoringContext(monitor, mock_conn, mock_driver_dialect, 30, 10, 3)
+    context = MonitoringContext(monitor, mock_conn, mock_driver_dialect,
+                                30, 10, 3, mock_aborted_connection_counter)
 
     mocker.patch(
         "aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=TimeoutError())

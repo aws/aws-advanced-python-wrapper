@@ -43,6 +43,8 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+    TelemetryTraceLevel
 from aws_advanced_python_wrapper.writer_failover_handler import (
     WriterFailoverHandler, WriterFailoverHandlerImpl)
 
@@ -84,7 +86,10 @@ class FailoverPlugin(Plugin):
             self._properties)
         self._failover_reader_connect_timeout_sec = WrapperProperties.FAILOVER_READER_CONNECT_TIMEOUT_SEC.get_float(
             self._properties)
-        self._keep_session_state_on_failover = WrapperProperties.KEEP_SESSION_STATE_ON_FAILOVER.get_bool(self._properties)
+        self._keep_session_state_on_failover = WrapperProperties.KEEP_SESSION_STATE_ON_FAILOVER.get_bool(
+            self._properties)
+        self._telemetry_failover_additional_top_trace_setting = (
+            WrapperProperties.TELEMETRY_FAILOVER_ADDITIONAL_TOP_TRACE.get_bool(self._properties))
         self._failover_mode: FailoverMode
         self._is_in_transaction: bool = False
         self._is_closed: bool = False
@@ -95,6 +100,18 @@ class FailoverPlugin(Plugin):
         self._stale_dns_helper: StaleDnsHelper = StaleDnsHelper(plugin_service)
         self._saved_read_only_status: bool = False
         self._saved_auto_commit_status: bool = False
+
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        self._failover_writer_triggered_counter = telemetry_factory.create_counter("writer_failover.triggered.count")
+        self._failover_writer_success_counter = telemetry_factory.create_counter(
+            "writer_failover.completed.success.count")
+        self._failover_writer_failed_counter = telemetry_factory.create_counter(
+            "writer_failover.completed.failed.count")
+        self._failover_reader_triggered_counter = telemetry_factory.create_counter("reader_failover.triggered.count")
+        self._failover_reader_success_counter = telemetry_factory.create_counter(
+            "reader_failover.completed.success.count")
+        self._failover_reader_failed_counter = telemetry_factory.create_counter(
+            "reader_failover.completed.failed.count")
 
         FailoverPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
@@ -213,10 +230,13 @@ class FailoverPlugin(Plugin):
             properties: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
-        conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection, self._host_list_provider_service, host, properties,
+        conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection,
+                                                                          self._host_list_provider_service, host,
+                                                                          properties,
                                                                           connect_func)
         if self._keep_session_state_on_failover:
-            self._saved_read_only_status = False if self._saved_read_only_status == self._plugin_service.driver_dialect.is_read_only(conn) \
+            self._saved_read_only_status = False if self._saved_read_only_status == self._plugin_service.driver_dialect.is_read_only(
+                conn) \
                 else self._saved_read_only_status
             self._saved_auto_commit_status = False \
                 if self._saved_read_only_status == self._plugin_service.driver_dialect.get_autocommit(conn) \
@@ -270,53 +290,96 @@ class FailoverPlugin(Plugin):
             raise FailoverSuccessError(Messages.get(error_msg))
 
     def _failover_reader(self, failed_host: Optional[HostInfo]):
-        logger.debug("FailoverPlugin.StartReaderFailover")
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        context = telemetry_factory.open_telemetry_context("failover to replica", TelemetryTraceLevel.NESTED)
+        self._failover_reader_triggered_counter.inc()
 
-        old_aliases = None
-        if self._plugin_service.current_host_info is not None:
-            old_aliases = self._plugin_service.current_host_info.aliases
+        try:
+            logger.debug("FailoverPlugin.StartReaderFailover")
 
-        if failed_host is not None and failed_host.get_raw_availability() != HostAvailability.AVAILABLE:
-            failed_host = None
+            old_aliases = None
+            if self._plugin_service.current_host_info is not None:
+                old_aliases = self._plugin_service.current_host_info.aliases
 
-        result: ReaderFailoverResult = self._reader_failover_handler.failover(self._plugin_service.hosts, failed_host)
+            if failed_host is not None and failed_host.get_raw_availability() != HostAvailability.AVAILABLE:
+                failed_host = None
 
-        if result is None or not result.is_connected:
-            raise FailoverFailedError(Messages.get("FailoverPlugin.UnableToConnectToReader"))
-        else:
-            if result.exception is not None:
-                raise result.exception
-            if self._keep_session_state_on_failover:
-                self.restore_session_state(result.connection)
-            if result.connection is not None and result.new_host is not None:
-                self._plugin_service.set_current_connection(result.connection, result.new_host)
+            result: ReaderFailoverResult = self._reader_failover_handler.failover(self._plugin_service.hosts,
+                                                                                  failed_host)
 
-        if self._plugin_service.current_host_info is not None and old_aliases is not None and len(old_aliases) > 0:
-            self._plugin_service.current_host_info.remove_alias(old_aliases)
+            if result is None or not result.is_connected:
+                raise FailoverFailedError(Messages.get("FailoverPlugin.UnableToConnectToReader"))
+            else:
+                if result.exception is not None:
+                    raise result.exception
+                if self._keep_session_state_on_failover:
+                    self.restore_session_state(result.connection)
+                if result.connection is not None and result.new_host is not None:
+                    self._plugin_service.set_current_connection(result.connection, result.new_host)
 
-        self._update_topology(True)
+            if self._plugin_service.current_host_info is not None and old_aliases is not None and len(old_aliases) > 0:
+                self._plugin_service.current_host_info.remove_alias(old_aliases)
 
-        logger.debug("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
+            self._update_topology(True)
+
+            logger.debug("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
+
+            self._failover_reader_success_counter.inc()
+        except FailoverSuccessError as fse:
+            context.set_success(True)
+            context.set_exception(fse)
+            self._failover_reader_success_counter.inc()
+            raise fse
+        except Exception as ex:
+            context.set_success(False)
+            context.set_exception(ex)
+            self._failover_reader_failed_counter.inc()
+            raise ex
+        finally:
+            context.close_context()
+            if self._telemetry_failover_additional_top_trace_setting:
+                telemetry_factory.post_copy(context, TelemetryTraceLevel.FORCE_TOP_LEVEL)
 
     def _failover_writer(self):
-        logger.debug("FailoverPlugin.StartWriterFailover")
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        context = telemetry_factory.open_telemetry_context("failover to writer node", TelemetryTraceLevel.NESTED)
+        self._failover_writer_triggered_counter.inc()
 
-        result: WriterFailoverResult = self._writer_failover_handler.failover(self._plugin_service.hosts)
+        try:
+            logger.debug("FailoverPlugin.StartWriterFailover")
 
-        if result is not None and result.exception is not None:
-            raise result.exception
-        elif result is None or not result.is_connected:
-            raise FailoverFailedError(Messages.get("FailoverPlugin.UnableToConnectToWriter"))
+            result: WriterFailoverResult = self._writer_failover_handler.failover(self._plugin_service.hosts)
 
-        writer_host = self._get_writer(result.topology)
-        if self._keep_session_state_on_failover:
-            self.restore_session_state(result.new_connection)
+            if result is not None and result.exception is not None:
+                raise result.exception
+            elif result is None or not result.is_connected:
+                raise FailoverFailedError(Messages.get("FailoverPlugin.UnableToConnectToWriter"))
 
-        self._plugin_service.set_current_connection(result.new_connection, writer_host)
+            writer_host = self._get_writer(result.topology)
+            if self._keep_session_state_on_failover:
+                self.restore_session_state(result.new_connection)
 
-        logger.debug("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
+            self._plugin_service.set_current_connection(result.new_connection, writer_host)
 
-        self._plugin_service.refresh_host_list()
+            logger.debug("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
+
+            self._plugin_service.refresh_host_list()
+
+            self._failover_writer_success_counter.inc()
+        except FailoverSuccessError as fse:
+            context.set_success(True)
+            context.set_exception(fse)
+            self._failover_writer_success_counter.inc()
+            raise fse
+        except Exception as ex:
+            context.set_success(False)
+            context.set_exception(ex)
+            self._failover_writer_failed_counter.inc()
+            raise ex
+        finally:
+            context.close_context()
+            if self._telemetry_failover_additional_top_trace_setting:
+                telemetry_factory.post_copy(context, TelemetryTraceLevel.FORCE_TOP_LEVEL)
 
     def restore_session_state(self, conn: Optional[Connection]):
         """
@@ -401,7 +464,8 @@ class FailoverPlugin(Plugin):
             logger.debug("FailoverPlugin.EstablishedConnection", host)
         except Exception as ex:
             if self._plugin_service is not None:
-                logger.debug("FailoverPlugin.ConnectionToHostFailed", 'writer' if host.role == HostRole.WRITER else 'reader', host.url)
+                logger.debug("FailoverPlugin.ConnectionToHostFailed",
+                             'writer' if host.role == HostRole.WRITER else 'reader', host.url)
             raise ex
 
     def _should_attempt_reader_connection(self) -> bool:

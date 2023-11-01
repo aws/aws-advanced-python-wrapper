@@ -95,6 +95,11 @@ def counter():
     return AtomicInt()
 
 
+@pytest.fixture
+def mock_aborted_connection_counter(mocker):
+    return mocker.MagicMock()
+
+
 @pytest.fixture(autouse=True)
 def verify_concurrency(mock_monitor, mock_executor, mock_future, counter, concurrent_counter):
     # The ThreadPoolExecutor may have been shut down by a previous test, so we'll need to recreate it here.
@@ -222,7 +227,8 @@ def generate_services(mock_plugin_service):
 
 @pytest.fixture
 def generate_contexts(
-        mocker, mock_monitor, failure_detection_time_ms, failure_detection_interval_ms, failure_detection_count):
+        mocker, mock_monitor, failure_detection_time_ms, failure_detection_interval_ms,
+        failure_detection_count, mock_aborted_connection_counter):
     def _generate_contexts(num_contexts: int, generate_unique_contexts) -> List[MonitoringContext]:
         host_aliases_list = generate_host_aliases(num_contexts, generate_unique_contexts)
         contexts = []
@@ -235,7 +241,8 @@ def generate_contexts(
                     mocker.MagicMock(),
                     failure_detection_time_ms,
                     failure_detection_interval_ms,
-                    failure_detection_count))
+                    failure_detection_count,
+                    mock_aborted_connection_counter))
         return contexts
     return _generate_contexts
 

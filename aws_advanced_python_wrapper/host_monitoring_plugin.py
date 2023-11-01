@@ -45,6 +45,8 @@ from aws_advanced_python_wrapper.utils.notifications import (
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
+    TelemetryCounter, TelemetryTraceLevel)
 from aws_advanced_python_wrapper.utils.utils import QueueUtils
 
 logger = Logger(__name__)
@@ -224,13 +226,15 @@ class MonitoringContext:
             target_dialect: DriverDialect,
             failure_detection_time_ms: int,
             failure_detection_interval_ms: int,
-            failure_detection_count: int):
+            failure_detection_count: int,
+            aborted_connections_counter: TelemetryCounter):
         self._monitor: Monitor = monitor
         self._connection: Connection = connection
         self._target_dialect: DriverDialect = target_dialect
         self._failure_detection_time_ms: int = failure_detection_time_ms
         self._failure_detection_interval_ms: int = failure_detection_interval_ms
         self._failure_detection_count: int = failure_detection_count
+        self._aborted_connections_counter = aborted_connections_counter
 
         self._monitor_start_time_ns: int = 0  # Time of monitor context submission
         self._active_monitoring_start_time_ns: int = 0  # Time when the monitor should start checking the connection
@@ -329,6 +333,7 @@ class MonitoringContext:
             logger.debug("MonitorContext.HostUnavailable", host)
             self._is_host_unavailable = True
             self._abort_connection()
+            self._aborted_connections_counter.inc()
             return
 
         logger.debug("MonitorContext.HostNotResponding", host, self._current_failure_count)
@@ -355,6 +360,7 @@ class Monitor:
         self._host_info: HostInfo = host_info
         self._props: Properties = props
         self._monitor_container: MonitoringThreadContainer = monitor_container
+        self._telemetry_factory = self._plugin_service.get_telemetry_factory()
 
         self._lock: Lock = Lock()
         self._active_contexts: Queue[MonitoringContext] = Queue()
@@ -364,6 +370,10 @@ class Monitor:
         self._monitor_disposal_time_ms: int = WrapperProperties.MONITOR_DISPOSAL_TIME_MS.get_int(props)
         self._context_last_used_ns: int = perf_counter_ns()
         self._host_check_timeout_ms: int = Monitor._MIN_HOST_CHECK_TIMEOUT_MS
+
+        node_id = self._host_info.host_id if self._host_info.host_id is not None else self._host_info.host
+        self._node_invalid_counter = self._telemetry_factory.create_counter(
+            f"host_monitoring.node_unhealthy.count.{node_id}")
 
     @dataclass
     class HostStatus:
@@ -502,8 +512,13 @@ class Monitor:
                 except Exception:
                     # Do nothing
                     pass
+            self.stop()
 
     def _check_host_status(self, host_check_timeout_ms: int) -> HostStatus:
+        context = self._telemetry_factory.open_telemetry_context(
+            "connection status check", TelemetryTraceLevel.FORCE_TOP_LEVEL)
+        context.set_attribute("url", self._host_info.url)
+
         start_ns = perf_counter_ns()
         try:
             driver_dialect = self._plugin_service.driver_dialect
@@ -526,9 +541,14 @@ class Monitor:
 
             start_ns = perf_counter_ns()
             is_available = self._is_host_available(self._monitoring_conn, host_check_timeout_ms / 1000)
+            if not is_available:
+                self._node_invalid_counter.inc()
             return Monitor.HostStatus(is_available, perf_counter_ns() - start_ns)
         except Exception:
+            self._node_invalid_counter.inc()
             return Monitor.HostStatus(False, perf_counter_ns() - start_ns)
+        finally:
+            context.close_context()
 
     def _is_host_available(self, conn: Connection, timeout_sec: float) -> bool:
         try:
@@ -651,6 +671,9 @@ class MonitorService:
         self._cached_monitor_aliases: Optional[FrozenSet[str]] = None
         self._cached_monitor: Optional[ReferenceType[Monitor]] = None
 
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        self._aborted_connections_counter = telemetry_factory.create_counter("host_monitoring.connections.aborted")
+
     def start_monitoring(self,
                          conn: Connection,
                          host_aliases: FrozenSet[str],
@@ -674,7 +697,7 @@ class MonitorService:
 
         context = MonitoringContext(
             monitor, conn, self._plugin_service.driver_dialect, failure_detection_time_ms,
-            failure_detection_interval_ms, failure_detection_count)
+            failure_detection_interval_ms, failure_detection_count, self._aborted_connections_counter)
         monitor.start_monitoring(context)
         return context
 

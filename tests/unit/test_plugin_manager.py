@@ -77,8 +77,8 @@ def default_conn_provider(mocker):
 
 
 @pytest.fixture
-def plugin_manager(mocker):
-    return PluginManager(mocker.MagicMock(), Properties())
+def mock_telemetry_factory(mocker):
+    return mocker.MagicMock()
 
 
 @pytest.fixture(autouse=True)
@@ -90,7 +90,7 @@ def setup(mock_conn, container, mock_plugin_service, mock_driver_dialect):
 
 def test_sort_plugins(mocker):
     props = Properties(plugins="iam,host_monitoring,failover")
-    plugin_manager = PluginManager(mocker.MagicMock(), props)
+    plugin_manager = PluginManager(mocker.MagicMock(), props, mocker.MagicMock())
 
     plugins = plugin_manager.get_plugins()
 
@@ -105,7 +105,7 @@ def test_sort_plugins(mocker):
 
 def test_preserve_plugin_order(mocker):
     props = Properties(plugins="iam,host_monitoring,failover", auto_sort_wrapper_plugin_order=False)
-    plugin_manager = PluginManager(mocker.MagicMock(), props)
+    plugin_manager = PluginManager(mocker.MagicMock(), props, mocker.MagicMock())
 
     plugins = plugin_manager.get_plugins()
 
@@ -120,7 +120,7 @@ def test_preserve_plugin_order(mocker):
 
 def test_sort_plugins_with_stick_to_prior(mocker):
     props = Properties(plugins="iam,execute_time,connect_time,host_monitoring,failover")
-    plugin_manager = PluginManager(mocker.MagicMock(), props)
+    plugin_manager = PluginManager(mocker.MagicMock(), props, mocker.MagicMock())
 
     plugins = plugin_manager.get_plugins()
 
@@ -135,22 +135,23 @@ def test_sort_plugins_with_stick_to_prior(mocker):
     assert isinstance(plugins[5], DefaultPlugin)
 
 
-def test_unknown_profile(mocker):
+def test_unknown_profile(mocker, mock_telemetry_factory):
     props = Properties(profile_name="unknown_profile")
     with pytest.raises(AwsWrapperError):
-        PluginManager(mocker.MagicMock(), props)
+        PluginManager(mocker.MagicMock(), props, mock_telemetry_factory())
 
 
-def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect):
+def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect, mock_telemetry_factory):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     container.plugin_service.return_value = mock_plugin_service
     manager._container = container
     manager._plugins = plugins
+    manager._telemetry_factory = mock_telemetry_factory
     manager._function_cache = {}
 
     make_pipeline_func = mocker.patch.object(manager, '_make_pipeline', wraps=manager._make_pipeline)
@@ -188,15 +189,16 @@ def _target_call(calls: List[str]):
     return "result_value"
 
 
-def test_execute_call_b(mocker, container, mock_driver_dialect):
+def test_execute_call_b(mocker, container, mock_driver_dialect, mock_telemetry_factory):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._container = container
     manager._plugins = plugins
+    manager._telemetry_factory = mock_telemetry_factory
     manager._function_cache = {}
 
     result = manager.execute(mock_conn, "test_call_b", lambda: _target_call(calls), *args)
@@ -210,15 +212,16 @@ def test_execute_call_b(mocker, container, mock_driver_dialect):
     assert calls[4] == "TestPluginOne:after execute"
 
 
-def test_execute_call_c(mocker, container, mock_driver_dialect):
+def test_execute_call_c(mocker, container, mock_driver_dialect, mock_telemetry_factory):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._container = container
     manager._plugins = plugins
+    manager._telemetry_factory = mock_telemetry_factory
     manager._function_cache = {}
 
     result = manager.execute(mock_conn, "test_call_c", lambda: _target_call(calls), *args)
@@ -230,11 +233,12 @@ def test_execute_call_c(mocker, container, mock_driver_dialect):
     assert calls[2] == "TestPluginOne:after execute"
 
 
-def test_execute_against_old_target(mocker, container, mock_driver_dialect):
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+def test_execute_against_old_target(mocker, container, mock_driver_dialect, mock_telemetry_factory):
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._container = container
     manager._plugins = ""
+    manager._telemetry_factory = mock_telemetry_factory
     manager._function_cache = {}
 
     # Set current connection to a new connection object
@@ -243,15 +247,16 @@ def test_execute_against_old_target(mocker, container, mock_driver_dialect):
         manager.execute(mock_conn, "test_execute", lambda: _target_call([]))
 
 
-def test_connect(mocker, container, mock_conn, mock_driver_dialect):
+def test_connect(mocker, container, mock_conn, mock_driver_dialect, mock_telemetry_factory):
     calls = []
 
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls, mock_conn)]
 
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
     manager._function_cache = {}
+    manager._telemetry_factory = mock_telemetry_factory
     manager._container = container
 
     result = manager.connect(mocker.MagicMock(), mocker.MagicMock(), HostInfo("localhost"), Properties(), True)
@@ -264,14 +269,15 @@ def test_connect(mocker, container, mock_conn, mock_driver_dialect):
     assert calls[3] == "TestPluginOne:after connect"
 
 
-def test_exception_before_connect(mocker, container):
+def test_exception_before_connect(mocker, container, mock_telemetry_factory):
     calls = []
     plugins = \
         [TestPluginOne(calls), TestPluginTwo(calls), TestPluginRaisesError(calls, True), TestPluginThree(calls)]
 
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
+    manager._telemetry_factory = mock_telemetry_factory
     manager._function_cache = {}
     manager._container = container
 
@@ -285,14 +291,15 @@ def test_exception_before_connect(mocker, container):
     assert calls[1] == "TestPluginRaisesError:before connect"
 
 
-def test_exception_after_connect(mocker, container):
+def test_exception_after_connect(mocker, container, mock_telemetry_factory):
     calls = []
     plugins = \
         [TestPluginOne(calls), TestPluginTwo(calls), TestPluginRaisesError(calls, False), TestPluginThree(calls)]
 
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
+    manager._telemetry_factory = mock_telemetry_factory
     manager._function_cache = {}
     manager._container = container
 
@@ -309,18 +316,18 @@ def test_exception_after_connect(mocker, container):
     assert calls[4] == "TestPluginRaisesError:after connect"
 
 
-def test_no_plugins(container):
+def test_no_plugins(mocker, container):
     props = Properties(plugins="")
 
-    manager = PluginManager(container, props)
+    manager = PluginManager(container, props, mocker.MagicMock())
 
     assert 1 == manager.num_plugins
 
 
-def test_plugin_setting(container, default_conn_provider):
+def test_plugin_setting(mocker, container, default_conn_provider):
     props = Properties(plugins="iam,iam")
 
-    manager = PluginManager(container, props)
+    manager = PluginManager(container, props, mocker.MagicMock())
 
     assert 3 == manager.num_plugins
     assert isinstance(manager._plugins[0], IamAuthPlugin)
@@ -328,13 +335,14 @@ def test_plugin_setting(container, default_conn_provider):
     assert isinstance(manager._plugins[2], DefaultPlugin)
 
 
-def test_notify_connection_changed(mocker):
+def test_notify_connection_changed(mocker, mock_telemetry_factory):
     calls = []
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
+    manager._telemetry_factory = mock_telemetry_factory
     manager._function_cache = {}
 
     old_connection_suggestion = manager.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
@@ -354,13 +362,14 @@ def test_notify_connection_changed(mocker):
     assert old_connection_suggestion == OldConnectionSuggestedAction.NO_OPINION
 
 
-def test_notify_host_list_changed(mocker):
+def test_notify_host_list_changed(mocker, mock_telemetry_factory):
     calls = []
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
 
-    mocker.patch.object(PluginManager, "__init__", lambda x, y, z: None)
-    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock())
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
+    manager._telemetry_factory = mock_telemetry_factory
     manager._function_cache = {}
 
     manager.notify_host_list_changed(

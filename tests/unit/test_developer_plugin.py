@@ -66,8 +66,8 @@ def props():
 
 
 @pytest.fixture
-def plugin_manager(container, props):
-    return PluginManager(container, props)
+def plugin_manager(container, props, telemetry_factory):
+    return PluginManager(container, props, telemetry_factory)
 
 
 @pytest.fixture
@@ -85,6 +85,11 @@ def conn_callback_mock(mocker):
 def setup_container(container, plugin_service, plugin_manager):
     container.plugin_service = plugin_service
     container.plugin_manager = plugin_manager
+
+
+@pytest.fixture
+def telemetry_factory(mocker):
+    return mocker.MagicMock()
 
 
 def test_raise_exception(mocker, plugin_service, plugin_manager):

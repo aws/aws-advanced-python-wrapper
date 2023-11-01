@@ -35,6 +35,8 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+    TelemetryTraceLevel
 
 logger = Logger(__name__)
 
@@ -65,6 +67,9 @@ class AwsSecretsManagerPlugin(Plugin):
 
         secrets_endpoint = WrapperProperties.SECRETS_MANAGER_ENDPOINT.get(props)
         self._secret_key: Tuple = (secret_id, region, secrets_endpoint)
+
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        self._fetch_credentials_counter = telemetry_factory.create_counter("secrets_manager.fetch_credentials.count")
 
     def connect(
             self,
@@ -116,35 +121,44 @@ class AwsSecretsManagerPlugin(Plugin):
         :param force_refetch: Allows ignoring cached credentials and force fetches the latest credentials from the service.
         :return: `True`, if credentials were fetched from the service.
         """
-        fetched: bool = False
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        context = telemetry_factory.open_telemetry_context("fetch credentials", TelemetryTraceLevel.NESTED)
+        self._fetch_credentials_counter.inc()
 
-        self._secret: Optional[SimpleNamespace] = AwsSecretsManagerPlugin._secrets_cache.get(self._secret_key)
-        endpoint = self._secret_key[2]
+        try:
+            fetched: bool = False
+            self._secret: Optional[SimpleNamespace] = AwsSecretsManagerPlugin._secrets_cache.get(self._secret_key)
+            endpoint = self._secret_key[2]
+            if not self._secret or force_refetch:
+                try:
+                    self._secret = self._fetch_latest_credentials()
+                    if self._secret:
+                        AwsSecretsManagerPlugin._secrets_cache[self._secret_key] = self._secret
+                        fetched = True
+                except (ClientError, AttributeError) as e:
+                    logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)
+                    raise AwsWrapperError(
+                        Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)) from e
+                except JSONDecodeError as e:
+                    logger.debug("AwsSecretsManagerPlugin.JsonDecodeError", e)
+                    raise AwsWrapperError(
+                        Messages.get_formatted("AwsSecretsManagerPlugin.JsonDecodeError", e))
+                except EndpointConnectionError:
+                    logger.debug("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint)
+                    raise AwsWrapperError(
+                        Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint))
+                except ValueError:
+                    logger.debug("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint)
+                    raise AwsWrapperError(
+                        Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint))
 
-        if not self._secret or force_refetch:
-            try:
-                self._secret = self._fetch_latest_credentials()
-                if self._secret:
-                    AwsSecretsManagerPlugin._secrets_cache[self._secret_key] = self._secret
-                    fetched = True
-            except (ClientError, AttributeError) as e:
-                logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)) from e
-            except JSONDecodeError as e:
-                logger.debug("AwsSecretsManagerPlugin.JsonDecodeError", e)
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerPlugin.JsonDecodeError", e))
-            except EndpointConnectionError:
-                logger.debug("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint)
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint))
-            except ValueError:
-                logger.debug("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint)
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint))
-
-        return fetched
+            return fetched
+        except Exception as ex:
+            context.set_success(False)
+            context.set_exception(ex)
+            raise ex
+        finally:
+            context.close_context()
 
     def _fetch_latest_credentials(self):
         """

@@ -283,6 +283,37 @@ class WrapperProperties:
                               "The database user used to access the database",
                               None)
 
+    # Telemetry
+    ENABLE_TELEMETRY = WrapperProperty(
+        "enable_telemetry",
+        "Enables telemetry and observability of the driver.",
+        False
+    )
+
+    TELEMETRY_SUBMIT_TOPLEVEL = WrapperProperty(
+        "telemetry_submit_toplevel",
+        "Force submitting traces related to Python calls as top level traces.",
+        False
+    )
+
+    TELEMETRY_TRACES_BACKEND = WrapperProperty(
+        "telemetry_traces_backend",
+        "Method to export telemetry traces of the driver.",
+        None
+    )
+
+    TELEMETRY_METRICS_BACKEND = WrapperProperty(
+        "telemetry_metrics_backend",
+        "Method to export telemetry metrics of the driver.",
+        None
+    )
+
+    TELEMETRY_FAILOVER_ADDITIONAL_TOP_TRACE = WrapperProperty(
+        "telemetry_failover_additional_top_trace",
+        "Post an additional top-level trace for failover process.",
+        False
+    )
+
 
 class PropertiesUtils:
     @staticmethod

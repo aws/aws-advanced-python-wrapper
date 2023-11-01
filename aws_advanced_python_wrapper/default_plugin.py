@@ -33,6 +33,8 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+    TelemetryTraceLevel
 
 
 class DefaultPlugin(Plugin):
@@ -64,11 +66,20 @@ class DefaultPlugin(Plugin):
             host_info: HostInfo,
             props: Properties,
             conn_provider: ConnectionProvider) -> Connection:
-        database_dialect = self._plugin_service.database_dialect
-        conn = conn_provider.connect(target_func, driver_dialect, database_dialect, host_info, props)
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        context = telemetry_factory.open_telemetry_context(driver_dialect.driver_name, TelemetryTraceLevel.NESTED)
+
+        conn: Connection
+        try:
+            database_dialect = self._plugin_service.database_dialect
+            conn = conn_provider.connect(target_func, driver_dialect, database_dialect, host_info, props)
+        finally:
+            context.close_context()
+
         self._plugin_service.set_availability(host_info.all_aliases, HostAvailability.AVAILABLE)
         self._plugin_service.update_driver_dialect(conn_provider)
         self._plugin_service.update_dialect(conn)
+
         return conn
 
     def force_connect(
@@ -88,7 +99,15 @@ class DefaultPlugin(Plugin):
             self._connection_provider_manager.default_provider)
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
-        result = self._plugin_service.driver_dialect.execute(method_name, execute_func, *args, **kwargs)
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        context = telemetry_factory.open_telemetry_context(
+            self._plugin_service.driver_dialect.driver_name, TelemetryTraceLevel.NESTED)
+
+        try:
+            result = self._plugin_service.driver_dialect.execute(method_name, execute_func, *args, **kwargs)
+        finally:
+            context.close_context()
+
         if method_name != DefaultPlugin._CLOSE_METHOD and self._plugin_service.current_connection is not None:
             self._plugin_service.update_in_transaction()
 
