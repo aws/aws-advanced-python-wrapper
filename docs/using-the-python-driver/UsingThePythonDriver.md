@@ -52,7 +52,7 @@ Although you can use this method of loading plugins, this method will most often
 The following example creates and sets a configuration profile:
 
 ```python
-properties = Properties({"profile_name": "benchmark"})
+properties = Properties({"profile_name": "test_profile"})
 DriverConfigurationProfiles.add_or_replace_profile(
     "test_profile", 
     [FailoverPluginFactory(), HostMonitoringPluginFactory(), IamAuthPluginFactory()])
