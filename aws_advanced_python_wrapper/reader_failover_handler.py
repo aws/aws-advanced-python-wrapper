@@ -118,21 +118,21 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
                 result = self._failover_internal(topology, current_host)
                 if result is not None and result.is_connected:
                     if not self._strict_reader_failover:
-                        return result  # any node is fine
+                        return result  # any host is fine
 
-                    # need to ensure that the new connection is to a reader node
+                    # need to ensure that the new connection is to a reader host
 
                     self._plugin_service.force_refresh_host_list(result.connection)
                     if result.new_host is not None:
                         topology = self._plugin_service.hosts
-                        for node in topology:
+                        for host in topology:
                             # found new connection host in the latest topology
-                            if node.url == result.new_host.url and node.role == HostRole.READER:
+                            if host.url == result.new_host.url and host.role == HostRole.READER:
                                 return result
 
-                    # New node is not found in the latest topology. There are few possible reasons for that.
-                    # - Node is not yet presented in the topology due to failover process in progress
-                    # - Node is in the topology but its role isn't a READER (that is not acceptable option due to this.strictReader setting)
+                    # New host is not found in the latest topology. There are few possible reasons for that.
+                    # - Host is not yet presented in the topology due to failover process in progress
+                    # - Host is in the topology but its role isn't a READER (that is not acceptable option due to this.strictReader setting)
                     # Need to continue this loop and to make another try to connect to a reader.
                     if result.connection is not None:
                         result.connection.close()

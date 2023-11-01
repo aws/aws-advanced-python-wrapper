@@ -178,14 +178,14 @@ class FailoverPlugin(Plugin):
 
         current_host = self._plugin_service.current_host_info
         if current_host is not None:
-            if self._is_node_still_valid(current_host.url, changes):
+            if self._is_host_still_valid(current_host.url, changes):
                 return
 
             for alias in current_host.aliases:
-                if self._is_node_still_valid(alias + '/', changes):
+                if self._is_host_still_valid(alias + '/', changes):
                     return
 
-            logger.debug("FailoverPlugin.InvalidNode", current_host)
+            logger.debug("FailoverPlugin.InvalidHost", current_host)
 
     def connect(
             self,
@@ -450,7 +450,7 @@ class FailoverPlugin(Plugin):
         return None
 
     @staticmethod
-    def _is_node_still_valid(host: str, changes: Dict[str, Set[HostEvent]]):
+    def _is_host_still_valid(host: str, changes: Dict[str, Set[HostEvent]]):
         if host in changes:
             options = changes.get(host)
             return options is not None and \

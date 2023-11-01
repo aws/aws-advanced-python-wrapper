@@ -66,9 +66,9 @@ class OpenedConnectionTracker:
 
     def invalidate_all_connections(self, host_info: Optional[HostInfo] = None, host: Optional[FrozenSet[str]] = None):
         """
-        Invalidates all opened connections pointing to the same node in a daemon thread.
+        Invalidates all opened connections pointing to the same host in a daemon thread.
 
-       :param host_info: the :py:class:`HostInfo` object containing the URL of the node.
+       :param host_info: the :py:class:`HostInfo` object containing the URL of the host.
        :param host: the set of aliases representing a specific host.
         """
 

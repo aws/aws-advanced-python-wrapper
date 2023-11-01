@@ -60,7 +60,7 @@ class ConnectionProvider(Protocol):
 
     def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
         """
-        Return a reader or a writer node using the specified strategy.
+        Return a reader or a writer host using the specified strategy.
 
         This method should raise an :py:class:`AwsWrapperError` if the specified strategy is unsupported.
 
@@ -180,7 +180,7 @@ class ConnectionProviderManager:
 
     def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
         """
-        Return a reader or a writer node using the specified strategy.
+        Return a reader or a writer host using the specified strategy.
 
         This method should raise an :py:class:`AwsWrapperError` if the specified strategy is unsupported.
 

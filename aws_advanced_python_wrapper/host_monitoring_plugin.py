@@ -555,7 +555,7 @@ class MonitoringThreadContainer:
 
     def get_or_create_monitor(self, host_aliases: FrozenSet[str], monitor_supplier: Callable) -> Monitor:
         if not host_aliases:
-            raise AwsWrapperError(Messages.get("MonitoringThreadContainer.EmptyNodeKeys"))
+            raise AwsWrapperError(Messages.get("MonitoringThreadContainer.EmptyHostKeys"))
 
         monitor = None
         any_alias = next(iter(host_aliases))
