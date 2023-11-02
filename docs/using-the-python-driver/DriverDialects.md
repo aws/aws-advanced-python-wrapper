@@ -30,9 +30,6 @@ Driver Dialect codes specify which driver dialect class to use.
 | `SQLALCHEMY`             | `sqlalchemy`             |
 | `GENERIC`                | `generic`                |
 
-## Network Timeouts
-> TODO
-
 ## Custom Driver Dialects
 
 If you are interested in using the AWS Advanced Python Driver but your desired target driver has unique features incompatible with the generic dialect, it is possible to create a custom target driver dialect.

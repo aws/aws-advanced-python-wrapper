@@ -21,7 +21,6 @@ These parameters are applicable to any instance of the AWS Advanced Python Drive
 | cluster_instance_host_pattern | The cluster instance DNS pattern that will be used to build a complete instance endpoint. A "?" character in this pattern should be used as a placeholder for cluster instance names. This pattern is required to be specified for IP address or custom domain connections to AWS RDS clusters. Otherwise, if unspecified, the  pattern will be automatically created for AWS RDS clusters. | False    | 30000         |
 
 ### Network Timeouts
-> TODO
 
 | Parameter                     | Description                                                                                                                                                                                                                                                                                                                                                                                 | Required | Default Value |
 |-------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------|
