@@ -25,7 +25,6 @@ dependencies {
     testImplementation("org.apache.commons:commons-dbcp2:2.9.0")
     testImplementation("org.postgresql:postgresql:42.5.0")
     testImplementation("mysql:mysql-connector-java:8.0.31")
-    testImplementation("org.springframework.boot:spring-boot-starter-jdbc:2.7.4")
     testImplementation("org.mockito:mockito-inline:4.8.0")
     testImplementation("software.amazon.awssdk:rds:2.20.49")
     testImplementation("software.amazon.awssdk:ec2:2.20.61")
@@ -58,8 +57,6 @@ tasks.withType<Test> {
 
     reports.junitXml.required.set(true)
     reports.html.required.set(false)
-
-    systemProperty("java.util.logging.config.file", "${project.buildDir}/resources/test/logging-test.properties")
 }
 
 tasks.register<Test>("test-all-environments") {
@@ -78,10 +75,6 @@ tasks.register<Test>("test-docker") {
         systemProperty("exclude-aurora", "true")
         systemProperty("exclude-performance", "true")
 
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
-
         systemProperty("exclude-python-38", "true")
     }
 }
@@ -92,10 +85,6 @@ tasks.register<Test>("test-aurora") {
     doFirst {
         systemProperty("exclude-docker", "true")
         systemProperty("exclude-performance", "true")
-
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
 
         systemProperty("exclude-python-38", "true")
     }
