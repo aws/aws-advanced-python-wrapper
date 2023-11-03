@@ -888,12 +888,12 @@ files = [
 
 [[package]]
 name = "pydevd-pycharm"
-version = "233.11361.11"
+version = "233.11555.5"
 description = "PyCharm Debugger (used in PyCharm and PyDev)"
 optional = false
 python-versions = "*"
 files = [
-    {file = "pydevd-pycharm-233.11361.11.tar.gz", hash = "sha256:c776a16bd974b7bc637474c220cdd318b5921ac07656840f980de9732bd0362e"},
+    {file = "pydevd-pycharm-233.11555.5.tar.gz", hash = "sha256:3a7eae15b8f01ce072ea5aa5d72365df86ea8855595b24a0168fae90bafa9603"},
 ]
 
 [[package]]
@@ -1236,4 +1236,4 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "d10a00828cb9b6d58beb56a87a7b2729c6fe0fa1e997639c371661216a33ad11"
+content-hash = "8654d3414375d96402d723b37dc466617a00889ae8675e8acbac97b85ba722c2"
