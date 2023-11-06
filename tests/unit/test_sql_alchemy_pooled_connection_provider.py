@@ -116,6 +116,7 @@ def test_least_connections_strategy(provider, mock_pool):
     reader_1 = HostInfo("reader-1.XYZ.us-east-2.rds.amazonaws.com", role=HostRole.READER)
     reader_2 = HostInfo("reader-2.XYZ.us-east-2.rds.amazonaws.com", role=HostRole.READER)
     hosts = [writer, reader_1, reader_2]
+    props = Properties({WrapperProperties.USER.name: "user1", WrapperProperties.PASSWORD.name: "password"})
 
     # Create cache with 1 pool to reader_url_1_connection and 2 pools to reader_url_2_connections.
     # Each pool holds 1 connection.
@@ -130,14 +131,15 @@ def test_least_connections_strategy(provider, mock_pool):
     SqlAlchemyPooledConnectionProvider._database_pools = test_database_pools
 
     with pytest.raises(AwsWrapperError):
-        provider.get_host_info_by_strategy(hosts, HostRole.READER, "random")
-    result = provider.get_host_info_by_strategy(hosts, HostRole.READER, "least_connections")
+        provider.get_host_info_by_strategy(hosts, HostRole.READER, "random", props)
+    result = provider.get_host_info_by_strategy(hosts, HostRole.READER, "least_connections", props)
     assert reader_1 == result
 
 
 def test_least_connections_strategy__no_hosts_matching_role(provider):
+    props = Properties()
     with pytest.raises(AwsWrapperError):
-        provider.get_host_info_by_strategy([HostInfo("writer")], HostRole.READER, "least_connections")
+        provider.get_host_info_by_strategy([HostInfo("writer")], HostRole.READER, "least_connections", props)
 
 
 def test_release_resources(provider, mocker):

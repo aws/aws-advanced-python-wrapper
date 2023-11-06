@@ -14,9 +14,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, ClassVar, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Tuple
 
 from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
+from aws_advanced_python_wrapper.hostselector import HostSelector, RandomHostSelector, RoundRobinHostSelector
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
@@ -42,7 +43,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     the driver can improve performance by reusing old connection objects.
     """
     _POOL_EXPIRATION_CHECK_NS: ClassVar[int] = 30 * 60_000_000_000  # 30 minutes
-    _LEAST_CONNECTIONS: ClassVar[str] = "least_connections"
+    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector(), "round_robin": RoundRobinHostSelector()}
     _rds_utils: ClassVar[RdsUtils] = RdsUtils()
     _database_pools: ClassVar[SlidingExpirationCache[PoolKey, QueuePool]] = SlidingExpirationCache(
         should_dispose_func=lambda queue_pool: queue_pool.checkedout() == 0,
@@ -80,34 +81,15 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         return RdsUrlType.RDS_INSTANCE == url_type
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS
+        return strategy in self._accepted_strategies.keys()
 
-    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
-        if strategy != SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS:
+    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
+        if not self.accepts_strategy(role, strategy):
             raise AwsWrapperError(Messages.get_formatted(
                 "ConnectionProvider.UnsupportedHostSelectorStrategy",
                 strategy, SqlAlchemyPooledConnectionProvider.__class__.__name__))
 
-        valid_hosts = [host for host in hosts if host.role == role]
-        valid_hosts.sort(key=lambda host: self._num_connections(host))
-
-        if len(valid_hosts) == 0:
-            raise AwsWrapperError(Messages.get_formatted("HostSelector.NoHostsMatchingRole", role))
-
-        return valid_hosts[0]
-
-    def _num_connections(self, host_info: HostInfo) -> int:
-        """
-        Returns the number of active pooled connections to a specific host.
-
-        :param host_info: the host to analyze.
-        :return: number of connections opened in the connection pool to the given host.
-        """
-        num_connections = 0
-        for pool_key, cache_item in SqlAlchemyPooledConnectionProvider._database_pools.items():
-            if pool_key.url == host_info.url:
-                num_connections += cache_item.item.checkedout()
-        return num_connections
+        return self._accepted_strategies.get(strategy).get_host(hosts, role, props)
 
     def connect(
             self,
