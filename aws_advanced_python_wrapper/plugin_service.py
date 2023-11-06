@@ -41,6 +41,8 @@ from aws_advanced_python_wrapper.database_dialect import (
     DatabaseDialect, DatabaseDialectManager, TopologyAwareDatabaseDialect,
     UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
+from aws_advanced_python_wrapper.driver_configuration_profiles import \
+    DriverConfigurationProfiles
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError,
                                                 UnsupportedOperationError)
@@ -593,20 +595,32 @@ class PluginManager(CanReleaseResources):
         PluginManager.PLUGIN_FACTORY_WEIGHTS[plugin_factory] = weight
 
     def get_plugins(self) -> List[Plugin]:
+        plugin_factories: List[PluginFactory] = []
         plugins: List[Plugin] = []
 
-        plugin_codes = WrapperProperties.PLUGINS.get(self._props)
-        if plugin_codes is None:
-            plugin_codes = WrapperProperties.DEFAULT_PLUGINS
+        profile_name = WrapperProperties.PROFILE_NAME.get(self._props)
+        if profile_name is not None:
+            if not DriverConfigurationProfiles.contains_profile(profile_name):
+                raise AwsWrapperError(
+                    Messages.get_formatted("PluginManager.ConfigurationProfileNotFound", profile_name))
+            plugin_factories = DriverConfigurationProfiles.get_plugin_factories(profile_name)
+        else:
+            plugin_codes = WrapperProperties.PLUGINS.get(self._props)
+            if plugin_codes is None:
+                plugin_codes = WrapperProperties.DEFAULT_PLUGINS
 
-        if plugin_codes != "":
-            plugins = self.create_plugins_from_list(plugin_codes.split(","))
+            if plugin_codes != "":
+                plugin_factories = self.create_plugin_factories_from_list(plugin_codes.split(","))
+
+        for factory in plugin_factories:
+            plugin = factory.get_instance(self._container.plugin_service, self._props)
+            plugins.append(plugin)
 
         plugins.append(DefaultPlugin(self._container.plugin_service, self._connection_provider_manager))
 
         return plugins
 
-    def create_plugins_from_list(self, plugin_code_list: List[str]) -> List[Plugin]:
+    def create_plugin_factories_from_list(self, plugin_code_list: List[str]) -> List[PluginFactory]:
         factory_types: List[Type[PluginFactory]] = []
         for plugin_code in plugin_code_list:
             plugin_code = plugin_code.strip()
@@ -623,15 +637,14 @@ class PluginManager(CanReleaseResources):
             weights = PluginManager.get_factory_weights(factory_types)
             factory_types.sort(key=lambda factory_type: weights[factory_type])
             plugin_code_list.sort(key=lambda plugin_code: weights[PluginManager.PLUGIN_FACTORIES[plugin_code]])
-            logger.debug("ConnectionPluginChain.ResortedPlugins", plugin_code_list)
+            logger.debug("PluginManager.ResortedPlugins", plugin_code_list)
 
-        plugins: List[Plugin] = []
+        factories: List[PluginFactory] = []
         for factory_type in factory_types:
             factory = object.__new__(factory_type)
-            plugin = factory.get_instance(self._container.plugin_service, self._props)
-            plugins.append(plugin)
+            factories.append(factory)
 
-        return plugins
+        return factories
 
     @staticmethod
     def get_factory_weights(factory_types: List[Type[PluginFactory]]) -> Dict[Type[PluginFactory], int]:

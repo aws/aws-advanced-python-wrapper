@@ -42,7 +42,20 @@ Plugins are loaded and managed through the Connection Plugin Manager and may be 
 | Parameter         | Value | Required | Description                                                                                                                                                                   | Default Value                          |
 |-------------------|-------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
 | `plugins`         | `str` | No       | Comma separated list of connection plugin codes. <br><br>Example: `failover,efm`                                                                                              | `auroraConnectionTracker,failover,efm` | 
-| `auto_sort_wrapper_plugin_order | `str` | No       | Certain plugins require a specific plugin chain ordering to function correctly. When enabled, this property automatically sorts the requested plugins into the correct order. | `True`                                   |
+| `auto_sort_wrapper_plugin_order` | `str` | No       | Certain plugins require a specific plugin chain ordering to function correctly. When enabled, this property automatically sorts the requested plugins into the correct order. | `True`                                   |
+| `profile_name` | `str` | No       | Driver configuration profile name. An alternative way of setting plugin codes, the driver profile can be set with this parameter. <br><br> Example: See [below](#configuration-profiles). | `None`                                 |
+
+### Configuration Profiles
+An alternative way of loading plugins is to use a configuration profile. You can create custom configuration profiles that specify which plugins the AWS Python Driver should load. After creating the profile, set the [`profile_name`](#connection-plugin-manager-parameters) parameter to the name of the created profile.
+Although you can use this method of loading plugins, this method will most often be used by those who require custom plugins that cannot be loaded with the [`plugins`](#connection-plugin-manager-parameters) parameter.
+The following example creates and sets a configuration profile:
+
+```python
+properties = Properties({"profile_name": "test_profile"})
+DriverConfigurationProfiles.add_or_replace_profile(
+    "test_profile", 
+    [FailoverPluginFactory(), HostMonitoringPluginFactory(), IamAuthPluginFactory()])
+```
 
 ### List of Available Plugins
 
