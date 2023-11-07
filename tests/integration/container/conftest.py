@@ -131,3 +131,8 @@ def pytest_generate_tests(metafunc):
 
 def pytest_sessionstart(session):
     TestEnvironment.get_current()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    # Enable all connectivity in case any helper threads are still trying to execute against a disabled host
+    ProxyHelper.enable_all_connectivity()
