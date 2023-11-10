@@ -276,7 +276,6 @@ class PropertiesUtils:
 
     @staticmethod
     def log_properties(props: Properties):
-
         if not props:
             return "<empty>"
 
