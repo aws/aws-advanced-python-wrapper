@@ -276,7 +276,16 @@ class PropertiesUtils:
 
     @staticmethod
     def log_properties(props: Properties):
+
         if not props:
             return "<empty>"
 
         return f"\n{props}"
+
+    @staticmethod
+    def mask_properties(props: Properties) -> Properties:
+        masked_properties = Properties(props.copy())
+        if WrapperProperties.PASSWORD.name in masked_properties:
+
+            masked_properties[WrapperProperties.PASSWORD.name] = "***"
+        return masked_properties
