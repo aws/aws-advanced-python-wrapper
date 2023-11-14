@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List, Tuple
 
+from aws_advanced_python_wrapper.utils.properties import PropertiesUtils
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
     from aws_advanced_python_wrapper.utils.properties import Properties
@@ -189,7 +191,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
     def attempt_connection(self, host: HostInfo) -> ReaderFailoverResult:
         props: Properties = deepcopy(self._properties)
-        logger.debug("ReaderFailoverHandler.AttemptingReaderConnection", host.url, props)
+        logger.debug("ReaderFailoverHandler.AttemptingReaderConnection", host.url, PropertiesUtils.mask_properties(props))
 
         try:
             conn: Connection = self._plugin_service.force_connect(host, props, self._timeout_event)
