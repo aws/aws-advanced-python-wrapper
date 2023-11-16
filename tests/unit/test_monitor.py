@@ -32,12 +32,15 @@ def host_info():
 
 @pytest.fixture
 def props():
-    return Properties({WrapperProperties.MONITOR_DISPOSAL_TIME_MS.name: "250", "monitoring-some_prop": "some_value"})
+    return Properties({WrapperProperties.MONITOR_DISPOSAL_TIME_MS.name: 250, "monitoring-some_prop": "some_value"})
 
 
 @pytest.fixture
 def monitoring_conn_props(props):
-    return Properties({WrapperProperties.MONITOR_DISPOSAL_TIME_MS.name: "250", "some_prop": "some_value"})
+    return Properties({
+        WrapperProperties.CONNECT_TIMEOUT_SEC.name: 10,
+        WrapperProperties.MONITOR_DISPOSAL_TIME_MS.name: 250,
+        "some_prop": "some_value"})
 
 
 @pytest.fixture

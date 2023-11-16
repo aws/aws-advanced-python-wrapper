@@ -338,6 +338,7 @@ class Monitor:
     """
      This class uses a background thread to monitor a particular server with one or more active :py:class:`Connection`  objects.
     """
+    _DEFAULT_CONNECT_TIMEOUT_SEC = 10
     _INACTIVE_SLEEP_MS = 100
     _MIN_HOST_CHECK_TIMEOUT_MS = 3000
     _MONITORING_PROPERTY_PREFIX = "monitoring-"
@@ -501,6 +502,10 @@ class Monitor:
                     if key.startswith(Monitor._MONITORING_PROPERTY_PREFIX):
                         props_copy[key[len(Monitor._MONITORING_PROPERTY_PREFIX):len(key)]] = value
                         props_copy.pop(key, None)
+
+                # Set a default connect timeout if the user hasn't configured one
+                if props_copy.get(WrapperProperties.CONNECT_TIMEOUT_SEC.name, None) is None:
+                    props_copy[WrapperProperties.CONNECT_TIMEOUT_SEC.name] = Monitor._DEFAULT_CONNECT_TIMEOUT_SEC
 
                 logger.debug("Monitor.OpeningMonitorConnection", self._host_info.url)
                 start_ns = perf_counter_ns()
