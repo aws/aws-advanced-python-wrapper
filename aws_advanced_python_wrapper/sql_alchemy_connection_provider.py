@@ -89,7 +89,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
                 "ConnectionProvider.UnsupportedHostSelectorStrategy",
                 strategy, SqlAlchemyPooledConnectionProvider.__class__.__name__))
 
-        return self._accepted_strategies.get(strategy).get_host(hosts, role, props)
+        return self._accepted_strategies[strategy].get_host(hosts, role, props)
 
     def connect(
             self,
