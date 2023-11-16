@@ -16,16 +16,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Tuple
 
-from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
-from aws_advanced_python_wrapper.hostselector import HostSelector, RandomHostSelector, RoundRobinHostSelector
-
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 
 from sqlalchemy import QueuePool, pool
 
+from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
 from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.hostselector import (HostSelector,
+                                                      RandomHostSelector,
+                                                      RoundRobinHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
