@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from logging import DEBUG, Handler, getLogger
+from logging import DEBUG, getLogger
 
 from .utils.utils import LogUtils
 from .wrapper import AwsWrapperConnection
@@ -26,11 +26,3 @@ paramstyle = "pyformat"
 
 def set_logger(name='aws_advanced_python_wrapper', level=DEBUG, format_string=None):
     LogUtils.setup_logger(getLogger(name), level, format_string)
-
-
-class NullHandler(Handler):
-    def emit(self, record):
-        pass
-
-
-getLogger("aws_advanced_python_wrapper").addHandler(NullHandler())

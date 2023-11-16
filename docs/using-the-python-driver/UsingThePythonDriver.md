@@ -73,3 +73,38 @@ The AWS Advanced Python Driver has several built-in plugins that are available t
 
 In addition to the built-in plugins, you can also create custom plugins more suitable for your needs.
 For more information, see [Custom Plugins](../development-guide/LoadablePlugins.md#using-custom-plugins).
+
+## Logging
+
+The AWS Python Driver uses the standard [Python logging module](https://docs.python.org/3/library/logging.html) to log information. To configure logging for the AWS Python Driver, refer to [this section of the Python logging docs](https://docs.python.org/3/howto/logging.html#configuring-logging). Please note the following:
+- As mentioned in a warning in [this section](https://docs.python.org/3/howto/logging.html#configuring-logging), existing loggers will be disabled by default when fileConfig() or dictConfig() is called. We recommend that you pass `disable_existing_loggers=False` when calling either of these functions.
+- The AWS Python Driver uses module-level loggers, as recommended in the Python docs. You can configure a specific module's logger by referring to its module path. Here is an example `logging.conf` file that configures logging for the failover plugin:
+```
+[loggers]
+keys=root,failover
+
+[handlers]
+keys=consoleHandler
+
+[formatters]
+keys=simpleFormatter
+
+[logger_root]
+level=INFO
+handlers=consoleHandler
+
+[logger_failover]
+level=DEBUG
+handlers=consoleHandler
+qualname=aws_advanced_python_wrapper.failover_plugin
+propagate=0
+
+[handler_consoleHandler]
+class=StreamHandler
+level=DEBUG
+formatter=simpleFormatter
+args=(sys.stdout,)
+
+[formatter_simpleFormatter]
+format=%(asctime)s - %(name)s - %(levelname)s - %(message)s
+```
