@@ -97,7 +97,7 @@ class DriverConnectionProvider(ConnectionProvider):
         return True
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return strategy in self._accepted_strategies.values()
+        return strategy in self._accepted_strategies
 
     def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
         host_selector: Optional[HostSelector] = self._accepted_strategies.get(strategy)
