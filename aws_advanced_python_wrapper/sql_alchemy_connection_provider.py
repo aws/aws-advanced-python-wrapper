@@ -44,6 +44,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     the driver can improve performance by reusing old connection objects.
     """
     _POOL_EXPIRATION_CHECK_NS: ClassVar[int] = 30 * 60_000_000_000  # 30 minutes
+    _LEAST_CONNECTIONS: ClassVar[str] = "least_connections"
     _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector(), "round_robin": RoundRobinHostSelector()}
     _rds_utils: ClassVar[RdsUtils] = RdsUtils()
     _database_pools: ClassVar[SlidingExpirationCache[PoolKey, QueuePool]] = SlidingExpirationCache(
@@ -82,7 +83,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         return RdsUrlType.RDS_INSTANCE == url_type
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return strategy in self._accepted_strategies.keys()
+        strategy in self._accepted_strategies
 
     def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
         if not self.accepts_strategy(role, strategy):
