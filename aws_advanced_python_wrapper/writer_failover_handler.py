@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Tuple
 
+from aws_advanced_python_wrapper.utils.properties import PropertiesUtils
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
     from aws_advanced_python_wrapper.utils.properties import Properties
@@ -157,7 +159,8 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         :param initial_writer_host: the writer host that originally failed.
         :return: the :py:class:`WriterFailoverResult` of the failover process.
         """
-        logger.debug("WriterFailoverHandler.TaskAAttemptReconnectToWriterInstance", initial_writer_host.url)
+        logger.debug("WriterFailoverHandler.TaskAAttemptReconnectToWriterInstance", initial_writer_host.url,
+                     PropertiesUtils.mask_properties(self._initial_connection_properties))
 
         conn: Optional[Connection] = None
         latest_topology: Optional[Tuple[HostInfo, ...]] = None
@@ -215,7 +218,8 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         :param current_host: the current host.
         :return: the :py:class:`WriterFailoverResult` of the process.
         """
-        logger.debug("WriterFailoverHandler.TaskBAttemptConnectionToNewWriterInstance")
+        logger.debug("WriterFailoverHandler.TaskBAttemptConnectionToNewWriterInstance",
+                     PropertiesUtils.mask_properties(self._initial_connection_properties))
         self._current_topology = current_topology
         try:
             success: bool = False

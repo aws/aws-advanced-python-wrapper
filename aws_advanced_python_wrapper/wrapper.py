@@ -92,7 +92,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         target_func: Callable = target
 
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
-        logger.debug("Wrapper.Properties", PropertiesUtils.log_properties(props))
+        logger.debug("Wrapper.Properties", PropertiesUtils.log_properties(PropertiesUtils.mask_properties(props)))
 
         driver_dialect_manager: DriverDialectManager = DriverDialectManager()
         driver_dialect = driver_dialect_manager.get_dialect(target_func, props)

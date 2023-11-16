@@ -113,7 +113,8 @@ class DriverConnectionProvider(ConnectionProvider):
             host_info: HostInfo,
             properties: Properties) -> Connection:
         prepared_properties = driver_dialect.prepare_connect_info(host_info, properties)
-        logger.debug("DriverConnectionProvider.ConnectingToHost", host_info.host, PropertiesUtils.log_properties(prepared_properties))
+        logger.debug("DriverConnectionProvider.ConnectingToHost", host_info.host,
+                     PropertiesUtils.log_properties(PropertiesUtils.mask_properties(prepared_properties)))
         return target_func(**prepared_properties)
 
 

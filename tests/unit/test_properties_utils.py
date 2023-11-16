@@ -41,3 +41,13 @@ def test_remove_wrapper_props(expected, test_props):
     props_copy = test_props.copy()
     PropertiesUtils.remove_wrapper_props(props_copy)
     assert expected == props_copy
+
+
+@pytest.mark.parametrize("expected, test_props",
+                         [pytest.param(Properties({"user": "postgres", "password": "***"}),
+                                       Properties({"user": "postgres", "password": "conninfo_password"})),
+                          pytest.param(Properties(), Properties())])
+def test_masked_props(expected, test_props):
+    props_copy = test_props.copy()
+    props_copy = PropertiesUtils.mask_properties(props_copy)
+    assert expected == props_copy
