@@ -82,7 +82,8 @@ def test_provider_returns_host_info(connection_mock, mock_driver_dialect):
     connection_provider = DriverConnectionProvider()
 
     host_info_list = [HostInfo("localhost", role=HostRole.WRITER), HostInfo("other", role=HostRole.READER)]
-    host_info = connection_provider.get_host_info_by_strategy(host_info_list, HostRole.WRITER, "random")
+    properties = Properties({"test_prop": 5})
+    host_info = connection_provider.get_host_info_by_strategy(host_info_list, HostRole.WRITER, "random", properties)
 
     assert host_info.host == "localhost"
 
@@ -150,16 +151,17 @@ def test_manager_get_host_info_by_strategy(connection_mock, default_provider_moc
     set_provider_mock.accepts_strategy.return_value = True
 
     host_info_list = [HostInfo("localhost", role=HostRole.WRITER), HostInfo("other", role=HostRole.WRITER)]
+    properties = Properties({"test_prop": 5})
     set_provider_mock.get_host_info_by_strategy.return_value = host_info_list[0]
     default_provider_mock.get_host_info_by_strategy.return_value = host_info_list[1]
 
     connection_provider_manager = ConnectionProviderManager(default_provider_mock)
     ConnectionProviderManager.set_connection_provider(set_provider_mock)
-    host_info = connection_provider_manager.get_host_info_by_strategy(host_info_list, HostRole.WRITER, "random")
+    host_info = connection_provider_manager.get_host_info_by_strategy(host_info_list, HostRole.WRITER, "random", properties)
     assert host_info.host == "localhost"
 
     set_provider_mock.accepts_strategy.return_value = False
-    host_info = connection_provider_manager.get_host_info_by_strategy(host_info_list, HostRole.WRITER, "random")
+    host_info = connection_provider_manager.get_host_info_by_strategy(host_info_list, HostRole.WRITER, "random", properties)
     assert host_info.host == "other"
 
 

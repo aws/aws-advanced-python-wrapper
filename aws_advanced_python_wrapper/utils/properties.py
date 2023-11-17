@@ -222,6 +222,15 @@ class WrapperProperties:
         "Disable it at your own risk or if you really need plugins to be executed in a particular order.",
         True)
 
+    # Host Selector
+    ROUND_ROBIN_DEFAULT_WEIGHT = WrapperProperty("round_robin_default_weight", "The default weight for any hosts that have not been " +
+                                                 "configured with the `round_robin_host_weight_pairs` parameter.",
+                                                 1)
+
+    ROUND_ROBIN_HOST_WEIGHT_PAIRS = WrapperProperty("round_robin_host_weight_pairs",
+                                                    "Comma separated list of database host-weight pairs in the format of `<host>:<weight>`.",
+                                                    "")
+
 
 class PropertiesUtils:
 

@@ -659,7 +659,7 @@ class TestReadWriteSplitting:
         WrapperProperties.READER_HOST_SELECTOR_STRATEGY.set(props, "least_connections")
 
         # We will be testing all instances excluding the writer and overloaded reader. Each instance
-        # should be tested numOverloadedReaderConnections times to increase the pool connection count
+        # should be tested overloaded_reader_connection_count times to increase the pool connection count
         # until it equals the connection count of the overloaded reader.
         instances = test_environment.get_instances()
         overloaded_reader_connection_count = 3
@@ -676,9 +676,9 @@ class TestReadWriteSplitting:
         try:
             reader_to_overload = instances[1]
             for i in range(overloaded_reader_connection_count):
-                # This should result in numOverloadedReaderConnections pools to the same reader instance,
+                # This should result in overloaded_reader_connection_count pools to the same reader instance,
                 # with each pool consisting of just one connection. The total connection count for the
-                # instance should be numOverloadedReaderConnections despite being spread across multiple
+                # instance should be overloaded_reader_connection_count despite being spread across multiple
                 # pools.
                 conn = AwsWrapperConnection.connect(target_driver_connect,
                                                     **conn_utils.get_connect_params(reader_to_overload.get_host()),

@@ -107,7 +107,7 @@ class DefaultPlugin(Plugin):
         if len(hosts) < 1:
             raise AwsWrapperError(Messages.get("DefaultPlugin.EmptyHosts"))
 
-        return self._connection_provider_manager.get_host_info_by_strategy(hosts, role, strategy)
+        return self._connection_provider_manager.get_host_info_by_strategy(hosts, role, strategy, self._plugin_service.props)
 
     @property
     def subscribed_methods(self) -> Set[str]:

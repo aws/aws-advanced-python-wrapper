@@ -149,6 +149,11 @@ class PluginService(ExceptionHandler, Protocol):
     def network_bound_methods(self) -> Set[str]:
         ...
 
+    @property
+    @abstractmethod
+    def props(self) -> Properties:
+        ...
+
     def is_network_bound_method(self, method_name: str) -> bool:
         ...
 
@@ -329,6 +334,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     @property
     def network_bound_methods(self) -> Set[str]:
         return self._driver_dialect.network_bound_methods
+
+    @property
+    def props(self) -> Properties:
+        return self._props
 
     def update_in_transaction(self, is_in_transaction: Optional[bool] = None):
         if is_in_transaction is not None:

@@ -14,9 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, ClassVar, Optional, Tuple
-
-from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
+from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
@@ -24,7 +22,11 @@ if TYPE_CHECKING:
 
 from sqlalchemy import QueuePool, pool
 
+from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
 from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.hostselector import (HostSelector,
+                                                      RandomHostSelector,
+                                                      RoundRobinHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -43,6 +45,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     """
     _POOL_EXPIRATION_CHECK_NS: ClassVar[int] = 30 * 60_000_000_000  # 30 minutes
     _LEAST_CONNECTIONS: ClassVar[str] = "least_connections"
+    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector(), "round_robin": RoundRobinHostSelector()}
     _rds_utils: ClassVar[RdsUtils] = RdsUtils()
     _database_pools: ClassVar[SlidingExpirationCache[PoolKey, QueuePool]] = SlidingExpirationCache(
         should_dispose_func=lambda queue_pool: queue_pool.checkedout() == 0,
@@ -80,26 +83,28 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         return RdsUrlType.RDS_INSTANCE == url_type
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS
+        return strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS or strategy in self._accepted_strategies
 
-    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
-        if strategy != SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS:
+    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
+        if not self.accepts_strategy(role, strategy):
             raise AwsWrapperError(Messages.get_formatted(
                 "ConnectionProvider.UnsupportedHostSelectorStrategy",
                 strategy, SqlAlchemyPooledConnectionProvider.__class__.__name__))
 
-        valid_hosts = [host for host in hosts if host.role == role]
-        valid_hosts.sort(key=lambda host: self._num_connections(host))
+        if strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS:
+            valid_hosts = [host for host in hosts if host.role == role]
+            valid_hosts.sort(key=lambda host: self._num_connections(host))
 
-        if len(valid_hosts) == 0:
-            raise AwsWrapperError(Messages.get_formatted("HostSelector.NoHostsMatchingRole", role))
+            if len(valid_hosts) == 0:
+                raise AwsWrapperError(Messages.get_formatted("HostSelector.NoHostsMatchingRole", role))
 
-        return valid_hosts[0]
+            return valid_hosts[0]
+
+        return self._accepted_strategies[strategy].get_host(hosts, role, props)
 
     def _num_connections(self, host_info: HostInfo) -> int:
         """
         Returns the number of active pooled connections to a specific host.
-
         :param host_info: the host to analyze.
         :return: number of connections opened in the connection pool to the given host.
         """

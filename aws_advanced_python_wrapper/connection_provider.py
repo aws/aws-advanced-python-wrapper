@@ -25,7 +25,8 @@ from threading import Lock
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostselector import (HostSelector,
-                                                      RandomHostSelector)
+                                                      RandomHostSelector,
+                                                      RoundRobinHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -58,7 +59,7 @@ class ConnectionProvider(Protocol):
         """
         ...
 
-    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
         """
         Return a reader or a writer host using the specified strategy.
 
@@ -90,7 +91,7 @@ class ConnectionProvider(Protocol):
 
 
 class DriverConnectionProvider(ConnectionProvider):
-    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector()}
+    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector(), "round_robin": RoundRobinHostSelector()}
 
     def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
         return True
@@ -98,10 +99,10 @@ class DriverConnectionProvider(ConnectionProvider):
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         return strategy in self._accepted_strategies
 
-    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
         host_selector: Optional[HostSelector] = self._accepted_strategies.get(strategy)
         if host_selector is not None:
-            return host_selector.get_host(hosts, role)
+            return host_selector.get_host(hosts, role, props)
 
         raise AwsWrapperError(
             Messages.get_formatted("DriverConnectionProvider.UnsupportedStrategy", strategy))
@@ -179,7 +180,7 @@ class ConnectionProviderManager:
 
         return accepts_strategy
 
-    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
         """
         Return a reader or a writer host using the specified strategy.
 
@@ -194,9 +195,9 @@ class ConnectionProviderManager:
             with ConnectionProviderManager._lock:
                 if ConnectionProviderManager._conn_provider is not None \
                         and ConnectionProviderManager._conn_provider.accepts_strategy(role, strategy):
-                    return ConnectionProviderManager._conn_provider.get_host_info_by_strategy(hosts, role, strategy)
+                    return ConnectionProviderManager._conn_provider.get_host_info_by_strategy(hosts, role, strategy, props)
 
-        return self._default_provider.get_host_info_by_strategy(hosts, role, strategy)
+        return self._default_provider.get_host_info_by_strategy(hosts, role, strategy, props)
 
     @staticmethod
     def reset_provider():
