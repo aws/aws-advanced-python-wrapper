@@ -109,7 +109,7 @@ class RoundRobinHostSelector(HostSelector):
         last_host_index: int = -1
         target_host_index: int = 0
         if cluster_info is None:
-            raise AwsWrapperError(Messages.get("HostSelector.ClusterInfoNone"))
+            raise AwsWrapperError(Messages.get("RoundRobinHostSelector.ClusterInfoNone"))
 
         last_host = cluster_info.last_host
         # Check if last_host is in list of eligible hosts. Update last_host_index.
@@ -156,7 +156,7 @@ class RoundRobinHostSelector(HostSelector):
         if props is not None:
             props_weight = WrapperProperties.ROUND_ROBIN_DEFAULT_WEIGHT.get_int(props)
             if props_weight < RoundRobinHostSelector._DEFAULT_WEIGHT:
-                raise AwsWrapperError(Messages.get("HostSelector.RoundRobinInvalidDefaultWeight"))
+                raise AwsWrapperError(Messages.get("RoundRobinHostSelector.RoundRobinInvalidDefaultWeight"))
             cluster_default_weight = props_weight
         round_robin_cluster_info.default_weight = cluster_default_weight
 
@@ -171,19 +171,19 @@ class RoundRobinHostSelector(HostSelector):
                         host_name = match.group("host")
                         host_weight = match.group("weight")
                     else:
-                        raise AwsWrapperError(Messages.get("HostSelector.RoundRobinInvalidHostWeightPairs"))
+                        raise AwsWrapperError(Messages.get("RoundRobinHostSelector.RoundRobinInvalidHostWeightPairs"))
 
                     if len(host_name) == 0 or len(host_weight) == 0:
-                        raise AwsWrapperError(Messages.get("HostSelector.RoundRobinInvalidHostWeightPairs"))
+                        raise AwsWrapperError(Messages.get("RoundRobinHostSelector.RoundRobinInvalidHostWeightPairs"))
                     try:
                         weight: int = int(host_weight)
 
                         if weight < RoundRobinHostSelector._DEFAULT_WEIGHT:
-                            raise AwsWrapperError(Messages.get("HostSelector.RoundRobinInvalidHostWeightPairs"))
+                            raise AwsWrapperError(Messages.get("RoundRobinHostSelector.RoundRobinInvalidHostWeightPairs"))
 
                         round_robin_cluster_info.cluster_weights_dict[host_name] = weight
                     except ValueError:
-                        raise AwsWrapperError(Messages.get("HostSelector.RoundRobinInvalidHostWeightPairs"))
+                        raise AwsWrapperError(Messages.get("RoundRobinHostSelector.RoundRobinInvalidHostWeightPairs"))
 
     def clear_cache(self):
         RoundRobinHostSelector._round_robin_cache.clear()

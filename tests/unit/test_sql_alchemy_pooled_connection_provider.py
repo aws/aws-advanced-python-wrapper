@@ -128,9 +128,8 @@ def test_least_connections_strategy(provider, mock_pool):
     test_database_pools.compute_if_absent(
         PoolKey(reader_2.url, "user2"), lambda _: mock_pool, 10 * 60_000_000_000)
 
-    SqlAlchemyPooledConnectionProvider._database_pools = test_database_pools
-    with pytest.raises(AwsWrapperError):
-        provider.get_host_info_by_strategy(hosts, HostRole.READER, "least_connections", props)
+    result = provider.get_host_info_by_strategy(hosts, HostRole.READER, "least_connections", props)
+    assert reader_1 == result
 
 
 def test_least_connections_strategy__no_hosts_matching_role(provider):

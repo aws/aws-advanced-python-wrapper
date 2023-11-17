@@ -83,7 +83,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         return RdsUrlType.RDS_INSTANCE == url_type
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
-        return strategy in self._accepted_strategies
+        return strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS or strategy in self._accepted_strategies
 
     def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
         if not self.accepts_strategy(role, strategy):
@@ -91,7 +91,28 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
                 "ConnectionProvider.UnsupportedHostSelectorStrategy",
                 strategy, SqlAlchemyPooledConnectionProvider.__class__.__name__))
 
+        if strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS:
+            valid_hosts = [host for host in hosts if host.role == role]
+            valid_hosts.sort(key=lambda host: self._num_connections(host))
+
+            if len(valid_hosts) == 0:
+                raise AwsWrapperError(Messages.get_formatted("HostSelector.NoHostsMatchingRole", role))
+
+            return valid_hosts[0]
+
         return self._accepted_strategies[strategy].get_host(hosts, role, props)
+
+    def _num_connections(self, host_info: HostInfo) -> int:
+        """
+        Returns the number of active pooled connections to a specific host.
+        :param host_info: the host to analyze.
+        :return: number of connections opened in the connection pool to the given host.
+        """
+        num_connections = 0
+        for pool_key, cache_item in SqlAlchemyPooledConnectionProvider._database_pools.items():
+            if pool_key.url == host_info.url:
+                num_connections += cache_item.item.checkedout()
+        return num_connections
 
     def connect(
             self,
