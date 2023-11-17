@@ -58,7 +58,8 @@ class TokenInfo:
 
 class IamAuthPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
-    _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
+    # Leave 30 second buffer to prevent time-of-check to time-of-use errors
+    _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60 - 30
 
     _rds_utils: RdsUtils = RdsUtils()
     _token_cache: Dict[str, TokenInfo] = {}
@@ -104,11 +105,11 @@ class IamAuthPlugin(Plugin):
             logger.debug("IamAuthPlugin.UseCachedIamToken", token_info.token)
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
+            token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
             token: str = self._generate_authentication_token(props, host, port, region)
             logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
             self._plugin_service.driver_dialect.set_password(props, token)
-            IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, datetime.now() + timedelta(
-                seconds=token_expiration_sec))
+            IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
         try:
             return connect_func()
@@ -122,12 +123,11 @@ class IamAuthPlugin(Plugin):
 
             # Login unsuccessful with cached token
             # Try to generate a new token and try to connect again
-
+            token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
             token = self._generate_authentication_token(props, host, port, region)
             logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
             self._plugin_service.driver_dialect.set_password(props, token)
-            IamAuthPlugin._token_cache[token] = TokenInfo(token, datetime.now() + timedelta(
-                seconds=token_expiration_sec))
+            IamAuthPlugin._token_cache[token] = TokenInfo(token, token_expiry)
 
             try:
                 return connect_func()
