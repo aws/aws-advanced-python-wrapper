@@ -12,8 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import os
-import re
+from os import walk, path
+from re import findall
 from typing import List
 
 import pytest
@@ -22,12 +22,12 @@ from requests import request
 
 @pytest.fixture
 def docs_list():
-    doc_list = ["README.md", "CHANGELOG.md", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md"]
+    doc_list = []
 
-    for root, dirs, files in os.walk("./docs"):
+    for root, dirs, files in walk("."):
         for file in files:
             if file.endswith(".md"):
-                file_path = str(os.path.join(root, file))
+                file_path = str(path.join(root, file))
                 file_list = [file_path]
                 doc_list = doc_list + file_list
     return doc_list
@@ -41,7 +41,7 @@ def links_list(docs_list: List[str]):
 
     for doc in docs_list:
         with open(doc) as f:
-            list = re.findall(link_re, f.read())
+            list = findall(link_re, f.read())
             new_list = new_list + list
     return new_list
 
