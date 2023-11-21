@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from os import walk, path
+from os import path, walk
 from re import findall, search
 from typing import List
 
