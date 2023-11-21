@@ -23,7 +23,6 @@ from requests import request
 @pytest.fixture
 def docs_list():
     doc_list = []
-
     for root, dirs, files in walk("."):
         for file in files:
             if file.endswith(".md"):
@@ -45,9 +44,7 @@ def docs_dict(docs_list):
 @pytest.fixture
 def urls_list(docs_list: List[str]):
     link_re = r"\((https?://(?!github.com/awslabs/aws-advanced-python-wrapper)[a-zA-Z.\\/-]+)\)"
-
     new_list: List[str] = []
-
     for doc in docs_list:
         with open(doc) as f:
             list = findall(link_re, f.read())
@@ -58,19 +55,18 @@ def urls_list(docs_list: List[str]):
 def test_verify_urls(urls_list: list):
     for url in urls_list:
         response = request("GET", url)
+
         assert "jdbc" not in url
         assert response.status_code == 200
 
 
 def test_verify_relative_links(docs_dict, docs_list):
     link_re = r"\((?P<link>\./[\w\-\./]+)[#\w-]*\)"
-
     for doc in docs_list:
-
         with open(doc) as f:
-
             list = findall(link_re, f.read())
             for link in list:
                 full_link = docs_dict[doc] + link
+
                 assert "jdbc" not in full_link
                 assert path.exists(full_link)
