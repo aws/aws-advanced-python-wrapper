@@ -100,6 +100,6 @@ with AwsWrapperConnection.connect(
 ```
 A full PostgreSQL example is available at [PGFailover.py](./examples/PGFailover.py) and [MySQLFailover.py](./examples/MySQLFailover.py) 
 
-You can learn more about the AWS Advanced Python Driver specific errors in the [Using the Failover Plugin](./using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#Failover-Exception-Codes) page.
+You can learn more about the AWS Advanced Python Driver specific errors in the [Using the Failover Plugin](./using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#Failover-Errors) page.
 
 For more detailed information about how to use and configure the AWS Advanced Python Driver, please visit [this page](./using-the-python-driver/UsingThePythonDriver.md).

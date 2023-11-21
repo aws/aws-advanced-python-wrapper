@@ -13,7 +13,7 @@
 #  limitations under the License.
 
 from os import walk, path
-from re import findall
+from re import findall, search
 from typing import List
 
 import pytest
@@ -34,6 +34,15 @@ def docs_list():
 
 
 @pytest.fixture
+def docs_dict(docs_list):
+    doc_re = r".*\/"
+    doc_dict = {}
+    for doc in docs_list:
+        doc_dict[doc] = search(doc_re, doc).group(0)
+    return doc_dict
+
+
+@pytest.fixture
 def urls_list(docs_list: List[str]):
     link_re = r"\((https?://(?!github.com/awslabs/aws-advanced-python-wrapper)[a-zA-Z.\\/-]+)\)"
 
@@ -46,26 +55,22 @@ def urls_list(docs_list: List[str]):
     return new_list
 
 
-@pytest.fixture
-def relative_links_list(docs_list: List[str]):
-    link_re = r"\(([^\S,'\]?!https://]*\.[\S,'\]\)]+)(?=\#)"
-
-    new_list: List[str] = []
-
-    for doc in docs_list:
-        with open(doc) as f:
-            list = findall(link_re, f.read())
-            new_list = new_list + list
-    return new_list
-
-
 def test_verify_urls(urls_list: list):
-    for link in urls_list:
-        response = request("GET", link)
-
+    for url in urls_list:
+        response = request("GET", url)
+        assert "jdbc" not in url
         assert response.status_code == 200
 
 
-def test_verify_relative_links(relative_links_list: list):
-    for link in relative_links_list:
-        assert path.isfile(link)
+def test_verify_relative_links(docs_dict, docs_list):
+    link_re = r"\((?P<link>\./[\w\-\./]+)[#\w-]*\)"
+
+    for doc in docs_list:
+
+        with open(doc) as f:
+
+            list = findall(link_re, f.read())
+            for link in list:
+                full_link = docs_dict[doc] + link
+                assert "jdbc" not in full_link
+                assert path.exists(full_link)

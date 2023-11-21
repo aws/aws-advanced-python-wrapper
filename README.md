@@ -84,8 +84,8 @@ The following table lists the common connection properties used with the AWS Adv
 
 | Parameter                                    |                                                   Documentation Link                                                    |
 |----------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------:|
-| `wrapper_dialect`                            |            [Dialects](/docs/using-the-python-driver/DatabaseDialects.md), and whether you should include it.            |
-| `plugins`                                    | [Connection Plugin Manager](/docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters) |
+| `wrapper_dialect`                            |            [Dialects](./docs/using-the-python-driver/DatabaseDialects.md), and whether you should include it.            |
+| `plugins`                                    | [Connection Plugin Manager](./docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters) |
 | `secrets_manager_secret_id`                  |         [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)         |
 | `secrets_manager_region`                     |         [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)         |
 | `enable_failover`                            |                [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
@@ -108,7 +108,7 @@ The following table lists the common connection properties used with the AWS Adv
 ### Using the AWS Advanced Python Driver
 
 Technical documentation regarding the functionality of the AWS Advanced Python Driver will be maintained in this GitHub repository. Since the AWS Advanced Python Driver requires an underlying Python driver, please refer to the individual driver's documentation for driver-specific information.
-To find all the documentation and concrete examples on how to use the AWS Advanced Python Driver, please refer to the [AWS Advanced Python Driver Documentation](./docs/Documentation.md) page.
+To find all the documentation and concrete examples on how to use the AWS Advanced Python Driver, please refer to the [Using The Python Driver](./docs/using-the-python-driver/UsingThePythonDriver.md) page.
 
 ### Known Limitations
 
@@ -144,13 +144,13 @@ For all other questions, please use [GitHub discussions](https://github.com/awsl
 
 ## How to Contribute
 
-1. Set up your environment by following the directions in the [Development Guide](docs/development-guide/DevelopmentGuide.md).
+1. Set up your environment by following the directions in [Integration Tests](./docs/development-guide/IntegrationTests.md).
 2. To contribute, first make a fork of this project. 
 3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.8 and higher).
 4. Create a pull request from your fork. 
 5. Pull requests need to be approved and merged by maintainers into the main branch. <br />
 > [!NOTE]\
-> Before making a pull request, [run all tests](./docs/development-guide/DevelopmentGuide.md#running-the-tests) and verify everything is passing.
+> Before making a pull request, [run all tests](./docs/development-guide/IntegrationTests.md#running-aurora-integration-tests) and verify everything is passing.
 
 ### Code Style
 

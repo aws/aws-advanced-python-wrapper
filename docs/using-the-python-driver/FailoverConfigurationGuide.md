@@ -34,5 +34,5 @@ A common misconception about failover is the expectation that only one host will
 
 ### Monitor Failures and Investigate
 If you are experiencing difficulties with the failover plugin, try the following:
-- Enable [logging](/docs/using-the-python-driver/UsingThePythonDriver.md#logging) to find the cause of the failure. If it is a timeout, review the [failover time profiles](#failover-time-profiles) section and adjust the timeout values.
+- Enable [logging](../using-the-python-driver/UsingThePythonDriver.md#logging) to find the cause of the failure. If it is a timeout, review the [failover time profiles](#failover-time-profiles) section and adjust the timeout values.
 - For additional assistance, visit the [getting help page](../../README.md#getting-help-and-opening-issues).
