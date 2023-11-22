@@ -59,7 +59,7 @@ The AWS Python Driver has been manually verified to work with database tools suc
 ### Performance Tests
 
 The Python Wrapper has 2 types of performance tests:
-- benchmarks measuring the AWS Python Driver's overhead when executing simple Python methods using the JMH microbenchmark framework
+- benchmarks measuring the AWS Python Driver's overhead when executing simple Python methods
 - manually-triggered performance tests measuring the failover and enhanced failure monitoring plugins' performance under different configurations
 
 ### Running the Tests
