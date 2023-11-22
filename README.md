@@ -150,7 +150,7 @@ For all other questions, please use [GitHub discussions](https://github.com/awsl
 4. Create a pull request from your fork. 
 5. Pull requests need to be approved and merged by maintainers into the main branch. <br />
 > [!NOTE]\
-> Before making a pull request, [run all tests](./docs/development-guide/IntegrationTests.md#running-aurora-integration-tests) and verify everything is passing.
+> Before making a pull request, [run all tests](docs/development-guide/DevelopmentGuide.md#running-the-tests) and verify everything is passing.
 
 ### Code Style
 
