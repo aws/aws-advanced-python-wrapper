@@ -1,7 +1,7 @@
 # Development Guide
 
 ### Setup
-Make sure you have Amazon Corretto 8+ or Java 8+ installed.
+Make sure you have Python3 installed.
 
 Clone the AWS Python Driver repository:
 
@@ -49,12 +49,6 @@ The AWS Python Driver uses the following tests to verify its correctness and per
 | Enhanced failure monitoring integration tests | Driver-specific tests for the enhanced failure monitoring functionality using the Host Monitoring Connection Plugin.                                     |
 | AWS authentication integration tests          | Driver-specific tests for AWS authentication methods with the AWS Secrets Manager Plugin or the AWS IAM Authentication Plugin.                           |
 | Connection plugin manager benchmarks          | The [benchmarks](../../benchmarks/README.md) subproject measures the overhead from executing Python method calls with multiple connection plugins enabled. |
-
-### Extra Integration Tests
-
-The AWS Python Driver repository also contains additional integration tests for external tools such as HikariCP, the Spring framework or Hibernate ORM.
-
-The AWS Python Driver has been manually verified to work with database tools such as DBeaver.
 
 ### Performance Tests
 
