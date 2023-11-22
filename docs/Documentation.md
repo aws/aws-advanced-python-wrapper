@@ -18,7 +18,6 @@
   - [Host Availability Strategy](./using-the-python-driver/HostAvailabilityStrategy.md)
 - [Development Guide](./development-guide/DevelopmentGuide.md)
   - [Setup](./development-guide/DevelopmentGuide.md#setup)
-  - [Building the AWS Python Driver](./development-guide/DevelopmentGuide.md#building-the-aws-advanced-python-driver)
   - [Testing Overview](./development-guide/DevelopmentGuide.md#testing-overview)
     - [Performance Tests](./development-guide/DevelopmentGuide.md#performance-tests)
   - [Running the Tests](./development-guide/DevelopmentGuide.md#running-the-tests)

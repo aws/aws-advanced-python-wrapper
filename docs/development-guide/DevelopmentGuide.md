@@ -1,7 +1,7 @@
 # Development Guide
 
 ### Setup
-Make sure you have Python3 installed.
+Make sure you have Python 3.8+ installed, along with your choice of underlying Python driver (See [minimum requirements](../GettingStarted.md#minimum-requirements))
 
 Clone the AWS Python Driver repository:
 
@@ -10,33 +10,6 @@ git clone https://github.com/awslabs/aws-advanced-python-wrapper.git
 ```
 
 You can now make changes in the repository.
-
-### Building the AWS Advanced Python Driver
-Navigate to project root:
-```bash
-cd aws-advanced-python-wrapper
-```
-To build the AWS Advanced Python Driver without running the tests:
-Mac:
-
-```bash
-./gradlew build -x test
-```
-
-Windows:
-```bash
-gradlew build -x test
-```
-
-Mac:
-```bash
-./gradlew build
-```
-
-Windows:
-```bash
-gradlew build
-```
 
 ## Testing Overview
 
@@ -53,26 +26,38 @@ The AWS Python Driver uses the following tests to verify its correctness and per
 ### Performance Tests
 
 The Python Wrapper has 2 types of performance tests:
-- benchmarks measuring the AWS Python Driver's overhead when executing simple Python methods
+- benchmarks measuring the AWS Python Driver's overhead when executing simple Python methods using pytest-benchmark
 - manually-triggered performance tests measuring the failover and enhanced failure monitoring plugins' performance under different configurations
 
 ### Running the Tests
 
-After building the AWS Python Driver you can now run the unit tests.
-This will also validate your environment is set up correctly.
+Running the tests will also validate your environment is set up correctly.
+
+Install Poetry:
 
 Mac:
 ```bash
-./gradlew test
+brew install poetry
 ```
 
 Windows:
 ```bash
-./gradlew test
+(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
+```
+Run the tests:
+
+Mac:
+```bash
+poetry run python -m pytest ./tests/unit/*
+```
+
+Windows:
+```bash
+poetry run python -m pytest ./tests/unit/*
 ```
 
 #### Integration Tests
 For more information on how to run the integration tests, please visit [Integration Tests](../development-guide/IntegrationTests.md).
 
 #### Sample Code
-[Postgres Iam Authentication Sample Code](../../docs/examples/PGIamAuthentication.py)
+See the [Examples](../../docs/examples/) directory for sample code.
