@@ -1,7 +1,7 @@
 # Development Guide
 
 ### Setup
-Make sure you have Python 3.8+ installed, along with your choice of underlying Python driver (See [minimum requirements](../GettingStarted.md#minimum-requirements))
+Make sure you have Python 3.8+ installed, along with your choice of underlying Python driver (see [minimum requirements](../GettingStarted.md#minimum-requirements)).
 
 Clone the AWS Python Driver repository:
 
