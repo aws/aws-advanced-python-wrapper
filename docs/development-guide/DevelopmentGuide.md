@@ -81,7 +81,4 @@ Windows:
 For more information on how to run the integration tests, please visit [Integration Tests](../development-guide/IntegrationTests.md).
 
 #### Sample Code
-[Connection Test Sample Code](../../docs/examples/PGIamAuthentication.py)
-
-## Architecture
-For more information on how the AWS Advanced Python Driver functions and how it is structured, please visit [Architecture](./Architecture.md).
+[Postgres Iam Authentication Sample Code](../../docs/examples/PGIamAuthentication.py)
