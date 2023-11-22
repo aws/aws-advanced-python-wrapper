@@ -144,7 +144,7 @@ For all other questions, please use [GitHub discussions](https://github.com/awsl
 
 ## How to Contribute
 
-1. Set up your environment by following the directions in [Integration Tests](./docs/development-guide/IntegrationTests.md).
+1. Set up your environment by following the directions in the [Development Guide](docs/development-guide/DevelopmentGuide.md).
 2. To contribute, first make a fork of this project. 
 3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.8 and higher).
 4. Create a pull request from your fork. 
