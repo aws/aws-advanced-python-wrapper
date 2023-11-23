@@ -84,8 +84,8 @@ The following table lists the common connection properties used with the AWS Adv
 
 | Parameter                                    |                                                   Documentation Link                                                    |
 |----------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------:|
-| `wrapper_dialect`                            |            [Dialects](/docs/using-the-python-driver/DatabaseDialects.md), and whether you should include it.            |
-| `plugins`                                    | [Connection Plugin Manager](/docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters) |
+| `wrapper_dialect`                            |            [Dialects](./docs/using-the-python-driver/DatabaseDialects.md), and whether you should include it.            |
+| `plugins`                                    | [Connection Plugin Manager](./docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters) |
 | `secrets_manager_secret_id`                  |         [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)         |
 | `secrets_manager_region`                     |         [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)         |
 | `enable_failover`                            |                [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
@@ -144,7 +144,7 @@ For all other questions, please use [GitHub discussions](https://github.com/awsl
 
 ## How to Contribute
 
-1. Set up your environment by following the directions in the [Development Guide](docs/development-guide/DevelopmentGuide.md).
+1. Set up your environment by following the directions in the [Development Guide](./docs/development-guide/DevelopmentGuide.md).
 2. To contribute, first make a fork of this project. 
 3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.8 and higher).
 4. Create a pull request from your fork. 

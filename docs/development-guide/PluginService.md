@@ -13,7 +13,7 @@ to establish connections.
 
 The plugin service uses the host list provider to retrieve the most recent host information or topology information about the database.
 
-The Python Wrapper has two host list providers, the `ConnectionStringHostListProvider` and the `AuroraHostListPovider`.
+The Python Wrapper has two host list providers, the `ConnectionStringHostListProvider` and the `RdsHostListPovider`.
 
 The `ConnectionStringHostListProvider` is the default provider. 
 
