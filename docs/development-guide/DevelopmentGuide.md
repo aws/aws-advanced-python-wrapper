@@ -13,7 +13,7 @@ You can now make changes in the repository.
 
 ## Testing Overview
 
-The AWS Advanced Python Driver uses the following tests to verify its correctness and performance:
+The AWS Advanced Python Driver uses the following tests to verify its correctness:
 
 | Tests                                         | Description                                                                                                                                              |
 |-----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -24,7 +24,7 @@ The AWS Advanced Python Driver uses the following tests to verify its correctnes
 
 ### Performance Tests
 
-The AWS Advanced Python Driver has the following performance tests:
+The AWS Advanced Python Driver has the following tests to verify its performance:
 
 | Tests                                         | Description                                                                                                                                              |
 |-----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
