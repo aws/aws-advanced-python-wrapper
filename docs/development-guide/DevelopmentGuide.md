@@ -25,8 +25,6 @@ The AWS Advanced Python Driver uses the following tests to verify its correctnes
 ### Performance Tests
 
 The AWS Advanced Python Driver has the following performance tests:
-- benchmarks measuring the AWS Advanced Python Driver's overhead when executing simple Python methods using pytest-benchmark
-- manually-triggered performance tests measuring the failover and enhanced failure monitoring plugins' performance under different configurations
 
 | Tests                                         | Description                                                                                                                                              |
 |-----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
