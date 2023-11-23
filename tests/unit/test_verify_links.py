@@ -52,14 +52,6 @@ def urls_list(docs_list: List[str]):
     return new_list
 
 
-def test_verify_urls(urls_list: list):
-    for url in urls_list:
-        response = request("GET", url)
-
-        assert "jdbc" not in url
-        assert response.status_code == 200
-
-
 def test_verify_relative_links(docs_dict, docs_list):
     link_re = r"\((?P<link>\./[\w\-\./]+)[#\w-]*\)"
     for doc in docs_list:
@@ -70,3 +62,11 @@ def test_verify_relative_links(docs_dict, docs_list):
 
                 assert "jdbc" not in full_link
                 assert path.exists(full_link)
+
+
+def test_verify_urls(urls_list: list):
+    for url in urls_list:
+        response = request("GET", url)
+
+        assert "jdbc" not in url
+        assert response.status_code == 200

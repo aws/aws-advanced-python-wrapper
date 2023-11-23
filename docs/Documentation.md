@@ -2,7 +2,6 @@
 
 - [Getting Started](./GettingStarted.md)
 - [Using the AWS Python Driver](./using-the-python-driver/UsingThePythonDriver.md)
-  - [Data Sources](./using-the-python-driver/DataSource.md)
   - [Logging](./using-the-python-driver/UsingThePythonDriver.md#logging)
   - [Python Wrapper Parameters](./using-the-python-driver/UsingThePythonDriver.md#aws-advanced-python-driver-parameters)
   - [Database Dialects](./using-the-python-driver/DatabaseDialects.md)
