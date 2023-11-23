@@ -46,10 +46,11 @@ Windows:
 ```bash
 pipx install poetry
 ```
+
 Run the tests:
 
 ```bash
-poetry run python -m pytest ./tests/unit/*
+poetry run python -m pytest ./tests/unit
 ```
 
 #### Integration Tests
