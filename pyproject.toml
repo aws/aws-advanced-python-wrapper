@@ -9,7 +9,7 @@ license = "Apache-2.0"
 [tool.poetry.dependencies]
 python = "^3.8.1"
 resourcebundle = "^2.1.0"
-boto3 = "^1.29.1"
+boto3 = "^1.29.6"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.7.0"
@@ -19,11 +19,11 @@ isort = "^5.12.0"
 pep8-naming = "^0.13.3"
 SQLAlchemy = "^2.0.23"
 psycopg = "^3.1.13"
-psycopg-binary = "^3.1.9"
+psycopg-binary = "^3.1.13"
 mysql-connector-python = "^8.2.0"
 
 [tool.poetry.group.test.dependencies]
-boto3 = "^1.29.1"
+boto3 = "^1.29.6"
 coverage = "^7.3.0"
 debugpy = "^1.8.0"
 pydevd-pycharm = "^233.11799.32"
@@ -34,7 +34,7 @@ pytest-html-merger = "^0.0.10"
 toxiproxy-python = "^0.1.1"
 parameterized = "^0.9.0"
 psycopg = "^3.1.13"
-psycopg-binary = "^3.1.9"
+psycopg-binary = "^3.1.13"
 mysql-connector-python = "^8.2.0"
 
 [tool.isort]
