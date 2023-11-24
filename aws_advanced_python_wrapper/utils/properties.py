@@ -236,7 +236,7 @@ class PropertiesUtils:
 
     @staticmethod
     def parse_properties(conn_info: str, **kwargs: Any) -> Properties:
-        if conn_info.startswith("postgresql://"):
+        if conn_info.startswith("postgresql://") or conn_info.startswith("postgres://"):
             props = PropertiesUtils.parse_pg_url(conn_info)
         else:
             props = PropertiesUtils.parse_key_values(conn_info)
@@ -248,8 +248,13 @@ class PropertiesUtils:
     @staticmethod
     def parse_pg_url(conn_info: str) -> Properties:
         props = Properties()
-        to_parse = conn_info[len("postgresql://"):]
+        if conn_info.startswith("postgresql://"):
+            to_parse = conn_info[len("postgresql://"):]
+        elif conn_info.startswith("postgres://"):
+            to_parse = conn_info[len("postgres://"):]
 
+        # Example URL: postgresql://user:password@host:port/dbname?some_prop=some_value
+        # More examples here: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
         host_separator = to_parse.find("@")
         if host_separator >= 0:
             user_spec = to_parse[:host_separator]
@@ -277,7 +282,7 @@ class PropertiesUtils:
             raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.MultipleHostsNotSupported", conn_info))
 
         if host_spec.startswith("["):
-            # Parse IPv6 address
+            # IPv6 addresses should be enclosed in square brackets, eg 'postgresql://[2001:db8::1234]/dbname'
             host_end = host_spec.find("]")
             props["host"] = host_spec[:host_end + 1]
             host_spec = host_spec[host_end + 1:]
