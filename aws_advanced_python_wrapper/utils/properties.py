@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 from typing import Any, Dict, Optional
+from urllib.parse import unquote
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -233,11 +234,12 @@ class WrapperProperties:
 
 
 class PropertiesUtils:
+    ENCODED_FORWARD_SLASH = "%2F"
 
     @staticmethod
     def parse_properties(conn_info: str, **kwargs: Any) -> Properties:
         if conn_info.startswith("postgresql://") or conn_info.startswith("postgres://"):
-            props = PropertiesUtils.parse_pg_url(conn_info)
+            props = PropertiesUtils.parse_pg_scheme_url(conn_info)
         else:
             props = PropertiesUtils.parse_key_values(conn_info)
 
@@ -246,12 +248,14 @@ class PropertiesUtils:
         return props
 
     @staticmethod
-    def parse_pg_url(conn_info: str) -> Properties:
+    def parse_pg_scheme_url(conn_info: str) -> Properties:
         props = Properties()
         if conn_info.startswith("postgresql://"):
             to_parse = conn_info[len("postgresql://"):]
         elif conn_info.startswith("postgres://"):
             to_parse = conn_info[len("postgres://"):]
+        else:
+            raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.InvalidPgSchemeUrl", conn_info))
 
         # Example URL: postgresql://user:password@host:port/dbname?some_prop=some_value
         # More examples here: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
@@ -281,6 +285,11 @@ class PropertiesUtils:
         if host_spec.find(",") >= 0:
             raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.MultipleHostsNotSupported", conn_info))
 
+        if host_spec.startswith(PropertiesUtils.ENCODED_FORWARD_SLASH):
+            # host_spec may be a percent-encoded unix domain socket, eg '%2Fvar%2Flib%2Fpostgresql'.
+            # When stored as a kwarg instead of a connection string property, it should be decoded.
+            host_spec = unquote(host_spec)
+
         if host_spec.startswith("["):
             # IPv6 addresses should be enclosed in square brackets, eg 'postgresql://[2001:db8::1234]/dbname'
             host_end = host_spec.find("]")
@@ -306,11 +315,12 @@ class PropertiesUtils:
                 return props
 
         if props_separator >= 0:
-            props.update(PropertiesUtils.parse_key_values(to_parse, "&"))
+            # Connection string properties must be percent-decoded when stored as kwargs
+            props.update(PropertiesUtils.parse_key_values(to_parse, separator="&", percent_decode=True))
         return props
 
     @staticmethod
-    def parse_key_values(conn_info: str, separator: str = " ") -> Properties:
+    def parse_key_values(conn_info: str, separator: str = " ", percent_decode: bool = False) -> Properties:
         props = Properties()
         to_parse = conn_info
 
@@ -329,6 +339,9 @@ class PropertiesUtils:
             value_end = sep_i if sep_i > -1 else len(to_parse)
             value = to_parse[0:value_end]
             to_parse = to_parse[value_end + 1:]
+
+            if percent_decode:
+                value = unquote(value)
             props[key] = value
 
         return props
