@@ -236,27 +236,101 @@ class PropertiesUtils:
 
     @staticmethod
     def parse_properties(conn_info: str, **kwargs: Any) -> Properties:
-        props: Properties = Properties()
+        if conn_info.startswith("postgresql://") or conn_info.startswith("postgres://"):
+            props = PropertiesUtils.parse_pg_url(conn_info)
+        else:
+            props = PropertiesUtils.parse_key_values(conn_info)
+
+        for key, value in kwargs.items():
+            props[key] = value
+        return props
+
+    @staticmethod
+    def parse_pg_url(conn_info: str) -> Properties:
+        props = Properties()
+        if conn_info.startswith("postgresql://"):
+            to_parse = conn_info[len("postgresql://"):]
+        elif conn_info.startswith("postgres://"):
+            to_parse = conn_info[len("postgres://"):]
+
+        # Example URL: postgresql://user:password@host:port/dbname?some_prop=some_value
+        # More examples here: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+        host_separator = to_parse.find("@")
+        if host_separator >= 0:
+            user_spec = to_parse[:host_separator]
+            password_separator = user_spec.find(":")
+            if password_separator >= 0:
+                props[WrapperProperties.USER.name] = user_spec[:password_separator]
+                props[WrapperProperties.PASSWORD.name] = user_spec[password_separator + 1:host_separator]
+            else:
+                props[WrapperProperties.USER.name] = user_spec
+            to_parse = to_parse[host_separator + 1:]
+
+        db_separator = to_parse.find("/")
+        props_separator = to_parse.find("?")
+        if db_separator >= 0:
+            host_spec = to_parse[:db_separator]
+            to_parse = to_parse[db_separator + 1:]
+            props_separator = to_parse.find("?")
+        elif props_separator >= 0:
+            host_spec = to_parse[:props_separator]
+            to_parse = to_parse[props_separator + 1:]
+        else:
+            host_spec = to_parse
+
+        if host_spec.find(",") >= 0:
+            raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.MultipleHostsNotSupported", conn_info))
+
+        if host_spec.startswith("["):
+            # IPv6 addresses should be enclosed in square brackets, eg 'postgresql://[2001:db8::1234]/dbname'
+            host_end = host_spec.find("]")
+            props["host"] = host_spec[:host_end + 1]
+            host_spec = host_spec[host_end + 1:]
+            if len(host_spec) > 0:
+                props["port"] = host_spec[1:]
+        else:
+            port_separator = host_spec.find(":")
+            if port_separator >= 0:
+                props["host"] = host_spec[:port_separator]
+                props["port"] = host_spec[port_separator + 1:]
+            else:
+                if len(host_spec) > 0:
+                    props["host"] = host_spec
+
+        if db_separator >= 0:
+            if props_separator >= 0:
+                props[WrapperProperties.DATABASE.name] = to_parse[:props_separator]
+                to_parse = to_parse[props_separator + 1:]
+            else:
+                props[WrapperProperties.DATABASE.name] = to_parse
+                return props
+
+        if props_separator >= 0:
+            props.update(PropertiesUtils.parse_key_values(to_parse, "&"))
+        return props
+
+    @staticmethod
+    def parse_key_values(conn_info: str, separator: str = " ") -> Properties:
+        props = Properties()
         to_parse = conn_info
+
         while to_parse.strip() != "":
             to_parse = to_parse.strip()
-            space_i = to_parse.find(" ")
+            sep_i = to_parse.find(separator)
             equals_i = to_parse.find("=")
-            key_end = space_i if -1 < space_i < equals_i else equals_i
+            key_end = sep_i if -1 < sep_i < equals_i else equals_i
             if key_end == -1:
                 raise AwsWrapperError("PropertiesUtils.ErrorParsingConnectionString", conn_info)
 
             key = to_parse[0:key_end]
             to_parse = to_parse[equals_i + 1:].lstrip()
-            space_i = to_parse.find(" ")
+            sep_i = to_parse.find(separator)
 
-            value_end = space_i if space_i > -1 else len(to_parse)
+            value_end = sep_i if sep_i > -1 else len(to_parse)
             value = to_parse[0:value_end]
-            to_parse = to_parse[value_end:]
+            to_parse = to_parse[value_end + 1:]
             props[key] = value
 
-        for key, value in kwargs.items():
-            props[key] = value
         return props
 
     @staticmethod

@@ -14,21 +14,49 @@
 
 import pytest
 
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils)
 
 
-@pytest.mark.parametrize("expected, conn_info, kwargs",
-                         [pytest.param(Properties({"user": "postgres", "password": "kwargs_password"}),
-                                       "user=postgres password=conninfo_password",
-                                       dict(password="kwargs_password")),
-                          pytest.param(Properties({"user": "postgres", "password": "kwargs_password"}),
-                                       "   user  =  postgres    password=conninfo_password ",
-                                       dict(password="kwargs_password")),
-                          pytest.param(Properties({"user": "postgres"}), "", dict(user="postgres")),
-                          pytest.param(Properties({"user": "postgres"}), "user=postgres", {})])
+@pytest.mark.parametrize(
+    "expected, conn_info, kwargs",
+    [pytest.param(Properties({"user": "postgres", "password": "kwargs_password"}),
+                  "user=postgres password=conninfo_password",
+                  dict(password="kwargs_password")),
+     pytest.param(Properties({"user": "postgres", "password": "kwargs_password"}),
+                  "   user  =  postgres    password=conninfo_password ",
+                  dict(password="kwargs_password")),
+     pytest.param(Properties({"user": "postgres"}), "", dict(user="postgres")),
+     pytest.param(Properties({"user": "some_user", "password": "some_pass", "host": "some_host", "port": "1111",
+                              "database": "some_db", "connect_timeout": "11", "some_prop": "some_value"}),
+                  "postgresql://some_user:some_pass@some_host:1111/some_db?connect_timeout=11",
+                  dict(some_prop="some_value")),
+     pytest.param(Properties({"database": "some_db", "host": "some_host", "port": "1111", "user": "postgres"}),
+                  "postgresql:///some_db?host=some_host&port=1111",
+                  dict(user="postgres")),
+     pytest.param(Properties({"database": "some_db", "host": "[2001:db8::1234]", "user": "postgres"}),
+                  "postgresql://[2001:db8::1234]/some_db",
+                  dict(user="postgres")),
+     pytest.param(Properties({"database": "some_db", "host": "/var/lib/postgresql", "user": "postgres"}),
+                  "postgres:///some_db?host=/var/lib/postgresql",
+                  dict(user="postgres")),
+     pytest.param(Properties({"database": "some_db", "host": "%2Fvar%2Flib%2Fpostgresql", "user": "postgres"}),
+                  "postgres://%2Fvar%2Flib%2Fpostgresql/some_db",
+                  dict(user="postgres")),
+     pytest.param(Properties({"host": "[2001:db8::1234]", "port": "1111", "user": "some_user",
+                              "connect_timeout": "11"}),
+                  "postgres://some_user@[2001:db8::1234]:1111?connect_timeout=11",
+                  {}),
+     pytest.param(Properties({"host": "localhost"}), "postgresql://localhost", {}),
+     pytest.param(Properties({"user": "postgres"}), "user=postgres", {})])
 def test_parse_properties(expected, conn_info, kwargs):
-    assert expected == PropertiesUtils.parse_properties(conn_info, **kwargs)
+    assert PropertiesUtils.parse_properties(conn_info, **kwargs) == expected
+
+
+def test_parse_properties__multiple_hosts():
+    with pytest.raises(AwsWrapperError):
+        PropertiesUtils.parse_properties("postgresql://host1:123,host2:456/somedb")
 
 
 @pytest.mark.parametrize("expected, test_props",
