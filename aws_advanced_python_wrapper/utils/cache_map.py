@@ -12,9 +12,10 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+from typing import Dict, Generic, Optional, TypeVar
 import threading
 import time
-from typing import Dict, Generic, Optional, TypeVar
 
 K = TypeVar('K')
 V = TypeVar('V')
