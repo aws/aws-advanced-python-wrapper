@@ -234,8 +234,6 @@ class WrapperProperties:
 
 
 class PropertiesUtils:
-    ENCODED_FORWARD_SLASH = "%2F"
-
     @staticmethod
     def parse_properties(conn_info: str, **kwargs: Any) -> Properties:
         if conn_info.startswith("postgresql://") or conn_info.startswith("postgres://"):
@@ -285,11 +283,9 @@ class PropertiesUtils:
         if host_spec.find(",") >= 0:
             raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.MultipleHostsNotSupported", conn_info))
 
-        if host_spec.startswith(PropertiesUtils.ENCODED_FORWARD_SLASH):
-            # host_spec may be a percent-encoded unix domain socket, eg '%2Fvar%2Flib%2Fpostgresql'.
-            # When stored as a kwarg instead of a connection string property, it should be decoded.
-            host_spec = unquote(host_spec)
-
+        # host_spec may be a percent-encoded unix domain socket, eg '%2Fvar%2Flib%2Fpostgresql'.
+        # When stored as a kwarg instead of a connection string property, it should be decoded.
+        host_spec = unquote(host_spec)
         if host_spec.startswith("["):
             # IPv6 addresses should be enclosed in square brackets, eg 'postgresql://[2001:db8::1234]/dbname'
             host_end = host_spec.find("]")
