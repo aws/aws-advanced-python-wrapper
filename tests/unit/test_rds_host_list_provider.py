@@ -88,7 +88,7 @@ def refresh_ns():
 
 def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, props, cache_hosts, refresh_ns):
     provider = RdsHostListProvider(mock_provider_service, props)
-    RdsHostListProvider._topology_cache.put(provider._cluster_id, list(cache_hosts), refresh_ns)
+    RdsHostListProvider._topology_cache.put(provider._cluster_id, tuple(cache_hosts), refresh_ns)
     spy = mocker.spy(provider, "_query_for_topology")
 
     result = provider.refresh(mock_conn)
@@ -100,7 +100,7 @@ def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, 
 def test_get_topology_force_update(
         mocker, mock_provider_service, mock_conn, cache_hosts, queried_hosts, props, refresh_ns):
     provider = RdsHostListProvider(mock_provider_service, props)
-    RdsHostListProvider._topology_cache.put(provider._cluster_id, list(cache_hosts), refresh_ns)
+    RdsHostListProvider._topology_cache.put(provider._cluster_id, cache_hosts, refresh_ns)
     spy = mocker.spy(provider, "_query_for_topology")
 
     result = provider.force_refresh(mock_conn)
@@ -123,7 +123,7 @@ def test_get_topology_timeout(mocker, mock_cursor, mock_provider_service, initia
 def test_get_topology_invalid_topology(
         mocker, mock_provider_service, mock_conn, mock_cursor, props, cache_hosts, refresh_ns):
     provider = RdsHostListProvider(mock_provider_service, props)
-    RdsHostListProvider._topology_cache.put(provider._cluster_id, list(cache_hosts), refresh_ns)
+    RdsHostListProvider._topology_cache.put(provider._cluster_id, cache_hosts, refresh_ns)
     spy = mocker.spy(provider, "_query_for_topology")
     mock_topology_query(mock_conn, mock_cursor, [("reader", False)])  # Invalid topology: no writer instance
 
