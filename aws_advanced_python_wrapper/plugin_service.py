@@ -41,6 +41,7 @@ from aws_advanced_python_wrapper.database_dialect import (
     DatabaseDialect, DatabaseDialectManager, TopologyAwareDatabaseDialect,
     UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
+from aws_advanced_python_wrapper.developer_plugin import DeveloperPluginFactory
 from aws_advanced_python_wrapper.driver_configuration_profiles import \
     DriverConfigurationProfiles
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
@@ -562,6 +563,7 @@ class PluginManager(CanReleaseResources):
         "stale_dns": StaleDnsPluginFactory,
         "connect_time": ConnectTimePluginFactory,
         "execute_time": ExecuteTimePluginFactory,
+        "dev": DeveloperPluginFactory
     }
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
@@ -578,7 +580,8 @@ class PluginManager(CanReleaseResources):
         IamAuthPluginFactory: 600,
         AwsSecretsManagerPluginFactory: 700,
         ConnectTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
-        ExecuteTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN
+        ExecuteTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
+        DeveloperPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN
     }
 
     def __init__(self, container: PluginServiceManagerContainer, props: Properties):
