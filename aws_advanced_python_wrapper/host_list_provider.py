@@ -334,9 +334,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._dialect.topology_query)
-
-                result = self._process_query_results(cursor)
-                return result
+                return self._process_query_results(cursor)
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
 
@@ -365,7 +363,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             hosts.clear()
         elif len(writers) == 1:
             hosts.append(writers[0])
-        else:
+        else:  # 394301128
             # Take the latest updated writer host as the current writer. All others will be ignored.
             writers.sort(reverse=True, key=lambda h: h.last_update_time)
             hosts.append(writers[0])
@@ -493,7 +491,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         with closing(conn.cursor()) as cursor:
             cursor.execute(self._dialect.host_id_query)
             return cursor.fetchone()
-        return None
 
     @dataclass()
     class ClusterIdSuggestion:
@@ -504,6 +501,74 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     class FetchTopologyResult:
         hosts: Tuple[HostInfo, ...]
         is_cached_data: bool
+
+
+class MultiAzRdsHostListProvider(RdsHostListProvider):
+    def __init__(
+            self,
+            provider_service: HostListProviderService,
+            props: Properties,
+            topology_query: str,
+            host_id_query: str,
+            is_reader_query: str,
+            writer_host_query: str,
+            writer_host_column_index: int = 0):
+        super().__init__(provider_service, props)
+        self._topology_query = topology_query
+        self._host_id_query = host_id_query
+        self._is_reader_query = is_reader_query
+        self._writer_host_query = writer_host_query
+        self._writer_host_column_index = writer_host_column_index
+
+    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(self._writer_host_query)
+                row = cursor.fetchone()
+                if row is not None:
+                    writer_id = row[self._writer_host_column_index]
+                else:
+                    # In MySQL, the writer host query above will be empty if we are connected to the writer.
+                    # Consequently, this block is only entered if we are connected to a MySQL writer.
+                    cursor.execute(self._host_id_query)
+                    writer_id = cursor.fetchone()[0]
+                cursor.execute(self._topology_query)
+                return self._process_multi_az_query_results(cursor, writer_id)
+        except ProgrammingError as e:
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
+
+    def _process_multi_az_query_results(self, cursor: Cursor, writer_id: str) -> Tuple[HostInfo, ...]:
+        hosts_dict = {}
+        for record in cursor:
+            host = self._create_multi_az_host(record, writer_id)
+            hosts_dict[host.host] = host
+
+        hosts = []
+        writers = []
+        for host in hosts_dict.values():
+            if host.role == HostRole.WRITER:
+                writers.append(host)
+            else:
+                hosts.append(host)
+
+        if len(writers) == 0:
+            logger.error("RdsHostListProvider.InvalidTopology")
+            hosts.clear()
+        else:
+            hosts.append(writers[0])
+
+        return tuple(hosts)
+
+    def _create_multi_az_host(self, record: Tuple, writer_id: str) -> HostInfo:
+        host_id = record[0]
+        host = record[1]
+        port = record[2]
+        role = HostRole.WRITER if host_id == writer_id else HostRole.READER
+
+        host_info = HostInfo(
+            host=host, port=port, role=role, availability=HostAvailability.AVAILABLE, weight=0, host_id=host_id)
+        host_info.add_alias(host)
+        return host_info
 
 
 class ConnectionStringHostListProvider(StaticHostListProvider):

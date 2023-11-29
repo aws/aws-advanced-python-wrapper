@@ -209,7 +209,8 @@ class AuroraConnectionTrackerPlugin(Plugin):
             return execute_func()
 
         except Exception as e:
-            if isinstance(e, FailoverError):
+            # Check that e is a FailoverError and that the writer has changed
+            if isinstance(e, FailoverError) and self._get_writer(self._plugin_service.hosts) != self._current_writer:
                 self._tracker.invalidate_all_connections(host_info=self._current_writer)
                 self._tracker.log_opened_connections()
                 self._need_update_current_writer = True

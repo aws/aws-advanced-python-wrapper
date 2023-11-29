@@ -23,27 +23,13 @@ from aws_advanced_python_wrapper.exception_handling import ExceptionHandler
 
 
 class PgExceptionHandler(ExceptionHandler):
-    _NETWORK_ERRORS: List[str] = [
-        "53",  # insufficient resources
-        "57P01",  # admin shutdown
-        "57P02",  # crash shutdown
-        "57P03",  # cannot connect now
-        "58",  # system error(backend)
-        "08",  # connection error
-        "99",  # unexpected error
-        "F0",  # configuration file error(backend)
-        "XX"  # internal error(backend)
-    ]
-
-    _ACCESS_ERRORS: List[str] = [
-        "28000",  # PAM authentication errors
-        "28P01"
-    ]
-
     _PASSWORD_AUTHENTICATION_FAILED_MSG = "password authentication failed"
     _PAM_AUTHENTICATION_FAILED_MSG = "PAM authentication failed"
     _CONNECTION_FAILED = "connection failed"
     _CONSUMING_INPUT_FAILED = "consuming input failed"
+
+    _NETWORK_ERRORS: List[str]
+    _ACCESS_ERRORS: List[str]
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
@@ -87,3 +73,39 @@ class PgExceptionHandler(ExceptionHandler):
                     return True
 
         return False
+
+
+class SingleAzPgExceptionHandler(PgExceptionHandler):
+    _NETWORK_ERRORS: List[str] = [
+        "53",  # insufficient resources
+        "57P01",  # admin shutdown
+        "57P02",  # crash shutdown
+        "57P03",  # cannot connect now
+        "58",  # system error(backend)
+        "08",  # connection error
+        "99",  # unexpected error
+        "F0",  # configuration file error(backend)
+        "XX"  # internal error(backend)
+    ]
+
+    _ACCESS_ERRORS: List[str] = [
+        "28000",  # PAM authentication errors
+        "28P01"
+    ]
+
+
+class MultiAzPgExceptionHandler(PgExceptionHandler):
+    _NETWORK_ERRORS: List[str] = [
+        "28000",  # access denied during reboot, this should be considered a temporary failure
+        "53",  # insufficient resources
+        "57P01",  # admin shutdown
+        "57P02",  # crash shutdown
+        "57P03",  # cannot connect now
+        "58",  # system error(backend)
+        "08",  # connection error
+        "99",  # unexpected error
+        "F0",  # configuration file error(backend)
+        "XX"  # internal error(backend)
+    ]
+
+    _ACCESS_ERRORS: List[str] = ["28P01"]
