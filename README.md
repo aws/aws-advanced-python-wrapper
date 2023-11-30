@@ -104,6 +104,7 @@ The following table lists the common connection properties used with the AWS Adv
 | `iam_host`                                   |       [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
 | `iam_region`                                 |       [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
 | `iam_expiration`                             |       [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
+| `dev`                  |         [DeveloperPlugin](./docs/using-the-python-driver/using-plugins/UsingTheDeveloperPlugin.md)         |
 
 ### Using the AWS Advanced Python Driver
 
