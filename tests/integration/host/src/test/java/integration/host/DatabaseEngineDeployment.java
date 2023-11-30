@@ -19,5 +19,6 @@ package integration.host;
 public enum DatabaseEngineDeployment {
   DOCKER,
   RDS,
-  AURORA
+  AURORA,
+  MULTI_AZ
 }

@@ -31,11 +31,10 @@ from aws_advanced_python_wrapper.errors import FailoverSuccessError
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
-from tests.integration.container.utils.aurora_test_utility import \
-    AuroraTestUtility
 from tests.integration.container.utils.conditions import (
     enable_on_features, enable_on_num_instances)
 from tests.integration.container.utils.driver_helper import DriverHelper
+from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
@@ -45,9 +44,9 @@ from tests.integration.container.utils.test_environment_features import \
 @enable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
 class TestAutoScaling:
     @pytest.fixture
-    def aurora_utils(self):
-        region: str = TestEnvironment.get_current().get_info().get_aurora_region()
-        return AuroraTestUtility(region)
+    def rds_utils(self):
+        region: str = TestEnvironment.get_current().get_info().get_region()
+        return RdsTestUtility(region)
 
     @pytest.fixture
     def props(self):
@@ -66,7 +65,7 @@ class TestAutoScaling:
         return False
 
     def test_pooled_connection_auto_scaling__set_read_only_on_old_connection(
-            self, test_driver: TestDriver, props, conn_utils, aurora_utils):
+            self, test_driver: TestDriver, props, conn_utils, rds_utils):
         WrapperProperties.READER_HOST_SELECTOR_STRATEGY.set(props, "least_connections")
 
         instances: List[TestInstanceInfo] = TestEnvironment.get_current().get_info().get_database_info().get_instances()
@@ -89,7 +88,7 @@ class TestAutoScaling:
                 connections.append(conn)
 
             new_instance_conn: AwsWrapperConnection
-            new_instance: TestInstanceInfo = aurora_utils.create_db_instance("auto-scaling-instance")
+            new_instance: TestInstanceInfo = rds_utils.create_db_instance("auto-scaling-instance")
             try:
                 new_instance_conn = AwsWrapperConnection.connect(
                     target_driver_connect, conn_utils.get_conn_string(), **props)
@@ -97,10 +96,10 @@ class TestAutoScaling:
 
                 sleep(5)
 
-                writer_id = aurora_utils.query_instance_id(new_instance_conn)
+                writer_id = rds_utils.query_instance_id(new_instance_conn)
 
                 new_instance_conn.read_only = True
-                reader_id = aurora_utils.query_instance_id(new_instance_conn)
+                reader_id = rds_utils.query_instance_id(new_instance_conn)
 
                 assert new_instance.get_instance_id() == reader_id
                 assert writer_id != reader_id
@@ -108,18 +107,18 @@ class TestAutoScaling:
 
                 new_instance_conn.read_only = False
             finally:
-                aurora_utils.delete_db_instance(new_instance.get_instance_id())
+                rds_utils.delete_db_instance(new_instance.get_instance_id())
 
             stop_time = datetime.now() + timedelta(minutes=5)
-            while datetime.now() <= stop_time and len(aurora_utils.get_aurora_instance_ids()) != original_cluster_size:
+            while datetime.now() <= stop_time and len(rds_utils.get_instance_ids()) != original_cluster_size:
                 sleep(5)
 
-            if len(aurora_utils.get_aurora_instance_ids()) != original_cluster_size:
+            if len(rds_utils.get_instance_ids()) != original_cluster_size:
                 pytest.fail("The deleted instance is still in the cluster topology")
 
             new_instance_conn.read_only = True
 
-            instance_id = aurora_utils.query_instance_id(new_instance_conn)
+            instance_id = rds_utils.query_instance_id(new_instance_conn)
             assert writer_id != instance_id
             assert new_instance.get_instance_id() != instance_id
 
@@ -133,7 +132,7 @@ class TestAutoScaling:
             ConnectionProviderManager.reset_provider()
 
     def test_pooled_connection_auto_scaling__failover_from_deleted_reader(
-            self, test_driver: TestDriver, failover_props, conn_utils, aurora_utils):
+            self, test_driver: TestDriver, failover_props, conn_utils, rds_utils):
         WrapperProperties.READER_HOST_SELECTOR_STRATEGY.set(failover_props, "least_connections")
 
         instances: List[TestInstanceInfo] = TestEnvironment.get_current().get_info().get_database_info().get_instances()
@@ -159,7 +158,7 @@ class TestAutoScaling:
                 connections.append(conn)
 
             new_instance_conn: AwsWrapperConnection
-            new_instance: TestInstanceInfo = aurora_utils.create_db_instance("auto-scaling-instance")
+            new_instance: TestInstanceInfo = rds_utils.create_db_instance("auto-scaling-instance")
             try:
                 new_instance_conn = AwsWrapperConnection.connect(
                     target_driver_connect,
@@ -168,16 +167,16 @@ class TestAutoScaling:
                 connections.append(new_instance_conn)
 
                 new_instance_conn.read_only = True
-                reader_id = aurora_utils.query_instance_id(new_instance_conn)
+                reader_id = rds_utils.query_instance_id(new_instance_conn)
 
                 assert new_instance.get_instance_id() == reader_id
                 assert self.is_url_in_pool(new_instance.get_url(), provider.pool_urls)
             finally:
-                aurora_utils.delete_db_instance(new_instance.get_instance_id())
+                rds_utils.delete_db_instance(new_instance.get_instance_id())
 
-            aurora_utils.assert_first_query_throws(new_instance_conn, FailoverSuccessError)
+            rds_utils.assert_first_query_throws(new_instance_conn, FailoverSuccessError)
 
-            new_reader_id = aurora_utils.query_instance_id(new_instance_conn)
+            new_reader_id = rds_utils.query_instance_id(new_instance_conn)
             assert new_instance.get_instance_id() != new_reader_id
         finally:
             for conn in connections:

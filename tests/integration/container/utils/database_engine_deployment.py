@@ -12,10 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from enum import Enum
+from enum import StrEnum
 
 
-class DatabaseEngineDeployment(Enum):
+class DatabaseEngineDeployment(StrEnum):
     DOCKER = "DOCKER"
     RDS = "RDS"
     AURORA = "AURORA"
+    MULTI_AZ = "MULTI-AZ"

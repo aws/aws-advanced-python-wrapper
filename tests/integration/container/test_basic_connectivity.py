@@ -24,11 +24,10 @@ import pytest
 
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
-from tests.integration.container.utils.aurora_test_utility import \
-    AuroraTestUtility
 from tests.integration.container.utils.database_engine_deployment import \
     DatabaseEngineDeployment
-from .utils.conditions import (disable_on_features, enable_on_deployment,
+from tests.integration.container.utils.rds_test_utility import RdsTestUtility
+from .utils.conditions import (disable_on_features, enable_on_deployments,
                                enable_on_features, enable_on_num_instances)
 from .utils.driver_helper import DriverHelper
 from .utils.proxy_helper import ProxyHelper
@@ -40,9 +39,9 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 class TestBasicConnectivity:
 
     @pytest.fixture(scope='class')
-    def aurora_utils(self):
-        region: str = TestEnvironment.get_current().get_info().get_aurora_region()
-        return AuroraTestUtility(region)
+    def rds_utils(self):
+        region: str = TestEnvironment.get_current().get_info().get_region()
+        return RdsTestUtility(region)
 
     @pytest.fixture(scope='class')
     def props(self):
@@ -112,7 +111,7 @@ class TestBasicConnectivity:
             assert True
 
     @enable_on_num_instances(min_instances=2)
-    @enable_on_deployment(DatabaseEngineDeployment.AURORA)
+    @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.MULTI_AZ])
     @enable_on_features([TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_wrapper_connection_reader_cluster_with_efm_enabled(self, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)

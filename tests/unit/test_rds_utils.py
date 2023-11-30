@@ -85,8 +85,7 @@ def test_is_rds_dns(test_value):
 ])
 def test_get_rds_instance_host_pattern(expected, test_value):
     target = RdsUtils()
-    actual = target.get_rds_instance_host_pattern(test_value)
-    assert expected == actual
+    assert expected == target.get_rds_instance_host_pattern(test_value)
 
 
 @pytest.mark.parametrize("expected, test_value", [
