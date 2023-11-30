@@ -32,7 +32,8 @@ from enum import Enum, auto
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import (
-    ConnectionStringHostListProvider, RdsHostListProvider, MultiAzRdsHostListProvider)
+    ConnectionStringHostListProvider, MultiAzRdsHostListProvider,
+    RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
@@ -387,7 +388,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect):
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return None
-    
+
     def is_dialect(self, conn: Connection) -> bool:
         try:
             with closing(conn.cursor()) as cursor:
@@ -410,7 +411,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect):
             self._WRITER_HOST_COLUMN_INDEX)
 
     # TODO: call this method somewhere
-    def prepare_conn_props(self, props: Properties):
+    def add_conn_props(self, props: Properties):
         # These props are added for RDS metrics purposes, they are not required for functional correctness.
         # The "conn_attrs" property value is specified as a dict.
         extra_conn_attrs = {
@@ -421,6 +422,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect):
             props["conn_attrs"] = extra_conn_attrs
         else:
             props["conn_attrs"].update(extra_conn_attrs)
+
 
 class MultiAzPgDialect(PgDatabaseDialect):
     # The show_topology argument is added for RDS metrics purposes, it is not required for functional correctness

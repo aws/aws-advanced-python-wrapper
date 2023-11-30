@@ -363,7 +363,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             hosts.clear()
         elif len(writers) == 1:
             hosts.append(writers[0])
-        else:  # 394301128
+        else:
             # Take the latest updated writer host as the current writer. All others will be ignored.
             writers.sort(reverse=True, key=lambda h: h.last_update_time)
             hosts.append(writers[0])

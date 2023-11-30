@@ -13,14 +13,14 @@
 #  limitations under the License.
 
 from concurrent.futures import TimeoutError
-from datetime import datetime, timedelta
 
 import psycopg
 import pytest
 
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
-from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider, MultiAzRdsHostListProvider
+from aws_advanced_python_wrapper.host_list_provider import (
+    MultiAzRdsHostListProvider, RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import ProgrammingError
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -89,11 +89,11 @@ def refresh_ns():
 
 def create_provider(mock_provider_service, props):
     return MultiAzRdsHostListProvider(
-        mock_provider_service, 
-        props, 
-        "topology_query", 
-        "host_id_query", 
-        "is_reader_query", 
+        mock_provider_service,
+        props,
+        "topology_query",
+        "host_id_query",
+        "is_reader_query",
         "writer_host_query")
 
 
@@ -136,7 +136,11 @@ def test_get_topology_invalid_topology(
     provider = create_provider(mock_provider_service, props)
     RdsHostListProvider._topology_cache.put(provider._cluster_id, cache_hosts, refresh_ns)
     spy = mocker.spy(provider, "_query_for_topology")
-    mock_topology_query(mock_conn, mock_cursor, [("reader", "reader.xyz.us-east-2.rds.amazonaws.com", 5432)], "missing-writer")  # Invalid topology: no writer instance
+    mock_topology_query(
+        mock_conn,
+        mock_cursor,
+        [("reader", "reader.xyz.us-east-2.rds.amazonaws.com", 5432)],  # Invalid topology: no writer instance
+        "missing-writer")
 
     result = provider.force_refresh()
 
