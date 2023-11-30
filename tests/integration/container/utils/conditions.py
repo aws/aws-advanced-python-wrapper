@@ -26,10 +26,10 @@ import pytest
 from .test_environment import TestEnvironment
 
 
-def enable_on_deployment(requested_deployment: DatabaseEngineDeployment):
+def enable_on_deployments(requested_deployments: List[DatabaseEngineDeployment]):
     current_deployment = TestEnvironment.get_current().get_deployment()
     return pytest.mark.skipif(
-        requested_deployment != current_deployment,
+        current_deployment not in requested_deployments,
         reason=f"This test is not supported for {current_deployment.value} deployments"
     )
 

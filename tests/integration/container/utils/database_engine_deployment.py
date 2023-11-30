@@ -19,3 +19,4 @@ class DatabaseEngineDeployment(Enum):
     DOCKER = "DOCKER"
     RDS = "RDS"
     AURORA = "AURORA"
+    MULTI_AZ = "MULTI-AZ"

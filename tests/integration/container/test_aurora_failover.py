@@ -32,13 +32,12 @@ if TYPE_CHECKING:
 
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
-from .utils.aurora_test_utility import AuroraTestUtility
 from .utils.driver_helper import DriverHelper
+from .utils.rds_test_utility import RdsTestUtility
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
 
-@enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
 @enable_on_num_instances(min_instances=2)
 @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
 class TestAuroraFailover:
@@ -47,20 +46,21 @@ class TestAuroraFailover:
 
     @pytest.fixture(scope='class')
     def aurora_utility(self):
-        region: str = TestEnvironment.get_current().get_info().get_aurora_region()
-        return AuroraTestUtility(region)
+        region: str = TestEnvironment.get_current().get_info().get_region()
+        return RdsTestUtility(region)
 
     @pytest.fixture(scope='class')
     def props(self):
         return {"plugins": "failover", "connect_timeout": 60, "topology_refresh_ms": 10, "autocommit": True}
 
     @pytest.fixture(scope='class')
-    def proxied_props(self, props):
+    def proxied_props(self, props, conn_utils):
         props_copy = props.copy()
         endpoint_suffix = TestEnvironment.get_current().get_proxy_database_info().get_instance_endpoint_suffix()
-        props_copy.update({WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.name: f"?.{endpoint_suffix}"})
+        WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.set(props_copy, f"?.{endpoint_suffix}:{conn_utils.proxy_port}")
         return props_copy
 
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_fail_from_writer_to_new_writer_fail_on_connection_invocation(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -80,6 +80,7 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_fail_from_writer_to_new_writer_fail_on_connection_bound_object_invocation(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -98,7 +99,6 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
-    @pytest.mark.skip
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                          TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_fail_from_reader_to_writer(
@@ -124,6 +124,7 @@ class TestAuroraFailover:
             assert writer_id == current_connection_id
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
 
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_writer_fail_within_transaction_set_autocommit_false(
             self, test_driver: TestDriver, test_environment: TestEnvironment, props, conn_utils, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -164,6 +165,7 @@ class TestAuroraFailover:
                 cursor_3.execute("DROP TABLE IF EXISTS test3_2")
                 conn.commit()
 
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_writer_fail_within_transaction_start_transaction(
             self, test_driver: TestDriver, test_environment: TestEnvironment, props, conn_utils, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -206,6 +208,7 @@ class TestAuroraFailover:
                 cursor_3.execute("DROP TABLE IF EXISTS test3_3")
                 conn.commit()
 
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_writer_failover_in_idle_connections(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -264,6 +267,7 @@ class TestAuroraFailover:
             assert writer_id == current_connection_id
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
 
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_fail_from_writer_where_keep_session_state_on_failover_is_true(
             self, test_driver: TestDriver, test_environment: TestEnvironment, props, conn_utils, aurora_utility):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)

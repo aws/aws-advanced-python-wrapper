@@ -185,11 +185,16 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             self._initial_hosts: Tuple[HostInfo, ...] = (self._initial_host_info,)
             self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
 
-            self._cluster_instance_template: HostInfo
             host_pattern = WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(self._props)
             if host_pattern:
+                if host_pattern.find(":") > -1:
+                    host_pattern, port = host_pattern.split(":")
+                else:
+                    port = HostInfo.NO_PORT
+
                 self._cluster_instance_template = HostInfo(
-                    host=WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(self._props),
+                    host=host_pattern,
+                    port=port,
                     host_availability_strategy=host_availability_strategy)
             else:
                 self._cluster_instance_template = HostInfo(
@@ -503,7 +508,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         is_cached_data: bool
 
 
-class MultiAzRdsHostListProvider(RdsHostListProvider):
+class MultiAzHostListProvider(RdsHostListProvider):
     def __init__(
             self,
             provider_service: HostListProviderService,
@@ -560,13 +565,23 @@ class MultiAzRdsHostListProvider(RdsHostListProvider):
         return tuple(hosts)
 
     def _create_multi_az_host(self, record: Tuple, writer_id: str) -> HostInfo:
-        host_id = record[0]
+        id = record[0]  # The ID will look something like '0123456789' (MySQL) or 'db-ABC1DE2FGHI' (Postgres)
         host = record[1]
         port = record[2]
-        role = HostRole.WRITER if host_id == writer_id else HostRole.READER
+        role = HostRole.WRITER if id == writer_id else HostRole.READER
+
+        host_pattern = WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(self._props)
+        if host_pattern:
+            instance_name = self._rds_utils.get_instance_id(host)  # e.g. 'postgres-instance-1'
+            if instance_name is None:
+                raise AwsWrapperError(Messages.get("MultiAzHostListProvider.UnableToParseInstanceName"))
+
+            host = host_pattern.replace("?", instance_name)
+            if host.find(":") > -1:
+                host, port = host.split(":")
 
         host_info = HostInfo(
-            host=host, port=port, role=role, availability=HostAvailability.AVAILABLE, weight=0, host_id=host_id)
+            host=host, port=port, role=role, availability=HostAvailability.AVAILABLE, weight=0, host_id=id)
         host_info.add_alias(host)
         return host_info
 

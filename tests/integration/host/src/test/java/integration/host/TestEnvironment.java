@@ -194,6 +194,7 @@ public class TestEnvironment {
     DatabaseEngineDeployment deployment =
         getCurrent().getInfo().getRequest().getDatabaseEngineDeployment();
     return DatabaseEngineDeployment.AURORA.equals(deployment)
-        || DatabaseEngineDeployment.RDS.equals(deployment);
+        || DatabaseEngineDeployment.RDS.equals(deployment)
+        || DatabaseEngineDeployment.MULTI_AZ.equals(deployment);
   }
 }

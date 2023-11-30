@@ -17,12 +17,15 @@
 package integration.host;
 
 import com.mysql.cj.conf.PropertyKey;
-import integration.host.TestEnvironment;
+import org.postgresql.PGProperty;
+import org.testcontainers.shaded.org.apache.commons.lang3.NotImplementedException;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
-import org.postgresql.PGProperty;
-import org.testcontainers.shaded.org.apache.commons.lang3.NotImplementedException;
 
 public class DriverHelper {
 
@@ -36,6 +39,28 @@ public class DriverHelper {
         return "jdbc:postgresql://";
       default:
         throw new NotImplementedException(databaseEngine.toString());
+    }
+  }
+
+  public static Connection getDriverConnection(TestEnvironmentInfo info) throws SQLException {
+    final String url =
+        String.format(
+            "%s%s:%d/%s",
+            DriverHelper.getDriverProtocol(info.getRequest().getDatabaseEngine()),
+            info.getDatabaseInfo().getClusterEndpoint(),
+            info.getDatabaseInfo().getClusterEndpointPort(),
+            info.getDatabaseInfo().getDefaultDbName());
+    return DriverManager.getConnection(url, info.getDatabaseInfo().getUsername(), info.getDatabaseInfo().getPassword());
+  }
+
+  public static void registerDriver(DatabaseEngine engine) {
+    try {
+      Class.forName(DriverHelper.getDriverClassname(engine));
+    } catch (ClassNotFoundException e) {
+      throw new RuntimeException(
+          "Driver not found: "
+              + DriverHelper.getDriverClassname(engine),
+          e);
     }
   }
 

@@ -76,6 +76,7 @@ tasks.register<Test>("test-docker") {
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
@@ -91,6 +92,7 @@ tasks.register<Test>("test-aurora") {
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
@@ -106,6 +108,7 @@ tasks.register<Test>("test-pg-aurora") {
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
@@ -117,7 +120,48 @@ tasks.register<Test>("test-mysql-aurora") {
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-multi-az") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-aurora", "true")
+
+        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+
+        systemProperty("exclude-python-38", "true")
+    }
+}
+
+tasks.register<Test>("test-pg-multi-az") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-mysql-multi-az") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-aurora", "true")
         systemProperty("exclude-pg-driver", "true")
         systemProperty("exclude-pg-engine", "true")
     }
@@ -140,6 +184,7 @@ tasks.register<Test>("test-pg-aurora-performance") {
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-iam", "true")
         systemProperty("exclude-secrets-manager", "true")
         systemProperty("exclude-mysql-driver", "true")
@@ -154,6 +199,7 @@ tasks.register<Test>("test-mysql-aurora-performance") {
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-iam", "true")
         systemProperty("exclude-secrets-manager", "true")
         systemProperty("exclude-pg-driver", "true")
@@ -182,6 +228,7 @@ tasks.register<Test>("debug-docker") {
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
         systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
@@ -197,6 +244,7 @@ tasks.register<Test>("debug-aurora") {
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
 
         // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
@@ -212,6 +260,7 @@ tasks.register<Test>("debug-pg-aurora") {
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
@@ -223,6 +272,7 @@ tasks.register<Test>("debug-mysql-aurora") {
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-pg-driver", "true")
         systemProperty("exclude-pg-engine", "true")
@@ -235,6 +285,7 @@ tasks.register<Test>("debug-autoscaling") {
     doFirst {
         systemProperty("test-autoscaling", "true")
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
@@ -246,6 +297,7 @@ tasks.register<Test>("debug-pg-aurora-performance") {
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-iam", "true")
         systemProperty("exclude-secrets-manager", "true")
         systemProperty("exclude-mysql-driver", "true")
@@ -260,8 +312,49 @@ tasks.register<Test>("debug-mysql-aurora-performance") {
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
         systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-iam", "true")
         systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+    }
+}
+
+tasks.register<Test>("debug-multi-az") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.debugTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-performance", "true")
+
+        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+
+        systemProperty("exclude-python-38", "true")
+    }
+}
+
+tasks.register<Test>("debug-pg-multi-az") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.debugTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+    }
+}
+
+tasks.register<Test>("debug-mysql-multi-az") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.debugTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-performance", "true")
         systemProperty("exclude-pg-driver", "true")
         systemProperty("exclude-pg-engine", "true")
     }
