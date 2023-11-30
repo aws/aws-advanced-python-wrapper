@@ -104,7 +104,7 @@ class HostListProviderService(Protocol):
 
     @property
     @abstractmethod
-    def dialect(self) -> db_dialect.DatabaseDialect:
+    def database_dialect(self) -> db_dialect.DatabaseDialect:
         ...
 
     @property
@@ -159,7 +159,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         self._cluster_instance_template: Optional[HostInfo] = None
         self._rds_url_type: Optional[RdsUrlType] = None
 
-        dialect = self._host_list_provider_service.dialect
+        dialect = self._host_list_provider_service.database_dialect
         if not isinstance(dialect, db_dialect.TopologyAwareDatabaseDialect):
             raise AwsWrapperError(Messages.get_formatted("RdsHostListProvider.InvalidDialect", dialect))
         self._dialect: db_dialect.TopologyAwareDatabaseDialect = dialect

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Tuple
 
+from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -78,7 +80,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     def keys(self):
         return self._database_pools.keys()
 
-    def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
+    def accepts_host_info(self, host_info: HostInfo, props: Properties) -> bool:
         url_type = SqlAlchemyPooledConnectionProvider._rds_utils.identify_rds_type(host_info.host)
         return RdsUrlType.RDS_INSTANCE == url_type
 
@@ -118,11 +120,12 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             self,
             target_func: Callable,
             driver_dialect: DriverDialect,
+            database_dialect: DatabaseDialect,
             host_info: HostInfo,
-            properties: Properties):
+            props: Properties):
         queue_pool: Optional[QueuePool] = SqlAlchemyPooledConnectionProvider._database_pools.compute_if_absent(
-            PoolKey(host_info.url, self._get_extra_key(host_info, properties)),
-            lambda _: self._create_pool(target_func, driver_dialect, host_info, properties),
+            PoolKey(host_info.url, self._get_extra_key(host_info, props)),
+            lambda _: self._create_pool(target_func, driver_dialect, database_dialect, host_info, props),
             SqlAlchemyPooledConnectionProvider._POOL_EXPIRATION_CHECK_NS
         )
 
@@ -147,10 +150,12 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             self,
             target_func: Callable,
             driver_dialect: DriverDialect,
+            database_dialect: DatabaseDialect,
             host_info: HostInfo,
             props: Properties):
         kwargs = dict() if self._pool_configurator is None else self._pool_configurator(host_info, props)
         prepared_properties = driver_dialect.prepare_connect_info(host_info, props)
+        database_dialect.prepare_conn_props(prepared_properties)
         kwargs["creator"] = self._get_connection_func(target_func, prepared_properties)
         return self._create_sql_alchemy_pool(**kwargs)
 

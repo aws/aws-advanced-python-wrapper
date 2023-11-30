@@ -82,7 +82,7 @@ def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection,
     mock_session.get_available_regions.return_value = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2']
     mock_func.return_value = mock_connection
     mock_plugin_service.driver_dialect = mock_dialect
-    mock_plugin_service.dialect = mock_dialect
+    mock_plugin_service.database_dialect = mock_dialect
     mock_dialect.default_port = _DEFAULT_PG_PORT
 
 

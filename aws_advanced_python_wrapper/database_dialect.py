@@ -137,6 +137,10 @@ class DatabaseDialect(Protocol):
     def get_host_list_provider_supplier(self) -> Callable:
         ...
 
+    @abstractmethod
+    def prepare_conn_props(self, props: Properties):
+        ...
+
 
 class DatabaseDialectProvider(Protocol):
     def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[DatabaseDialect]:
@@ -196,6 +200,9 @@ class MysqlDatabaseDialect(DatabaseDialect):
     def get_host_list_provider_supplier(self) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
+    def prepare_conn_props(self, props: Properties):
+        pass
+
 
 class PgDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (
@@ -240,6 +247,9 @@ class PgDatabaseDialect(DatabaseDialect):
 
     def get_host_list_provider_supplier(self) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
+
+    def prepare_conn_props(self, props: Properties):
+        pass
 
 
 class RdsMysqlDialect(MysqlDatabaseDialect):
@@ -410,8 +420,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect):
             self._WRITER_HOST_QUERY,
             self._WRITER_HOST_COLUMN_INDEX)
 
-    # TODO: call this method somewhere
-    def add_conn_props(self, props: Properties):
+    def prepare_conn_props(self, props: Properties):
         # These props are added for RDS metrics purposes, they are not required for functional correctness.
         # The "conn_attrs" property value is specified as a dict.
         extra_conn_attrs = {

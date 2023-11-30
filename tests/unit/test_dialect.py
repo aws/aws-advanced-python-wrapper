@@ -226,7 +226,7 @@ def test_prepare_conn_props__multi_az_mysql():
         }
     })
 
-    dialect.add_conn_props(props)
+    dialect.prepare_conn_props(props)
     assert props == expected
 
     props = Properties({"conn_attrs": {"some_attr": "some_val"}})
@@ -238,7 +238,7 @@ def test_prepare_conn_props__multi_az_mysql():
         }
     })
 
-    dialect.add_conn_props(props)
+    dialect.prepare_conn_props(props)
     assert props == expected
 
 

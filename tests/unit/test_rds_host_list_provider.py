@@ -160,7 +160,7 @@ def test_get_topology_multiple_writers(mocker, mock_provider_service, mock_conn,
 def test_get_topology_no_connection(mocker, mock_provider_service, initial_hosts, props):
     provider = RdsHostListProvider(mock_provider_service, props)
     spy = mocker.spy(provider, "_query_for_topology")
-    mock_provider_service.dialect = None
+    mock_provider_service.database_dialect = None
     mock_provider_service.current_connection = None
 
     result = provider.refresh()
