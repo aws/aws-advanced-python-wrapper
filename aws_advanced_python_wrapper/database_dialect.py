@@ -281,7 +281,6 @@ class RdsPgDialect(PgDatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG,)
 
     def is_dialect(self, conn: Connection) -> bool:
-
         if not super().is_dialect(conn):
             return False
 
@@ -314,9 +313,7 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
                        "FROM information_schema.replica_host_status "
                        "WHERE time_to_sec(timediff(now(), LAST_UPDATE_TIMESTAMP)) <= 300 "
                        "OR SESSION_ID = 'MASTER_SESSION_ID' ")
-
     _HOST_ID_QUERY = "SELECT @@aurora_server_id"
-
     _IS_READER_QUERY = "SELECT @@innodb_read_only"
 
     @property
@@ -434,7 +431,8 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect):
 
 
 class MultiAzPgDialect(PgDatabaseDialect):
-    # The show_topology argument is added for RDS metrics purposes, it is not required for functional correctness
+    # The driver name passed to show_topology is used for RDS metrics purposes.
+    # It is not required for functional correctness.
     _TOPOLOGY_QUERY = \
         f"SELECT id, endpoint, port FROM rds_tools.show_topology('aws_python_driver-{DriverInfo.DRIVER_VERSION}')"
     _WRITER_HOST_QUERY = \
@@ -511,6 +509,9 @@ class UnknownDatabaseDialect(DatabaseDialect):
 
     def get_host_list_provider_supplier(self) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
+
+    def prepare_conn_props(self, props: Properties):
+        pass
 
 
 class DatabaseDialectManager(DatabaseDialectProvider):

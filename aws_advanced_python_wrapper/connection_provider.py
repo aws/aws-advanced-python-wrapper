@@ -16,9 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple
 
-from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
-
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
     from aws_advanced_python_wrapper.pep249 import Connection

@@ -19,8 +19,8 @@ import pytest
 
 from aws_advanced_python_wrapper.database_dialect import (
     AuroraMysqlDialect, AuroraPgDialect, DatabaseDialectManager, DialectCode,
-    MysqlDatabaseDialect, PgDatabaseDialect, RdsMysqlDialect, RdsPgDialect,
-    TargetDriverType, UnknownDatabaseDialect, MultiAzMysqlDialect)
+    MultiAzMysqlDialect, MysqlDatabaseDialect, PgDatabaseDialect,
+    RdsMysqlDialect, RdsPgDialect, TargetDriverType, UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.driver_info import DriverInfo
@@ -250,7 +250,7 @@ def test_get_dialect_aurora_mysql(mock_driver_dialect):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), AuroraMysqlDialect)
         assert isinstance(manager._dialect, AuroraMysqlDialect)
         assert DialectCode.AURORA_MYSQL == manager._dialect_code
-        assert manager._can_update is False
+        assert manager._can_update is True
 
 
 def test_get_dialect_rds_mysql(mock_driver_dialect):
