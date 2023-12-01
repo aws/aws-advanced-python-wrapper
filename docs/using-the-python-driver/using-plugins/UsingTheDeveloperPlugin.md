@@ -16,8 +16,24 @@ In order to raise a test exception while opening a new connection, first create 
 
 Once the exception is raised, it will be cleared and will not be raised again. This means that the next opened connection will not raise the exception again.
 
-```
-python code
+```python
+import psycopg
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.pep249 import Error
+
+params = {
+    "host": "database.cluster-xyz.us-east-1.rds.amazonaws.com",
+    "dbname": "postgres",
+    "plugins": "dev",
+    "wrapper_dialect": "pg"
+}
+exception: Error = Error("test")
+exception_simulator_manager = ExceptionSimulatorManager()
+exception_simulator_manager.raise_exception_on_next_connect(exception)
+
+AwsWrapperConnection.connect(psycopg.Connection.connect, **params) // this throws the exception
+
+AwsWrapperConnection.connect(psycopg.Connection.connect, **params) // goes as usual with no exception
 ```
 
 ### Simulate an exception with already opened connection
@@ -27,8 +43,24 @@ It is possible to also simulate an exception thrown in a connection after the co
 Similar to previous case, the exception is cleared up once it's raised and subsequent Python calls should behave normally.
 
 
-```
-python code
+```python
+import psycopg
+from aws_advanced_python_wrapper import AwsWrapperConnection
+
+props = Properties({"plugins": "dev", "dialect": "pg"})
+container: PluginServiceManagerContainer = PluginServiceManagerContainer()
+plugin_service = container.plugin_service
+plugin_manager: PluginManager = PluginManager(container, props)
+
+wrapper = AwsWrapperConnection(plugin_service, plugin_manager)
+simulator = wrapper.unwrap(ExceptionSimulator)
+
+exception: RuntimeError = RuntimeError("test")
+simulator.raise_exception_on_next_call("Connection.cursor", exception)
+
+wrapper.cursor() // this throws the exception
+
+wrapper.cursor() // goes as usual with no exception
 ```
 
 It's possible to use a callback functions to check Python call parameters and decide whether to return an exception or not. Check `ExceptionSimulatorManager.set_callback` and `ExceptionSimulator.set_callback` for more details.
