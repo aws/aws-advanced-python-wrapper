@@ -12,6 +12,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import toml
+
+
 class DriverInfo:
     DRIVER_NAME = "Amazon Web Services (AWS) Advanced Python Wrapper"
-    DRIVER_VERSION = "1.0.0"
+    DRIVER_VERSION = toml.load("pyproject.toml")["tool"]["poetry"]["version"]
