@@ -10,9 +10,9 @@ The `dev` plugin code should be added to the connection plugins parameter in ord
 
 ### Simulate an exception while opening a new connection
 
-The plugin introduces a new class `ExceptionSimulationManager` that will handle how a given exception will be passed to the connection to be tested.
+The plugin introduces a new class `ExceptionSimulatorManager` that will handle how a given exception will be passed to the connection to be tested.
 
-In order to raise a test exception while opening a new connection, first create an instance of the exception to be tested, then use `raise_exception_on_next_connect` in `ExceptionSimulationManager` so it will be triggered at next connection attempt.
+In order to raise a test exception while opening a new connection, first create an instance of the exception to be tested, then use `raise_exception_on_next_connect` in `ExceptionSimulatorManager` so it will be triggered at next connection attempt.
 
 Once the exception is raised, it will be cleared and will not be raised again. This means that the next opened connection will not raise the exception again.
 
@@ -47,7 +47,7 @@ from aws_advanced_python_wrapper import AwsWrapperConnection
 
 props = Properties({"plugins": "dev", "dialect": "aurora-pg"})
 exception: RuntimeError = RuntimeError("test")
-ExceptionSimulationManager.raise_exception_on_next_call("Connection.cursor", exception)
+ExceptionSimulatorManager.raise_exception_on_next_call("Connection.cursor", exception)
 conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 conn.cursor()  # this throws the exception
 conn.cursor()  # goes as usual with no exception
