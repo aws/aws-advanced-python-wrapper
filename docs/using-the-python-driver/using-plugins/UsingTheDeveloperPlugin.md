@@ -22,10 +22,8 @@ from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.pep249 import Error
 
 params = {
-    "host": "database.cluster-xyz.us-east-1.rds.amazonaws.com",
-    "dbname": "postgres",
     "plugins": "dev",
-    "wrapper_dialect": "aurora-pg"
+    "dialect": "aurora-pg"
 }
 exception: Error = Error("test")
 ExceptionSimulatorManager.raise_exception_on_next_connect(exception)
@@ -45,12 +43,15 @@ Similar to previous case, the exception is cleared up once it's raised and subse
 import psycopg
 from aws_advanced_python_wrapper import AwsWrapperConnection
 
-props = Properties({"plugins": "dev", "dialect": "aurora-pg"})
+params = {
+    "plugins": "dev",
+    "dialect": "aurora-pg"
+}
 exception: RuntimeError = RuntimeError("test")
-ExceptionSimulatorManager.raise_exception_on_next_call("Connection.cursor", exception)
+ExceptionSimulatorManager.raise_exception_on_next_method("Connection.cursor", exception)
 conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 conn.cursor()  # this throws the exception
 conn.cursor()  # goes as usual with no exception
 ```
 
-It's possible to use callback functions to check Python call parameters and decide whether to return an exception or not. Check `ExceptionSimulatorManager.set_callback` and `ExceptionSimulator.set_callback` for more details.
+It's possible to use callback functions to check Python call parameters and decide whether to return an exception or not. Check `ExceptionSimulatorManager.set_connect_callback` and `ExceptionSimulatorManager.set_method_callback` for more details.
