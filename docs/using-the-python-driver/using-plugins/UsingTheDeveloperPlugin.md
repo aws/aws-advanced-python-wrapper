@@ -53,4 +53,4 @@ conn.cursor()  # this throws the exception
 conn.cursor()  # goes as usual with no exception
 ```
 
-It's possible to use callback functions to check Python call parameters and decide whether to return an exception or not. Check `ExceptionSimulatorManager.set_callback` and `ExceptionSimulator.set_callback` for more details.
+It's possible to use callback functions to check Python call parameters and decide whether to return an exception or not. Check `ExceptionSimulatorManager.set_connect_callback` and `ExceptionSimulatorManager.set_method_callback` for more details.
