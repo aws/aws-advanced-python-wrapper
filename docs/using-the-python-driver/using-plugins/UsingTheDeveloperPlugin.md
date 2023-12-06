@@ -47,7 +47,7 @@ from aws_advanced_python_wrapper import AwsWrapperConnection
 
 props = Properties({"plugins": "dev", "dialect": "aurora-pg"})
 exception: RuntimeError = RuntimeError("test")
-ExceptionSimulatorManager.raise_exception_on_next_call("Connection.cursor", exception)
+ExceptionSimulatorManager.raise_exception_on_next_method("Connection.cursor", exception)
 conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 conn.cursor()  # this throws the exception
 conn.cursor()  # goes as usual with no exception
