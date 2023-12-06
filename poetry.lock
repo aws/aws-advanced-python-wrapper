@@ -59,17 +59,17 @@ lxml = ["lxml"]
 
 [[package]]
 name = "boto3"
-version = "1.33.6"
+version = "1.33.8"
 description = "The AWS SDK for Python"
 optional = false
 python-versions = ">= 3.7"
 files = [
-    {file = "boto3-1.33.6-py3-none-any.whl", hash = "sha256:b88f0f305186c5fd41f168e006baa45b7002a33029aec8e5bef373237a172fca"},
-    {file = "boto3-1.33.6.tar.gz", hash = "sha256:4f62fc1c7f3ea2d22917aa0aa07b86f119abd90bed3d815e4b52fb3d84773e15"},
+    {file = "boto3-1.33.8-py3-none-any.whl", hash = "sha256:b8c818125489fc0371ef28d806d36d8f1dcb71734fcb0d96b3201563e3e86f22"},
+    {file = "boto3-1.33.8.tar.gz", hash = "sha256:d02a084b25aa8d46ef917b128e90877efab1ba45f9d1ba3a11f336930378e350"},
 ]
 
 [package.dependencies]
-botocore = ">=1.33.6,<1.34.0"
+botocore = ">=1.33.8,<1.34.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.8.2,<0.9.0"
 
@@ -78,13 +78,13 @@ crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
 
 [[package]]
 name = "botocore"
-version = "1.33.6"
+version = "1.33.8"
 description = "Low-level, data-driven core of boto 3."
 optional = false
 python-versions = ">= 3.7"
 files = [
-    {file = "botocore-1.33.6-py3-none-any.whl", hash = "sha256:14282cd432c0683770eee932c43c12bb9ad5730e23755204ad102897c996693a"},
-    {file = "botocore-1.33.6.tar.gz", hash = "sha256:938056bab831829f90e09ecd70dd6b295afd52b1482f5582ee7a11d8243d9661"},
+    {file = "botocore-1.33.8-py3-none-any.whl", hash = "sha256:90236e6e69d7e80875d7f9d39383630706edbc1298026698c6c70d9b6a65576e"},
+    {file = "botocore-1.33.8.tar.gz", hash = "sha256:e6970bf89cbe2624399aeffce52c253917d8e5a1c671de4054557603ab56c922"},
 ]
 
 [package.dependencies]
@@ -889,12 +889,12 @@ files = [
 
 [[package]]
 name = "pydevd-pycharm"
-version = "233.11799.209"
+version = "233.11799.259"
 description = "PyCharm Debugger (used in PyCharm and PyDev)"
 optional = false
 python-versions = "*"
 files = [
-    {file = "pydevd-pycharm-233.11799.209.tar.gz", hash = "sha256:7e4999516453a644910716b332773eeebb33d4807a65d00b8d19f2cefa6edeb6"},
+    {file = "pydevd-pycharm-233.11799.259.tar.gz", hash = "sha256:9ecb8db27c332ad7d2f72e47d2a46b08c5efa5a57d8475c1baefce8d9b9dd82d"},
 ]
 
 [[package]]
@@ -1238,4 +1238,4 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "283fd78b49cad5863151c4742f073c831d3eead867a766e59e874ea88721ef28"
+content-hash = "74856b2e89649b284ecdf93c55aa622079ccbeb7bf2f9fc7a417f840d4fb3509"
