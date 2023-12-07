@@ -59,17 +59,17 @@ lxml = ["lxml"]
 
 [[package]]
 name = "boto3"
-version = "1.33.8"
+version = "1.33.9"
 description = "The AWS SDK for Python"
 optional = false
 python-versions = ">= 3.7"
 files = [
-    {file = "boto3-1.33.8-py3-none-any.whl", hash = "sha256:b8c818125489fc0371ef28d806d36d8f1dcb71734fcb0d96b3201563e3e86f22"},
-    {file = "boto3-1.33.8.tar.gz", hash = "sha256:d02a084b25aa8d46ef917b128e90877efab1ba45f9d1ba3a11f336930378e350"},
+    {file = "boto3-1.33.9-py3-none-any.whl", hash = "sha256:baa6ea61527bcc82365a4ef365aa8f34126483ff8533d01274f3cdb340c22d73"},
+    {file = "boto3-1.33.9.tar.gz", hash = "sha256:9486f66f9a89f66d64d25cb4baa55aad323a1734ef9815b7a2c4c0787a3fc1fb"},
 ]
 
 [package.dependencies]
-botocore = ">=1.33.8,<1.34.0"
+botocore = ">=1.33.9,<1.34.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.8.2,<0.9.0"
 
@@ -78,13 +78,13 @@ crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
 
 [[package]]
 name = "botocore"
-version = "1.33.8"
+version = "1.33.9"
 description = "Low-level, data-driven core of boto 3."
 optional = false
 python-versions = ">= 3.7"
 files = [
-    {file = "botocore-1.33.8-py3-none-any.whl", hash = "sha256:90236e6e69d7e80875d7f9d39383630706edbc1298026698c6c70d9b6a65576e"},
-    {file = "botocore-1.33.8.tar.gz", hash = "sha256:e6970bf89cbe2624399aeffce52c253917d8e5a1c671de4054557603ab56c922"},
+    {file = "botocore-1.33.9-py3-none-any.whl", hash = "sha256:07ff4eea62f546da540310887000c81fca802c788eb374fef06eda28009dcafd"},
+    {file = "botocore-1.33.9.tar.gz", hash = "sha256:1b90be11dd9a9a25290c995a6b713e76b9e2bf7bf86ba9036e0d28f2ceb2edfc"},
 ]
 
 [package.dependencies]
@@ -353,13 +353,13 @@ pyflakes = ">=3.1.0,<3.2.0"
 
 [[package]]
 name = "flake8-type-checking"
-version = "2.7.0"
+version = "2.8.0"
 description = "A flake8 plugin for managing type-checking imports & forward references"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "flake8_type_checking-2.7.0-py3-none-any.whl", hash = "sha256:bcb0f8bd88d2921482dcdc8349017f1c55d024c207e02c4f13cdd47c2d898a56"},
-    {file = "flake8_type_checking-2.7.0.tar.gz", hash = "sha256:a738157af62e2040b0cd501a548d57dba49480dbb2227809aba2c0140c7856d2"},
+    {file = "flake8_type_checking-2.8.0-py3-none-any.whl", hash = "sha256:a6f9ded325f0c9845f073609c557bf481882adc4d18571a39b137ef2d284dc85"},
+    {file = "flake8_type_checking-2.8.0.tar.gz", hash = "sha256:07d949b686f39eb0cb828a394aa29d48bd1ca0df92d552d9794d17b22c309cd7"},
 ]
 
 [package.dependencies]
@@ -1251,4 +1251,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "64d5eb29d319a184a49f840b06bb1f9a5207eae83139c4f202b4da5ebc0753fe"
+content-hash = "c11952ec7b0c42f16344773121798c67d6737df2376e51dd62fa908ee75bcbf1"
