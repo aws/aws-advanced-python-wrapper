@@ -27,6 +27,7 @@ from json import loads
 from re import search
 from types import SimpleNamespace
 from typing import Callable, Dict, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError
@@ -64,6 +65,14 @@ class AwsSecretsManagerPlugin(Plugin):
                                        WrapperProperties.SECRETS_MANAGER_SECRET_ID.name))
 
         region: str = self._get_rds_region(secret_id, props)
+
+        endpoint = WrapperProperties.SECRETS_MANAGER_ENDPOINT.get(props)
+        if endpoint is not None and endpoint != "":
+            try:
+                endpoint_url = urlparse(endpoint)
+                return (endpoint_url, region)
+            except Exception as e:
+                raise RuntimeError(Messages.get_formatted("AwsSecretsManagerConnectionPlugin.endpointOverrideMisconfigured", e))
 
         self._secret_key: Tuple = (secret_id, region)
 
@@ -131,7 +140,14 @@ class AwsSecretsManagerPlugin(Plugin):
                 logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)
                 raise AwsWrapperError(
                     Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)) from e
-
+            except ValueError as e:
+                logger.debug("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", e)
+                raise AwsWrapperError(
+                    Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", e)) from e
+            except Exception as e:
+                logger.debug("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", e)
+                raise AwsWrapperError(
+                    Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", e)) from e
         return fetched
 
     def _fetch_latest_credentials(self):
