@@ -64,7 +64,8 @@ class DefaultPlugin(Plugin):
             host_info: HostInfo,
             props: Properties,
             conn_provider: ConnectionProvider) -> Connection:
-        conn = conn_provider.connect(target_func, driver_dialect, host_info, props)
+        database_dialect = self._plugin_service.database_dialect
+        conn = conn_provider.connect(target_func, driver_dialect, database_dialect, host_info, props)
         self._plugin_service.set_availability(host_info.all_aliases, HostAvailability.AVAILABLE)
         self._plugin_service.update_driver_dialect(conn_provider)
         self._plugin_service.update_dialect(conn)

@@ -101,7 +101,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
             container, props, target_func, driver_dialect_manager, driver_dialect)
         plugin_manager: PluginManager = PluginManager(container, props)
 
-        host_list_provider_init = plugin_service.dialect.get_host_list_provider_supplier()
+        host_list_provider_init = plugin_service.database_dialect.get_host_list_provider_supplier()
         plugin_service.host_list_provider = host_list_provider_init(plugin_service, props)
 
         plugin_manager.init_host_provider(props, plugin_service)

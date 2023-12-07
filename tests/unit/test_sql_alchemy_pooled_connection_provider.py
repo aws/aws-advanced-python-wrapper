@@ -68,7 +68,7 @@ def test_connect__default_mapping__default_pool_configuration(provider, host_inf
     expected_keys = {PoolKey(host_info.url, "user1")}
     props = Properties({WrapperProperties.USER.name: "user1", WrapperProperties.PASSWORD.name: "password"})
 
-    conn = provider.connect(mocker.MagicMock(), mocker.MagicMock(), host_info, props)
+    conn = provider.connect(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock(), host_info, props)
     assert conn is mock_conn
     assert 1 == provider.num_pools
     assert expected_urls == provider.pool_urls
@@ -92,7 +92,7 @@ def test_connect__custom_configuration_and_mapping(host_info, mocker, mock_conn,
     mock_pool_initializer_func.return_value = mock_pool
 
     mock_target_driver_connect_func = mocker.MagicMock()
-    conn = provider.connect(mock_target_driver_connect_func, mock_driver_dialect, host_info, props)
+    conn = provider.connect(mock_target_driver_connect_func, mock_driver_dialect, mocker.MagicMock(), host_info, props)
     assert conn is mock_conn
     assert 1 == provider.num_pools
     assert expected_keys == provider.keys()

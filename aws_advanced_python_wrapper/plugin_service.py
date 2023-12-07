@@ -141,7 +141,7 @@ class PluginService(ExceptionHandler, Protocol):
 
     @property
     @abstractmethod
-    def dialect(self) -> DatabaseDialect:
+    def database_dialect(self) -> DatabaseDialect:
         ...
 
     @property
@@ -240,6 +240,7 @@ class PluginService(ExceptionHandler, Protocol):
 
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
+
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
@@ -328,7 +329,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._driver_dialect
 
     @property
-    def dialect(self) -> DatabaseDialect:
+    def database_dialect(self) -> DatabaseDialect:
         return self._dialect
 
     @property
@@ -421,7 +422,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def identify_connection(self, connection: Optional[Connection] = None) -> Optional[HostInfo]:
         connection = self.current_connection if connection is None else connection
 
-        if not isinstance(self.dialect, TopologyAwareDatabaseDialect):
+        if not isinstance(self.database_dialect, TopologyAwareDatabaseDialect):
             return None
 
         return self.host_list_provider.identify_connection(connection)
@@ -456,8 +457,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def _fill_aliases(self, conn: Connection, host_info: HostInfo) -> bool:
         with closing(conn.cursor()) as cursor:
-            if not isinstance(self.dialect, UnknownDatabaseDialect):
-                cursor.execute(self.dialect.host_alias_query)
+            if not isinstance(self.database_dialect, UnknownDatabaseDialect):
+                cursor.execute(self.database_dialect.host_alias_query)
                 for row in cursor.fetchall():
                     host_info.add_alias(row[0])
                 return True
@@ -467,10 +468,12 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._host_list_provider is StaticHostListProvider
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        return self._exception_manager.is_network_exception(dialect=self.dialect, error=error, sql_state=sql_state)
+        return self._exception_manager.is_network_exception(
+            dialect=self.database_dialect, error=error, sql_state=sql_state)
 
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        return self._exception_manager.is_login_exception(dialect=self.dialect, error=error, sql_state=sql_state)
+        return self._exception_manager.is_login_exception(
+            dialect=self.database_dialect, error=error, sql_state=sql_state)
 
     def get_connection_provider_manager(self) -> ConnectionProviderManager:
         return self._container.plugin_manager.connection_provider_manager

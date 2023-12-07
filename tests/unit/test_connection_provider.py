@@ -11,6 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 import psycopg
 import pytest
 
@@ -47,6 +48,11 @@ def properties():
 
 @pytest.fixture
 def mock_driver_dialect(mocker):
+    return mocker.MagicMock()
+
+
+@pytest.fixture
+def mock_database_dialect(mocker):
     return mocker.MagicMock()
 
 
@@ -88,7 +94,7 @@ def test_provider_returns_host_info(connection_mock, mock_driver_dialect):
     assert host_info.host == "localhost"
 
 
-def test_provider_returns_connection(connection_mock, mock_driver_dialect):
+def test_provider_returns_connection(connection_mock, mock_driver_dialect, mock_database_dialect):
     host_info = HostInfo("localhost", 1234)
     properties = Properties({"test_prop": 5})
 
@@ -96,7 +102,8 @@ def test_provider_returns_connection(connection_mock, mock_driver_dialect):
     mock_driver_dialect.prepare_connect_info.return_value = {"test_prop": 5, "host": "localhost", "port": "1234"}
     connection_provider = DriverConnectionProvider()
 
-    connection_provider.connect(connection_mock.connect, mock_driver_dialect, host_info, properties)
+    connection_provider.connect(
+        connection_mock.connect, mock_driver_dialect, mock_database_dialect, host_info, properties)
 
     mock_driver_dialect.prepare_connect_info.assert_called_with(host_info, properties)
     connection_mock.connect.assert_called_with(test_prop=5, host="localhost", port="1234")

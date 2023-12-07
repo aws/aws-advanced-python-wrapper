@@ -100,16 +100,19 @@ def test_track_new_instance_connection(
     assert 0 == len(host_info.aliases)
 
 
-def test_invalidate_opened_connections(mock_plugin_service, mock_rds_utils, mock_tracker, mock_cursor, mock_callable):
+def test_invalidate_opened_connections(
+        mocker, mock_plugin_service, mock_rds_utils, mock_tracker, mock_cursor, mock_callable):
     expected_exception = FailoverError("exception")
     original_host = HostInfo("host")
-
+    new_host = HostInfo("new-host")
     mock_callable.side_effect = expected_exception
-    plugin: AuroraConnectionTrackerPlugin = AuroraConnectionTrackerPlugin(mock_plugin_service, Properties(),
-                                                                          mock_rds_utils, mock_tracker)
+    mock_hosts_prop = mocker.PropertyMock(side_effect=[(original_host,), (new_host,)])
+    type(mock_plugin_service).hosts = mock_hosts_prop
+
+    plugin: AuroraConnectionTrackerPlugin = AuroraConnectionTrackerPlugin(
+        mock_plugin_service, Properties(), mock_rds_utils, mock_tracker)
 
     with pytest.raises(FailoverError):
-        mock_plugin_service.hosts = [original_host]
         plugin.execute(mock_cursor, "Cursor.execute", mock_callable, ("select 1", {}))
 
     mock_tracker.invalidate_current_connection.assert_not_called()

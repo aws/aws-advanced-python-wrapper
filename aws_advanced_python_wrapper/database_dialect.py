@@ -17,6 +17,8 @@ from __future__ import annotations
 from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
                     Protocol, Tuple, runtime_checkable)
 
+from .utils.driver_info import DriverInfo
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from .driver_dialect import DriverDialect
@@ -30,7 +32,8 @@ from enum import Enum, auto
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import (
-    ConnectionStringHostListProvider, RdsHostListProvider)
+    ConnectionStringHostListProvider, MultiAzRdsHostListProvider,
+    RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
@@ -48,16 +51,19 @@ logger = Logger(__name__)
 
 
 class DialectCode(Enum):
-    AURORA_MYSQL: str = "aurora-mysql"
-    RDS_MYSQL: str = "rds-mysql"
-    MYSQL: str = "mysql"
+    # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/multi-az-db-clusters-concepts.html
+    MULTI_AZ_MYSQL = "multi-az-mysql"
+    AURORA_MYSQL = "aurora-mysql"
+    RDS_MYSQL = "rds-mysql"
+    MYSQL = "mysql"
 
-    AURORA_PG: str = "aurora-pg"
-    RDS_PG: str = "rds-pg"
-    PG: str = "pg"
+    MULTI_AZ_PG = "multi-az-pg"
+    AURORA_PG = "aurora-pg"
+    RDS_PG = "rds-pg"
+    PG = "pg"
 
-    CUSTOM: str = "custom"
-    UNKNOWN: str = "unknown"
+    CUSTOM = "custom"
+    UNKNOWN = "unknown"
 
     @staticmethod
     def from_string(value: str) -> DialectCode:
@@ -75,21 +81,21 @@ class TargetDriverType(Enum):
 
 @runtime_checkable
 class TopologyAwareDatabaseDialect(Protocol):
-    _topology_query: str
-    _host_id_query: str
-    _is_reader_query: str
+    _TOPOLOGY_QUERY: str
+    _HOST_ID_QUERY: str
+    _IS_READER_QUERY: str
 
     @property
     def topology_query(self) -> str:
-        return self._topology_query
+        return self._TOPOLOGY_QUERY
 
     @property
     def host_id_query(self) -> str:
-        return self._host_id_query
+        return self._HOST_ID_QUERY
 
     @property
     def is_reader_query(self) -> str:
-        return self._is_reader_query
+        return self._IS_READER_QUERY
 
 
 class DatabaseDialect(Protocol):
@@ -131,6 +137,10 @@ class DatabaseDialect(Protocol):
     def get_host_list_provider_supplier(self) -> Callable:
         ...
 
+    @abstractmethod
+    def prepare_conn_props(self, props: Properties):
+        ...
+
 
 class DatabaseDialectProvider(Protocol):
     def get_dialect(self, driver_dialect: str, props: Properties) -> Optional[DatabaseDialect]:
@@ -147,7 +157,9 @@ class DatabaseDialectProvider(Protocol):
 
 
 class MysqlDatabaseDialect(DatabaseDialect):
-    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_MYSQL, DialectCode.RDS_MYSQL)
+    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (
+        DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_MYSQL, DialectCode.RDS_MYSQL)
+    _exception_handler: Optional[ExceptionHandler] = None
 
     @property
     def default_port(self) -> int:
@@ -163,7 +175,10 @@ class MysqlDatabaseDialect(DatabaseDialect):
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
-        return Utils.initialize_class("aws_advanced_python_wrapper.utils.mysql_exception_handler.MySQLExceptionHandler")
+        if MysqlDatabaseDialect._exception_handler is None:
+            MysqlDatabaseDialect._exception_handler = Utils.initialize_class(
+                "aws_advanced_python_wrapper.utils.mysql_exception_handler.MySQLExceptionHandler")
+        return MysqlDatabaseDialect._exception_handler
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -171,9 +186,9 @@ class MysqlDatabaseDialect(DatabaseDialect):
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self.server_version_query)
-                for record in aws_cursor:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(self.server_version_query)
+                for record in cursor:
                     for column_value in record:
                         if "mysql" in column_value.lower():
                             return True
@@ -185,9 +200,14 @@ class MysqlDatabaseDialect(DatabaseDialect):
     def get_host_list_provider_supplier(self) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
+    def prepare_conn_props(self, props: Properties):
+        pass
+
 
 class PgDatabaseDialect(DatabaseDialect):
-    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.AURORA_PG, DialectCode.RDS_PG)
+    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (
+        DialectCode.AURORA_PG, DialectCode.MULTI_AZ_PG, DialectCode.RDS_PG)
+    _exception_handler: Optional[ExceptionHandler] = None
 
     @property
     def default_port(self) -> int:
@@ -207,13 +227,16 @@ class PgDatabaseDialect(DatabaseDialect):
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
-        return Utils.initialize_class("aws_advanced_python_wrapper.utils.pg_exception_handler.PgExceptionHandler")
+        if PgDatabaseDialect._exception_handler is None:
+            PgDatabaseDialect._exception_handler = Utils.initialize_class(
+                "aws_advanced_python_wrapper.utils.pg_exception_handler.SingleAzPgExceptionHandler")
+        return PgDatabaseDialect._exception_handler
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute('SELECT 1 FROM pg_proc LIMIT 1')
-                if aws_cursor.fetchone() is not None:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute('SELECT 1 FROM pg_proc LIMIT 1')
+                if cursor.fetchone() is not None:
                     return True
         except Exception:
             # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
@@ -225,15 +248,18 @@ class PgDatabaseDialect(DatabaseDialect):
     def get_host_list_provider_supplier(self) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
+    def prepare_conn_props(self, props: Properties):
+        pass
+
 
 class RdsMysqlDialect(MysqlDatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL,)
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self.server_version_query)
-                for record in aws_cursor:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(self.server_version_query)
+                for record in cursor:
                     for column_value in record:
                         if "source distribution" in column_value.lower():
                             return True
@@ -248,21 +274,20 @@ class RdsMysqlDialect(MysqlDatabaseDialect):
 
 
 class RdsPgDialect(PgDatabaseDialect):
-    _EXTENSIONS_QUERY: str = ("SELECT (setting LIKE '%rds_tools%') AS rds_tools, "
-                              "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
-                              "FROM pg_settings "
-                              "WHERE name='rds.extensions'")
+    _EXTENSIONS_QUERY = ("SELECT (setting LIKE '%rds_tools%') AS rds_tools, "
+                         "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
+                         "FROM pg_settings "
+                         "WHERE name='rds.extensions'")
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG,)
 
     def is_dialect(self, conn: Connection) -> bool:
-
         if not super().is_dialect(conn):
             return False
 
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(RdsPgDialect._EXTENSIONS_QUERY)
-                for row in aws_cursor:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(RdsPgDialect._EXTENSIONS_QUERY)
+                for row in cursor:
                     rds_tools = bool(row[0])
                     aurora_utils = bool(row[1])
                     logger.debug(
@@ -282,26 +307,25 @@ class RdsPgDialect(PgDatabaseDialect):
 
 
 class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
-    _topology_query: str = ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
-                            "CPU, REPLICA_LAG_IN_MILLISECONDS, LAST_UPDATE_TIMESTAMP "
-                            "FROM information_schema.replica_host_status "
-                            "WHERE time_to_sec(timediff(now(), LAST_UPDATE_TIMESTAMP)) <= 300 "
-                            "OR SESSION_ID = 'MASTER_SESSION_ID' ")
-
-    _host_id_query: str = "SELECT @@aurora_server_id"
-
-    _is_reader_query: str = "SELECT @@innodb_read_only"
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.MULTI_AZ_MYSQL,)
+    _TOPOLOGY_QUERY = ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
+                       "CPU, REPLICA_LAG_IN_MILLISECONDS, LAST_UPDATE_TIMESTAMP "
+                       "FROM information_schema.replica_host_status "
+                       "WHERE time_to_sec(timediff(now(), LAST_UPDATE_TIMESTAMP)) <= 300 "
+                       "OR SESSION_ID = 'MASTER_SESSION_ID' ")
+    _HOST_ID_QUERY = "SELECT @@aurora_server_id"
+    _IS_READER_QUERY = "SELECT @@innodb_read_only"
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
-        return None
+        return AuroraMysqlDialect._DIALECT_UPDATE_CANDIDATES
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute("SHOW VARIABLES LIKE 'aurora_version'")
+            with closing(conn.cursor()) as cursor:
+                cursor.execute("SHOW VARIABLES LIKE 'aurora_version'")
                 # If variable with such a name is presented then it means it's an Aurora cluster
-                if aws_cursor.fetchone() is not None:
+                if cursor.fetchone() is not None:
                     return True
         except Exception:
             pass
@@ -313,20 +337,20 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
 
 
 class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
-    _extensions_sql: str = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils " \
-                           "FROM pg_settings WHERE name='rds.extensions'"
+    _EXTENSIONS_QUERY = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils " \
+                        "FROM pg_settings WHERE name='rds.extensions'"
 
-    _has_topology_sql: str = "SELECT 1 FROM aurora_replica_status() LIMIT 1"
+    _HAS_TOPOLOGY_QUERY = "SELECT 1 FROM aurora_replica_status() LIMIT 1"
 
-    _topology_query = \
+    _TOPOLOGY_QUERY = \
         ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
          "CPU, COALESCE(REPLICA_LAG_IN_MSEC, 0), LAST_UPDATE_TIMESTAMP "
          "FROM aurora_replica_status() "
          "WHERE EXTRACT(EPOCH FROM(NOW() - LAST_UPDATE_TIMESTAMP)) <= 300 OR SESSION_ID = 'MASTER_SESSION_ID' "
          "OR LAST_UPDATE_TIMESTAMP IS NULL")
 
-    _host_id_query = "SELECT aurora_db_instance_identifier()"
-    _is_reader_query = "SELECT pg_is_in_recovery()"
+    _HOST_ID_QUERY = "SELECT aurora_db_instance_identifier()"
+    _IS_READER_QUERY = "SELECT pg_is_in_recovery()"
 
     def is_dialect(self, conn: Connection) -> bool:
         if not super().is_dialect(conn):
@@ -336,16 +360,16 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
         has_topology: bool = False
 
         try:
-            with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self._extensions_sql)
-                row = aws_cursor.fetchone()
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(self._EXTENSIONS_QUERY)
+                row = cursor.fetchone()
                 if row and bool(row[0]):
                     logger.debug("AuroraPgDialect.HasExtensionsTrue")
                     has_extensions = True
 
-            with closing(conn.cursor()) as aws_cursor:
-                aws_cursor.execute(self._has_topology_sql)
-                if aws_cursor.fetchone() is not None:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(self._HAS_TOPOLOGY_QUERY)
+                if cursor.fetchone() is not None:
                     logger.debug("AuroraPgDialect.HasTopologyTrue")
                     has_topology = True
 
@@ -361,6 +385,94 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
         return lambda provider_service, props: RdsHostListProvider(provider_service, props)
 
 
+class MultiAzMysqlDialect(MysqlDatabaseDialect):
+    _TOPOLOGY_QUERY = "SELECT id, endpoint, port FROM mysql.rds_topology"
+    _WRITER_HOST_QUERY = "SHOW REPLICA STATUS"
+    _WRITER_HOST_COLUMN_INDEX = 39
+    _HOST_ID_QUERY = "SELECT @@server_id"
+    _IS_READER_QUERY = "SELECT @@read_only"
+
+    @property
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
+        return None
+
+    def is_dialect(self, conn: Connection) -> bool:
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(MultiAzMysqlDialect._TOPOLOGY_QUERY)
+                if cursor.fetchone() is not None:
+                    return True
+        except Exception:
+            pass
+
+        return False
+
+    def get_host_list_provider_supplier(self) -> Callable:
+        return lambda provider_service, props: MultiAzRdsHostListProvider(
+            provider_service,
+            props,
+            self._TOPOLOGY_QUERY,
+            self._HOST_ID_QUERY,
+            self._IS_READER_QUERY,
+            self._WRITER_HOST_QUERY,
+            self._WRITER_HOST_COLUMN_INDEX)
+
+    def prepare_conn_props(self, props: Properties):
+        # These props are added for RDS metrics purposes, they are not required for functional correctness.
+        # The "conn_attrs" property value is specified as a dict.
+        extra_conn_attrs = {
+            "python_wrapper_name": "aws_python_driver",
+            "python_wrapper_version": DriverInfo.DRIVER_VERSION}
+        conn_attrs = props.get("conn_attrs")
+        if conn_attrs is None:
+            props["conn_attrs"] = extra_conn_attrs
+        else:
+            props["conn_attrs"].update(extra_conn_attrs)
+
+
+class MultiAzPgDialect(PgDatabaseDialect):
+    # The driver name passed to show_topology is used for RDS metrics purposes.
+    # It is not required for functional correctness.
+    _TOPOLOGY_QUERY = \
+        f"SELECT id, endpoint, port FROM rds_tools.show_topology('aws_python_driver-{DriverInfo.DRIVER_VERSION}')"
+    _WRITER_HOST_QUERY = \
+        "SELECT multi_az_db_cluster_source_dbi_resource_id FROM rds_tools.multi_az_db_cluster_source_dbi_resource_id()"
+    _HOST_ID_QUERY = "SELECT dbi_resource_id FROM rds_tools.dbi_resource_id()"
+    _IS_READER_QUERY = "SELECT pg_is_in_recovery()"
+    _exception_handler: Optional[ExceptionHandler] = None
+
+    @property
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
+        return None
+
+    @property
+    def exception_handler(self) -> Optional[ExceptionHandler]:
+        if MultiAzPgDialect._exception_handler is None:
+            MultiAzPgDialect._exception_handler = Utils.initialize_class(
+                "aws_advanced_python_wrapper.utils.pg_exception_handler.MultiAzPgExceptionHandler")
+        return MultiAzPgDialect._exception_handler
+
+    def is_dialect(self, conn: Connection) -> bool:
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(MultiAzPgDialect._WRITER_HOST_QUERY)
+                if cursor.fetchone() is not None:
+                    return True
+        except Exception:
+            pass
+
+        return False
+
+    def get_host_list_provider_supplier(self) -> Callable:
+        return lambda provider_service, props: MultiAzRdsHostListProvider(
+            provider_service,
+            props,
+            self._TOPOLOGY_QUERY,
+            self._HOST_ID_QUERY,
+            self._IS_READER_QUERY,
+            self._WRITER_HOST_QUERY)
+
+
 class UnknownDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Optional[Tuple[DialectCode, ...]] = \
         (DialectCode.MYSQL,
@@ -368,7 +480,9 @@ class UnknownDatabaseDialect(DatabaseDialect):
          DialectCode.RDS_MYSQL,
          DialectCode.RDS_PG,
          DialectCode.AURORA_MYSQL,
-         DialectCode.AURORA_PG)
+         DialectCode.AURORA_PG,
+         DialectCode.MULTI_AZ_MYSQL,
+         DialectCode.MULTI_AZ_PG)
 
     @property
     def default_port(self) -> int:
@@ -396,19 +510,26 @@ class UnknownDatabaseDialect(DatabaseDialect):
     def get_host_list_provider_supplier(self) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
+    def prepare_conn_props(self, props: Properties):
+        pass
+
 
 class DatabaseDialectManager(DatabaseDialectProvider):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
     _known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
-    _known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {DialectCode.MYSQL: MysqlDatabaseDialect(),
-                                                                   DialectCode.PG: PgDatabaseDialect(),
-                                                                   DialectCode.RDS_MYSQL: RdsMysqlDialect(),
-                                                                   DialectCode.RDS_PG: RdsPgDialect(),
-                                                                   DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
-                                                                   DialectCode.AURORA_PG: AuroraPgDialect(),
-                                                                   DialectCode.UNKNOWN: UnknownDatabaseDialect()}
     _custom_dialect: Optional[DatabaseDialect] = None
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DatabaseDialectManagerExecutor")
+    _known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {
+        DialectCode.MYSQL: MysqlDatabaseDialect(),
+        DialectCode.RDS_MYSQL: RdsMysqlDialect(),
+        DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
+        DialectCode.MULTI_AZ_MYSQL: MultiAzMysqlDialect(),
+        DialectCode.PG: PgDatabaseDialect(),
+        DialectCode.RDS_PG: RdsPgDialect(),
+        DialectCode.AURORA_PG: AuroraPgDialect(),
+        DialectCode.MULTI_AZ_PG: MultiAzPgDialect(),
+        DialectCode.UNKNOWN: UnknownDatabaseDialect()
+    }
 
     def __init__(self, props: Properties, rds_helper: Optional[RdsUtils] = None):
         self._props: Properties = props
@@ -457,13 +578,15 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                 self._log_current_dialect()
                 return dialect
             else:
-                raise AwsWrapperError(Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", str(dialect_code)))
+                raise AwsWrapperError(
+                    Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", str(dialect_code)))
 
         host: str = props["host"]
         target_driver_type: TargetDriverType = self._get_target_driver_type(driver_dialect)
         if target_driver_type is TargetDriverType.MYSQL:
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
+                self._can_update = True
                 self._dialect_code = DialectCode.AURORA_MYSQL
                 self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.AURORA_MYSQL]
                 return self._dialect
@@ -482,6 +605,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
         if target_driver_type is TargetDriverType.POSTGRES:
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type.is_rds_cluster:
+                self._can_update = True
                 self._dialect_code = DialectCode.AURORA_PG
                 self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.AURORA_PG]
                 return self._dialect

@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple
 
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -38,13 +39,13 @@ logger = Logger(__name__)
 
 class ConnectionProvider(Protocol):
 
-    def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
+    def accepts_host_info(self, host_info: HostInfo, props: Properties) -> bool:
         """
         Indicates whether this ConnectionProvider can provide connections for the given host and
         properties. Some :py:class:`ConnectionProvider` implementations may not be able to handle certain connection properties.
 
         :param host_info: the :py:class:`HostInfo` containing the host-port information for the host to connect to.
-        :param properties: the connection properties.
+        :param props: the connection properties.
         :return: `True` if this :py:class:`ConnectionProvider` can provide connections for the given host. `False` otherwise.
         """
         ...
@@ -59,7 +60,8 @@ class ConnectionProvider(Protocol):
         """
         ...
 
-    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
+    def get_host_info_by_strategy(
+            self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
         """
         Return a reader or a writer host using the specified strategy.
 
@@ -68,6 +70,7 @@ class ConnectionProvider(Protocol):
         :param hosts: the list of hosts to select from.
         :param role: determines if the connection provider should return a reader or a writer host.
         :param strategy: the host selection strategy to use.
+        :param props: the connection properties.
         :return: the host selected using the specified strategy.
         """
         ...
@@ -76,30 +79,34 @@ class ConnectionProvider(Protocol):
             self,
             target_func: Callable,
             driver_dialect: DriverDialect,
+            database_dialect: DatabaseDialect,
             host_info: HostInfo,
-            properties: Properties) -> Connection:
+            props: Properties) -> Connection:
         """
         Called once per connection that needs to be created.
 
         :param target_func: the `Connect` method used by target driver dialect.
         :param driver_dialect: a dialect that handles target driver specific implementation.
+        :param database_dialect: a dialect that handles database engine specific implementation.
         :param host_info: the host details for the desired connection.
-        :param properties: the connection properties.
+        :param props: the connection properties.
         :return: the established connection resulting from the given connection information.
         """
         ...
 
 
 class DriverConnectionProvider(ConnectionProvider):
-    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector(), "round_robin": RoundRobinHostSelector()}
+    _accepted_strategies: Dict[str, HostSelector] = \
+        {"random": RandomHostSelector(), "round_robin": RoundRobinHostSelector()}
 
-    def accepts_host_info(self, host_info: HostInfo, properties: Properties) -> bool:
+    def accepts_host_info(self, host_info: HostInfo, props: Properties) -> bool:
         return True
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         return strategy in self._accepted_strategies
 
-    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
+    def get_host_info_by_strategy(
+            self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
         host_selector: Optional[HostSelector] = self._accepted_strategies.get(strategy)
         if host_selector is not None:
             return host_selector.get_host(hosts, role, props)
@@ -111,9 +118,11 @@ class DriverConnectionProvider(ConnectionProvider):
             self,
             target_func: Callable,
             driver_dialect: DriverDialect,
+            database_dialect: DatabaseDialect,
             host_info: HostInfo,
-            properties: Properties) -> Connection:
-        prepared_properties = driver_dialect.prepare_connect_info(host_info, properties)
+            props: Properties) -> Connection:
+        prepared_properties = driver_dialect.prepare_connect_info(host_info, props)
+        database_dialect.prepare_conn_props(prepared_properties)
         logger.debug("DriverConnectionProvider.ConnectingToHost", host_info.host,
                      PropertiesUtils.log_properties(PropertiesUtils.mask_properties(prepared_properties)))
         return target_func(**prepared_properties)
@@ -141,7 +150,7 @@ class ConnectionProviderManager:
         with ConnectionProviderManager._lock:
             ConnectionProviderManager._conn_provider = connection_provider
 
-    def get_connection_provider(self, host_info: HostInfo, properties: Properties) -> ConnectionProvider:
+    def get_connection_provider(self, host_info: HostInfo, props: Properties) -> ConnectionProvider:
         """
         Get the :py:class:`ConnectionProvider` to use to establish a connection using the given host details and properties.
         If a non-default :py:class:`ConnectionProvider` has been set using :py:method:`ConnectionProvider.set_connection_provider`
@@ -149,7 +158,7 @@ class ConnectionProviderManager:
         Otherwise, the default :py:class:`ConnectionProvider` will be returned.
 
         :param host_info: the host info for the connection that will be established.
-        :param properties: the connection properties.
+        :param props: the connection properties.
         :return: the :py:class:`ConnectionProvider` to use to establish a connection using the given host details and properties.
         """
         if ConnectionProviderManager._conn_provider is None:
@@ -157,7 +166,7 @@ class ConnectionProviderManager:
 
         with ConnectionProviderManager._lock:
             if ConnectionProviderManager._conn_provider is not None \
-                    and ConnectionProviderManager._conn_provider.accepts_host_info(host_info, properties):
+                    and ConnectionProviderManager._conn_provider.accepts_host_info(host_info, props):
                 return ConnectionProviderManager._conn_provider
 
         return self._default_provider
@@ -180,7 +189,8 @@ class ConnectionProviderManager:
 
         return accepts_strategy
 
-    def get_host_info_by_strategy(self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
+    def get_host_info_by_strategy(
+            self, hosts: Tuple[HostInfo, ...], role: HostRole, strategy: str, props: Optional[Properties]) -> HostInfo:
         """
         Return a reader or a writer host using the specified strategy.
 
@@ -189,13 +199,15 @@ class ConnectionProviderManager:
         :param hosts: the list of hosts to select from.
         :param role: determines if the connection provider should return a reader or a writer host.
         :param strategy: the host selection strategy to use.
+        :param props: the connection properties.
         :return: the host selected using the specified strategy.
         """
         if ConnectionProviderManager._conn_provider is not None:
             with ConnectionProviderManager._lock:
                 if ConnectionProviderManager._conn_provider is not None \
                         and ConnectionProviderManager._conn_provider.accepts_strategy(role, strategy):
-                    return ConnectionProviderManager._conn_provider.get_host_info_by_strategy(hosts, role, strategy, props)
+                    return ConnectionProviderManager._conn_provider.get_host_info_by_strategy(
+                        hosts, role, strategy, props)
 
         return self._default_provider.get_host_info_by_strategy(hosts, role, strategy, props)
 

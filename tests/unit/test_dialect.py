@@ -19,10 +19,11 @@ import pytest
 
 from aws_advanced_python_wrapper.database_dialect import (
     AuroraMysqlDialect, AuroraPgDialect, DatabaseDialectManager, DialectCode,
-    MysqlDatabaseDialect, PgDatabaseDialect, RdsMysqlDialect, RdsPgDialect,
-    TargetDriverType, UnknownDatabaseDialect)
+    MultiAzMysqlDialect, MysqlDatabaseDialect, PgDatabaseDialect,
+    RdsMysqlDialect, RdsPgDialect, TargetDriverType, UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.utils.driver_info import DriverInfo
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -214,6 +215,33 @@ def test_get_dialect_user_setting(mock_driver_dialect):
     assert manager._dialect_code == DialectCode.AURORA_PG
 
 
+def test_prepare_conn_props__multi_az_mysql():
+    dialect = MultiAzMysqlDialect()
+    props = Properties({"host": "some_host"})
+    expected = Properties({
+        "host": "some_host",
+        "conn_attrs": {
+            "python_wrapper_name": "aws_python_driver",
+            "python_wrapper_version": DriverInfo.DRIVER_VERSION
+        }
+    })
+
+    dialect.prepare_conn_props(props)
+    assert props == expected
+
+    props = Properties({"conn_attrs": {"some_attr": "some_val"}})
+    expected = Properties({
+        "conn_attrs": {
+            "some_attr": "some_val",
+            "python_wrapper_name": "aws_python_driver",
+            "python_wrapper_version": DriverInfo.DRIVER_VERSION
+        }
+    })
+
+    dialect.prepare_conn_props(props)
+    assert props == expected
+
+
 def test_get_dialect_aurora_mysql(mock_driver_dialect):
     props = Properties({"host": "my-database.cluster-xyz.us-east-2.rds.amazonaws.com"})
     manager = DatabaseDialectManager(props)
@@ -222,7 +250,7 @@ def test_get_dialect_aurora_mysql(mock_driver_dialect):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), AuroraMysqlDialect)
         assert isinstance(manager._dialect, AuroraMysqlDialect)
         assert DialectCode.AURORA_MYSQL == manager._dialect_code
-        assert manager._can_update is False
+        assert manager._can_update is True
 
 
 def test_get_dialect_rds_mysql(mock_driver_dialect):
@@ -255,10 +283,10 @@ def test_get_dialect_aurora_pg(mock_driver_dialect):
         assert isinstance(manager.get_dialect(mock_driver_dialect, props), AuroraPgDialect)
         assert isinstance(manager._dialect, AuroraPgDialect)
         assert DialectCode.AURORA_PG == manager._dialect_code
-        assert manager._can_update is False
+        assert manager._can_update is True
 
 
-def test_get_dialect_mysql_pg(mock_driver_dialect):
+def test_get_dialect_rds_pg(mock_driver_dialect):
     props = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
     manager = DatabaseDialectManager(props)
 
