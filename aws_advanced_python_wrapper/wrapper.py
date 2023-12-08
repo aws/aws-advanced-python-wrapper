@@ -49,7 +49,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         self._plugin_service = plugin_service
         self._plugin_manager = plugin_manager
 
-        host_list_provider_init = plugin_service.dialect.get_host_list_provider_supplier()
+        host_list_provider_init = plugin_service.database_dialect.get_host_list_provider_supplier()
         plugin_service.host_list_provider = host_list_provider_init(host_list_provider_service, plugin_service.props)
 
         plugin_manager.init_host_provider(plugin_service.props, host_list_provider_service)
