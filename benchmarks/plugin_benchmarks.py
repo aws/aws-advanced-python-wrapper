@@ -123,8 +123,8 @@ def plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugi
     return manager
 
 
-def init_and_release(plugin_service_mock, plugin_manager):
-    wrapper = AwsWrapperConnection(plugin_service_mock, plugin_manager)
+def init_and_release(mocker, plugin_service_mock, plugin_manager):
+    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service_mock, plugin_service_mock, plugin_service_mock, plugin_manager)
     wrapper.release_resources()
     return wrapper
 
@@ -168,11 +168,11 @@ def test_init_and_release_with_aurora_connection_tracker_and_read_write_splittin
     assert result is not None
 
 
-def init_and_release_internal_connection_pools(plugin_service_mock, plugin_manager):
+def init_and_release_internal_connection_pools(mocker, plugin_service_mock, plugin_manager):
     provider = SqlAlchemyPooledConnectionProvider()
     ConnectionProviderManager.set_connection_provider(provider)
 
-    wrapper = AwsWrapperConnection(plugin_service_mock, plugin_manager)
+    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service_mock, plugin_service_mock, plugin_manager)
     wrapper.release_resources()
 
     ConnectionProviderManager.release_resources()
@@ -201,8 +201,8 @@ def test_init_and_release_with_aurora_connection_tracker_and_read_write_splittin
     assert result is not None
 
 
-def create_cursor_baseline(plugin_service, plugin_manager):
-    wrapper = AwsWrapperConnection(plugin_service, plugin_manager)
+def create_cursor_baseline(mocker, plugin_service, plugin_manager):
+    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_manager)
     cursor = wrapper.cursor()
     return cursor
 
@@ -212,8 +212,8 @@ def test_create_cursor_baseline(benchmark, plugin_service_mock, plugin_manager_w
     assert result is not None
 
 
-def execute_query(plugin_service, plugin_manager):
-    wrapper = AwsWrapperConnection(plugin_service, plugin_manager)
+def execute_query(mocker, plugin_service, plugin_manager):
+    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_manager)
     cursor = wrapper.cursor()
     results = cursor.execute("some sql")
     return results
