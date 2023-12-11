@@ -27,7 +27,6 @@ from json import loads
 from re import search
 from types import SimpleNamespace
 from typing import Callable, Dict, Optional, Set, Tuple
-from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import ClientError
@@ -50,6 +49,8 @@ class AwsSecretsManagerPlugin(Plugin):
     _secrets_cache: Dict[Tuple, SimpleNamespace] = {}
     _secret_key: Tuple = ()
 
+    _endpoint: str = ""
+
     @property
     def subscribed_methods(self) -> Set[str]:
         return self._SUBSCRIBED_METHODS
@@ -66,14 +67,7 @@ class AwsSecretsManagerPlugin(Plugin):
 
         region: str = self._get_rds_region(secret_id, props)
 
-        endpoint = WrapperProperties.SECRETS_MANAGER_ENDPOINT.get(props)
-        if endpoint is not None and endpoint != "":
-            try:
-                endpoint_url = urlparse(endpoint)
-                return (endpoint_url, region)
-            except Exception as e:
-                raise RuntimeError(Messages.get_formatted("AwsSecretsManagerConnectionPlugin.endpointOverrideMisconfigured", e))
-
+        self._endpoint = WrapperProperties.SECRETS_MANAGER_ENDPOINT.get(props)
         self._secret_key: Tuple = (secret_id, region)
 
     def connect(
@@ -144,10 +138,6 @@ class AwsSecretsManagerPlugin(Plugin):
                 logger.debug("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", e)
                 raise AwsWrapperError(
                     Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", e)) from e
-            except Exception as e:
-                logger.debug("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", e)
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", e)) from e
         return fetched
 
     def _fetch_latest_credentials(self):
@@ -157,10 +147,17 @@ class AwsSecretsManagerPlugin(Plugin):
         :return: a Secret object containing the credentials fetched from the AWS Secrets Manager service.
         """
         session = self._session if self._session else boto3.Session()
-        client = session.client(
-            'secretsmanager',
-            region_name=self._secret_key[1],
-        )
+        if self._endpoint != "":
+            client = session.client(
+                'secretsmanager',
+                region_name=self._secret_key[1],
+                endpoint_url=self._endpoint,
+            )
+        else:
+            client = session.client(
+                'secretsmanager',
+                region_name=self._secret_key[1],
+                )
 
         secret = client.get_secret_value(
             SecretId=self._secret_key[0],
