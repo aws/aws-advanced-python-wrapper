@@ -9,7 +9,7 @@ license = "Apache-2.0"
 [tool.poetry.dependencies]
 python = "^3.8.1"
 resourcebundle = "^2.1.0"
-boto3 = "^1.33.10"
+boto3 = "^1.33.11"
 toml = "^0.10.2"
 
 [tool.poetry.group.dev.dependencies]
@@ -24,7 +24,7 @@ psycopg-binary = "^3.1.14"
 mysql-connector-python = "^8.2.0"
 
 [tool.poetry.group.test.dependencies]
-boto3 = "^1.33.10"
+boto3 = "^1.33.11"
 coverage = "^7.3.0"
 debugpy = "^1.8.0"
 pydevd-pycharm = "^233.11799.259"
