@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
-from json import loads
+from json import loads, JSONDecodeError
 from re import search
 from types import SimpleNamespace
 from typing import Callable, Dict, Optional, Set, Tuple
@@ -133,6 +133,10 @@ class AwsSecretsManagerPlugin(Plugin):
                 logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)
                 raise AwsWrapperError(
                     Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)) from e
+            except JSONDecodeError as e:
+                logger.debug("AwsSecretsManagerPlugin.JsonDecodeError", e)
+                raise AwsWrapperError(
+                    Messages.get_formatted("AwsSecretsManagerPlugin.JsonDecodeError", e))
             except EndpointConnectionError:
                 logger.debug("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint)
                 raise AwsWrapperError(
