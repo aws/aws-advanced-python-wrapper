@@ -104,7 +104,7 @@ class HostListProviderService(Protocol):
 
     @property
     @abstractmethod
-    def dialect(self) -> db_dialect.DatabaseDialect:
+    def database_dialect(self) -> db_dialect.DatabaseDialect:
         ...
 
     @property
@@ -159,7 +159,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         self._cluster_instance_template: Optional[HostInfo] = None
         self._rds_url_type: Optional[RdsUrlType] = None
 
-        dialect = self._host_list_provider_service.dialect
+        dialect = self._host_list_provider_service.database_dialect
         if not isinstance(dialect, db_dialect.TopologyAwareDatabaseDialect):
             raise AwsWrapperError(Messages.get_formatted("RdsHostListProvider.InvalidDialect", dialect))
         self._dialect: db_dialect.TopologyAwareDatabaseDialect = dialect
@@ -334,9 +334,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._dialect.topology_query)
-
-                result = self._process_query_results(cursor)
-                return result
+                return self._process_query_results(cursor)
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
 
@@ -493,7 +491,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         with closing(conn.cursor()) as cursor:
             cursor.execute(self._dialect.host_id_query)
             return cursor.fetchone()
-        return None
 
     @dataclass()
     class ClusterIdSuggestion:
@@ -504,6 +501,74 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     class FetchTopologyResult:
         hosts: Tuple[HostInfo, ...]
         is_cached_data: bool
+
+
+class MultiAzRdsHostListProvider(RdsHostListProvider):
+    def __init__(
+            self,
+            provider_service: HostListProviderService,
+            props: Properties,
+            topology_query: str,
+            host_id_query: str,
+            is_reader_query: str,
+            writer_host_query: str,
+            writer_host_column_index: int = 0):
+        super().__init__(provider_service, props)
+        self._topology_query = topology_query
+        self._host_id_query = host_id_query
+        self._is_reader_query = is_reader_query
+        self._writer_host_query = writer_host_query
+        self._writer_host_column_index = writer_host_column_index
+
+    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(self._writer_host_query)
+                row = cursor.fetchone()
+                if row is not None:
+                    writer_id = row[self._writer_host_column_index]
+                else:
+                    # In MySQL, the writer host query above will be empty if we are connected to the writer.
+                    # Consequently, this block is only entered if we are connected to a MySQL writer.
+                    cursor.execute(self._host_id_query)
+                    writer_id = cursor.fetchone()[0]
+                cursor.execute(self._topology_query)
+                return self._process_multi_az_query_results(cursor, writer_id)
+        except ProgrammingError as e:
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
+
+    def _process_multi_az_query_results(self, cursor: Cursor, writer_id: str) -> Tuple[HostInfo, ...]:
+        hosts_dict = {}
+        for record in cursor:
+            host = self._create_multi_az_host(record, writer_id)
+            hosts_dict[host.host] = host
+
+        hosts = []
+        writers = []
+        for host in hosts_dict.values():
+            if host.role == HostRole.WRITER:
+                writers.append(host)
+            else:
+                hosts.append(host)
+
+        if len(writers) == 0:
+            logger.error("RdsHostListProvider.InvalidTopology")
+            hosts.clear()
+        else:
+            hosts.append(writers[0])
+
+        return tuple(hosts)
+
+    def _create_multi_az_host(self, record: Tuple, writer_id: str) -> HostInfo:
+        host_id = record[0]
+        host = record[1]
+        port = record[2]
+        role = HostRole.WRITER if host_id == writer_id else HostRole.READER
+
+        host_info = HostInfo(
+            host=host, port=port, role=role, availability=HostAvailability.AVAILABLE, weight=0, host_id=host_id)
+        host_info.add_alias(host)
+        return host_info
 
 
 class ConnectionStringHostListProvider(StaticHostListProvider):

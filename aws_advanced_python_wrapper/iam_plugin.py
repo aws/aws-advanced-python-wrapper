@@ -181,8 +181,8 @@ class IamAuthPlugin(Plugin):
         if host_info.is_port_specified():
             return host_info.port
 
-        if self._plugin_service.dialect is not None:
-            return self._plugin_service.dialect.default_port
+        if self._plugin_service.database_dialect is not None:
+            return self._plugin_service.database_dialect.default_port
 
         raise AwsWrapperError(Messages.get("IamAuthPlugin.NoValidPorts"))
 

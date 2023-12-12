@@ -14,7 +14,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterator, List, Optional, Union
+from typing import (TYPE_CHECKING, Any, Callable, Iterator, List, Optional,
+                    Union)
+
+if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
 
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
@@ -36,9 +40,38 @@ logger = Logger(__name__)
 class AwsWrapperConnection(Connection, CanReleaseResources):
     __module__ = "aws_advanced_python_wrapper"
 
-    def __init__(self, plugin_service: PluginService, plugin_manager: PluginManager):
+    def __init__(
+            self,
+            target_func: Callable,
+            host_list_provider_service: HostListProviderService,
+            plugin_service: PluginService,
+            plugin_manager: PluginManager):
         self._plugin_service = plugin_service
         self._plugin_manager = plugin_manager
+
+        host_list_provider_init = plugin_service.database_dialect.get_host_list_provider_supplier()
+        plugin_service.host_list_provider = host_list_provider_init(host_list_provider_service, plugin_service.props)
+
+        plugin_manager.init_host_provider(plugin_service.props, host_list_provider_service)
+        plugin_service.refresh_host_list()
+
+        if plugin_service.current_connection is not None:
+            return
+
+        if plugin_service.initial_connection_host_info is None:
+            raise AwsWrapperError(Messages.get("AwsWrapperConnection.InitialHostInfoNone"))
+
+        conn = plugin_manager.connect(
+            target_func,
+            plugin_service.driver_dialect,
+            plugin_service.initial_connection_host_info,
+            plugin_service.props,
+            True)
+
+        if not conn:
+            raise AwsWrapperError(Messages.get("AwsWrapperConnection.ConnectionNotOpen"))
+
+        plugin_service.set_current_connection(conn, plugin_service.initial_connection_host_info)
 
     @property
     def target_connection(self):
@@ -101,25 +134,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
             container, props, target_func, driver_dialect_manager, driver_dialect)
         plugin_manager: PluginManager = PluginManager(container, props)
 
-        host_list_provider_init = plugin_service.dialect.get_host_list_provider_supplier()
-        plugin_service.host_list_provider = host_list_provider_init(plugin_service, props)
-
-        plugin_manager.init_host_provider(props, plugin_service)
-
-        plugin_service.refresh_host_list()
-
-        if plugin_service.current_connection is not None:
-            return AwsWrapperConnection(plugin_service, plugin_manager)
-
-        conn = plugin_manager.connect(
-            target_func, driver_dialect, plugin_service.initial_connection_host_info, props, True)
-
-        if not conn:
-            raise AwsWrapperError(Messages.get("ConnectionWrapper.ConnectionNotOpen"))
-
-        plugin_service.set_current_connection(conn, plugin_service.initial_connection_host_info)
-
-        return AwsWrapperConnection(plugin_service, plugin_manager)
+        return AwsWrapperConnection(target_func, plugin_service, plugin_service, plugin_manager)
 
     def close(self) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.close",
