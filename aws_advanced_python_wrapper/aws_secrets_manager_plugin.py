@@ -14,7 +14,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from json import JSONDecodeError, loads
+from re import search
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Tuple
+
+import boto3
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 if TYPE_CHECKING:
     from boto3 import Session
@@ -22,14 +28,6 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
-
-from json import loads, JSONDecodeError
-from re import search
-from types import SimpleNamespace
-from typing import Callable, Dict, Optional, Set, Tuple
-
-import boto3
-from botocore.exceptions import ClientError, EndpointConnectionError
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
