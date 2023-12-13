@@ -340,6 +340,7 @@ class RdsTestUtility:
         password = env.get_database_info().get_password()
         db = env.get_database_info().get_default_db_name()
 
+        print(f"asdfasdf Connecting using db: {db}")
         conn_params = DriverHelper.get_connect_params(
             instance_info.get_host(), instance_info.get_port(), user, password, db, test_driver)
 

@@ -51,10 +51,12 @@ jobs:
           echo "TEMP_AWS_ACCESS_KEY_ID=${creds[0]}" >> $GITHUB_ENV
           echo "TEMP_AWS_SECRET_ACCESS_KEY=${creds[1]}" >> $GITHUB_ENV
           echo "TEMP_AWS_SESSION_TOKEN=${creds[2]}" >> $GITHUB_ENV
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
 
       - name: 'Run Integration Tests'
         run: |
-          ./gradlew --no-parallel --no-daemon test-multi-az --info
+          ./gradlew --no-parallel --no-daemon test-pg-multi-az --info
         env:
           AURORA_CLUSTER_DOMAIN: ${{ secrets.DB_CONN_SUFFIX }}
           AURORA_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
@@ -63,6 +65,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ env.TEMP_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ env.TEMP_AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ env.TEMP_AWS_SESSION_TOKEN }}
+          FILTER: "test_connect_to_writer__switch_read_only"
 
       - name: 'Archive results'
         if: always()

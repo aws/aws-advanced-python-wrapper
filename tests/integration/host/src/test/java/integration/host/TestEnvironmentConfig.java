@@ -334,9 +334,14 @@ public class TestEnvironmentConfig implements AutoCloseable {
     env.rdsUtil.ec2AuthorizeIP(env.runnerIP);
 
     DatabaseEngine engine = env.info.getRequest().getDatabaseEngine();
+    LOGGER.info("asdfasdf deployment: " + deployment + ", engine: " + engine);
+    LOGGER.info("asdfasdf Is deployment multi-az: " + DatabaseEngineDeployment.MULTI_AZ.equals(deployment));
+    LOGGER.info("asdfasdf Is engine pg: " + DatabaseEngine.PG.equals(engine));
     if (DatabaseEngineDeployment.MULTI_AZ.equals(deployment) && DatabaseEngine.PG.equals(engine)) {
+      LOGGER.info("asdfasdf Inside create extension branch");
       DriverHelper.registerDriver(engine);
 
+      LOGGER.info("asdfasdf Create extension will be executed for DB: " + env.info.getDatabaseInfo().getDefaultDbName());
       try (Connection conn = DriverHelper.getDriverConnection(env.info);
            Statement stmt = conn.createStatement()) {
         stmt.execute("CREATE EXTENSION IF NOT EXISTS rds_tools");
