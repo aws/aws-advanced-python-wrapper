@@ -124,6 +124,9 @@ class WrapperProperties:
         "secrets_manager_region",
         "The region of the secret to retrieve.",
         "us-east-1")
+    SECRETS_MANAGER_ENDPOINT = WrapperProperty(
+        "secrets_manager_endpoint",
+        "The endpoint of the secret to retrieve.")
 
     DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect.")
     AUXILIARY_QUERY_TIMEOUT_SEC = WrapperProperty(

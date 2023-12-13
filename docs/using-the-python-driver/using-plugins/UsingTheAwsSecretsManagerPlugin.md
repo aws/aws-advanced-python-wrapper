@@ -21,6 +21,7 @@ The following properties are required for the AWS Secrets Manager Connection Plu
 |-----------------------------|:------:|:-----------------------------------------------------------:|:--------------------------------------------------------|:------------|---------------|
 | `secrets_manager_secret_id` | String |                             Yes                             | Set this value to be the secret name or the secret ARN. | `secret_id` | `None`        |
 | `secrets_manager_region`    | String | Yes unless the `secrets_manager_secret_id` is a Secret ARN. | Set this value to be the region your secret is in.      | `us-east-2` | `us-east-1`   |
+| `secrets_manager_endpoint`  | String |                             No                              | Set this value to be the endpoint override to retrieve your secret from. This parameter value should be in the form of a URL, with a valid protocol (ex. `http://`) and domain (ex. `localhost`). A port number is not required. | `http://localhost:1234` | `None`        |
 
 *NOTE* A Secret ARN has the following format: `arn:aws:secretsmanager:<Region>:<AccountId>:secret:Secre78tName-6RandomCharacters`
 

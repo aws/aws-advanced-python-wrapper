@@ -54,13 +54,14 @@ from aws_advanced_python_wrapper.utils.properties import Properties
 class TestAwsSecretsManagerPlugin(TestCase):
     _TEST_REGION = "us-east-2"
     _TEST_SECRET_ID = "secretId"
+    _TEST_ENDPOINT = None
     _TEST_USERNAME = "testUser"
     _TEST_PASSWORD = "testPassword"
     _TEST_PORT = 5432
     _VALID_SECRET_STRING = {'SecretString': f'{{"username":"{_TEST_USERNAME}","password":"{_TEST_PASSWORD}"}}'}
     _INVALID_SECRET_STRING = {'SecretString': {"username": "invalid", "password": "invalid"}}
     _TEST_HOST = "test-domain"
-    _SECRET_CACHE_KEY = (_TEST_SECRET_ID, _TEST_REGION)
+    _SECRET_CACHE_KEY = (_TEST_SECRET_ID, _TEST_REGION, _TEST_ENDPOINT)
     _TEST_HOST_INFO = HostInfo(_TEST_HOST, _TEST_PORT)
     _TEST_SECRET = SimpleNamespace(username="testUser", password="testPassword")
 
@@ -212,7 +213,7 @@ class TestAwsSecretsManagerPlugin(TestCase):
         target_plugin.connect(
             MagicMock(), MagicMock(), self._TEST_HOST_INFO, props, True, self._mock_func)
 
-        self._mock_session.client.assert_called_with('secretsmanager', region_name=region)
+        self._mock_session.client.assert_called_with('secretsmanager', region_name=region, endpoint_url=None)
         self._mock_client.get_secret_value.assert_called_with(SecretId=arn)
 
     @parameterized.expand([
@@ -235,6 +236,6 @@ class TestAwsSecretsManagerPlugin(TestCase):
         target_plugin.connect(
             MagicMock(), MagicMock(), self._TEST_HOST_INFO, props, True, self._mock_func)
 
-        # The region specified in `secretsManagerRegion` should override the region parsed from ARN.
-        self._mock_session.client.assert_called_with('secretsmanager', region_name=expected_region)
+        # The region specified in `secrets_manager_region` should override the region parsed from ARN.
+        self._mock_session.client.assert_called_with('secretsmanager', region_name=expected_region, endpoint_url=None)
         self._mock_client.get_secret_value.assert_called_with(SecretId=arn)

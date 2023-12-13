@@ -14,7 +14,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from json import JSONDecodeError, loads
+from re import search
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Tuple
+
+import boto3
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 if TYPE_CHECKING:
     from boto3 import Session
@@ -22,14 +28,6 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
-
-from json import loads
-from re import search
-from types import SimpleNamespace
-from typing import Callable, Dict, Optional, Set, Tuple
-
-import boto3
-from botocore.exceptions import ClientError
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
@@ -65,7 +63,8 @@ class AwsSecretsManagerPlugin(Plugin):
 
         region: str = self._get_rds_region(secret_id, props)
 
-        self._secret_key: Tuple = (secret_id, region)
+        secrets_endpoint = WrapperProperties.SECRETS_MANAGER_ENDPOINT.get(props)
+        self._secret_key: Tuple = (secret_id, region, secrets_endpoint)
 
     def connect(
             self,
@@ -120,6 +119,7 @@ class AwsSecretsManagerPlugin(Plugin):
         fetched: bool = False
 
         self._secret: Optional[SimpleNamespace] = AwsSecretsManagerPlugin._secrets_cache.get(self._secret_key)
+        endpoint = self._secret_key[2]
 
         if not self._secret or force_refetch:
             try:
@@ -131,6 +131,18 @@ class AwsSecretsManagerPlugin(Plugin):
                 logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)
                 raise AwsWrapperError(
                     Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)) from e
+            except JSONDecodeError as e:
+                logger.debug("AwsSecretsManagerPlugin.JsonDecodeError", e)
+                raise AwsWrapperError(
+                    Messages.get_formatted("AwsSecretsManagerPlugin.JsonDecodeError", e))
+            except EndpointConnectionError:
+                logger.debug("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint)
+                raise AwsWrapperError(
+                    Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint))
+            except ValueError:
+                logger.debug("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint)
+                raise AwsWrapperError(
+                    Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint))
 
         return fetched
 
@@ -141,9 +153,11 @@ class AwsSecretsManagerPlugin(Plugin):
         :return: a Secret object containing the credentials fetched from the AWS Secrets Manager service.
         """
         session = self._session if self._session else boto3.Session()
+
         client = session.client(
             'secretsmanager',
             region_name=self._secret_key[1],
+            endpoint_url=self._secret_key[2],
         )
 
         secret = client.get_secret_value(
