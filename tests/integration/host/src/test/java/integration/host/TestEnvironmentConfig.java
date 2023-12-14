@@ -23,6 +23,7 @@ import integration.host.util.ContainerHelper;
 import java.io.IOException;
 import java.net.UnknownHostException;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -345,8 +346,19 @@ public class TestEnvironmentConfig implements AutoCloseable {
       try (Connection conn = DriverHelper.getDriverConnection(env.info);
            Statement stmt = conn.createStatement()) {
         stmt.execute("CREATE EXTENSION IF NOT EXISTS rds_tools");
+        LOGGER.info("asdfasdf Extension created");
       } catch (SQLException e) {
         throw new RuntimeException("An exception occurred while creating the rds_tools extension.", e);
+      }
+
+      try (Connection conn = DriverHelper.getDriverConnection(env.info);
+           Statement stmt = conn.createStatement()) {
+        ResultSet rs = stmt.executeQuery("SELECT multi_az_db_cluster_source_dbi_resource_id FROM rds_tools.multi_az_db_cluster_source_dbi_resource_id()");
+        rs.next();
+        String writerId = rs.getString(1);
+        LOGGER.info("asdfasdf Extension verified: " + writerId);
+      } catch (SQLException e) {
+        throw new RuntimeException("An exception occurred while verifying the rds_tools extension.", e);
       }
     }
   }

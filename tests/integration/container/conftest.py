@@ -68,6 +68,10 @@ def pytest_runtest_setup(item):
     if DatabaseEngineDeployment.AURORA == deployment or DatabaseEngineDeployment.MULTI_AZ == deployment:
         rds_utility = RdsTestUtility(info.get_region())
         rds_utility.wait_until_cluster_has_desired_status(info.get_cluster_name(), "available")
+        try:
+            rds_utility.get_instance_ids()
+        except Exception as e:
+            print(f"asdfasdf exception while validating extension (python): {e}")
 
         # Need to ensure that cluster details through API matches topology fetched through SQL
         # Wait up to 5min
