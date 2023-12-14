@@ -23,7 +23,7 @@ conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 
 When using the Read/Write Splitting Plugin against Aurora clusters, you do not have to supply multiple instance URLs in the connection string. Instead, supply only the URL for the initial connection. The Read/Write Splitting Plugin will automatically discover the URLs for the other instances in the cluster and will use this info to switch between the writer/reader when `read_only` is set. Note however that you must set the [`cluster_instance_host_pattern`](./UsingTheFailoverPlugin.md#failover-parameters) if you are connecting using an IP address or custom domain.
 
-> ![IMPORTANT]\
+> [!IMPORTANT]\
 > you must set the [`cluster_instance_host_pattern`](./UsingTheFailoverPlugin.md#failover-parameters) if you are connecting using an IP address or custom domain.
 
 ### Using the Read/Write Splitting Plugin against non-Aurora clusters
@@ -77,8 +77,8 @@ The AWS Advanced Python Driver currently uses [SqlAlchemy](https://docs.sqlalche
 
 ### Sample Code
 [Postgres read/write splitting sample code](../../examples/PGReadWriteSplitting.py)  
-[MySQL read/write splitting sample code](../../examples/MySQLReadWriteSplitting.py)
-[Postgres internal connection pool password warning sample code](../../examples/PGInternalConnectionPoolPasswordWarning.py)
+[MySQL read/write splitting sample code](../../examples/MySQLReadWriteSplitting.py)  
+[Postgres internal connection pool password warning sample code](../../examples/PGInternalConnectionPoolPasswordWarning.py)  
 [MySQL internal connection pool password warning sample code](../../examples/MySQLInternalConnectionPoolPasswordWarning.py)
 
 ### Connection Strategies
