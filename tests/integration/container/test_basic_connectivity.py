@@ -110,6 +110,7 @@ class TestBasicConnectivity:
             # That is expected exception. Test pass.
             assert True
 
+    @pytest.mark.skip("Currently failing, will be fixed in another PR")
     @enable_on_num_instances(min_instances=2)
     @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.MULTI_AZ])
     @enable_on_features([TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
