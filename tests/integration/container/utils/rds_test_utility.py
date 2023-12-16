@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 if TYPE_CHECKING:
@@ -224,10 +225,10 @@ class RdsTestUtility:
         else:
             raise UnsupportedOperationError(engine.value)
 
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        record = cursor.fetchone()
-        return record[0]
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(sql)
+            record = cursor.fetchone()
+            return record[0]
 
     def _query_multi_az_instance_id(self, conn: Connection, engine: DatabaseEngine):
         # You cannot directly query the instance name with multi-az instances. You must find the endpoint whose ID
@@ -285,17 +286,15 @@ class RdsTestUtility:
         instance_info: TestInstanceInfo = test_environment.get_writer()
 
         sql = self._get_aurora_topology_sql(engine)
-        conn = self._open_connection(instance_info)
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        records = cursor.fetchall()
+        with self._open_connection(instance_info) as conn, conn.cursor as cursor:
+            cursor.execute(sql)
+            records = cursor.fetchall()
 
-        result: List[str] = list()
-        for r in records:
-            result.append(r[0])
-        conn.close()
+            result: List[str] = list()
+            for r in records:
+                result.append(r[0])
 
-        return result
+            return result
 
     def _get_multi_az_instance_ids(self) -> List[str]:
         test_environment: TestEnvironment = TestEnvironment.get_current()

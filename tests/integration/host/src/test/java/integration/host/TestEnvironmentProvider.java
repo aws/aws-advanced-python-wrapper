@@ -318,9 +318,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                     DatabaseEngineDeployment.MULTI_AZ,
                     TargetPythonVersion.PYTHON_3_11,
                     TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                    // Tests requiring database failover are not supported. It may take 1hr+ for the original writer to
+                    // become available after multi-az failover.
                     TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
-                    excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER, // TODO: is secrets manager compatible with multi-az clusters?
-                    excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE, // TODO: should we remove this line?
+                    excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
+                    excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
                     excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                     excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null)));
       }
@@ -346,11 +348,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                     TargetPythonVersion.PYTHON_3_11,
                     TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                     TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED,
-                    // Tests requiring database failover are not supported. It may take 1hr+ for the original writer to become
-        // available after multi-az failover.
+                    // Tests requiring database failover are not supported. It may take 1hr+ for the original writer to
+                    // become available after multi-az failover.
                     TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
-                    excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER, // TODO: is secrets manager compatible with multi-az clusters?
-                    excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE, // TODO: should we remove this line?
+                    excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
+                    excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
                     excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
                     excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null)));
       }

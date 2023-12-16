@@ -228,10 +228,10 @@ public class TestEnvironmentConfig implements AutoCloseable {
             && Boolean.parseBoolean(System.getenv("REUSE_" + deploymentStr + "_CLUSTER"));
     env.clusterName = System.getenv(deploymentStr + "_CLUSTER_NAME"); // "cluster-mysql"
     env.clusterDomain =
-        System.getenv(deploymentStr + "_CLUSTER_DOMAIN"); // "XYZ.us-west-2.rds.amazonaws.com"
+        System.getenv("RDS_CLUSTER_DOMAIN"); // "XYZ.us-west-2.rds.amazonaws.com"
 
     if (StringUtils.isNullOrEmpty(env.clusterDomain)) {
-      throw new RuntimeException("Environment variable " + deploymentStr + "_CLUSTER_DOMAIN is required.");
+      throw new RuntimeException("Environment variable RDS_CLUSTER_DOMAIN is required.");
     }
 
     env.rdsUtil =

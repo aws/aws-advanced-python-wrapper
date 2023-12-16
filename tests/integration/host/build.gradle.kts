@@ -78,11 +78,6 @@ tasks.register<Test>("test-docker") {
         systemProperty("exclude-aurora", "true")
         systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
-
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
-
         systemProperty("exclude-python-38", "true")
     }
 }
@@ -94,11 +89,6 @@ tasks.register<Test>("test-aurora") {
         systemProperty("exclude-docker", "true")
         systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
-
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
-
         systemProperty("exclude-python-38", "true")
     }
 }
@@ -134,11 +124,6 @@ tasks.register<Test>("test-multi-az") {
         systemProperty("exclude-docker", "true")
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-aurora", "true")
-
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
-
         systemProperty("exclude-python-38", "true")
     }
 }
@@ -214,11 +199,6 @@ tasks.register<Test>("debug-all-environments") {
     filter.includeTestsMatching("integration.host.TestRunner.debugTests")
     doFirst {
         systemProperty("exclude-performance", "true")
-
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
-
         systemProperty("exclude-python-38", "true")
     }
 }
@@ -230,11 +210,6 @@ tasks.register<Test>("debug-docker") {
         systemProperty("exclude-aurora", "true")
         systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
-
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
-
         systemProperty("exclude-python-38", "true")
     }
 }
@@ -246,11 +221,6 @@ tasks.register<Test>("debug-aurora") {
         systemProperty("exclude-docker", "true")
         systemProperty("exclude-multi-az", "true")
         systemProperty("exclude-performance", "true")
-
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
-
         systemProperty("exclude-python-38", "true")
     }
 }
@@ -327,11 +297,6 @@ tasks.register<Test>("debug-multi-az") {
         systemProperty("exclude-docker", "true")
         systemProperty("exclude-aurora", "true")
         systemProperty("exclude-performance", "true")
-
-        // TODO: Temporary disable Mysql tests. Uncomment when the driver supports them.
-        systemProperty("exclude-mysql-driver", "true")
-        systemProperty("exclude-mysql-engine", "true")
-
         systemProperty("exclude-python-38", "true")
     }
 }
