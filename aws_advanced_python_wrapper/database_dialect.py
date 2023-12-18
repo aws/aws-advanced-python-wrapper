@@ -407,7 +407,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
             with closing(conn.cursor()) as cursor:
                 cursor.execute(MultiAzMysqlDialect._TOPOLOGY_QUERY)
                 records = cursor.fetchall()
-                if len(records) > 0:
+                if records is not None and len(records) > 0:
                     return True
         except Exception:
             pass
