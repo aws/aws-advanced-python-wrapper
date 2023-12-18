@@ -23,7 +23,8 @@ from aws_advanced_python_wrapper.errors import (
     FailoverSuccessError, TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from .utils.conditions import (disable_on_features, enable_on_features,
-                               enable_on_num_instances)
+                               enable_on_num_instances, enable_on_deployments)
+from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.proxy_helper import ProxyHelper
 
 if TYPE_CHECKING:
@@ -39,6 +40,7 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 
 
 @enable_on_num_instances(min_instances=2)
+@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.MULTI_AZ])
 @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
 class TestAuroraFailover:
     IDLE_CONNECTIONS_NUM: int = 5
