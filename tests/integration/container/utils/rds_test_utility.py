@@ -286,7 +286,7 @@ class RdsTestUtility:
         instance_info: TestInstanceInfo = test_environment.get_writer()
 
         sql = self._get_aurora_topology_sql(engine)
-        with self._open_connection(instance_info) as conn, conn.cursor as cursor:
+        with self._open_connection(instance_info) as conn, conn.cursor() as cursor:
             cursor.execute(sql)
             records = cursor.fetchall()
 
