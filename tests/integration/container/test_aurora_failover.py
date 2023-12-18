@@ -22,8 +22,8 @@ import pytest
 from aws_advanced_python_wrapper.errors import (
     FailoverSuccessError, TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
-from .utils.conditions import (disable_on_features, enable_on_features,
-                               enable_on_num_instances, enable_on_deployments)
+from .utils.conditions import (disable_on_features, enable_on_deployments,
+                               enable_on_features, enable_on_num_instances)
 from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.proxy_helper import ProxyHelper
 
