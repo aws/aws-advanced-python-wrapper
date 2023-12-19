@@ -269,7 +269,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._target_func = target_func
         self._driver_dialect_manager = driver_dialect_manager
         self._driver_dialect = driver_dialect
-        self._dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
+        self._database_dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
 
     @property
     def hosts(self) -> Tuple[HostInfo, ...]:
@@ -331,7 +331,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     @property
     def database_dialect(self) -> DatabaseDialect:
-        return self._dialect
+        return self._database_dialect
 
     @property
     def network_bound_methods(self) -> Set[str]:
@@ -362,16 +362,16 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if connection is None:
             raise AwsWrapperError(Messages.get("PluginServiceImpl.UpdateDialectConnectionNone"))
 
-        original_dialect = self._dialect
-        self._dialect = \
+        original_dialect = self._database_dialect
+        self._database_dialect = \
             self._dialect_provider.query_for_dialect(
                 self._original_url,
                 self._initial_connection_host_info,
                 connection,
                 self.driver_dialect)
 
-        if original_dialect != self._dialect:
-            host_list_provider_init = self._dialect.get_host_list_provider_supplier()
+        if original_dialect != self._database_dialect:
+            host_list_provider_init = self._database_dialect.get_host_list_provider_supplier()
             self.host_list_provider = host_list_provider_init(self, self._props)
 
     def update_driver_dialect(self, connection_provider: ConnectionProvider):

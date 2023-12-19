@@ -20,7 +20,7 @@ import pytest
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import (
-    MultiAzRdsHostListProvider, RdsHostListProvider)
+    MultiAzHostListProvider, RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import ProgrammingError
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -88,7 +88,7 @@ def refresh_ns():
 
 
 def create_provider(mock_provider_service, props):
-    return MultiAzRdsHostListProvider(
+    return MultiAzHostListProvider(
         mock_provider_service,
         props,
         "topology_query",

@@ -179,7 +179,7 @@ class TestEnvironment:
         return self.get_proxy_instances()[0]
 
     def get_aurora_region(self) -> str:
-        return self.get_info().get_aurora_region()
+        return self.get_info().get_region()
 
     def set_current_driver(self, test_driver: TestDriver):
         self._current_driver = test_driver
