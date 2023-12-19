@@ -144,7 +144,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     # cluster IDs so that connections to the same clusters can share topology info.
     _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="AuroraHostListProviderExecutor")
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="RdsHostListProviderExecutor")
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
@@ -474,7 +474,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         :return: a :py:class:`HostInfo` object containing host information for the given connection.
         """
         if connection is None:
-            raise AwsWrapperError(Messages.get("AuroraHostListProvider.ErrorIdentifyConnection"))
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection"))
 
         driver_dialect = self._host_list_provider_service.driver_dialect
         try:
