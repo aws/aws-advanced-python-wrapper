@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import atexit
 from typing import TYPE_CHECKING
 
 from aws_advanced_python_wrapper.connection_provider import \
@@ -136,3 +137,10 @@ def pytest_sessionstart(session):
 def pytest_sessionfinish(session, exitstatus):
     # Enable all connectivity in case any helper threads are still trying to execute against a disabled host
     ProxyHelper.enable_all_connectivity()
+
+
+def log_exit():
+    print("Python program is exiting...")
+
+
+atexit.register(log_exit)

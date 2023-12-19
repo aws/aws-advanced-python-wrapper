@@ -664,9 +664,12 @@ public class TestEnvironmentConfig implements AutoCloseable {
 
   @Override
   public void close() {
+    LOGGER.info("[TestEnvironmentConfig] close() was called");
     if (this.databaseContainers != null) {
+      LOGGER.info("[TestEnvironmentConfig] this.databaseContainers was not null");
       for (GenericContainer<?> container : this.databaseContainers) {
         try {
+          LOGGER.info("[TestEnvironmentConfig] stopping container...");
           container.stop();
         } catch (Exception ex) {
           // ignore
@@ -676,12 +679,15 @@ public class TestEnvironmentConfig implements AutoCloseable {
     }
 
     if (this.testContainer != null) {
+      LOGGER.info("[TestEnvironmentConfig] stopping test container...");
       this.testContainer.stop();
       this.testContainer = null;
     }
 
     if (this.proxyContainers != null) {
+      LOGGER.info("[TestEnvironmentConfig] this.proxyContainers not null");
       for (ToxiproxyContainer proxyContainer : this.proxyContainers) {
+        LOGGER.info("[TestEnvironmentConfig] stopping proxy container...");
         proxyContainer.stop();
       }
       this.proxyContainers = null;
@@ -695,6 +701,7 @@ public class TestEnvironmentConfig implements AutoCloseable {
       case RDS:
         throw new NotImplementedException(this.info.getRequest().getDatabaseEngineDeployment().toString());
       default:
+        LOGGER.info("[TestEnvironmentConfig] default switch branch was hit inside close()");
         // do nothing
     }
   }
@@ -709,14 +716,20 @@ public class TestEnvironmentConfig implements AutoCloseable {
   }
 
   private void deleteDbCluster() {
+    LOGGER.info("[TestEnvironmentConfig] deleteDbCluster() was called");
+    LOGGER.info("[TestEnvironmentConfig] reuseDbCluster value: " + this.reuseDbCluster);
     if (!this.reuseDbCluster && !StringUtils.isNullOrEmpty(this.runnerIP)) {
+      LOGGER.info("[TestEnvironmentConfig] deauthorizing IP...");
       rdsUtil.ec2DeauthorizesIP(runnerIP);
     }
 
     if (!this.reuseDbCluster) {
+      LOGGER.info("[TestEnvironmentConfig] deleting cluster...");
       LOGGER.finest("Deleting cluster " + this.clusterName + ".cluster-" + this.clusterDomain);
       rdsUtil.deleteCluster(this.clusterName);
       LOGGER.finest("Deleted cluster " + this.clusterName + ".cluster-" + this.clusterDomain);
+    } else {
+      LOGGER.info("[TestEnvironmentConfig] The reuseDbCluster branch was hit in deleteDbCluster");
     }
   }
 }
