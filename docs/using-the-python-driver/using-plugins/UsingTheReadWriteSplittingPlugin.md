@@ -23,7 +23,7 @@ conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 
 When using the Read/Write Splitting Plugin against Aurora clusters, you do not have to supply multiple instance URLs in the connection string. Instead, supply only the URL for the initial connection. The Read/Write Splitting Plugin will automatically discover the URLs for the other instances in the cluster and will use this info to switch between the writer/reader when `read_only` is set. Note however that you must set the [`cluster_instance_host_pattern`](./UsingTheFailoverPlugin.md#failover-parameters) if you are connecting using an IP address or custom domain.
 
-> ![IMPORTANT]\
+> [!IMPORTANT]\
 > you must set the [`cluster_instance_host_pattern`](./UsingTheFailoverPlugin.md#failover-parameters) if you are connecting using an IP address or custom domain.
 
 ### Using the Read/Write Splitting Plugin against non-Aurora clusters
@@ -46,7 +46,7 @@ The AWS Advanced Python Driver currently uses [SqlAlchemy](https://docs.sqlalche
     - The first optional argument takes in a `Callable` that can be used to return custom parameter settings for the connection pool. See [here](https://docs.sqlalchemy.org/en/20/core/pooling.html#sqlalchemy.pool.QueuePool) for a list of available parameters. Note that you should not set the `creator` parameter - this parameter will be set automatically by the AWS Advanced Python Driver. This is done to follow desired behavior and ensure that the Read/Write Splitting Plugin can successfully establish connections to new instances.
     - The second optional argument takes in a `Callable` that can be used to define custom key generation for the internal connection pools. Key generation is used to define when new connection pools are created; a new pool will be created each time a connection is requested with a unique key. By default, a new pool will be created for each unique instance-user combination. If you would like to define a different key system, you should pass in a `Callable` defining this logic. The `Callable` should take in a `HostInfo` and `Dict` specifying the connection properties and return a string representing the desired connection pool key. A simple example is shown below.
 
-    > [!IMPORTANT]\
+    > :warning:
     > If you do not include the username in the connection pool key, connection pools may be shared between different users. As a result, an initial connection established with a privileged user may be returned to a connection request with a lower-privilege user without re-verifying credentials. This behavior is inherent to the nature of connection pools and not a bug with the driver. `ConnectionProviderManager.release_resources` can be called to close all pools and remove all cached pool connections.
 
     ```python
@@ -77,8 +77,8 @@ The AWS Advanced Python Driver currently uses [SqlAlchemy](https://docs.sqlalche
 
 ### Sample Code
 [Postgres read/write splitting sample code](../../examples/PGReadWriteSplitting.py)  
-[MySQL read/write splitting sample code](../../examples/MySQLReadWriteSplitting.py)
-[Postgres internal connection pool password warning sample code](../../examples/PGInternalConnectionPoolPasswordWarning.py)
+[MySQL read/write splitting sample code](../../examples/MySQLReadWriteSplitting.py)  
+[Postgres internal connection pool password warning sample code](../../examples/PGInternalConnectionPoolPasswordWarning.py)  
 [MySQL internal connection pool password warning sample code](../../examples/MySQLInternalConnectionPoolPasswordWarning.py)
 
 ### Connection Strategies
