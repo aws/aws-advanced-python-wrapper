@@ -130,7 +130,7 @@ class DatabaseDialect(Protocol):
         ...
 
     @abstractmethod
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
         ...
 
     @abstractmethod
@@ -184,7 +184,8 @@ class MysqlDatabaseDialect(DatabaseDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return MysqlDatabaseDialect._DIALECT_UPDATE_CANDIDATES
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self.server_version_query)
@@ -192,8 +193,12 @@ class MysqlDatabaseDialect(DatabaseDialect):
                     for column_value in record:
                         if "mysql" in column_value.lower():
                             return True
-        except Exception:
-            pass
+        except Exception as e:
+            if self.exception_handler and self.exception_handler.is_network_exception(e):
+                raise e
+
+            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                conn.rollback()
 
         return False
 
@@ -232,16 +237,19 @@ class PgDatabaseDialect(DatabaseDialect):
                 "aws_advanced_python_wrapper.utils.pg_exception_handler.SingleAzPgExceptionHandler")
         return PgDatabaseDialect._exception_handler
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute('SELECT 1 FROM pg_proc LIMIT 1')
                 if cursor.fetchone() is not None:
                     return True
-        except Exception:
-            # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
-            # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
-            conn.rollback()
+        except Exception as e:
+            if self.exception_handler and self.exception_handler.is_network_exception(e):
+                raise e
+
+            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                conn.rollback()
 
         return False
 
@@ -255,7 +263,8 @@ class PgDatabaseDialect(DatabaseDialect):
 class RdsMysqlDialect(MysqlDatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_MYSQL)
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self.server_version_query)
@@ -263,8 +272,12 @@ class RdsMysqlDialect(MysqlDatabaseDialect):
                     for column_value in record:
                         if "source distribution" in column_value.lower():
                             return True
-        except Exception:
-            pass
+        except Exception as e:
+            if self.exception_handler and self.exception_handler.is_network_exception(e):
+                raise e
+
+            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                conn.rollback()
 
         return False
 
@@ -280,8 +293,9 @@ class RdsPgDialect(PgDatabaseDialect):
                          "WHERE name='rds.extensions'")
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG, DialectCode.MULTI_AZ_PG)
 
-    def is_dialect(self, conn: Connection) -> bool:
-        if not super().is_dialect(conn):
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
+        if not super().is_dialect(conn, driver_dialect):
             return False
 
         try:
@@ -295,10 +309,11 @@ class RdsPgDialect(PgDatabaseDialect):
                     if rds_tools and not aurora_utils:
                         return True
 
-        except Exception:
-            # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
-            # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
-            conn.rollback()
+        except Exception as e:
+            if self.exception_handler and self.exception_handler.is_network_exception(e):
+                raise e
+            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                conn.rollback()
         return False
 
     @property
@@ -320,15 +335,19 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return AuroraMysqlDialect._DIALECT_UPDATE_CANDIDATES
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute("SHOW VARIABLES LIKE 'aurora_version'")
                 # If variable with such a name is presented then it means it's an Aurora cluster
                 if cursor.fetchone() is not None:
                     return True
-        except Exception:
-            pass
+        except Exception as e:
+            if self.exception_handler and self.exception_handler.is_network_exception(e):
+                raise e
+            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                conn.rollback()
 
         return False
 
@@ -358,13 +377,14 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return AuroraPgDialect._DIALECT_UPDATE_CANDIDATES
 
-    def is_dialect(self, conn: Connection) -> bool:
-        if not super().is_dialect(conn):
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
+        if not super().is_dialect(conn, driver_dialect):
             return False
 
         has_extensions: bool = False
         has_topology: bool = False
 
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._EXTENSIONS_QUERY)
@@ -380,10 +400,11 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
                     has_topology = True
 
             return has_extensions and has_topology
-        except Exception:
-            # Executing the select statements will start a transaction, if the queries failed due to invalid syntax,
-            # the transaction will be aborted, no further commands can be executed. We need to call rollback here.
-            conn.rollback()
+        except Exception as e:
+            if self.exception_handler and self.exception_handler.is_network_exception(e):
+                raise e
+            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                conn.rollback()
 
         return False
 
@@ -402,15 +423,19 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return None
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(MultiAzMysqlDialect._TOPOLOGY_QUERY)
                 records = cursor.fetchall()
                 if records is not None and len(records) > 0:
                     return True
-        except Exception:
-            pass
+        except Exception as e:
+            if self.exception_handler and self.exception_handler.is_network_exception(e):
+                raise e
+            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                conn.rollback()
 
         return False
 
@@ -459,14 +484,18 @@ class MultiAzPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
                 "aws_advanced_python_wrapper.utils.pg_exception_handler.MultiAzPgExceptionHandler")
         return MultiAzPgDialect._exception_handler
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
+        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(MultiAzPgDialect._WRITER_HOST_QUERY)
                 if cursor.fetchone() is not None:
                     return True
-        except Exception:
-            pass
+        except Exception as e:
+            if self.exception_handler and self.exception_handler.is_network_exception(e):
+                raise e
+            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
+                conn.rollback()
 
         return False
 
@@ -511,7 +540,7 @@ class UnknownDatabaseDialect(DatabaseDialect):
     def exception_handler(self) -> Optional[ExceptionHandler]:
         return None
 
-    def is_dialect(self, conn: Connection) -> bool:
+    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
@@ -662,7 +691,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                         timeout_sec,
                         driver_dialect,
                         conn)(dialect_candidate.is_dialect)
-                    is_dialect = cursor_execute_func_with_timeout(conn)
+                    is_dialect = cursor_execute_func_with_timeout(conn, driver_dialect)
                 except TimeoutError as e:
                     raise QueryTimeoutError("DatabaseDialectManager.QueryForDialectTimeout") from e
 

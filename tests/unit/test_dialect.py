@@ -99,57 +99,57 @@ def mock_default_behavior(mock_conn, mock_cursor, mock_fetchone_row):
     mock_cursor.fetchone.return_value = mock_fetchone_row
 
 
-def test_pg_is_dialect(mock_conn, mock_cursor, mock_session, pg_dialect):
-    assert pg_dialect.is_dialect(mock_conn)
+def test_pg_is_dialect(mock_conn, mock_cursor, mock_session, pg_dialect, mock_driver_dialect):
+    assert pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
     mock_cursor.fetchone.return_value = None
-    assert not pg_dialect.is_dialect(mock_conn)
+    assert not pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
 
-def test_mysql_is_dialect(mock_conn, mock_cursor, mock_session, mysql_dialect):
+def test_mysql_is_dialect(mock_conn, mock_cursor, mock_session, mysql_dialect, mock_driver_dialect):
     records = [("some_value", "some_value"), ("some_value", "mysql")]
     mock_cursor.__iter__.return_value = records
 
-    assert mysql_dialect.is_dialect(mock_conn)
+    assert mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
     records = [("some_value", "some_value"), ("some_value", "some_value")]
     mock_cursor.__iter__.return_value = records
 
-    assert not mysql_dialect.is_dialect(mock_conn)
+    assert not mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
 
 @patch('aws_advanced_python_wrapper.database_dialect.super')
-def test_rds_mysql_is_dialect(mock_super, mock_cursor, mock_conn, rds_mysql_dialect):
+def test_rds_mysql_is_dialect(mock_super, mock_cursor, mock_conn, rds_mysql_dialect, mock_driver_dialect):
     mock_super().is_dialect.return_value = True
 
     records = [("some_value", "some_value"), ("some_value", "source distribution")]
     mock_cursor.__iter__.return_value = records
 
-    assert rds_mysql_dialect.is_dialect(mock_conn)
+    assert rds_mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
     records = [("some_value", "some_value"), ("some_value", "some_value")]
     mock_cursor.__iter__.return_value = records
 
-    assert not rds_mysql_dialect.is_dialect(mock_conn)
+    assert not rds_mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
     mock_super().is_dialect.return_value = False
 
-    assert not rds_mysql_dialect.is_dialect(mock_conn)
+    assert not rds_mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
 
-def test_aurora_mysql_is_dialect(mock_conn, mock_cursor):
+def test_aurora_mysql_is_dialect(mock_conn, mock_cursor, mock_driver_dialect):
     mock_conn.cursor.return_value = mock_cursor
     mock_cursor.fetchone.return_value = None
 
     dialect = AuroraMysqlDialect()
-    assert dialect.is_dialect(mock_conn) is False
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is False
 
     mock_cursor.fetchone.return_value = ('aurora_version', '3.0.0')
-    assert dialect.is_dialect(mock_conn) is True
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is True
 
 
 @patch('aws_advanced_python_wrapper.database_dialect.super')
-def test_aurora_pg_is_dialect(mock_super, mock_conn, mock_cursor):
+def test_aurora_pg_is_dialect(mock_super, mock_conn, mock_cursor, mock_driver_dialect):
     aurora_pg_dialect = AuroraPgDialect()
     mock_conn.cursor.return_value = mock_cursor
     mock_super().is_dialect.return_value = True
@@ -157,38 +157,38 @@ def test_aurora_pg_is_dialect(mock_super, mock_conn, mock_cursor):
     records = [("aurora_stat_utils", "aurora_stat_utils"), ("some_value", "source distribution")]
     mock_cursor.__iter__.return_value = records
 
-    assert aurora_pg_dialect.is_dialect(mock_conn)
+    assert aurora_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
     mock_cursor.fetchone.return_value = None
 
-    assert not aurora_pg_dialect.is_dialect(mock_conn)
+    assert not aurora_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
     mock_cursor.fetchone.return_value = records
     mock_super().is_dialect.return_value = False
 
-    assert not aurora_pg_dialect.is_dialect(mock_conn)
+    assert not aurora_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
 
 @patch('aws_advanced_python_wrapper.database_dialect.super')
-def test_rds_pg_is_dialect(mock_super, mock_cursor, mock_conn, rds_pg_dialect):
+def test_rds_pg_is_dialect(mock_super, mock_cursor, mock_conn, rds_pg_dialect, mock_driver_dialect):
     mock_super().is_dialect.return_value = True
 
     mock_cursor.__iter__.return_value = [(False, False), (True, False)]
 
-    assert rds_pg_dialect.is_dialect(mock_conn)
+    assert rds_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
     mock_cursor.__iter__.return_value = [(False, False), (False, False)]
 
-    assert not rds_pg_dialect.is_dialect(mock_conn)
+    assert not rds_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
     mock_cursor.__iter__.return_value = []
 
-    assert not rds_pg_dialect.is_dialect(mock_conn)
+    assert not rds_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
     mock_cursor.fetchone.return_value = [(False, False), (True, False)]
     mock_super().is_dialect.return_value = False
 
-    assert not rds_pg_dialect.is_dialect(mock_conn)
+    assert not rds_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
 
 def test_get_dialect_custom_dialect(mock_custom_dialect, mock_driver_dialect):
