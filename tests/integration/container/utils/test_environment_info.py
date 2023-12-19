@@ -27,8 +27,8 @@ class TestEnvironmentInfo:
     _aws_access_key_id: str
     _aws_secret_access_key: str
     _aws_session_token: str
-    _aurora_region: str
-    _aurora_cluster_name: str
+    _region: str
+    _cluster_name: str
     _iam_user_name: str
     _database_info: TestDatabaseInfo
     _proxy_database_info: TestProxyDatabaseInfo
@@ -44,8 +44,8 @@ class TestEnvironmentInfo:
         self._aws_access_key_id = typing.cast('str', test_info.get("awsAccessKeyId"))
         self._aws_secret_access_key = typing.cast('str', test_info.get("awsSecretAccessKey"))
         self._aws_session_token = typing.cast('str', test_info.get("awsSessionToken"))
-        self._aurora_region = typing.cast('str', test_info.get("auroraRegion"))
-        self._aurora_cluster_name = typing.cast('str', test_info.get("auroraClusterName"))
+        self._region = typing.cast('str', test_info.get("region"))
+        self._cluster_name = typing.cast('str', test_info.get("clusterName"))
         self._iam_user_name = typing.cast('str', test_info.get("iamUsername"))
 
         database_info_dict: Dict[str, Any] = typing.cast('Dict[str, Any]', test_info.get("databaseInfo"))
@@ -74,11 +74,11 @@ class TestEnvironmentInfo:
     def get_aws_session_token(self) -> str:
         return self._aws_session_token
 
-    def get_aurora_region(self) -> str:
-        return self._aurora_region
+    def get_region(self) -> str:
+        return self._region
 
-    def get_aurora_cluster_name(self) -> str:
-        return self._aurora_cluster_name
+    def get_cluster_name(self) -> str:
+        return self._cluster_name
 
     def get_iam_user_name(self) -> str:
         return self._iam_user_name

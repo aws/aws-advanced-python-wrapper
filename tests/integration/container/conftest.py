@@ -36,10 +36,10 @@ from typing import List
 
 import pytest
 
-from .utils.aurora_test_utility import AuroraTestUtility
 from .utils.connection_utils import ConnectionUtils
 from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.proxy_helper import ProxyHelper
+from .utils.rds_test_utility import RdsTestUtility
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
@@ -64,10 +64,10 @@ def pytest_runtest_setup(item):
     if TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED in request.get_features():
         ProxyHelper.enable_all_connectivity()
 
-    if request.get_database_engine_deployment() == DatabaseEngineDeployment.AURORA:
-        aurora_utility = AuroraTestUtility(info.get_aurora_region())
-        aurora_utility.wait_until_cluster_has_desired_status(
-            info.get_aurora_cluster_name(), "available")
+    deployment = request.get_database_engine_deployment()
+    if DatabaseEngineDeployment.AURORA == deployment or DatabaseEngineDeployment.MULTI_AZ == deployment:
+        rds_utility = RdsTestUtility(info.get_region())
+        rds_utility.wait_until_cluster_has_desired_status(info.get_cluster_name(), "available")
 
         # Need to ensure that cluster details through API matches topology fetched through SQL
         # Wait up to 5min
@@ -75,11 +75,11 @@ def pytest_runtest_setup(item):
         start_time = timeit.default_timer()
         while (len(instances) != request.get_num_of_instances()
                or len(instances) == 0
-               or not aurora_utility.is_db_instance_writer(instances[0])) and (
+               or not rds_utility.is_db_instance_writer(instances[0])) and (
                 timeit.default_timer() - start_time) < 300:  # 5 min
 
             try:
-                instances = aurora_utility.get_aurora_instance_ids()
+                instances = rds_utility.get_instance_ids()
             except Exception as ex:
                 logger.warning("conftest.ExceptionWhileObtainingInstanceIDs", ex)
                 instances = list()
@@ -88,9 +88,9 @@ def pytest_runtest_setup(item):
 
         assert len(instances) > 0
         current_writer = instances[0]
-        assert aurora_utility.is_db_instance_writer(current_writer)
+        assert rds_utility.is_db_instance_writer(current_writer)
 
-        aurora_utility.make_sure_instances_up(instances)
+        rds_utility.make_sure_instances_up(instances)
 
         info.get_database_info().move_instance_first(current_writer)
         info.get_proxy_database_info().move_instance_first(current_writer)

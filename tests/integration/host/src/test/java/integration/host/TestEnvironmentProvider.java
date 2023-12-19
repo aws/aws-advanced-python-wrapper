@@ -64,6 +64,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
 
     final boolean excludeDocker = Boolean.parseBoolean(System.getProperty("exclude-docker", "false"));
     final boolean excludeAurora = Boolean.parseBoolean(System.getProperty("exclude-aurora", "false"));
+    final boolean excludeMultiAz = Boolean.parseBoolean(System.getProperty("exclude-multi-az", "false"));
     final boolean excludePerformance =
         Boolean.parseBoolean(System.getProperty("exclude-performance", "false"));
     final boolean excludeMysqlEngine =
@@ -292,6 +293,68 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                       excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
                       testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null)));
         }
+      }
+    }
+
+    if (!excludeMultiAz) {
+      if (!excludeMysqlEngine && !excludePython311) {
+        if (numInstances != null && numInstances != 3) {
+          LOGGER.warning(numInstances + " instances were requested, but multi-az tests are only supported with" +
+              " 3 instances. The multi-az tests will be run with 3 instances, and NUM_INSTANCES will be ignored.");
+        }
+
+        if (!excludeFailover) {
+          LOGGER.warning("Tests requiring database failover are not supported for multi-az clusters. It may take 1hr+" +
+              " for the original writer to become available again after multi-az failover. Tests requiring database " +
+              " failover will be skipped for multi-az test runs.");
+        }
+
+        resultContextList.add(
+            getEnvironment(
+                new TestEnvironmentRequest(
+                    DatabaseEngine.MYSQL,
+                    DatabaseInstances.MULTI_INSTANCE,
+                    3,
+                    DatabaseEngineDeployment.MULTI_AZ,
+                    TargetPythonVersion.PYTHON_3_11,
+                    TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                    // Tests requiring database failover are not supported. It may take 1hr+ for the original writer to
+                    // become available after multi-az failover.
+                    TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
+                    excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
+                    excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
+                    excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                    excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null)));
+      }
+      if (!excludePgEngine && !excludePython311) {
+        if (numInstances != null && numInstances != 3) {
+          LOGGER.warning(numInstances + " instances were requested, but multi-az tests are only supported with" +
+              " 3 instances. The multi-az tests will be run with 3 instances, and NUM_INSTANCES will be ignored.");
+        }
+
+        if (!excludeFailover) {
+          LOGGER.warning("Tests requiring database failover are not supported for multi-az clusters. It may take 1hr+" +
+              " for the original writer to become available again after multi-az failover. Tests requiring database " +
+              " failover will be skipped for multi-az test runs.");
+        }
+
+        resultContextList.add(
+            getEnvironment(
+                new TestEnvironmentRequest(
+                    DatabaseEngine.PG,
+                    DatabaseInstances.MULTI_INSTANCE,
+                    3,
+                    DatabaseEngineDeployment.MULTI_AZ,
+                    TargetPythonVersion.PYTHON_3_11,
+                    TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                    TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED,
+                    // Tests requiring database failover are not supported. It may take 1hr+ for the original writer to
+                    // become available after multi-az failover.
+                    TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
+                    excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
+                    excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
+                    excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                    excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null)));
       }
     }
 

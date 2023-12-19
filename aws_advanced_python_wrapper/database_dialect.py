@@ -32,7 +32,7 @@ from enum import Enum, auto
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import (
-    ConnectionStringHostListProvider, MultiAzRdsHostListProvider,
+    ConnectionStringHostListProvider, MultiAzHostListProvider,
     RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.decorators import \
@@ -253,7 +253,7 @@ class PgDatabaseDialect(DatabaseDialect):
 
 
 class RdsMysqlDialect(MysqlDatabaseDialect):
-    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL,)
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_MYSQL)
 
     def is_dialect(self, conn: Connection) -> bool:
         try:
@@ -278,7 +278,7 @@ class RdsPgDialect(PgDatabaseDialect):
                          "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
                          "FROM pg_settings "
                          "WHERE name='rds.extensions'")
-    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG,)
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG, DialectCode.MULTI_AZ_PG)
 
     def is_dialect(self, conn: Connection) -> bool:
         if not super().is_dialect(conn):
@@ -337,6 +337,8 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
 
 
 class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
+    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.MULTI_AZ_PG,)
+
     _EXTENSIONS_QUERY = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils " \
                         "FROM pg_settings WHERE name='rds.extensions'"
 
@@ -351,6 +353,10 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
 
     _HOST_ID_QUERY = "SELECT aurora_db_instance_identifier()"
     _IS_READER_QUERY = "SELECT pg_is_in_recovery()"
+
+    @property
+    def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
+        return AuroraPgDialect._DIALECT_UPDATE_CANDIDATES
 
     def is_dialect(self, conn: Connection) -> bool:
         if not super().is_dialect(conn):
@@ -385,7 +391,7 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
         return lambda provider_service, props: RdsHostListProvider(provider_service, props)
 
 
-class MultiAzMysqlDialect(MysqlDatabaseDialect):
+class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
     _TOPOLOGY_QUERY = "SELECT id, endpoint, port FROM mysql.rds_topology"
     _WRITER_HOST_QUERY = "SHOW REPLICA STATUS"
     _WRITER_HOST_COLUMN_INDEX = 39
@@ -400,7 +406,8 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect):
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(MultiAzMysqlDialect._TOPOLOGY_QUERY)
-                if cursor.fetchone() is not None:
+                records = cursor.fetchall()
+                if records is not None and len(records) > 0:
                     return True
         except Exception:
             pass
@@ -408,7 +415,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect):
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
-        return lambda provider_service, props: MultiAzRdsHostListProvider(
+        return lambda provider_service, props: MultiAzHostListProvider(
             provider_service,
             props,
             self._TOPOLOGY_QUERY,
@@ -430,7 +437,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect):
             props["conn_attrs"].update(extra_conn_attrs)
 
 
-class MultiAzPgDialect(PgDatabaseDialect):
+class MultiAzPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
     # The driver name passed to show_topology is used for RDS metrics purposes.
     # It is not required for functional correctness.
     _TOPOLOGY_QUERY = \
@@ -464,7 +471,7 @@ class MultiAzPgDialect(PgDatabaseDialect):
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
-        return lambda provider_service, props: MultiAzRdsHostListProvider(
+        return lambda provider_service, props: MultiAzHostListProvider(
             provider_service,
             props,
             self._TOPOLOGY_QUERY,

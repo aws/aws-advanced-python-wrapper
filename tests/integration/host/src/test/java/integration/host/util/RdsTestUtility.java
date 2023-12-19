@@ -17,21 +17,10 @@
 package integration.host.util;
 
 import integration.host.DatabaseEngine;
+import integration.host.DatabaseEngineDeployment;
+import integration.host.DriverHelper;
+import integration.host.TestEnvironmentInfo;
 import integration.host.TestInstanceInfo;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.URL;
-import java.net.UnknownHostException;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Random;
-import java.util.logging.Logger;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -56,22 +45,40 @@ import software.amazon.awssdk.services.rds.model.Filter;
 import software.amazon.awssdk.services.rds.model.Tag;
 import software.amazon.awssdk.services.rds.waiters.RdsWaiter;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.net.UnknownHostException;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Random;
+import java.util.logging.Logger;
+
 /**
  * Creates and destroys AWS RDS Clusters and Instances. To use this functionality the following environment variables
  * must be defined: - AWS_ACCESS_KEY_ID - AWS_SECRET_ACCESS_KEY
  */
-public class AuroraTestUtility {
+public class RdsTestUtility {
 
-  private static final Logger LOGGER = Logger.getLogger(AuroraTestUtility.class.getName());
+  private static final Logger LOGGER = Logger.getLogger(RdsTestUtility.class.getName());
 
   // Default values
   private String dbUsername = "my_test_username";
   private String dbPassword = "my_test_password";
   private String dbName = "test";
   private String dbIdentifier = "test-identifier";
+  private DatabaseEngineDeployment dbEngineDeployment;
   private String dbEngine = "aurora-postgresql";
   private String dbEngineVersion = "13.9";
   private String dbInstanceClass = "db.r5.large";
+  private String storageType = "io1";
+  private int allocatedStorage = 100;
+  private int iops = 1000;
   private final Region dbRegion;
   private final String dbSecGroup = "default";
   private int numOfInstances = 5;
@@ -87,7 +94,7 @@ public class AuroraTestUtility {
    * Initializes an AmazonRDS & AmazonEC2 client. RDS client used to create/destroy clusters & instances. EC2 client
    * used to add/remove IP from security group.
    */
-  public AuroraTestUtility() {
+  public RdsTestUtility() {
     this(Region.US_EAST_1, DefaultCredentialsProvider.create());
   }
 
@@ -97,7 +104,7 @@ public class AuroraTestUtility {
    * @param region define AWS Regions, refer to
    *               https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RegionsAndAvailabilityZones.html
    */
-  public AuroraTestUtility(Region region) {
+  public RdsTestUtility(Region region) {
     this(region, DefaultCredentialsProvider.create());
   }
 
@@ -107,11 +114,11 @@ public class AuroraTestUtility {
    * @param region define AWS Regions, refer to
    *               https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RegionsAndAvailabilityZones.html
    */
-  public AuroraTestUtility(String region) {
+  public RdsTestUtility(String region) {
     this(getRegionInternal(region), DefaultCredentialsProvider.create());
   }
 
-  public AuroraTestUtility(
+  public RdsTestUtility(
       String region, String awsAccessKeyId, String awsSecretAccessKey, String awsSessionToken) {
 
     this(
@@ -129,7 +136,7 @@ public class AuroraTestUtility {
    *                            https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RegionsAndAvailabilityZones.html
    * @param credentialsProvider Specific AWS credential provider
    */
-  public AuroraTestUtility(Region region, AwsCredentialsProvider credentialsProvider) {
+  public RdsTestUtility(Region region, AwsCredentialsProvider credentialsProvider) {
     dbRegion = region;
 
     rdsClient =
@@ -169,21 +176,23 @@ public class AuroraTestUtility {
       String password,
       String dbName,
       String identifier,
+      DatabaseEngineDeployment deployment,
       String engine,
       String instanceClass,
       String version,
       int numOfInstances,
-      ArrayList<TestInstanceInfo> instances)
-      throws InterruptedException {
-    dbUsername = username;
-    dbPassword = password;
+      ArrayList<TestInstanceInfo> instances) throws InterruptedException {
+    this.dbUsername = username;
+    this.dbPassword = password;
     this.dbName = dbName;
-    dbIdentifier = identifier;
-    dbEngine = engine;
-    dbInstanceClass = instanceClass;
-    dbEngineVersion = version;
+    this.dbIdentifier = identifier;
+    this.dbEngineDeployment = deployment;
+    this.dbEngine = engine;
+    this.dbInstanceClass = instanceClass;
+    this.dbEngineVersion = version;
     this.numOfInstances = numOfInstances;
     this.instances = instances;
+
     return createCluster();
   }
 
@@ -196,36 +205,47 @@ public class AuroraTestUtility {
   public String createCluster() throws InterruptedException {
     // Create Cluster
     final Tag testRunnerTag = Tag.builder().key("env").value("test-runner").build();
-
-    final CreateDbClusterRequest dbClusterRequest =
+    CreateDbClusterRequest.Builder clusterBuilder =
         CreateDbClusterRequest.builder()
             .dbClusterIdentifier(dbIdentifier)
             .databaseName(dbName)
             .masterUsername(dbUsername)
             .masterUserPassword(dbPassword)
             .sourceRegion(dbRegion.id())
-            .enableIAMDatabaseAuthentication(true)
             .engine(dbEngine)
             .engineVersion(dbEngineVersion)
             .storageEncrypted(true)
-            .tags(testRunnerTag)
-            .build();
+            .tags(testRunnerTag);
 
-    rdsClient.createDBCluster(dbClusterRequest);
+    if (DatabaseEngineDeployment.AURORA.equals(this.dbEngineDeployment)) {
+      clusterBuilder = clusterBuilder.enableIAMDatabaseAuthentication(true);
+    } else if (DatabaseEngineDeployment.MULTI_AZ.equals(this.dbEngineDeployment)) {
+      clusterBuilder =
+          clusterBuilder.allocatedStorage(allocatedStorage)
+              .dbClusterInstanceClass(dbInstanceClass)
+              .storageType(storageType)
+              .iops(iops);
+    }
 
-    // Create Instances
-    for (int i = 1; i <= numOfInstances; i++) {
-      final String instanceName = dbIdentifier + "-" + i;
-      rdsClient.createDBInstance(
-          CreateDbInstanceRequest.builder()
-              .dbClusterIdentifier(dbIdentifier)
-              .dbInstanceIdentifier(instanceName)
-              .dbInstanceClass(dbInstanceClass)
-              .engine(dbEngine)
-              .engineVersion(dbEngineVersion)
-              .publiclyAccessible(true)
-              .tags(testRunnerTag)
-              .build());
+    rdsClient.createDBCluster(clusterBuilder.build());
+
+    // When creating an Aurora deployment, you need to create instances using CreateDbInstance requests.
+    // For multi-AZ deployments, this is not the case - the instances are created automatically.
+    if (DatabaseEngineDeployment.AURORA.equals(this.dbEngineDeployment)) {
+      // Create Instances
+      for (int i = 1; i <= numOfInstances; i++) {
+        final String instanceName = dbIdentifier + "-" + i;
+        rdsClient.createDBInstance(
+            CreateDbInstanceRequest.builder()
+                .dbClusterIdentifier(dbIdentifier)
+                .dbInstanceIdentifier(instanceName)
+                .dbInstanceClass(dbInstanceClass)
+                .engine(dbEngine)
+                .engineVersion(dbEngineVersion)
+                .publiclyAccessible(true)
+                .tags(testRunnerTag)
+                .build());
+      }
     }
 
     // Wait for all instances to be up
@@ -358,17 +378,19 @@ public class AuroraTestUtility {
    * Destroys all instances and clusters. Removes IP from EC2 whitelist.
    */
   public void deleteCluster() {
-    // Tear down instances
-    for (int i = 1; i <= numOfInstances; i++) {
-      try {
-        rdsClient.deleteDBInstance(
-            DeleteDbInstanceRequest.builder()
-                .dbInstanceIdentifier(dbIdentifier + "-" + i)
-                .skipFinalSnapshot(true)
-                .build());
-      } catch (Exception ex) {
-        LOGGER.finest("Error deleting instance " + dbIdentifier + "-" + i + ". " + ex.getMessage());
-        // Ignore this error and continue with other instances
+    // deleteDBinstance requests are not necessary to delete a multi-az cluster.
+    if (!this.dbEngineDeployment.equals(DatabaseEngineDeployment.MULTI_AZ)) {
+      for (int i = 1; i <= numOfInstances; i++) {
+        try {
+          rdsClient.deleteDBInstance(
+              DeleteDbInstanceRequest.builder()
+                  .dbInstanceIdentifier(dbIdentifier + "-" + i)
+                  .skipFinalSnapshot(true)
+                  .build());
+        } catch (Exception ex) {
+          LOGGER.finest("Error deleting instance " + dbIdentifier + "-" + i + ". " + ex.getMessage());
+          // Ignore this error and continue with other instances
+        }
       }
     }
 
@@ -402,8 +424,10 @@ public class AuroraTestUtility {
   public DatabaseEngine getClusterEngine(final DBCluster cluster) {
     switch (cluster.engine()) {
       case "aurora-postgresql":
+      case "postgres":
         return DatabaseEngine.PG;
       case "aurora-mysql":
+      case "mysql":
         return DatabaseEngine.MYSQL;
       default:
         throw new UnsupportedOperationException(cluster.engine());
@@ -427,33 +451,29 @@ public class AuroraTestUtility {
     return result;
   }
 
-  public void addAuroraAwsIamUser(
-      DatabaseEngine databaseEngine,
-      String connectionUrl,
-      String userName,
-      String password,
-      String dbUser,
-      String databaseName)
-      throws SQLException {
+  public void addAuroraAwsIamUser(TestEnvironmentInfo info) throws SQLException {
+    DatabaseEngine dbEngine = info.getRequest().getDatabaseEngine();
+    String dbUser = info.getIamUsername();
+    String dbName = info.getDatabaseInfo().getDefaultDbName();
 
-    try (final Connection conn = DriverManager.getConnection(connectionUrl, userName, password);
-        final Statement stmt = conn.createStatement()) {
+    try (final Connection conn = DriverHelper.getDriverConnection(info);
+         final Statement stmt = conn.createStatement()) {
 
-      switch (databaseEngine) {
+      switch (dbEngine) {
         case MYSQL:
           stmt.execute("DROP USER IF EXISTS " + dbUser + ";");
           stmt.execute(
               "CREATE USER " + dbUser + " IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';");
-          stmt.execute("GRANT ALL PRIVILEGES ON " + databaseName + ".* TO '" + dbUser + "'@'%';");
+          stmt.execute("GRANT ALL PRIVILEGES ON " + dbName + ".* TO '" + dbUser + "'@'%';");
           break;
         case PG:
           stmt.execute("DROP USER IF EXISTS " + dbUser + ";");
           stmt.execute("CREATE USER " + dbUser + ";");
           stmt.execute("GRANT rds_iam TO " + dbUser + ";");
-          stmt.execute("GRANT ALL PRIVILEGES ON DATABASE " + databaseName + " TO " + dbUser + ";");
+          stmt.execute("GRANT ALL PRIVILEGES ON DATABASE " + dbName + " TO " + dbUser + ";");
           break;
         default:
-          throw new UnsupportedOperationException(databaseEngine.toString());
+          throw new UnsupportedOperationException(dbEngine.toString());
       }
     }
   }

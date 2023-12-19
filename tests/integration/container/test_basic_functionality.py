@@ -36,8 +36,7 @@ if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
-from tests.integration.container.utils.aurora_test_utility import \
-    AuroraTestUtility
+from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from .utils.conditions import disable_on_features
 from .utils.driver_helper import DriverHelper
 from .utils.test_environment import TestEnvironment
@@ -48,9 +47,9 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 class TestBasicFunctionality:
 
     @pytest.fixture(scope='class')
-    def aurora_utils(self):
-        region: str = TestEnvironment.get_current().get_info().get_aurora_region()
-        return AuroraTestUtility(region)
+    def rds_utils(self):
+        region: str = TestEnvironment.get_current().get_info().get_region()
+        return RdsTestUtility(region)
 
     @pytest.fixture(scope='class')
     def props(self):
