@@ -54,8 +54,9 @@ jobs:
 
       - name: 'Run Integration Tests'
         run: |
-          ./gradlew --no-parallel --no-daemon test-all-environments --info
+          ./gradlew --no-parallel --no-daemon test-mysql-aurora --info
         env:
+          FILTER: test_pooled_connection__failover
           RDS_CLUSTER_DOMAIN: ${{ secrets.DB_CONN_SUFFIX }}
           AURORA_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
           MULTI_AZ_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}

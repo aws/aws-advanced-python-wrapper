@@ -664,9 +664,12 @@ public class TestEnvironmentConfig implements AutoCloseable {
 
   @Override
   public void close() {
+    LOGGER.info("TEC.close begin");
     if (this.databaseContainers != null) {
+      LOGGER.info("TEC database containers not null");
       for (GenericContainer<?> container : this.databaseContainers) {
         try {
+          LOGGER.info("TEC stopping container...");
           container.stop();
         } catch (Exception ex) {
           // ignore
@@ -676,12 +679,15 @@ public class TestEnvironmentConfig implements AutoCloseable {
     }
 
     if (this.testContainer != null) {
+      LOGGER.info("TEC stopping test container...");
       this.testContainer.stop();
       this.testContainer = null;
     }
 
     if (this.proxyContainers != null) {
+      LOGGER.info("TEC proxyContainers not null");
       for (ToxiproxyContainer proxyContainer : this.proxyContainers) {
+        LOGGER.info("TEC stopping proxy container...");
         proxyContainer.stop();
       }
       this.proxyContainers = null;
@@ -695,6 +701,7 @@ public class TestEnvironmentConfig implements AutoCloseable {
       case RDS:
         throw new NotImplementedException(this.info.getRequest().getDatabaseEngineDeployment().toString());
       default:
+        LOGGER.info("TEC hit default switch branch");
         // do nothing
     }
   }
@@ -709,14 +716,20 @@ public class TestEnvironmentConfig implements AutoCloseable {
   }
 
   private void deleteDbCluster() {
+    LOGGER.info("TEC deleteDbCluster begin");
+    LOGGER.info("TEC reuseDbCluster value: " + this.reuseDbCluster);
     if (!this.reuseDbCluster && !StringUtils.isNullOrEmpty(this.runnerIP)) {
+      LOGGER.info("TEC deauthorizing IP...");
       rdsUtil.ec2DeauthorizesIP(runnerIP);
     }
 
     if (!this.reuseDbCluster) {
+      LOGGER.info("TEC deleting cluster...");
       LOGGER.finest("Deleting cluster " + this.clusterName + ".cluster-" + this.clusterDomain);
       rdsUtil.deleteCluster(this.clusterName);
       LOGGER.finest("Deleted cluster " + this.clusterName + ".cluster-" + this.clusterDomain);
+    } else {
+      LOGGER.info("TEC hit reuseDbCluster in deleteDbCluster");
     }
   }
 }
