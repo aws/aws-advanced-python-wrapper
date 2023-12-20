@@ -38,8 +38,7 @@ class PgDriverDialect(DriverDialect):
     TARGET_DRIVER_CODE: str = "psycopg"
 
     # https://www.psycopg.org/psycopg3/docs/api/pq.html#psycopg.pq.TransactionStatus
-    PSYCOPG_ACTIVE_TRANSACTION_STATUS = 1
-    PSYCOPG_IN_TRANSACTION_STATUS = 2
+    PSYCOPG_IDLE_TRANSACTION_STATUS = 0
 
     _dialect_code: str = DriverDialectCodes.PSYCOPG
     _network_bound_methods: Set[str] = {
@@ -78,7 +77,7 @@ class PgDriverDialect(DriverDialect):
     def is_in_transaction(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
             status: int = conn.info.transaction_status
-            return status == self.PSYCOPG_ACTIVE_TRANSACTION_STATUS or status == self.PSYCOPG_IN_TRANSACTION_STATUS
+            return status != self.PSYCOPG_IDLE_TRANSACTION_STATUS
 
         raise UnsupportedOperationError(Messages.get_formatted(
             "DriverDialect.UnsupportedOperationError",
