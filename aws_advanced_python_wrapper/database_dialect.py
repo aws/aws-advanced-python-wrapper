@@ -193,10 +193,7 @@ class MysqlDatabaseDialect(DatabaseDialect):
                     for column_value in record:
                         if "mysql" in column_value.lower():
                             return True
-        except Exception as e:
-            if self.exception_handler and self.exception_handler.is_network_exception(e):
-                raise e
-
+        except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
 
@@ -244,10 +241,7 @@ class PgDatabaseDialect(DatabaseDialect):
                 cursor.execute('SELECT 1 FROM pg_proc LIMIT 1')
                 if cursor.fetchone() is not None:
                     return True
-        except Exception as e:
-            if self.exception_handler and self.exception_handler.is_network_exception(e):
-                raise e
-
+        except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
 
@@ -272,10 +266,7 @@ class RdsMysqlDialect(MysqlDatabaseDialect):
                     for column_value in record:
                         if "source distribution" in column_value.lower():
                             return True
-        except Exception as e:
-            if self.exception_handler and self.exception_handler.is_network_exception(e):
-                raise e
-
+        except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
 
@@ -309,9 +300,7 @@ class RdsPgDialect(PgDatabaseDialect):
                     if rds_tools and not aurora_utils:
                         return True
 
-        except Exception as e:
-            if self.exception_handler and self.exception_handler.is_network_exception(e):
-                raise e
+        except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
         return False
@@ -343,9 +332,7 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
                 # If variable with such a name is presented then it means it's an Aurora cluster
                 if cursor.fetchone() is not None:
                     return True
-        except Exception as e:
-            if self.exception_handler and self.exception_handler.is_network_exception(e):
-                raise e
+        except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
 
@@ -400,9 +387,7 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
                     has_topology = True
 
             return has_extensions and has_topology
-        except Exception as e:
-            if self.exception_handler and self.exception_handler.is_network_exception(e):
-                raise e
+        except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
 
@@ -431,9 +416,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
                 records = cursor.fetchall()
                 if records is not None and len(records) > 0:
                     return True
-        except Exception as e:
-            if self.exception_handler and self.exception_handler.is_network_exception(e):
-                raise e
+        except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
 
@@ -491,9 +474,7 @@ class MultiAzPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
                 cursor.execute(MultiAzPgDialect._WRITER_HOST_QUERY)
                 if cursor.fetchone() is not None:
                     return True
-        except Exception as e:
-            if self.exception_handler and self.exception_handler.is_network_exception(e):
-                raise e
+        except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
 
