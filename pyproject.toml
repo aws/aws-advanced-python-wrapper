@@ -13,7 +13,7 @@ boto3 = "^1.34.6"
 toml = "^0.10.2"
 
 [tool.poetry.group.dev.dependencies]
-mypy = "^1.7.1"
+mypy = "^1.8.0"
 flake8 = "^6.0.0"
 flake8-type-checking = "^2.7.0"
 isort = "^5.13.2"
