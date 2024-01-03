@@ -97,14 +97,15 @@ def counter():
 
 @pytest.fixture(autouse=True)
 def verify_concurrency(mock_monitor, mock_executor, mock_future, counter, concurrent_counter):
+    # The ThreadPoolExecutor may have been shut down by a previous test, so we'll need to recreate it here.
+    MonitoringThreadContainer._executor = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
     yield
 
     counter.set(0)
     assert concurrent_counter.get() > 0
     concurrent_counter.set(0)
 
-    while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.release_instance()
+    MonitoringThreadContainer.release_instance()
 
 
 def test_start_monitoring__connections_to_different_hosts(
@@ -122,12 +123,13 @@ def test_start_monitoring__connections_to_different_hosts(
 
     try:
         mock_create_monitor = mocker.patch(
-            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
+            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor",
+            return_value=mock_monitor)
         contexts = start_monitoring(num_conns, services, host_alias_list)
         expected_start_monitoring_calls = [mocker.call(context) for context in contexts]
         mock_monitor.start_monitoring.assert_has_calls(expected_start_monitoring_calls, True)
         assert num_conns == len(MonitoringThreadContainer()._monitor_map)
-        expected_create_monitor_calls = [mocker.call(host_info, props)] * num_conns
+        expected_create_monitor_calls = [mocker.call(host_info, props, MonitoringThreadContainer())] * num_conns
         mock_create_monitor.assert_has_calls(expected_create_monitor_calls)
     finally:
         release_resources(services)
@@ -148,12 +150,13 @@ def test_start_monitoring__connections_to_same_host(
 
     try:
         mock_create_monitor = mocker.patch(
-            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
+            "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor",
+            return_value=mock_monitor)
         contexts = start_monitoring(num_conns, services, host_alias_list)
         expected_start_monitoring_calls = [mocker.call(context) for context in contexts]
         mock_monitor.start_monitoring.assert_has_calls(expected_start_monitoring_calls, True)
         assert 1 == len(MonitoringThreadContainer()._monitor_map)
-        expected_create_monitor_calls = [mocker.call(host_info, props)]
+        expected_create_monitor_calls = [mocker.call(host_info, props, MonitoringThreadContainer())]
         mock_create_monitor.assert_has_calls(expected_create_monitor_calls)
     finally:
         release_resources(services)

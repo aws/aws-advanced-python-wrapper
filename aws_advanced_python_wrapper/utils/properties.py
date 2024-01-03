@@ -156,7 +156,7 @@ class WrapperProperties:
     MONITOR_DISPOSAL_TIME_MS = WrapperProperty(
         "monitor_disposal_time_ms",
         "Interval in milliseconds after which a monitor should be considered inactive and marked for disposal.",
-        60_000)
+        600_000)  # 10 minutes
 
     # Failover
     ENABLE_FAILOVER = WrapperProperty(

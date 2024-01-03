@@ -73,29 +73,11 @@ def release_container():
 
 def test_get_or_create_monitor__monitor_created(
         container, mock_monitor_supplier, mock_stopped_monitor, mock_monitor1, mock_executor, mock_future):
-    container._available_monitors.put(mock_stopped_monitor)
-    container._tasks_map.put_if_absent(mock_stopped_monitor, mock_future)
-
     result = container.get_or_create_monitor(frozenset({"alias-1", "alias-2"}), mock_monitor_supplier)
     assert mock_monitor1 == result
-    assert container._tasks_map.get(mock_stopped_monitor) is None
-    mock_future.cancel.assert_called_once()
+    
     mock_monitor_supplier.assert_called_once()
     mock_executor.submit.assert_called_once_with(mock_monitor1.run)
-    assert mock_monitor1 == container._monitor_map.get("alias-1")
-    assert mock_monitor1 == container._monitor_map.get("alias-2")
-
-
-def test_get_or_create_monitor__from_available_monitors(
-        container, mock_monitor_supplier, mock_monitor1, mock_executor, mock_future):
-    container._available_monitors.put(mock_monitor1)
-    container._tasks_map.put_if_absent(mock_monitor1, mock_future)
-
-    result = container.get_or_create_monitor(frozenset({"alias-1", "alias-2"}), mock_monitor_supplier)
-    assert mock_monitor1 == result
-    mock_future.cancel.assert_not_called()
-    mock_monitor_supplier.assert_not_called()
-    mock_executor.submit.assert_not_called()
     assert mock_monitor1 == container._monitor_map.get("alias-1")
     assert mock_monitor1 == container._monitor_map.get("alias-2")
 
@@ -161,16 +143,6 @@ def test_get_or_create_monitor__null_monitor(container, mock_monitor_supplier):
         container.get_or_create_monitor(frozenset({"alias-1"}), mock_monitor_supplier)
 
 
-def test_reset_resource(mock_monitor1, mock_monitor2, container):
-    container._monitor_map.put_if_absent("alias-1", mock_monitor1)
-    container._monitor_map.put_if_absent("alias-2", mock_monitor2)
-
-    container.reset_resource(mock_monitor2)
-    assert mock_monitor1 == container._monitor_map.get("alias-1")
-    assert container._monitor_map.get("alias-2") is None
-    assert mock_monitor2 == container._available_monitors.get()
-
-
 def test_release_monitor(mocker, mock_monitor1, mock_monitor2, container):
     container._monitor_map.put_if_absent("alias-1", mock_monitor1)
     container._monitor_map.put_if_absent("alias-2", mock_monitor2)
@@ -197,14 +169,10 @@ def test_release_instance(mocker, container, mock_monitor1, mock_future):
 
     container2 = MonitoringThreadContainer()
     assert container2 is container
-    assert 2 == container._usage_count.get()
 
     container2.release_instance()
-    spy.assert_not_called()
 
-    container.release_instance()
     assert 0 == len(container._monitor_map)
     assert 0 == len(container._tasks_map)
     mock_future.cancel.assert_called_once()
     assert MonitoringThreadContainer._instance is None
-    assert 0 == MonitoringThreadContainer._usage_count.get()

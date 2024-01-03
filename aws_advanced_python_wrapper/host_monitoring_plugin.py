@@ -31,11 +31,12 @@ from threading import Event, Lock, RLock
 from time import perf_counter_ns, sleep
 from typing import Any, Callable, ClassVar, Dict, FrozenSet, Optional, Set
 
+from _weakref import ReferenceType, ref
+
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
-from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -300,8 +301,8 @@ class MonitoringContext:
     def _set_host_availability(
             self, host: str, is_available: bool, status_check_start_time_ns: int, status_check_end_time_ns: int):
         """
-        Set whether the connection to the server is still available based on the monitoring settings set in connection properties.
-        The monitoring settings include:
+        Set whether the connection to the server is still available based on the monitoring settings set in connection \
+        properties. The monitoring settings include:
         - failure_detection_time_ms
         - failure_detection_interval_ms
         - failure_detection_count
@@ -336,7 +337,8 @@ class MonitoringContext:
 
 class Monitor:
     """
-     This class uses a background thread to monitor a particular server with one or more active :py:class:`Connection`  objects.
+     This class uses a background thread to monitor a particular server with one or more active :py:class:`Connection`
+     objects.
     """
     _DEFAULT_CONNECT_TIMEOUT_SEC = 10
     _INACTIVE_SLEEP_MS = 100
@@ -348,11 +350,11 @@ class Monitor:
             plugin_service: PluginService,
             host_info: HostInfo,
             props: Properties,
-            monitor_service: MonitorService):
+            monitor_container: MonitoringThreadContainer):
         self._plugin_service: PluginService = plugin_service
         self._host_info: HostInfo = host_info
         self._props: Properties = props
-        self._monitor_service: MonitorService = monitor_service
+        self._monitor_container: MonitoringThreadContainer = monitor_container
 
         self._lock: Lock = Lock()
         self._active_contexts: Queue[MonitoringContext] = Queue()
@@ -426,7 +428,7 @@ class Monitor:
 
                 if self._active_contexts.empty():
                     if (perf_counter_ns() - self._context_last_used_ns) >= self._monitor_disposal_time_ms * 1_000_000:
-                        self._monitor_service.notify_unused(self)
+                        self._monitor_container.release_monitor(self)
                         break
 
                     sleep(Monitor._INACTIVE_SLEEP_MS / 1000)
@@ -484,13 +486,13 @@ class Monitor:
             # Do nothing
             pass
         finally:
+            self.stop()
             if self._monitoring_conn is not None:
                 try:
                     self._monitoring_conn.close()
                 except Exception:
                     # Do nothing
                     pass
-            self.stop()
 
     def _check_host_status(self, host_check_timeout_ms: int) -> HostStatus:
         start_ns = perf_counter_ns()
@@ -536,16 +538,16 @@ class Monitor:
 
 class MonitoringThreadContainer:
     """
-    This singleton class keeps track of all the monitoring threads and handles the creation and clean up of each monitoring thread.
+    This singleton class keeps track of all the monitoring threads and handles the creation and clean up of each
+    monitoring thread.
     """
 
     _instance: ClassVar[Optional[MonitoringThreadContainer]] = None
     _lock: ClassVar[RLock] = RLock()
-    _usage_count: ClassVar[AtomicInt] = AtomicInt()
+    _monitor_lock: ClassVar[RLock] = RLock()
 
     _monitor_map: ConcurrentDict[str, Monitor] = ConcurrentDict()
     _tasks_map: ConcurrentDict[Monitor, Future] = ConcurrentDict()
-    _available_monitors: Queue[Monitor] = Queue()
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
 
     # This logic ensures that this class is a Singleton
@@ -554,47 +556,39 @@ class MonitoringThreadContainer:
             with cls._lock:
                 if not cls._instance:
                     cls._instance = super().__new__(cls, *args, **kwargs)
-                    cls._usage_count.set(0)
-        cls._usage_count.get_and_increment()
         return cls._instance
 
     def get_or_create_monitor(self, host_aliases: FrozenSet[str], monitor_supplier: Callable) -> Monitor:
         if not host_aliases:
             raise AwsWrapperError(Messages.get("MonitoringThreadContainer.EmptyHostKeys"))
 
-        monitor = None
-        any_alias = next(iter(host_aliases))
-        for host_alias in host_aliases:
-            monitor = self._monitor_map.get(host_alias)
-            any_alias = host_alias
-            if monitor is not None:
-                break
+        with self._monitor_lock:
+            monitor = None
+            any_alias = next(iter(host_aliases))
+            for host_alias in host_aliases:
+                monitor = self._monitor_map.get(host_alias)
+                any_alias = host_alias
+                if monitor is not None:
+                    break
 
-        def _get_or_create_monitor(_) -> Monitor:
-            available_monitor = QueueUtils.get(self._available_monitors)
-            if available_monitor is not None:
-                if not available_monitor.is_stopped:
-                    return available_monitor
+            def _get_or_create_monitor(_) -> Monitor:
+                supplied_monitor = monitor_supplier()
+                if supplied_monitor is None:
+                    raise AwsWrapperError(Messages.get("MonitoringThreadContainer.SupplierMonitorNone"))
+                self._tasks_map.compute_if_absent(
+                    supplied_monitor, lambda _: MonitoringThreadContainer._executor.submit(supplied_monitor.run))
+                return supplied_monitor
 
-                self._tasks_map.compute_if_present(available_monitor, MonitoringThreadContainer._cancel)
-
-            supplied_monitor = monitor_supplier()
-            if supplied_monitor is None:
-                raise AwsWrapperError(Messages.get("MonitoringThreadContainer.SupplierMonitorNone"))
-            self._tasks_map.compute_if_absent(
-                supplied_monitor, lambda _: MonitoringThreadContainer._executor.submit(supplied_monitor.run))
-            return supplied_monitor
-
-        if monitor is None:
-            monitor = self._monitor_map.compute_if_absent(any_alias, _get_or_create_monitor)
             if monitor is None:
-                raise AwsWrapperError(
-                    Messages.get_formatted("MonitoringThreadContainer.ErrorGettingMonitor", host_aliases))
+                monitor = self._monitor_map.compute_if_absent(any_alias, _get_or_create_monitor)
+                if monitor is None:
+                    raise AwsWrapperError(
+                        Messages.get_formatted("MonitoringThreadContainer.ErrorGettingMonitor", host_aliases))
 
-        for host_alias in host_aliases:
-            self._monitor_map.put_if_absent(host_alias, monitor)
+            for host_alias in host_aliases:
+                self._monitor_map.put_if_absent(host_alias, monitor)
 
-        return monitor
+            return monitor
 
     @staticmethod
     def _cancel(monitor, future: Future) -> None:
@@ -605,43 +599,42 @@ class MonitoringThreadContainer:
     def get_monitor(self, alias: str) -> Optional[Monitor]:
         return self._monitor_map.get(alias)
 
-    def reset_resource(self, monitor: Monitor):
-        self._monitor_map.remove_if(lambda k, v: v == monitor)
-        self._available_monitors.put(monitor)
-
     def release_monitor(self, monitor: Monitor):
-        self._monitor_map.remove_matching_values([monitor])
-        self._tasks_map.compute_if_present(monitor, MonitoringThreadContainer._cancel)
+        with self._monitor_lock:
+            self._monitor_map.remove_matching_values([monitor])
+            self._tasks_map.compute_if_present(monitor, MonitoringThreadContainer._cancel)
 
     @staticmethod
     def release_instance():
         if MonitoringThreadContainer._instance is None:
             return
 
-        if MonitoringThreadContainer._usage_count.decrement_and_get() <= 0:
-            with MonitoringThreadContainer._lock:
-                if MonitoringThreadContainer._instance is not None:
-                    MonitoringThreadContainer._instance._release_resources()
-                    MonitoringThreadContainer._instance = None
-                    MonitoringThreadContainer._usage_count.set(0)
+        with MonitoringThreadContainer._lock:
+            if MonitoringThreadContainer._instance is not None:
+                MonitoringThreadContainer._instance._release_resources()
+                MonitoringThreadContainer._instance = None
 
     def _release_resources(self):
-        self._monitor_map.clear()
-        self._tasks_map.apply_if(
-            lambda monitor, future: not future.done() and not future.cancelled(),
-            lambda monitor, future: future.cancel())
-        for monitor, _ in self._tasks_map.items():
-            monitor.stop()
-        self._tasks_map.clear()
-        QueueUtils.clear(self._available_monitors)
+        with self._monitor_lock:
+            self._monitor_map.clear()
+            self._tasks_map.apply_if(
+                lambda monitor, future: not future.done() and not future.cancelled(),
+                lambda monitor, future: future.cancel())
+
+            for monitor, _ in self._tasks_map.items():
+                monitor.stop()
+
+            self._tasks_map.clear()
+
+            self._executor.shutdown(wait=False, cancel_futures=True)
 
 
 class MonitorService:
     def __init__(self, plugin_service: PluginService):
         self._plugin_service: PluginService = plugin_service
-        self._thread_container: MonitoringThreadContainer = MonitoringThreadContainer()
+        self._monitor_container: MonitoringThreadContainer = MonitoringThreadContainer()
         self._cached_monitor_aliases: Optional[FrozenSet[str]] = None
-        self._cached_monitor: Optional[Monitor] = None
+        self._cached_monitor: Optional[ReferenceType[Monitor]] = None
 
     def start_monitoring(self,
                          conn: Connection,
@@ -654,15 +647,15 @@ class MonitorService:
         if not host_aliases:
             raise AwsWrapperError(Messages.get_formatted("MonitorService.EmptyAliasSet", host_info))
 
-        if self._cached_monitor is None \
+        monitor: Optional[Monitor] = None if self._cached_monitor is None else self._cached_monitor()
+        if monitor is None \
+                or monitor.is_stopped \
                 or self._cached_monitor_aliases is None \
                 or self._cached_monitor_aliases != host_aliases:
-            monitor = self._thread_container.get_or_create_monitor(
-                host_aliases, lambda: self._create_monitor(host_info, props))
-            self._cached_monitor = monitor
+            monitor = self._monitor_container.get_or_create_monitor(
+                host_aliases, lambda: self._create_monitor(host_info, props, self._monitor_container))
+            self._cached_monitor = ref(monitor)
             self._cached_monitor_aliases = host_aliases
-        else:
-            monitor = self._cached_monitor
 
         context = MonitoringContext(
             monitor, conn, self._plugin_service.driver_dialect, failure_detection_time_ms,
@@ -670,8 +663,8 @@ class MonitorService:
         monitor.start_monitoring(context)
         return context
 
-    def _create_monitor(self, host_info: HostInfo, props: Properties):
-        return Monitor(self._plugin_service, host_info, props, self)
+    def _create_monitor(self, host_info: HostInfo, props: Properties, monitor_container: MonitoringThreadContainer):
+        return Monitor(self._plugin_service, host_info, props, monitor_container)
 
     @staticmethod
     def stop_monitoring(context: MonitoringContext):
@@ -680,15 +673,10 @@ class MonitorService:
 
     def stop_monitoring_host(self, host_aliases: FrozenSet):
         for alias in host_aliases:
-            monitor = self._thread_container.get_monitor(alias)
+            monitor = self._monitor_container.get_monitor(alias)
             if monitor is not None:
                 monitor.clear_contexts()
-                self._thread_container.reset_resource(monitor)
                 return
 
     def release_resources(self):
-        self._thread_container = None
-        MonitoringThreadContainer.release_instance()
-
-    def notify_unused(self, monitor: Monitor):
-        self._thread_container.release_monitor(monitor)
+        self._monitor_container = None

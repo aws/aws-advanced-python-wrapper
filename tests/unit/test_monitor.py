@@ -71,24 +71,12 @@ def mock_plugin_service(mocker, mock_conn, mock_driver_dialect):
 
 
 @pytest.fixture
-def mock_monitor_service(mocker):
-    service = mocker.MagicMock()
-    container = MonitoringThreadContainer()
-
-    def release_monitor(monitor_to_release):
-        container.release_monitor(monitor_to_release)
-
-    service.notify_unused.side_effect = release_monitor
-    return service
-
-
-@pytest.fixture
-def monitor(mock_plugin_service, mock_monitor_service, host_info, props):
+def monitor(mock_plugin_service, host_info, props):
     return Monitor(
         mock_plugin_service,
         host_info,
         props,
-        mock_monitor_service)
+        MonitoringThreadContainer())
 
 
 @pytest.fixture(autouse=True)
@@ -138,7 +126,6 @@ def test_run_host_available(
         monitor,
         host_info,
         monitoring_conn_props,
-        mock_monitor_service,
         mock_plugin_service,
         mock_conn,
         mock_driver_dialect):
@@ -159,7 +146,6 @@ def test_run_host_available(
 
     mock_plugin_service.force_connect.assert_called_once_with(host_info, monitoring_conn_props, None)
     mock_driver_dialect.abort_connection.assert_not_called()
-    mock_monitor_service.notify_unused.assert_called_once()
     mock_conn.close.assert_called_once()
     assert context._is_host_unavailable is False
     assert monitor._is_stopped.is_set()
@@ -172,7 +158,6 @@ def test_run_host_unavailable(
         monitor,
         host_info,
         monitoring_conn_props,
-        mock_monitor_service,
         mock_plugin_service,
         mock_conn,
         mock_driver_dialect):
@@ -180,20 +165,20 @@ def test_run_host_unavailable(
     executor = ThreadPoolExecutor()
     context = MonitoringContext(monitor, mock_conn, mock_driver_dialect, 30, 10, 3)
 
-    mocker.patch("aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=TimeoutError())
+    mocker.patch(
+        "aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=TimeoutError())
     monitor.start_monitoring(context)
     future = executor.submit(monitor.run)
     wait([future], 3)
 
     mock_plugin_service.force_connect.assert_called_once_with(host_info, monitoring_conn_props, None)
     mock_driver_dialect.abort_connection.assert_called_once()
-    mock_monitor_service.notify_unused.assert_called_once()
     mock_conn.close.assert_called_once()
     assert context._is_host_unavailable is True
     assert monitor._is_stopped.is_set()
 
 
-def test_run__no_contexts(mocker, mock_monitor_service, monitor):
+def test_run__no_contexts(mocker, monitor):
     host_alias = "host-1"
     container = MonitoringThreadContainer()
     container._monitor_map.put_if_absent(host_alias, monitor)
@@ -209,7 +194,8 @@ def test_run__no_contexts(mocker, mock_monitor_service, monitor):
 
 def test_check_connection_status__valid_then_invalid(mocker, monitor):
     mock_execute_conn_check = mocker.patch(
-        "aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=[None, TimeoutError()])
+        "aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check",
+        side_effect=[None, TimeoutError()])
 
     status = monitor._check_host_status(30)  # Initiate a monitoring connection
     assert status.is_available
@@ -221,7 +207,8 @@ def test_check_connection_status__valid_then_invalid(mocker, monitor):
 
 
 def test_check_connection_status__conn_check_throws_exception(mocker, monitor):
-    mocker.patch("aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check", side_effect=Exception())
+    mocker.patch("aws_advanced_python_wrapper.host_monitoring_plugin.Monitor._execute_conn_check",
+                 side_effect=Exception())
 
     status = monitor._check_host_status(30)  # Initiate a monitoring connection
     assert status.is_available
