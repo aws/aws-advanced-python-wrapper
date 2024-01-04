@@ -628,7 +628,7 @@ class MonitoringThreadContainer:
 
             self._tasks_map.clear()
 
-            self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor.shutdown(wait=False)
 
 
 class MonitorService:
