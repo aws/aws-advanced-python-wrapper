@@ -75,7 +75,7 @@ def test_get_or_create_monitor__monitor_created(
         container, mock_monitor_supplier, mock_stopped_monitor, mock_monitor1, mock_executor, mock_future):
     result = container.get_or_create_monitor(frozenset({"alias-1", "alias-2"}), mock_monitor_supplier)
     assert mock_monitor1 == result
-    
+
     mock_monitor_supplier.assert_called_once()
     mock_executor.submit.assert_called_once_with(mock_monitor1.run)
     assert mock_monitor1 == container._monitor_map.get("alias-1")
@@ -165,7 +165,6 @@ def test_release_instance(mocker, container, mock_monitor1, mock_future):
     container._tasks_map.put_if_absent(mock_monitor1, mock_future)
     mock_future.done.return_value = False
     mock_future.cancelled.return_value = False
-    spy = mocker.spy(container._instance, "_release_resources")
 
     container2 = MonitoringThreadContainer()
     assert container2 is container
