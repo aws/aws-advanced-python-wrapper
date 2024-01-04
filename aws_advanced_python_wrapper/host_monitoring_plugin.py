@@ -301,7 +301,7 @@ class MonitoringContext:
     def _set_host_availability(
             self, host: str, is_available: bool, status_check_start_time_ns: int, status_check_end_time_ns: int):
         """
-        Set whether the connection to the server is still available based on the monitoring settings set in connection \
+        Set whether the connection to the server is still available based on the monitoring settings set in connection
         properties. The monitoring settings include:
         - failure_detection_time_ms
         - failure_detection_interval_ms
