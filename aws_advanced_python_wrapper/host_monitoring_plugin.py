@@ -604,6 +604,7 @@ class MonitoringThreadContainer:
             self._monitor_map.remove_matching_values([monitor])
             self._tasks_map.compute_if_present(monitor, MonitoringThreadContainer._cancel)
 
+    # This method is only used for cleanup during testing
     @staticmethod
     def release_instance():
         if MonitoringThreadContainer._instance is None:
@@ -614,6 +615,7 @@ class MonitoringThreadContainer:
                 MonitoringThreadContainer._instance._release_resources()
                 MonitoringThreadContainer._instance = None
 
+    # This method is only used for cleanup during testing
     def _release_resources(self):
         with self._monitor_lock:
             self._monitor_map.clear()
