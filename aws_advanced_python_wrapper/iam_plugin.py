@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_advanced_python_wrapper.utils.iamutils import IamAuthUtils, TokenInfo
+
 if TYPE_CHECKING:
     from boto3 import Session
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -37,23 +39,6 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
 logger = Logger(__name__)
-
-
-class TokenInfo:
-    @property
-    def token(self):
-        return self._token
-
-    @property
-    def expiration(self):
-        return self._expiration
-
-    def __init__(self, token: str, expiration: datetime):
-        self._token = token
-        self._expiration = expiration
-
-    def is_expired(self) -> bool:
-        return datetime.now() > self._expiration
 
 
 class IamAuthPlugin(Plugin):
@@ -86,10 +71,10 @@ class IamAuthPlugin(Plugin):
         if not WrapperProperties.USER.get(props):
             raise AwsWrapperError(Messages.get_formatted("IamPlugin.IsNoneOrEmpty", WrapperProperties.USER.name))
 
-        host = WrapperProperties.IAM_HOST.get(props) if WrapperProperties.IAM_HOST.get(props) else host_info.host
+        host = IamAuthUtils.get_iam_host(props, host_info)
         region = WrapperProperties.IAM_REGION.get(props) \
             if WrapperProperties.IAM_REGION.get(props) else self._get_rds_region(host)
-        port = self._get_port(props, host_info)
+        port = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
         token_expiration_sec: int = WrapperProperties.IAM_EXPIRATION.get_int(props)
 
         cache_key: str = self._get_cache_key(
@@ -170,27 +155,11 @@ class IamAuthPlugin(Plugin):
     def _get_cache_key(self, user: Optional[str], hostname: Optional[str], port: int, region: Optional[str]) -> str:
         return f"{region}:{hostname}:{port}:{user}"
 
-    def _get_port(self, props: Properties, host_info: HostInfo) -> int:
-        if WrapperProperties.IAM_DEFAULT_PORT.get(props):
-            default_port: int = WrapperProperties.IAM_DEFAULT_PORT.get_int(props)
-            if default_port > 0:
-                return default_port
-            else:
-                logger.debug("IamAuthPlugin.InvalidPort", default_port)
-
-        if host_info.is_port_specified():
-            return host_info.port
-
-        if self._plugin_service.database_dialect is not None:
-            return self._plugin_service.database_dialect.default_port
-
-        raise AwsWrapperError(Messages.get("IamAuthPlugin.NoValidPorts"))
-
     def _get_rds_region(self, hostname: Optional[str]) -> str:
         rds_region = self._rds_utils.get_rds_region(hostname) if hostname else None
 
         if not rds_region:
-            exception_message = "IamAuthPlugin.UnsupportedHostname"
+            exception_message = "RdsUtils.UnsupportedHostname"
             logger.debug(exception_message, hostname)
             raise AwsWrapperError(Messages.get_formatted(exception_message, hostname))
 

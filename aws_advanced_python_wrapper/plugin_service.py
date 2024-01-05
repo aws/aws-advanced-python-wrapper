@@ -16,6 +16,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, List, Type
 
+from aws_advanced_python_wrapper.federated_plugin import \
+    FederatedAuthPluginFactory
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.driver_dialect_manager import DriverDialectManager
@@ -563,7 +566,8 @@ class PluginManager(CanReleaseResources):
         "stale_dns": StaleDnsPluginFactory,
         "connect_time": ConnectTimePluginFactory,
         "execute_time": ExecuteTimePluginFactory,
-        "dev": DeveloperPluginFactory
+        "dev": DeveloperPluginFactory,
+        "federated_auth": FederatedAuthPluginFactory
     }
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
@@ -581,7 +585,8 @@ class PluginManager(CanReleaseResources):
         AwsSecretsManagerPluginFactory: 700,
         ConnectTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
         ExecuteTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
-        DeveloperPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN
+        DeveloperPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
+        FederatedAuthPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN
     }
 
     def __init__(self, container: PluginServiceManagerContainer, props: Properties):
