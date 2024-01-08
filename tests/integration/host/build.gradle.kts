@@ -62,12 +62,21 @@ tasks.withType<Test> {
     systemProperty("java.util.logging.config.file", "${project.buildDir}/resources/test/logging-test.properties")
 }
 
-tasks.register<Test>("test-all-environments") {
+tasks.register<Test>("test-python-3.11") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-38", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.8") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-python-311", "true")
     }
 }
 

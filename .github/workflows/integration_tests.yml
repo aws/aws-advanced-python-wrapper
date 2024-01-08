@@ -10,6 +10,9 @@ jobs:
   build-integration-tests:
     name: Run Integration Tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ "3.8", "3.11" ]
 
     steps:
       - name: 'Clone repository'
@@ -54,7 +57,7 @@ jobs:
 
       - name: 'Run Integration Tests'
         run: |
-          ./gradlew --no-parallel --no-daemon test-all-environments --info
+          ./gradlew --no-parallel --no-daemon test-python-${{ matrix.python-version }} --info
         env:
           RDS_CLUSTER_DOMAIN: ${{ secrets.DB_CONN_SUFFIX }}
           AURORA_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
