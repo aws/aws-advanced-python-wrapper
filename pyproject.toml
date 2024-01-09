@@ -5,6 +5,22 @@ description = "Amazon Web Services (AWS) Advanced Python Wrapper"
 authors = ["Amazon Web Services"]
 readme = "README.md"
 license = "Apache-2.0"
+include = ["CONTRIBUTING.md"]
+repository = "https://github.com/awslabs/aws-advanced-python-wrapper"
+documentation = "https://github.com/awslabs/aws-advanced-python-wrapper/docs/"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
 
 [tool.poetry.dependencies]
 python = "^3.8.1"

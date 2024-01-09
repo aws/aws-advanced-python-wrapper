@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
                     Protocol, Tuple, runtime_checkable)
 
-from .utils.driver_info import DriverInfo
+from aws_advanced_python_wrapper.driver_info import DriverInfo
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection

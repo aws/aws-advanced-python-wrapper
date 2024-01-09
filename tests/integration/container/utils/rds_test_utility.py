@@ -30,8 +30,8 @@ import boto3
 import pytest
 from botocore.config import Config
 
+from aws_advanced_python_wrapper.driver_info import DriverInfo
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
-from aws_advanced_python_wrapper.utils.driver_info import DriverInfo
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from .database_engine import DatabaseEngine
