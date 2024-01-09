@@ -26,38 +26,38 @@ class Logger:
     def __init__(self, name: str):
         self.logger = getLogger(name)
 
-    def debug(self, msg, *args):
+    def debug(self, msg, *args, **kwargs):
         if not self.logger.isEnabledFor(logging.DEBUG):
             return
 
         if args is not None and len(args) > 0:
-            self.logger.debug(Messages.get_formatted(msg, *args))
+            self.logger.debug(Messages.get_formatted(msg, *args), **kwargs)
         else:
             try:
-                self.logger.debug(Messages.get(msg))
+                self.logger.debug(Messages.get(msg), **kwargs)
             except NotInResourceBundleError:
-                self.logger.debug(msg)
+                self.logger.debug(msg, **kwargs)
 
-    def error(self, msg, *args):
+    def error(self, msg, *args, **kwargs):
         if not self.logger.isEnabledFor(logging.ERROR):
             return
 
         if args is not None and len(args) > 0:
-            self.logger.error(Messages.get_formatted(msg, *args))
+            self.logger.error(Messages.get_formatted(msg, *args), **kwargs)
         else:
             try:
-                self.logger.error(Messages.get(msg))
+                self.logger.error(Messages.get(msg), **kwargs)
             except NotInResourceBundleError:
-                self.logger.error(msg)
+                self.logger.error(msg, **kwargs)
 
-    def warning(self, msg, *args):
+    def warning(self, msg, *args, **kwargs):
         if not self.logger.isEnabledFor(logging.WARNING):
             return
 
         if args is not None and len(args) > 0:
-            self.logger.warning(Messages.get_formatted(msg, *args))
+            self.logger.warning(Messages.get_formatted(msg, *args), **kwargs)
         else:
             try:
-                self.logger.warning(Messages.get(msg))
+                self.logger.warning(Messages.get(msg), **kwargs)
             except NotInResourceBundleError:
-                self.logger.warning(msg)
+                self.logger.warning(msg, **kwargs)
