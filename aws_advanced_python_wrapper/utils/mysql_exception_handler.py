@@ -40,8 +40,12 @@ class MySQLExceptionHandler(ExceptionHandler):
         if isinstance(error, QueryTimeoutError):
             return True
 
-        if sql_state is None and isinstance(error, InterfaceError):
-            sql_state = error.sqlstate
+        if isinstance(error, InterfaceError):
+            if error.errno in self._NETWORK_ERRORS:
+                return True
+
+            if sql_state is None and error.sqlstate is not None:
+                sql_state = error.sqlstate
 
         if sql_state is not None and (sql_state.startswith("08") or sql_state.startswith("HY")):
             # Connection exceptions may also be returned as a generic error
