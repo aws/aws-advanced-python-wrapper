@@ -14,6 +14,7 @@
 
 import psycopg
 import pytest
+from _weakref import ref
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_monitoring_plugin import (
@@ -39,7 +40,9 @@ def mock_thread_container(mocker):
 
 @pytest.fixture
 def mock_monitor(mocker):
-    return mocker.MagicMock()
+    monitor = mocker.MagicMock()
+    monitor.is_stopped = False
+    return monitor
 
 
 @pytest.fixture
@@ -57,21 +60,22 @@ def thread_container(mock_executor):
 @pytest.fixture
 def monitor_service_mocked_container(mock_plugin_service, mock_thread_container):
     service = MonitorService(mock_plugin_service)
-    service._thread_container = mock_thread_container
+    service._monitor_container = mock_thread_container
     return service
 
 
 @pytest.fixture
 def monitor_service_with_container(mock_plugin_service, thread_container):
     service = MonitorService(mock_plugin_service)
-    service._thread_container = thread_container
+    service._monitor_container = thread_container
     return service
 
 
 @pytest.fixture(autouse=True)
 def setup_teardown(mocker, mock_thread_container, mock_plugin_service, mock_monitor):
     mock_thread_container.get_or_create_monitor.return_value = mock_monitor
-    mocker.patch("aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
+    mocker.patch(
+        "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
 
     yield
 
@@ -91,7 +95,7 @@ def test_start_monitoring(
         mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
     mock_monitor.start_monitoring.assert_called_once()
-    assert mock_monitor == monitor_service_mocked_container._cached_monitor
+    assert mock_monitor == monitor_service_mocked_container._cached_monitor()
     assert aliases == monitor_service_mocked_container._cached_monitor_aliases
 
 
@@ -105,14 +109,14 @@ def test_start_monitoring__multiple_calls(monitor_service_with_container, mock_m
 
     assert num_calls == mock_monitor.start_monitoring.call_count
     mock_executor.submit.assert_called_once_with(mock_monitor.run)
-    assert mock_monitor == monitor_service_with_container._cached_monitor
+    assert mock_monitor == monitor_service_with_container._cached_monitor()
     assert aliases == monitor_service_with_container._cached_monitor_aliases
 
 
 def test_start_monitoring__cached_monitor(
         monitor_service_mocked_container, mock_plugin_service, mock_monitor, mock_conn, mock_thread_container):
     aliases = frozenset({"instance-1"})
-    monitor_service_mocked_container._cached_monitor = mock_monitor
+    monitor_service_mocked_container._cached_monitor = ref(mock_monitor)
     monitor_service_mocked_container._cached_monitor_aliases = aliases
 
     monitor_service_mocked_container.start_monitoring(
@@ -121,7 +125,7 @@ def test_start_monitoring__cached_monitor(
     mock_plugin_service.get_dialect.assert_not_called()
     mock_thread_container.get_or_create_monitor.assert_not_called()
     mock_monitor.start_monitoring.assert_called_once()
-    assert mock_monitor == monitor_service_mocked_container._cached_monitor
+    assert mock_monitor == monitor_service_mocked_container._cached_monitor()
     assert aliases == monitor_service_mocked_container._cached_monitor_aliases
 
 
@@ -156,21 +160,9 @@ def test_stop_monitoring_host_connections(mocker, monitor_service_with_container
     mock_monitor2 = mocker.MagicMock()
     thread_container.get_or_create_monitor(aliases1, lambda: mock_monitor1)
     thread_container.get_or_create_monitor(aliases2, lambda: mock_monitor2)
-    reset_resource_spy = mocker.spy(thread_container, 'reset_resource')
 
     monitor_service_with_container.stop_monitoring_host(aliases1)
     mock_monitor1.clear_contexts.assert_called_once()
-    reset_resource_spy.assert_called_once_with(mock_monitor1)
-    reset_resource_spy.reset_mock()
 
     monitor_service_with_container.stop_monitoring_host(aliases2)
     mock_monitor2.clear_contexts.assert_called_once()
-    reset_resource_spy.assert_called_once_with(mock_monitor2)
-
-
-def test_release_resources(mocker, monitor_service_mocked_container):
-    spy = mocker.spy(MonitoringThreadContainer, 'release_instance')
-
-    monitor_service_mocked_container.release_resources()
-    assert monitor_service_mocked_container._thread_container is None
-    spy.assert_called_once()
