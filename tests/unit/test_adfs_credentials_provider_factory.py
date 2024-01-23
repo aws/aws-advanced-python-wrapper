@@ -18,7 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
-from aws_advanced_python_wrapper.federated_plugin import AdfsCredentialsProviderFactory
+from aws_advanced_python_wrapper.federated_plugin import \
+    AdfsCredentialsProviderFactory
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
