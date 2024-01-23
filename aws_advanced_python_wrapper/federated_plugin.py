@@ -279,7 +279,7 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
         self._validate_url(url)
         r = requests.get(url,
                          verify=WrapperProperties.SSL_SECURE.get_bool(props),
-                         timeout=WrapperProperties.HTTP_CLIENT_SOCKET_TIMEOUT.get_int(props))
+                         timeout=WrapperProperties.HTTP_REQUEST_TIMEOUT.get_int(props))
 
         # Check HTTP Status Code is 2xx Success
         if r.status_code / 100 != 2:
@@ -293,7 +293,7 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
         self._validate_url(uri)
         r = requests.post(uri, data=urlencode(parameters),
                           verify=WrapperProperties.SSL_SECURE.get_bool(props),
-                          timeout=WrapperProperties.HTTP_CLIENT_SOCKET_TIMEOUT.get_int(props))
+                          timeout=WrapperProperties.HTTP_REQUEST_TIMEOUT.get_int(props))
         # Check HTTP Status Code is 2xx Success
         if r.status_code / 100 != 2:
             error_message = "AdfsCredentialsProviderFactory.SignOnPagePostActionRequestFailed"

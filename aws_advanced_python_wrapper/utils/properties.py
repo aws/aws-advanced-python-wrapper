@@ -267,13 +267,9 @@ class WrapperProperties:
                                    "The federated user password",
                                    None)
 
-    HTTP_CLIENT_SOCKET_TIMEOUT = WrapperProperty("http_client_socket_timeout",
-                                                 "The socket timeout value in milliseconds for the HttpClient used by the FederatedAuthPlugin",
-                                                 60000)
-
-    HTTP_CLIENT_CONNECT_TIMEOUT = WrapperProperty("http_client_connect_timeout",
-                                                  "The connect timeout value in milliseconds for the HttpClient used by the FederatedAuthPlugin",
-                                                  60000)
+    HTTP_REQUEST_TIMEOUT = WrapperProperty("http_request_connect_timeout",
+                                                   "The timeout value in seconds to send the HTTP request data used by the FederatedAuthPlugin",
+                                                   60)
 
     SSL_SECURE = WrapperProperty("ssl_secure",
                                  "Whether the SSL session is to be secure and the server's certificates will be verified",
