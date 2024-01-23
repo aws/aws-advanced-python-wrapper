@@ -87,9 +87,9 @@ def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection,
     mock_plugin_service.driver_dialect = mock_dialect
     mock_plugin_service.database_dialect = mock_dialect
     mock_dialect.default_port = _DEFAULT_PG_PORT
-    mock_credentials_provider_factory.get_aws_credentials.return_value = {"AccessKeyId": "awsfdws",
-                                                                          "SecretAccessKey": "gsfgjs",
-                                                                          "SessionToken": "sdafa"}
+    mock_credentials_provider_factory.get_aws_credentials.return_value = {"AccessKeyId": "test-access-key",
+                                                                          "SecretAccessKey": "test-secret-access",
+                                                                          "SessionToken": "test-session-token"}
 
 
 @patch("aws_advanced_python_wrapper.federated_plugin.FederatedAuthPlugin._token_cache", _token_cache)
