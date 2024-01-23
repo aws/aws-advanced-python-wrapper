@@ -42,9 +42,9 @@ def test_get_saml_assertion(mock_request, mock_plugin_service):
     WrapperProperties.IDP_ENDPOINT.set(properties, "ec2amaz-ab3cdef.example.com")
     WrapperProperties.IDP_USERNAME.set(properties, USERNAME)
     WrapperProperties.IDP_PASSWORD.set(properties, PASSWORD)
-    sign_in_page_html = "./resources/federated_auth/adfs-sign-in-page.html"
-    adfs_saml_html = "./resources/federated_auth/adfs-saml.html"
-    saml_assertion_txt = "./resources/federated_auth/saml-assertion.txt"
+    sign_in_page_html = "./aws-advanced-python-wrapper/tests/unit/resources/federated_auth/adfs-sign-in-page.html"
+    adfs_saml_html = "./aws-advanced-python-wrapper/tests/unit/resources/federated_auth/adfs-saml.html"
+    saml_assertion_txt = "./aws-advanced-python-wrapper/tests/unit/resources/federated_auth/saml-assertion.txt"
 
     with open(sign_in_page_html, 'r') as file:
         sign_in_page_body = file.read()
