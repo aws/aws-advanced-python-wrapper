@@ -268,8 +268,8 @@ class WrapperProperties:
                                    None)
 
     HTTP_REQUEST_TIMEOUT = WrapperProperty("http_request_connect_timeout",
-                                                   "The timeout value in seconds to send the HTTP request data used by the FederatedAuthPlugin",
-                                                   60)
+                                           "The timeout value in seconds to send the HTTP request data used by the FederatedAuthPlugin",
+                                           60)
 
     SSL_SECURE = WrapperProperty("ssl_secure",
                                  "Whether the SSL session is to be secure and the server's certificates will be verified",
