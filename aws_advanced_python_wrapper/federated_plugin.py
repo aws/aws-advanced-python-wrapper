@@ -342,7 +342,7 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
         if match:
             return unescape(match.group(2))
 
-        return ""        
+        return ""
 
     def _get_parameters_from_html_body(self, body: str, props: Properties) -> Dict[str, str]:
         parameters: Dict[str, str] = {}
