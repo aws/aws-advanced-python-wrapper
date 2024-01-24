@@ -166,17 +166,14 @@ class FederatedAuthPlugin(Plugin):
                 aws_access_key_id=credentials.get('AccessKeyId'),
                 aws_secret_access_key=credentials.get('SecretAccessKey'),
                 aws_session_token=credentials.get('SessionToken'),
-
             )
         else:
             client = session.client(
                 'rds',
                 region_name=region,
-
             )
 
         user = WrapperProperties.USER.get(props)
-
         token = client.generate_db_auth_token(
             DBHostname=host_name,
             Port=port,
@@ -263,8 +260,9 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
 
             match = search(self._SAML_RESPONSE_PATTERN, content)
             if not match:
-                logger.debug("AdfsCredentialsProviderFactory.FailedLogin", content)
-                raise AwsWrapperError(Messages.get_formatted("AdfsCredentialsProviderFactory.FailedLogin", content))
+                error_message = "AdfsCredentialsProviderFactory.FailedLogin"
+                logger.debug(error_message, content)
+                raise AwsWrapperError(Messages.get_formatted(error_message, content))
 
             # return SAML Response value
             return match.group(self._SAML_RESPONSE_PATTERN_GROUP)
@@ -286,6 +284,7 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
             error_message = "AdfsCredentialsProviderFactory.SignOnPageRequestFailed"
             logger.debug(error_message, r.status_code, r.reason, r.text)
             raise AwsWrapperError(Messages.get_formatted(error_message, r.status_code, r.reason, r.text))
+
         return r.text
 
     def _post_form_action_body(self, uri: str, parameters: Dict[str, str], props: Properties) -> str:
@@ -300,22 +299,31 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
             logger.debug(error_message, r.status_code, r.reason, r.text)
             raise AwsWrapperError(
                 Messages.get_formatted(error_message, r.status_code, r.reason, r.text))
+
         return r.text
 
     def _get_sign_in_page_url(self, props) -> str:
         idp_endpoint = WrapperProperties.IDP_ENDPOINT.get(props)
-        idp_port = WrapperProperties.IDP_PORT.get(props)
+        idp_port = WrapperProperties.IDP_PORT.get_int(props)
         relaying_party_id = WrapperProperties.RELAYING_PARTY_ID.get(props)
-        if idp_endpoint and idp_port and relaying_party_id:
-            return "https://" + idp_endpoint + ':' + str(idp_port) + "/adfs/ls/IdpInitiatedSignOn.aspx?loginToRp=" + relaying_party_id
-        return ""
+        url = f"https://{idp_endpoint}:{idp_port}/adfs/ls/IdpInitiatedSignOn.aspx?loginToRp={relaying_party_id}"
+        if idp_endpoint is None or relaying_party_id is None:
+            error_message = "AdfsCredentialsProviderFactory.InvalidHttpsUrl"
+            logger.debug(error_message, url)
+            raise AwsWrapperError(Messages.get_formatted(error_message, url))
+
+        return url
 
     def _get_form_action_url(self, props: Properties, action: str) -> str:
-        idp_endpoint = WrapperProperties.IDP_ENDPOINT.get(props)
+        idp_endpoint = WrapperProperties.IDP_ENDPOINT.get(props) if not None else ""
         idp_port = WrapperProperties.IDP_PORT.get(props)
-        if idp_endpoint is not None:
-            return "https://" + idp_endpoint + ':' + str(idp_port) + action
-        return ""
+        url = f"https://{idp_endpoint}:{idp_port}{action}"
+        if idp_endpoint is None:
+            error_message = "AdfsCredentialsProviderFactory.InvalidHttpsUrl"
+            logger.debug(error_message, url)
+            raise AwsWrapperError(
+                Messages.get_formatted(error_message, url))
+        return url
 
     def _get_input_tags_from_html(self, body: str) -> List[str]:
         distinct_input_tags: List[str] = []
@@ -333,7 +341,8 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
         match = search(key_value_pattern, input)
         if match:
             return unescape(match.group(2))
-        return ""
+
+        return ""        
 
     def _get_parameters_from_html_body(self, body: str, props: Properties) -> Dict[str, str]:
         parameters: Dict[str, str] = {}
@@ -355,6 +364,7 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
                     parameters[name] = idp_password
             elif name != "":
                 parameters[name] = value
+
         return parameters
 
     def _get_form_action_from_html_body(self, body: str) -> str:
@@ -367,4 +377,6 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
     def _validate_url(self, url: str) -> None:
         result = urlparse(url)
         if not result.scheme or not search(self._HTTPS_URL_PATTERN, url):
-            raise AwsWrapperError(Messages.get_formatted("AdfsCredentialsProviderFactory.InvalidHttpsUrl", url))
+            error_message = "AdfsCredentialsProviderFactory.InvalidHttpsUrl"
+            logger.debug(error_message, url)
+            raise AwsWrapperError(Messages.get_formatted(error_message, url))
