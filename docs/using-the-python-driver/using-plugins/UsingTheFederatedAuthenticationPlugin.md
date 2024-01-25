@@ -17,7 +17,7 @@ Note: AWS IAM database authentication is needed to use the Federated Authenticat
 1. Enable AWS IAM database authentication on an existing database or create a new database with AWS IAM database authentication on the AWS RDS Console:
    - If needed, review the documentation about [IAM authentication for MariaDB, MySQL, and PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html).
 2. Set up an IAM Identity Provider and IAM role. The IAM role should be using the IAM policy set up in step 1. 
-   - If needed, review the documentation about [creating IAM identity providers](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create.html). For AD FS, see the documention about [creating IAM SAML identity providers](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_saml.html).
+   - If needed, review the documentation about [creating IAM identity providers](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create.html). For AD FS, see the documentation about [creating IAM SAML identity providers](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_saml.html).
 3. Add the plugin code `federated_auth` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) value, or to the current [driver profile](../UsingThePythonDriver.md#connection-plugin-manager-parameters).
 4. Specify parameters that are required or specific to your case.
 
@@ -42,6 +42,4 @@ Note: AWS IAM database authentication is needed to use the Federated Authenticat
 
 ## Sample code
 [MySQLFederatedAuthentication.py](../../MySQLFederatedAuthentication.py)
-
 [PGFederatedAuthentication.py](../../PGFederatedAuthentication.py)
-
