@@ -165,12 +165,12 @@ class FederatedAuthPlugin(Plugin):
                 region_name=region,
                 aws_access_key_id=credentials.get('AccessKeyId'),
                 aws_secret_access_key=credentials.get('SecretAccessKey'),
-                aws_session_token=credentials.get('SessionToken'),
+                aws_session_token=credentials.get('SessionToken')
             )
         else:
             client = session.client(
                 'rds',
-                region_name=region,
+                region_name=region
             )
 
         user = WrapperProperties.USER.get(props)
@@ -219,13 +219,13 @@ class SamlCredentialsProviderFactory(CredentialsProviderFactory):
 
         sts_client = session.client(
             'sts',
-            region_name=region,
+            region_name=region
         )
 
         response: Dict[str, Dict[str, str]] = sts_client.assume_role_with_saml(
             RoleArn=WrapperProperties.IAM_ROLE_ARN.get(props),
             PrincipalArn=WrapperProperties.IAM_IDP_ARN.get(props),
-            SAMLAssertion=saml_assertion,
+            SAMLAssertion=saml_assertion
         )
 
         return response.get('Credentials')
