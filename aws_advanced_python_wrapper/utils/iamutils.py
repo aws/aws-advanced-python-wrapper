@@ -32,10 +32,9 @@ class IamAuthUtils:
 
     @staticmethod
     def get_port(props: Properties, host_info: HostInfo, dialect_default_port: int) -> int:
-        if WrapperProperties.IAM_DEFAULT_PORT.get(props):
-            default_port: int = WrapperProperties.IAM_DEFAULT_PORT.get_int(props)
-            if default_port > 0:
-                return default_port
+        default_port: int = WrapperProperties.IAM_DEFAULT_PORT.get_int(props)
+        if default_port > 0:
+            return default_port
 
         if host_info.is_port_specified():
             return host_info.port

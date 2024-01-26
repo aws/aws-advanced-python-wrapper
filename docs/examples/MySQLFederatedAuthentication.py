@@ -30,7 +30,6 @@ if __name__ == "__main__":
             idp_username="some_federated_username@example.com",
             idp_password="some_password",
             user="john",
-            wrapper_dialect="aurora-mysql",
             autocommit=True
     ) as awsconn, awsconn.cursor() as awscursor:
         awscursor.execute("SELECT 1")
