@@ -9,6 +9,7 @@
   - [Plugins](./using-the-python-driver/UsingThePythonDriver.md#plugins)
     - [Failover Plugin](./using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)
       - [Failover Configuration Guide](./using-the-python-driver/FailoverConfigurationGuide.md)
+    - [Federated Authentication Plugin](./using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)
     - [Host Monitoring Plugin](./using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)
     - [IAM Authentication Plugin](./using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)
     - [AWS Secrets Manager Plugin](./using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)

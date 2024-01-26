@@ -95,7 +95,6 @@ The following table lists the common connection properties used with the AWS Adv
 | `failover_reader_connect_timeout_sec`        |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
 | `failover_timeout_sec`                       |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
 | `failover_writer_reconnect_interval_sec`     |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
-| `federated_auth`                             |     [FederatedAuthentication](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)     |
 | `failure_detection_count`                    |           [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
 | `failure_detection_enabled`                  |           [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
 | `failure_detection_interval_ms`              |           [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
