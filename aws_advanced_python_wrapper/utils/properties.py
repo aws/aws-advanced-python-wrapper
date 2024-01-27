@@ -234,6 +234,54 @@ class WrapperProperties:
     ROUND_ROBIN_HOST_WEIGHT_PAIRS = WrapperProperty("round_robin_host_weight_pairs",
                                                     "Comma separated list of database host-weight pairs in the format of `<host>:<weight>`.",
                                                     "")
+    # Federated Auth Plugin
+    IDP_ENDPOINT = WrapperProperty("idp_endpoint",
+                                   "The hosting URL of the Identity Provider",
+                                   None)
+
+    IDP_PORT = WrapperProperty("idp_port",
+                               "The hosting port of the Identity Provider",
+                               443)
+
+    RELAYING_PARTY_ID = WrapperProperty("rp_identifier",
+                                        "The relaying party identifier",
+                                        "urn:amazon:webservices")
+
+    IAM_ROLE_ARN = WrapperProperty("iam_role_arn",
+                                   "The ARN of the IAM Role that is to be assumed.",
+                                   None)
+
+    IAM_IDP_ARN = WrapperProperty("iam_idp_arn",
+                                  "The ARN of the Identity Provider",
+                                  None)
+
+    IAM_TOKEN_EXPIRATION = WrapperProperty("iam_token_expiration",
+                                           "IAM token cache expiration in seconds",
+                                           15 * 60 - 30)
+
+    IDP_USERNAME = WrapperProperty("idp_username",
+                                   "The federated user name",
+                                   None)
+
+    IDP_PASSWORD = WrapperProperty("idp_password",
+                                   "The federated user password",
+                                   None)
+
+    HTTP_REQUEST_TIMEOUT = WrapperProperty("http_request_connect_timeout",
+                                           "The timeout value in seconds to send the HTTP request data used by the FederatedAuthPlugin",
+                                           60)
+
+    SSL_SECURE = WrapperProperty("ssl_secure",
+                                 "Whether the SSL session is to be secure and the server's certificates will be verified",
+                                 False)
+
+    IDP_NAME = WrapperProperty("idp_name",
+                               "The name of the Identity Provider implementation used",
+                               "adfs")
+
+    DB_USER = WrapperProperty("db_user",
+                              "The database user used to access the database",
+                              None)
 
 
 class PropertiesUtils:
