@@ -153,6 +153,35 @@ def test_run_host_available(
     assert container._tasks_map.get(monitor) is None
 
 
+def test_ensure_stopped_monitor_removed_from_map(
+        mocker,
+        monitor,
+        host_info,
+        monitoring_conn_props,
+        mock_plugin_service,
+        mock_conn,
+        mock_driver_dialect):
+    remove_delays()
+    host_alias = "host-1"
+    container = MonitoringThreadContainer()
+    container._monitor_map.put_if_absent(host_alias, monitor)
+    container._tasks_map.put_if_absent(monitor, mocker.MagicMock())
+
+    executor = ThreadPoolExecutor()
+    context = MonitoringContext(monitor, mock_conn, mock_driver_dialect, 10, 1, 3)
+
+    mocker.patch(
+        "aws_advanced_python_wrapper.host_monitoring_plugin.Monitor.sleep", side_effect=InterruptedError())
+    monitor.start_monitoring(context)
+
+    future = executor.submit(monitor.run)
+    sleep(0.1)  # Allow some time for the monitor to loop
+    wait([future], 3)
+
+    assert container._monitor_map.get(host_alias) is None
+    assert container._tasks_map.get(monitor) is None
+
+
 def test_run_host_unavailable(
         mocker,
         monitor,
