@@ -124,45 +124,46 @@ def plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugi
 
 
 def init_and_release(mocker, plugin_service_mock, plugin_manager):
-    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service_mock, plugin_service_mock, plugin_service_mock, plugin_manager)
+    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service_mock, plugin_service_mock, plugin_manager)
     wrapper.release_resources()
     return wrapper
 
 
 def test_init_and_release_with_execution_time_plugin(
-        benchmark, plugin_service_mock, plugin_manager_with_execute_time_plugin):
+        benchmark, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin):
 
-    result = benchmark(init_and_release, plugin_service_mock, plugin_manager_with_execute_time_plugin)
+    result = benchmark(init_and_release, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin)
     assert result is not None
 
 
 def test_init_and_release_with_aurora_connection_tracker_plugin(
-        benchmark, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_plugin):
+        benchmark, mocker, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_plugin):
 
-    result = benchmark(init_and_release, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_plugin)
+    result = benchmark(init_and_release, mocker, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_plugin)
     assert result is not None
 
 
 def test_init_and_release_with_execute_time_and_aurora_connection_tracker_plugin(
-        benchmark, plugin_service_mock, plugin_manager_with_execute_time_and_aurora_connection_tracker_plugin):
+        benchmark, mocker, plugin_service_mock, plugin_manager_with_execute_time_and_aurora_connection_tracker_plugin):
 
     result = benchmark(
-        init_and_release, plugin_service_mock, plugin_manager_with_execute_time_and_aurora_connection_tracker_plugin)
+        init_and_release, mocker, plugin_service_mock, plugin_manager_with_execute_time_and_aurora_connection_tracker_plugin)
     assert result is not None
 
 
 def test_init_and_release_with_read_write_splitting_plugin(
-        benchmark, plugin_service_mock, plugin_manager_with_read_write_splitting_plugin):
+        benchmark, mocker, plugin_service_mock, plugin_manager_with_read_write_splitting_plugin):
 
-    result = benchmark(init_and_release, plugin_service_mock, plugin_manager_with_read_write_splitting_plugin)
+    result = benchmark(init_and_release, mocker, plugin_service_mock, plugin_manager_with_read_write_splitting_plugin)
     assert result is not None
 
 
 def test_init_and_release_with_aurora_connection_tracker_and_read_write_splitting_plugin(
-        benchmark, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugin):
+        benchmark, mocker, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugin):
 
     result = benchmark(
         init_and_release,
+        mocker,
         plugin_service_mock,
         plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugin)
     assert result is not None
@@ -182,45 +183,47 @@ def init_and_release_internal_connection_pools(mocker, plugin_service_mock, plug
 
 
 def test_init_and_release_with_read_write_splitting_plugin_internal_connection_pools(
-        benchmark, plugin_service_mock, plugin_manager_with_read_write_splitting_plugin):
+        benchmark, mocker, plugin_service_mock, plugin_manager_with_read_write_splitting_plugin):
 
     result = benchmark(
         init_and_release_internal_connection_pools,
+        mocker,
         plugin_service_mock,
         plugin_manager_with_read_write_splitting_plugin)
     assert result is not None
 
 
 def test_init_and_release_with_aurora_connection_tracker_and_read_write_splitting_plugin_internal_connection_pools(
-        benchmark, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugin):
+        benchmark, mocker, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugin):
 
     result = benchmark(
         init_and_release_internal_connection_pools,
+        mocker,
         plugin_service_mock,
         plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugin)
     assert result is not None
 
 
 def create_cursor_baseline(mocker, plugin_service, plugin_manager):
-    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_manager)
+    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_service, plugin_manager)
     cursor = wrapper.cursor()
     return cursor
 
 
-def test_create_cursor_baseline(benchmark, plugin_service_mock, plugin_manager_with_execute_time_plugin):
-    result = benchmark(create_cursor_baseline, plugin_service_mock, plugin_manager_with_execute_time_plugin)
+def test_create_cursor_baseline(benchmark, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin):
+    result = benchmark(create_cursor_baseline, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin)
     assert result is not None
 
 
 def execute_query(mocker, plugin_service, plugin_manager):
-    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_manager)
+    wrapper = AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_service, plugin_manager)
     cursor = wrapper.cursor()
     results = cursor.execute("some sql")
     return results
 
 
 def test_execute_query_with_execute_time_plugin(
-        benchmark, plugin_service_mock, plugin_manager_with_execute_time_plugin):
+        benchmark, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin):
 
-    result = benchmark(execute_query, plugin_service_mock, plugin_manager_with_execute_time_plugin)
+    result = benchmark(execute_query, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin)
     assert result is not None
