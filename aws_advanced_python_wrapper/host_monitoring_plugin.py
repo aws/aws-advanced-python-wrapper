@@ -432,7 +432,7 @@ class Monitor:
                             self._monitor_container.release_monitor(self)
                             break
 
-                        sleep(Monitor._INACTIVE_SLEEP_MS / 1000)
+                        self.sleep(Monitor._INACTIVE_SLEEP_MS / 1000)
                         continue
 
                     status_check_start_time_ns = perf_counter_ns()
@@ -482,7 +482,7 @@ class Monitor:
                         # Use this delay for all active contexts
                         self._host_check_timeout_ms = delay_ms
 
-                    sleep(delay_ms / 1000)
+                    self.sleep(delay_ms / 1000)
                 except InterruptedError as e:
                     raise e
                 except Exception as e:
@@ -494,6 +494,7 @@ class Monitor:
             logger.debug("Monitor.StoppingMonitorUnhandledException", self._host_info.host)
             logger.debug(e, exc_info=True)
         finally:
+            self._monitor_container.release_monitor(self)
             self.stop()
             if self._monitoring_conn is not None:
                 try:
@@ -542,6 +543,10 @@ class Monitor:
             query = "SELECT 1"
             driver_dialect.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
             cursor.fetchone()
+
+    # Used to help with testing
+    def sleep(self, duration: int):
+        sleep(duration)
 
 
 class MonitoringThreadContainer:
