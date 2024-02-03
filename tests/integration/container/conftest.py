@@ -141,5 +141,6 @@ def pytest_sessionfinish(session, exitstatus):
     print("remaining threads...")
     threads = threading.enumerate()
     for t in threads:
-        print("thread: " + t.name)
-
+        print(f"thread: {t.name} is daemon: {t.daemon} is alive: {t.is_alive()}")
+        t.join(10)
+        print(f"thread: {t.name} is alive: {'Alive' if t.is_alive() else 'Dead' } after join")
