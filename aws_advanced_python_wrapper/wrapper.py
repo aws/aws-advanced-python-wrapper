@@ -90,15 +90,25 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         return self._plugin_manager.execute(
             self.target_connection,
             "Connection.is_read_only",
-            lambda: self._plugin_service.driver_dialect.is_read_only(self.target_connection))
+            lambda: self._is_read_only())
 
     @read_only.setter
-    def read_only(self, read_only: bool):
+    def read_only(self, val: bool):
         self._plugin_manager.execute(
             self.target_connection,
             "Connection.set_read_only",
-            lambda: self._plugin_service.driver_dialect.set_read_only(self.target_connection, read_only),
-            read_only)
+            lambda: self._set_read_only(val),
+            val)
+
+    def _is_read_only(self) -> bool:
+        is_read_only = self._plugin_service.driver_dialect.is_read_only(self.target_connection)
+        self._plugin_service.session_state_service.setup_pristine_readonly(is_read_only)
+        return is_read_only
+
+    def _set_read_only(self, val: bool):
+        self._plugin_service.session_state_service.setup_pristine_readonly(val)
+        self._plugin_service.driver_dialect.set_read_only(self.target_connection, val)
+        self._plugin_service.session_state_service.set_read_only(val)
 
     @property
     def autocommit(self):
@@ -108,12 +118,22 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
             lambda: self._plugin_service.driver_dialect.get_autocommit(self.target_connection))
 
     @autocommit.setter
-    def autocommit(self, autocommit: bool):
+    def autocommit(self, val: bool):
         self._plugin_manager.execute(
             self.target_connection,
             "Connection.autocommit_setter",
-            lambda: self._plugin_service.driver_dialect.set_autocommit(self.target_connection, autocommit),
-            autocommit)
+            lambda: self._set_autocommit(val),
+            val)
+
+    def _get_autocommit(self) -> bool:
+        autocommit = self._plugin_service.driver_dialect.get_autocommit(self.target_connection)
+        self._plugin_service.session_state_service.setup_pristine_autocommit(autocommit)
+        return autocommit
+
+    def _set_autocommit(self, val: bool):
+        self._plugin_service.session_state_service.setup_pristine_autocommit(val)
+        self._plugin_service.driver_dialect.set_autocommit(self.target_connection, val)
+        self._plugin_service.session_state_service.set_autocommit(val)
 
     @staticmethod
     def connect(

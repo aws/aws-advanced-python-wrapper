@@ -19,8 +19,7 @@ from typing import TYPE_CHECKING, List
 
 import pytest
 
-from aws_advanced_python_wrapper.errors import (
-    FailoverSuccessError, TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.errors import (FailoverSuccessError, TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from .utils.conditions import (disable_on_features, enable_on_deployments,
@@ -138,6 +137,69 @@ class TestAuroraFailover:
 
             assert writer_id == current_connection_id
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    def test_fail_from_writer_with_session_states_autocommit(self, test_driver: TestDriver, props, conn_utils, aurora_utility):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
+
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
+            conn.autocommit = False
+
+            with conn.cursor() as cursor_1:
+                cursor_1.execute("DROP TABLE IF EXISTS session_states")
+                cursor_1.execute("CREATE TABLE session_states (id int not null primary key, session_states_field varchar(255) not null)")
+                conn.commit()
+
+            with conn.cursor() as cursor_2:
+                cursor_2.execute("INSERT INTO session_states VALUES (1, 'test field string 1')")
+
+                aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+                with pytest.raises(TransactionResolutionUnknownError):
+                    cursor_2.execute("INSERT INTO session_states VALUES (2, 'test field string 2')")
+
+            # Attempt to query the instance id.
+            current_connection_id = aurora_utility.query_instance_id(conn)
+            # Assert that we are connected to the new writer after failover happens.
+            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            next_cluster_writer_id = aurora_utility.get_cluster_writer_instance_id()
+            assert current_connection_id == next_cluster_writer_id
+            assert current_connection_id != initial_writer_id
+
+            with conn.cursor() as cursor_3:
+                cursor_3.execute("SELECT count(*) from session_states")
+                result = cursor_3.fetchone()
+                assert 0 == int(result[0])
+                cursor_3.execute("DROP TABLE IF EXISTS session_states")
+                conn.commit()
+                # Assert autocommit is still False after failover.
+                assert conn.autocommit is False
+
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    def test_fail_from_writer_with_session_states_readonly(self, test_driver: TestDriver, props, conn_utils, aurora_utility):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
+
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
+            assert conn.read_only is False
+            conn.read_only = True
+            assert conn.read_only is True
+
+            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+            aurora_utility.assert_first_query_throws(conn, FailoverSuccessError)
+
+            # Attempt to query the instance id.
+            current_connection_id = aurora_utility.query_instance_id(conn)
+            # Assert that we are connected to the new writer after failover happens.
+            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            next_cluster_writer_id = aurora_utility.get_cluster_writer_instance_id()
+            assert current_connection_id == next_cluster_writer_id
+            assert current_connection_id != initial_writer_id
+
+            # Assert readonly is still True after failover.
+            assert conn.read_only is True
 
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_writer_fail_within_transaction_set_autocommit_false(
@@ -281,46 +343,3 @@ class TestAuroraFailover:
             current_connection_id = aurora_utility.query_instance_id(aws_conn)
             assert writer_id == current_connection_id
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
-
-    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
-    def test_fail_from_writer_where_keep_session_state_on_failover_is_true(
-            self, test_driver: TestDriver, test_environment: TestEnvironment, props, conn_utils, aurora_utility):
-        target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
-
-        props["keep_session_state_on_failover"] = "true"
-
-        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
-            conn.autocommit = False
-
-            with conn.cursor() as cursor_1:
-                cursor_1.execute("DROP TABLE IF EXISTS test3_3")
-                cursor_1.execute(
-                    "CREATE TABLE test3_3 (id int not null primary key, test3_3_field varchar(255) not null)")
-                conn.commit()
-
-            with conn.cursor() as cursor_2:
-                cursor_2.execute("INSERT INTO test3_3 VALUES (1, 'test field string 1')")
-
-                aurora_utility.failover_cluster_and_wait_until_writer_changed()
-
-                with pytest.raises(TransactionResolutionUnknownError):
-                    cursor_2.execute("INSERT INTO test3_3 VALUES (2, 'test field string 2')")
-
-            # Attempt to query the instance id.
-            current_connection_id = aurora_utility.query_instance_id(conn)
-            # Assert that we are connected to the new writer after failover happens.
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
-            next_cluster_writer_id = aurora_utility.get_cluster_writer_instance_id()
-            assert current_connection_id == next_cluster_writer_id
-            assert current_connection_id != initial_writer_id
-
-            with conn.cursor() as cursor_3:
-                cursor_3.execute("SELECT count(*) from test3_3")
-                result = cursor_3.fetchone()
-                assert 0 == int(result[0])
-                cursor_3.execute("DROP TABLE IF EXISTS test3_3")
-                conn.commit()
-
-                # Assert autocommit is still false after failover.
-                assert conn.autocommit is False

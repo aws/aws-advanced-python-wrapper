@@ -307,7 +307,7 @@ class HostResponseTimeService:
         self._interval_ms = interval_ms
         self._hosts: Tuple[HostInfo, ...] = ()
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
-        self._host_count_gauge: TelemetryGauge = self._telemetry_factory.create_gauge("frt.nodes.count", lambda: len(self._monitoring_nodes))
+        self._host_count_gauge: TelemetryGauge = self._telemetry_factory.create_gauge("frt.hosts.count", lambda: len(self._monitoring_nodes))
 
     @property
     def hosts(self) -> Tuple[HostInfo, ...]:

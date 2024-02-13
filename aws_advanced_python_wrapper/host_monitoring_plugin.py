@@ -374,7 +374,7 @@ class Monitor:
 
         node_id = self._host_info.host_id if self._host_info.host_id is not None else self._host_info.host
         self._node_invalid_counter = self._telemetry_factory.create_counter(
-            f"host_monitoring.node_unhealthy.count.{node_id}")
+            f"host_monitoring.host_unhealthy.count.{node_id}")
 
     @dataclass
     class HostStatus:
