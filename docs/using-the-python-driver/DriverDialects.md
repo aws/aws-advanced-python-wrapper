@@ -10,8 +10,8 @@ By default, the driver dialect is determined based on the Connection function pa
 
 ## Configuration Parameters
 
-| Name                            | Required             | Description                                                                              | Example                                         |
-|---------------------------------|----------------------|------------------------------------------------------------------------------------------|-------------------------------------------------|
+| Name                     | Required             | Description                                                                              | Example                                   |
+|--------------------------|----------------------|------------------------------------------------------------------------------------------|-------------------------------------------|
 | `wrapper_driver_dialect` | No (see notes below) | The [driver dialect code](#list-of-available-driver-codes) of the desired target driver. | `DriverDialectCodes.PSYCOPG` or `psycopg` |
 
 > **NOTES:**

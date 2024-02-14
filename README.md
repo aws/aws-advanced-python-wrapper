@@ -80,30 +80,61 @@ and how to integrate it within your project and with your Python driver of choic
 [Getting Started page](./docs/GettingStarted.md).
 
 ### Connection Properties
-The following table lists the common connection properties used with the AWS Advanced Python Wrapper.
+The following table lists the connection properties used with the AWS Advanced Python Wrapper.
 
-| Parameter                                    |                                                    Documentation Link                                                    |
-|----------------------------------------------|:------------------------------------------------------------------------------------------------------------------------:|
-| `wrapper_dialect`                            |            [Dialects](./docs/using-the-python-driver/DatabaseDialects.md), and whether you should include it.            |
-| `plugins`                                    | [Connection Plugin Manager](./docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters) |
-| `secrets_manager_secret_id`                  |         [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)          |
-| `secrets_manager_region`                     |         [SecretsManagerPlugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)          |
-| `enable_failover`                            |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
-| `failover_mode`                              |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
-| `cluster_instance_host_pattern`              |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
-| `failover_cluster_topology_refresh_rate_sec` |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
-| `failover_reader_connect_timeout_sec`        |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
-| `failover_timeout_sec`                       |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
-| `failover_writer_reconnect_interval_sec`     |                 [FailoverPlugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                 |
-| `failure_detection_count`                    |           [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
-| `failure_detection_enabled`                  |           [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
-| `failure_detection_interval_ms`              |           [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
-| `failure_detection_time_ms`                  |           [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
-| `monitor_disposal_time_ms`                   |           [HostMonitoringPlugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)           |
-| `iam_default_port`                           |        [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
-| `iam_host`                                   |        [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
-| `iam_region`                                 |        [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
-| `iam_expiration`                             |        [IamAuthenticationPlugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)        |
+| Parameter                                    |                                                      Documentation Link                                                       |
+|----------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------:|
+| `auxiliary_query_timeout_sec`                |       [Driver Parameters](./docs/using-the-python-driver/UsingThePythonDriver.md#aws-advanced-python-driver-parameters)       |
+| `topology_refresh_ms`                        |       [Driver Parameters](./docs/using-the-python-driver/UsingThePythonDriver.md#aws-advanced-python-driver-parameters)       |
+| `cluster_id`                                 |       [Driver Parameters](./docs/using-the-python-driver/UsingThePythonDriver.md#aws-advanced-python-driver-parameters)       |
+| `cluster_instance_host_pattern`              |       [Driver Parameters](./docs/using-the-python-driver/UsingThePythonDriver.md#aws-advanced-python-driver-parameters)       |
+| `wrapper_dialect`                            |              [Dialects](./docs/using-the-python-driver/DatabaseDialects.md), and whether you should include it.               |
+| `wrapper_driver_dialect`                     |            [Driver Dialect](./docs/using-the-python-driver/DriverDialects.md), and whether you should include it.             |
+| `plugins`                                    |   [Connection Plugin Manager](./docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters)    | 
+| `auto_sort_wrapper_plugin_order`             |   [Connection Plugin Manager](./docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters)    |
+| `profile_name`                               |   [Connection Plugin Manager](./docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters)    |
+| `connect_timeout`                            |                  [Network Timeouts](./docs/using-the-python-driver/UsingThePythonDriver.md#network-timeouts)                  |
+| `socket_timeout`                             |                  [Network Timeouts](./docs/using-the-python-driver/UsingThePythonDriver.md#network-timeouts)                  |
+| `tcp_keepalive`                              |                  [Network Timeouts](./docs/using-the-python-driver/UsingThePythonDriver.md#network-timeouts)                  |
+| `tcp_keepalive_time`                         |                  [Network Timeouts](./docs/using-the-python-driver/UsingThePythonDriver.md#network-timeouts)                  |
+| `tcp_keepalive_interval`                     |                  [Network Timeouts](./docs/using-the-python-driver/UsingThePythonDriver.md#network-timeouts)                  |
+| `tcp_keepalive_probes`                       |                  [Network Timeouts](./docs/using-the-python-driver/UsingThePythonDriver.md#network-timeouts)                  |
+| `enable_failover`                            |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
+| `failover_mode`                              |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
+| `cluster_instance_host_pattern`              |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
+| `failover_cluster_topology_refresh_rate_sec` |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
+| `failover_reader_connect_timeout_sec`        |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
+| `failover_timeout_sec`                       |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
+| `failover_writer_reconnect_interval_sec`     |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
+| `keep_session_state_on_failover`             |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
+| `failure_detection_count`                    |            [Host Monitoring Plugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)             |
+| `failure_detection_enabled`                  |            [Host Monitoring Plugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)             |
+| `failure_detection_interval_ms`              |            [Host Monitoring Plugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)             |
+| `failure_detection_time_ms`                  |            [Host Monitoring Plugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)             |
+| `monitor_disposal_time_ms`                   |            [Host Monitoring Plugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)             |
+| `iam_default_port`                           |         [IAM Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)          |
+| `iam_host`                                   |         [IAM Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)          |
+| `iam_region`                                 |         [IAM Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)          |
+| `iam_expiration`                             |         [IAM Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)          |
+| `secrets_manager_secret_id`                  |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
+| `secrets_manager_region`                     |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
+| `secrets_manager_endpoint`                   |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
+| `reader_host_selector_strategy`              | [Connection Strategy](./docs/using-the-python-driver/using-plugins/UsingTheReadWriteSplittingPlugin.md#connection-strategies) |
+| `db_user`                                    |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `idp_username`                               |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `idp_password`                               |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `idp_endpoint`                               |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `iam_role_arn`                               |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `iam_idp_arn`                                |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `iam_region`                                 |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `idp_name`                                   |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `idp_port`                                   |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `rp_identifier`                              |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `iam_host`                                   |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `iam_default_port`                           |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `iam_token_expiration`                       |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `http_request_connect_timeout`               |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
+| `ssl_secure`                                 |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
 
 ### Using the AWS Advanced Python Driver
 
