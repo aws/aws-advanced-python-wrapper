@@ -90,7 +90,7 @@ def _clone_and_close_context(context: XRayTelemetryContext, trace_level: Telemet
 
     clone._trace_entity.start_time = context._trace_entity.start_time
 
-    for key in context._trace_entity.annotations:
+    for key in context._trace_entity.annotations.items():
         value = context._trace_entity.annotations[key]
         if key != TelemetryConst.TRACE_NAME_ANNOTATION and value is not None:
             clone.set_attribute(key, value)

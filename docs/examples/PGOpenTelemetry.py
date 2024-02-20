@@ -18,12 +18,10 @@ import logging
 
 import psycopg
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import \
-    OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.extension.aws.trace import AwsXRayIdGenerator
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import \
-    BatchSpanProcessor  # ConsoleSpanExporter,
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 
@@ -34,7 +32,6 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
     provider = TracerProvider(id_generator=AwsXRayIdGenerator())
-    # processor = BatchSpanProcessor(ConsoleSpanExporter())
     processor = BatchSpanProcessor(OTLPSpanExporter(endpoint="http://localhost:4317"))
     provider.add_span_processor(processor)
     trace.set_tracer_provider(provider)
