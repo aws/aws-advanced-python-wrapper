@@ -37,6 +37,8 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+    TelemetryTraceLevel
 
 logger = Logger(__name__)
 
@@ -52,6 +54,11 @@ class IamAuthPlugin(Plugin):
     def __init__(self, plugin_service: PluginService, session: Optional[Session] = None):
         self._plugin_service = plugin_service
         self._session = session
+
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        self._fetch_token_counter = telemetry_factory.create_counter("iam.fetch_token.count")
+        self._cache_size_gauge = telemetry_factory.create_gauge(
+            "iam.token_cache.size", lambda: len(IamAuthPlugin._token_cache))
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -134,23 +141,34 @@ class IamAuthPlugin(Plugin):
                                        hostname: Optional[str],
                                        port: Optional[int],
                                        region: Optional[str]) -> str:
-        session = self._session if self._session else boto3.Session()
-        client = session.client(
-            'rds',
-            region_name=region,
-        )
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        context = telemetry_factory.open_telemetry_context("fetch IAM token", TelemetryTraceLevel.NESTED)
+        self._fetch_token_counter.inc()
 
-        user = WrapperProperties.USER.get(props)
+        try:
+            session = self._session if self._session else boto3.Session()
+            client = session.client(
+                'rds',
+                region_name=region,
+            )
 
-        token = client.generate_db_auth_token(
-            DBHostname=hostname,
-            Port=port,
-            DBUsername=user
-        )
+            user = WrapperProperties.USER.get(props)
 
-        client.close()
+            token = client.generate_db_auth_token(
+                DBHostname=hostname,
+                Port=port,
+                DBUsername=user
+            )
 
-        return token
+            client.close()
+
+            return token
+        except Exception as ex:
+            context.set_success(False)
+            context.set_exception(ex)
+            raise ex
+        finally:
+            context.close_context()
 
     def _get_cache_key(self, user: Optional[str], hostname: Optional[str], port: int, region: Optional[str]) -> str:
         return f"{region}:{hostname}:{port}:{user}"

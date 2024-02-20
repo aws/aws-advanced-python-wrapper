@@ -33,6 +33,10 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils)
+from aws_advanced_python_wrapper.utils.telemetry.default_telemetry_factory import \
+    DefaultTelemetryFactory
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+    TelemetryTraceLevel
 
 logger = Logger(__name__)
 
@@ -127,14 +131,24 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         props: Properties = PropertiesUtils.parse_properties(conn_info=conninfo, **kwargs)
         logger.debug("Wrapper.Properties", PropertiesUtils.log_properties(PropertiesUtils.mask_properties(props)))
 
-        driver_dialect_manager: DriverDialectManager = DriverDialectManager()
-        driver_dialect = driver_dialect_manager.get_dialect(target_func, props)
-        container: PluginServiceManagerContainer = PluginServiceManagerContainer()
-        plugin_service = PluginServiceImpl(
-            container, props, target_func, driver_dialect_manager, driver_dialect)
-        plugin_manager: PluginManager = PluginManager(container, props)
+        telemetry_factory = DefaultTelemetryFactory(props)
+        context = telemetry_factory.open_telemetry_context(__name__, TelemetryTraceLevel.TOP_LEVEL)
 
-        return AwsWrapperConnection(target_func, plugin_service, plugin_service, plugin_manager)
+        try:
+            driver_dialect_manager: DriverDialectManager = DriverDialectManager()
+            driver_dialect = driver_dialect_manager.get_dialect(target_func, props)
+            container: PluginServiceManagerContainer = PluginServiceManagerContainer()
+            plugin_service = PluginServiceImpl(
+                container, props, target_func, driver_dialect_manager, driver_dialect)
+            plugin_manager: PluginManager = PluginManager(container, props, telemetry_factory)
+
+            return AwsWrapperConnection(target_func, plugin_service, plugin_service, plugin_manager)
+        except Exception as ex:
+            context.set_exception(ex)
+            context.set_success(False)
+            raise ex
+        finally:
+            context.close_context()
 
     def close(self) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.close",
