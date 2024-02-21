@@ -37,6 +37,7 @@ class DriverDialect(ABC):
     """
     Driver dialects help the driver-agnostic AWS Python Driver interface with the driver-specific functionality of the underlying Python Driver.
     """
+    _QUERY = "SELECT 1"
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor()
     _dialect_code: str = DriverDialectCodes.GENERIC
@@ -152,3 +153,13 @@ class DriverDialect(ABC):
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         return
+
+    def ping(self, conn: Connection) -> bool:
+        try:
+            with conn.cursor() as cursor:
+                query = DriverDialect._QUERY
+                self.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=10)
+                cursor.fetchone()
+                return True
+        except Exception:
+            return False

@@ -283,6 +283,11 @@ class WrapperProperties:
                               "The database user used to access the database",
                               None)
 
+    # Fastest Response Strategy
+    RESPONSE_MEASUREMENT_INTERVAL_MILLIS = WrapperProperty("response_measurement_interval_ms",
+                                                           "Interval in milliseconds between measuring response time to a database host",
+                                                           30_000)
+
     # Telemetry
     ENABLE_TELEMETRY = WrapperProperty(
         "enable_telemetry",

@@ -15,6 +15,7 @@
     - [AWS Secrets Manager Plugin](./using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)
     - [Aurora Connection Tracker Plugin](./using-the-python-driver/using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)
     - [Read Write Splitting Plugin](./using-the-python-driver/using-plugins/UsingTheReadWriteSplittingPlugin.md)
+    - [Fastest Response Strategy Plugin](./using-the-python-driver/using-plugins/UsingTheFastestResponseStrategyPlugin.md)
   - [Host Availability Strategy](./using-the-python-driver/HostAvailabilityStrategy.md)
 - [Development Guide](./development-guide/DevelopmentGuide.md)
   - [Setup](./development-guide/DevelopmentGuide.md#setup)

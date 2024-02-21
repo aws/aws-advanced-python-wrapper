@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, List, Type
 
+from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
+    FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
     FederatedAuthPluginFactory
 
@@ -571,6 +573,7 @@ class PluginManager(CanReleaseResources):
         "host_monitoring": HostMonitoringPluginFactory,
         "failover": FailoverPluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,
+        "fastest_response_strategy": FastestResponseStrategyPluginFactory,
         "stale_dns": StaleDnsPluginFactory,
         "connect_time": ConnectTimePluginFactory,
         "execute_time": ExecuteTimePluginFactory,
@@ -589,8 +592,9 @@ class PluginManager(CanReleaseResources):
         ReadWriteSplittingPluginFactory: 300,
         FailoverPluginFactory: 400,
         HostMonitoringPluginFactory: 500,
-        IamAuthPluginFactory: 600,
-        AwsSecretsManagerPluginFactory: 700,
+        FastestResponseStrategyPluginFactory: 600,
+        IamAuthPluginFactory: 700,
+        AwsSecretsManagerPluginFactory: 800,
         ConnectTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
         ExecuteTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
         DeveloperPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
