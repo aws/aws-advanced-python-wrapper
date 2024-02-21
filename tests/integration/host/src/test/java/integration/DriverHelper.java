@@ -14,18 +14,21 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration;
 
 import com.mysql.cj.conf.PropertyKey;
-import org.postgresql.PGProperty;
-import org.testcontainers.shaded.org.apache.commons.lang3.NotImplementedException;
-
 import java.sql.Connection;
+import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.postgresql.PGProperty;
+import org.testcontainers.shaded.org.apache.commons.lang3.NotImplementedException;
 
 public class DriverHelper {
 
@@ -53,6 +56,17 @@ public class DriverHelper {
     return DriverManager.getConnection(url, info.getDatabaseInfo().getUsername(), info.getDatabaseInfo().getPassword());
   }
 
+  public static String getDriverProtocol(DatabaseEngine databaseEngine, TestDriver testDriver) {
+    switch (testDriver) {
+      case MYSQL:
+        return "jdbc:mysql://";
+      case PG:
+        return "jdbc:postgresql://";
+      default:
+        throw new NotImplementedException(testDriver.toString());
+    }
+  }
+
   public static void registerDriver(DatabaseEngine engine) {
     try {
       Class.forName(DriverHelper.getDriverClassname(engine));
@@ -61,6 +75,18 @@ public class DriverHelper {
           "Driver not found: "
               + DriverHelper.getDriverClassname(engine),
           e);
+    }
+  }
+
+  public static String getWrapperDriverProtocol(
+      DatabaseEngine databaseEngine, TestDriver testDriver) {
+    switch (testDriver) {
+      case MYSQL:
+        return "jdbc:aws-wrapper:mysql://";
+      case PG:
+        return "jdbc:aws-wrapper:postgresql://";
+      default:
+        throw new NotImplementedException(testDriver.toString());
     }
   }
 
@@ -86,8 +112,15 @@ public class DriverHelper {
     }
   }
 
-  public static void setConnectTimeout(Properties props, long timeout, TimeUnit timeUnit) {
-    setConnectTimeout(TestEnvironment.getCurrent().getCurrentDriver(), props, timeout, timeUnit);
+  public static String getHostnameSql(DatabaseEngine databaseEngine) {
+    switch (databaseEngine) {
+      case MYSQL:
+        return "SELECT @@hostname";
+      case PG:
+        return "SELECT inet_server_addr()";
+      default:
+        throw new NotImplementedException(databaseEngine.toString());
+    }
   }
 
   public static void setConnectTimeout(
@@ -106,10 +139,6 @@ public class DriverHelper {
     }
   }
 
-  public static void setSocketTimeout(Properties props, long timeout, TimeUnit timeUnit) {
-    setSocketTimeout(TestEnvironment.getCurrent().getCurrentDriver(), props, timeout, timeUnit);
-  }
-
   public static void setSocketTimeout(
       TestDriver testDriver, Properties props, long timeout, TimeUnit timeUnit) {
     switch (testDriver) {
@@ -120,6 +149,55 @@ public class DriverHelper {
       case PG:
         props.setProperty(
             PGProperty.SOCKET_TIMEOUT.getName(), String.valueOf(timeUnit.toSeconds(timeout)));
+        break;
+      default:
+        throw new NotImplementedException(testDriver.toString());
+    }
+  }
+
+  public static void setTcpKeepAlive(TestDriver testDriver, Properties props, boolean enabled) {
+    switch (testDriver) {
+      case MYSQL:
+        props.setProperty(PropertyKey.tcpKeepAlive.getKeyName(), String.valueOf(enabled));
+        break;
+      case PG:
+        props.setProperty(PGProperty.TCP_KEEP_ALIVE.getName(), String.valueOf(enabled));
+        break;
+      default:
+        throw new NotImplementedException(testDriver.toString());
+    }
+  }
+
+  public static void setMonitoringConnectTimeout(
+      TestDriver testDriver, Properties props, long timeout, TimeUnit timeUnit) {
+    switch (testDriver) {
+      case MYSQL:
+        props.setProperty(
+            "monitoring-" + PropertyKey.connectTimeout.getKeyName(),
+            String.valueOf(timeUnit.toMillis(timeout)));
+        break;
+      case PG:
+        props.setProperty(
+            "monitoring-" + PGProperty.CONNECT_TIMEOUT.getName(),
+            String.valueOf(timeUnit.toSeconds(timeout)));
+        break;
+      default:
+        throw new NotImplementedException(testDriver.toString());
+    }
+  }
+
+  public static void setMonitoringSocketTimeout(
+      TestDriver testDriver, Properties props, long timeout, TimeUnit timeUnit) {
+    switch (testDriver) {
+      case MYSQL:
+        props.setProperty(
+            "monitoring-" + PropertyKey.socketTimeout.getKeyName(),
+            String.valueOf(timeUnit.toMillis(timeout)));
+        break;
+      case PG:
+        props.setProperty(
+            "monitoring-" + PGProperty.SOCKET_TIMEOUT.getName(),
+            String.valueOf(timeUnit.toSeconds(timeout)));
         break;
       default:
         throw new NotImplementedException(testDriver.toString());

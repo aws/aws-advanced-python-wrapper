@@ -30,7 +30,8 @@ from aws_advanced_python_wrapper.connection_provider import \
 from aws_advanced_python_wrapper.errors import FailoverSuccessError
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
-from aws_advanced_python_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from tests.integration.container.utils.conditions import (
     enable_on_features, enable_on_num_instances)
 from tests.integration.container.utils.driver_helper import DriverHelper
@@ -50,11 +51,37 @@ class TestAutoScaling:
 
     @pytest.fixture
     def props(self):
-        return {"plugins": "read_write_splitting", "connect_timeout": 10, "autocommit": True}
+        p: Properties = Properties({"plugins": "read_write_splitting", "connect_timeout": 10, "autocommit": True})
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.ENABLE_TELEMETRY.set(p, "True")
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(p, "True")
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(p, "XRAY")
+
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(p, "OTLP")
+
+        return p
 
     @pytest.fixture
     def failover_props(self):
-        return {"plugins": "read_write_splitting,failover", "connect_timeout": 10, "autocommit": True}
+        p = {"plugins": "read_write_splitting,failover", "connect_timeout": 10, "autocommit": True}
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.ENABLE_TELEMETRY.set(p, "True")
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(p, "True")
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(p, "XRAY")
+
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(p, "OTLP")
+
+        return p
 
     @staticmethod
     def is_url_in_pool(desired_url: str, pool: List[str]) -> bool:

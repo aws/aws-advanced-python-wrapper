@@ -117,6 +117,18 @@ class TestPerformance:
             "autocommit": "True",
             WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.name: f"?.{endpoint_suffix}"
         })
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.ENABLE_TELEMETRY.set(props, "True")
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(props, "True")
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(props, "XRAY")
+
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(props, "OTLP")
+
         return props
 
     def test_failure_detection_time_efm(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils,

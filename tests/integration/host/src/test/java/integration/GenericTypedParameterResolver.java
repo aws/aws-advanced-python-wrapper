@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration;
 
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterContext;

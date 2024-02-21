@@ -22,7 +22,8 @@ if TYPE_CHECKING:
 
 import pytest
 
-from aws_advanced_python_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
 from tests.integration.container.utils.database_engine_deployment import \
     DatabaseEngineDeployment
@@ -46,7 +47,20 @@ class TestBasicConnectivity:
     @pytest.fixture(scope='class')
     def props(self):
         # By default, don't load the host_monitoring plugin so that the test doesn't require abort connection support
-        return {WrapperProperties.PLUGINS.name: "aurora_connection_tracker,failover", "connect_timeout": 3}
+        p: Properties = Properties({WrapperProperties.PLUGINS.name: "aurora_connection_tracker,failover", "connect_timeout": 3})
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.ENABLE_TELEMETRY.set(p, "True")
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(p, "True")
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(p, "XRAY")
+
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(p, "OTLP")
+
+        return p
 
     def test_direct_connection(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -111,7 +125,7 @@ class TestBasicConnectivity:
             assert True
 
     @enable_on_num_instances(min_instances=2)
-    @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.MULTI_AZ])
+    @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ])
     @enable_on_features([TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_wrapper_connection_reader_cluster_with_efm_enabled(self, test_driver: TestDriver, conn_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)

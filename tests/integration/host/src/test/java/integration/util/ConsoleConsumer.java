@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package integration.host.util;
+package integration.util;
 
 import org.testcontainers.containers.output.BaseConsumer;
 import org.testcontainers.containers.output.OutputFrame;

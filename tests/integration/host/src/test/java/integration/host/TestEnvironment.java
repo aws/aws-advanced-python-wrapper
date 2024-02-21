@@ -16,185 +16,942 @@
 
 package integration.host;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
-import integration.host.util.StringUtils;
+import integration.DatabaseEngine;
+import integration.DatabaseEngineDeployment;
+import integration.DriverHelper;
+import integration.TestDatabaseInfo;
+import integration.TestEnvironmentFeatures;
+import integration.TestEnvironmentInfo;
+import integration.TestEnvironmentRequest;
+import integration.TestInstanceInfo;
+import integration.TestProxyDatabaseInfo;
+import integration.TestTelemetryInfo;
+import integration.host.TestEnvironmentProvider.EnvPreCreateInfo;
+import integration.util.AuroraTestUtility;
+import integration.util.ContainerHelper;
 import java.io.IOException;
+import java.net.UnknownHostException;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.Network;
+import org.testcontainers.containers.ToxiproxyContainer;
 import org.testcontainers.shaded.org.apache.commons.lang3.NotImplementedException;
+import integration.util.StringUtils;
+import software.amazon.awssdk.services.rds.model.DBCluster;
 
-public class TestEnvironment {
+public class TestEnvironment implements AutoCloseable {
 
-  private static TestEnvironment env;
+  private static final Logger LOGGER = Logger.getLogger(TestEnvironment.class.getName());
+  private static final int NUM_OR_ENV_PRE_CREATE = 1; // create this number of environments in advance
 
-  private TestEnvironmentInfo info;
-  private HashMap<String, Proxy> proxies;
-  private TestDriver currentDriver;
+  private static final ExecutorService envPreCreateExecutor = Executors.newCachedThreadPool();
 
-  private TestEnvironment() {}
+  private static final String DATABASE_CONTAINER_NAME_PREFIX = "database-container-";
+  private static final String TEST_CONTAINER_NAME = "test-container";
+  private static final String TELEMETRY_XRAY_CONTAINER_NAME = "xray-daemon";
+  private static final String TELEMETRY_OTLP_CONTAINER_NAME = "otlp-daemon";
+  private static final String PROXIED_DOMAIN_NAME_SUFFIX = ".proxied";
+  protected static final int PROXY_CONTROL_PORT = 8474;
+  protected static final int PROXY_PORT = 8666;
 
-  public static synchronized TestEnvironment getCurrent() {
-    if (env == null) {
-      env = create();
+  private static final TestEnvironmentConfiguration config = new TestEnvironmentConfiguration();
+  private static final boolean USE_OTLP_CONTAINER_FOR_TRACES = false;
+
+  private final TestEnvironmentInfo info =
+      new TestEnvironmentInfo(); // only this info is passed to test container
+
+  // The following variables are local to host portion of test environment. They are not shared with a
+  // test container.
+
+  private int numOfInstances;
+  private boolean reuseAuroraDbCluster;
+  private String auroraClusterName; // "cluster-mysql"
+  private String auroraClusterDomain; // "XYZ.us-west-2.rds.amazonaws.com"
+
+  private String awsAccessKeyId;
+  private String awsSecretAccessKey;
+  private String awsSessionToken;
+
+  private GenericContainer<?> testContainer;
+  private final ArrayList<GenericContainer<?>> databaseContainers = new ArrayList<>();
+  private ArrayList<ToxiproxyContainer> proxyContainers;
+  private GenericContainer<?> telemetryXRayContainer;
+  private GenericContainer<?> telemetryOtlpContainer;
+
+  private String runnerIP;
+
+  private final Network network = Network.newNetwork();
+
+  private AuroraTestUtility auroraUtil;
+
+  private TestEnvironment(TestEnvironmentRequest request) {
+    this.info.setRequest(request);
+  }
+
+  public static TestEnvironment build(TestEnvironmentRequest request) throws IOException {
+    LOGGER.finest("Building test env: " + request.getEnvPreCreateIndex());
+    preCreateEnvironment(request.getEnvPreCreateIndex());
+
+    TestEnvironment env;
+
+    switch (request.getDatabaseEngineDeployment()) {
+      case DOCKER:
+        env = new TestEnvironment(request);
+        initDatabaseParams(env);
+        createDatabaseContainers(env);
+
+        if (request.getFeatures().contains(TestEnvironmentFeatures.IAM)) {
+          throw new UnsupportedOperationException(TestEnvironmentFeatures.IAM.toString());
+        }
+
+        if (request.getFeatures().contains(TestEnvironmentFeatures.FAILOVER_SUPPORTED)) {
+          throw new UnsupportedOperationException(
+              TestEnvironmentFeatures.FAILOVER_SUPPORTED.toString());
+        }
+
+        break;
+      case AURORA:
+      case RDS_MULTI_AZ:
+        env = createAuroraOrMultiAzEnvironment(request);
+        authorizeIP(env);
+
+        break;
+
+      default:
+        throw new NotImplementedException(request.getDatabaseEngineDeployment().toString());
     }
+
+    if (request.getFeatures().contains(TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED)) {
+      createProxyContainers(env);
+    }
+
+    if (!USE_OTLP_CONTAINER_FOR_TRACES
+        && request.getFeatures().contains(TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED)) {
+      createTelemetryXRayContainer(env);
+    }
+
+    if ((USE_OTLP_CONTAINER_FOR_TRACES
+        && request.getFeatures().contains(TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED))
+        || request.getFeatures().contains(TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED)) {
+      createTelemetryOtlpContainer(env);
+    }
+
+    createTestContainer(env);
+
     return env;
   }
 
-  private static TestEnvironment create() {
-    TestEnvironment environment = new TestEnvironment();
+  private static TestEnvironment createAuroraOrMultiAzEnvironment(TestEnvironmentRequest request) {
 
-    String infoJson = System.getenv("TEST_ENV_INFO_JSON");
+    EnvPreCreateInfo preCreateInfo =
+        TestEnvironmentProvider.preCreateInfos.get(request.getEnvPreCreateIndex());
 
-    if (StringUtils.isNullOrEmpty(infoJson)) {
-      throw new RuntimeException("Environment variable TEST_ENV_INFO_JSON is required.");
-    }
-
-    try {
-      final ObjectMapper mapper = new ObjectMapper();
-      environment.info = mapper.readValue(infoJson, TestEnvironmentInfo.class);
-    } catch (JsonProcessingException e) {
-      throw new RuntimeException("Invalid value in TEST_ENV_INFO_JSON.", e);
-    }
-
-    if (environment
-        .info
-        .getRequest()
-        .getFeatures()
-        .contains(TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED)) {
-      initProxies(environment);
-    }
-
-    return environment;
-  }
-
-  private static void initProxies(TestEnvironment environment) {
-    environment.proxies = new HashMap<>();
-
-    int proxyControlPort = environment.info.getProxyDatabaseInfo().getControlPort();
-    for (TestInstanceInfo instance : environment.info.getProxyDatabaseInfo().getInstances()) {
-      ToxiproxyClient client = new ToxiproxyClient(instance.getHost(), proxyControlPort);
-      List<Proxy> proxies;
+    if (preCreateInfo.envPreCreateFuture != null) {
+      /*
+       This environment has being created in advance.
+       We need to wait for results and apply details of newly created environment to the current
+       environment.
+      */
+      Object result;
       try {
-        proxies = client.getProxies();
-      } catch (IOException e) {
-        throw new RuntimeException("Error getting proxies for " + instance.getInstanceId(), e);
+        // Effectively waits till the future completes and returns results.
+        final long startTime = System.nanoTime();
+        result = preCreateInfo.envPreCreateFuture.get();
+        final long duration = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startTime);
+        LOGGER.finest(() ->
+            String.format("Additional wait time for test environment to be ready (pre-create): %d sec", duration));
+      } catch (ExecutionException | InterruptedException ex) {
+        throw new RuntimeException("Test environment create error.", ex);
       }
-      if (proxies == null || proxies.isEmpty()) {
-        throw new RuntimeException("Proxy for " + instance.getInstanceId() + " is not found.");
+
+      preCreateInfo.envPreCreateFuture = null;
+
+      if (result == null) {
+        throw new RuntimeException("Test environment create error. Results are empty.");
       }
-      environment.proxies.put(instance.getInstanceId(), proxies.get(0));
-    }
-
-    if (!StringUtils.isNullOrEmpty(environment.info.getProxyDatabaseInfo().getClusterEndpoint())) {
-      ToxiproxyClient client =
-          new ToxiproxyClient(
-              environment.info.getProxyDatabaseInfo().getClusterEndpoint(), proxyControlPort);
-      Proxy proxy =
-          environment.getProxy(
-              client,
-              environment.info.getDatabaseInfo().getClusterEndpoint(),
-              environment.info.getDatabaseInfo().getClusterEndpointPort());
-      environment.proxies.put(environment.info.getProxyDatabaseInfo().getClusterEndpoint(), proxy);
-    }
-
-    if (!StringUtils.isNullOrEmpty(
-        environment.info.getProxyDatabaseInfo().getClusterReadOnlyEndpoint())) {
-      ToxiproxyClient client =
-          new ToxiproxyClient(
-              environment.info.getProxyDatabaseInfo().getClusterReadOnlyEndpoint(),
-              proxyControlPort);
-      Proxy proxy =
-          environment.getProxy(
-              client,
-              environment.info.getDatabaseInfo().getClusterReadOnlyEndpoint(),
-              environment.info.getDatabaseInfo().getClusterReadOnlyEndpointPort());
-      environment.proxies.put(
-          environment.info.getProxyDatabaseInfo().getClusterReadOnlyEndpoint(), proxy);
-    }
-  }
-
-  private Proxy getProxy(ToxiproxyClient proxyClient, String host, int port) {
-    final String upstream = host + ":" + port;
-    try {
-      return proxyClient.getProxy(upstream);
-    } catch (IOException e) {
-      throw new RuntimeException("Error getting proxy for " + upstream, e);
-    }
-  }
-
-  public Proxy getProxy(String instanceName) {
-    Proxy proxy = this.proxies.get(instanceName);
-    if (proxy == null) {
-      throw new RuntimeException("Proxy for " + instanceName + " not found.");
-    }
-    return proxy;
-  }
-
-  public java.util.Collection<Proxy> getProxies() {
-    return Collections.unmodifiableCollection(this.proxies.values());
-  }
-
-  public TestEnvironmentInfo getInfo() {
-    return this.info;
-  }
-
-  public void setCurrentDriver(TestDriver testDriver) {
-    this.currentDriver = testDriver;
-  }
-
-  public TestDriver getCurrentDriver() {
-    return this.currentDriver;
-  }
-
-  public List<TestDriver> getAllowedTestDrivers() {
-    ArrayList<TestDriver> allowedTestDrivers = new ArrayList<>();
-    for (TestDriver testDriver : TestDriver.values()) {
-      if (isTestDriverAllowed(testDriver)) {
-        allowedTestDrivers.add(testDriver);
+      if (result instanceof Exception) {
+        throw new RuntimeException((Exception) result);
       }
+      if (result instanceof TestEnvironment) {
+        TestEnvironment resultTestEnvironment = (TestEnvironment) result;
+        LOGGER.finer(() -> String.format("Use pre-created DB cluster: %s.cluster-%s",
+            resultTestEnvironment.auroraClusterName, resultTestEnvironment.auroraClusterDomain));
+
+        return resultTestEnvironment;
+      }
+      throw new RuntimeException(
+          "Test environment create error. Unrecognized result type: " + result.getClass().getName());
+
+    } else {
+      TestEnvironment env = new TestEnvironment(request);
+      initDatabaseParams(env);
+      createDbCluster(env);
+
+      if (request.getFeatures().contains(TestEnvironmentFeatures.IAM)) {
+        if (request.getDatabaseEngineDeployment() == DatabaseEngineDeployment.RDS_MULTI_AZ) {
+          throw new RuntimeException("IAM isn't supported by " + DatabaseEngineDeployment.RDS_MULTI_AZ);
+        }
+        configureIamAccess(env);
+      }
+
+      return env;
     }
-    return allowedTestDrivers;
+
   }
 
-  public boolean isTestDriverAllowed(TestDriver testDriver) {
+  private static void createDatabaseContainers(TestEnvironment env) {
+    ContainerHelper containerHelper = new ContainerHelper();
 
-    boolean disabledByFeature;
-    boolean driverCompatibleToDatabaseEngine;
-
-    final Set<TestEnvironmentFeatures> features = this.info.getRequest().getFeatures();
-    final DatabaseEngine databaseEngine = this.info.getRequest().getDatabaseEngine();
-
-    switch (testDriver) {
-      case MYSQL:
-        driverCompatibleToDatabaseEngine = databaseEngine == DatabaseEngine.MYSQL;
-        disabledByFeature = features.contains(TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS);
+    switch (env.info.getRequest().getDatabaseInstances()) {
+      case SINGLE_INSTANCE:
+        env.numOfInstances = 1;
         break;
-      case PG:
-        driverCompatibleToDatabaseEngine = databaseEngine == DatabaseEngine.PG;
-        disabledByFeature = features.contains(TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS);
+      case MULTI_INSTANCE:
+        env.numOfInstances = env.info.getRequest().getNumOfInstances();
+        if (env.numOfInstances < 1 || env.numOfInstances > 15) {
+          LOGGER.warning(
+              env.numOfInstances + " instances were requested but the requested number must be "
+                  + "between 1 and 15. 5 instances will be used as a default.");
+          env.numOfInstances = 5;
+        }
         break;
       default:
-        throw new NotImplementedException(testDriver.toString());
+        throw new NotImplementedException(env.info.getRequest().getDatabaseInstances().toString());
     }
 
-    if (disabledByFeature || !driverCompatibleToDatabaseEngine) {
-      // this driver is disabled
-      return false;
+    switch (env.info.getRequest().getDatabaseEngine()) {
+      case MYSQL:
+        for (int i = 1; i <= env.numOfInstances; i++) {
+          env.databaseContainers.add(
+              containerHelper.createMysqlContainer(
+                  env.network,
+                  DATABASE_CONTAINER_NAME_PREFIX + i,
+                  env.info.getDatabaseInfo().getDefaultDbName(),
+                  env.info.getDatabaseInfo().getUsername(),
+                  env.info.getDatabaseInfo().getPassword()));
+          env.databaseContainers.get(0).start();
+
+          env.info
+              .getDatabaseInfo()
+              .getInstances()
+              .add(
+                  new TestInstanceInfo(
+                      DATABASE_CONTAINER_NAME_PREFIX + i,
+                      DATABASE_CONTAINER_NAME_PREFIX + i,
+                      3306));
+        }
+        break;
+
+      case PG:
+        for (int i = 1; i <= env.numOfInstances; i++) {
+          env.databaseContainers.add(
+              containerHelper.createPostgresContainer(
+                  env.network,
+                  DATABASE_CONTAINER_NAME_PREFIX + i,
+                  env.info.getDatabaseInfo().getDefaultDbName(),
+                  env.info.getDatabaseInfo().getUsername(),
+                  env.info.getDatabaseInfo().getPassword()));
+          env.databaseContainers.get(0).start();
+
+          env.info
+              .getDatabaseInfo()
+              .getInstances()
+              .add(
+                  new TestInstanceInfo(
+                      DATABASE_CONTAINER_NAME_PREFIX + i,
+                      DATABASE_CONTAINER_NAME_PREFIX + i,
+                      5432));
+        }
+        break;
+
+      default:
+        throw new NotImplementedException(env.info.getRequest().getDatabaseEngine().toString());
     }
-    return true;
   }
 
-  public static boolean isAwsDatabase() {
-    DatabaseEngineDeployment deployment =
-        getCurrent().getInfo().getRequest().getDatabaseEngineDeployment();
-    return DatabaseEngineDeployment.AURORA.equals(deployment)
-        || DatabaseEngineDeployment.RDS.equals(deployment)
-        || DatabaseEngineDeployment.MULTI_AZ.equals(deployment);
+  private static void createDbCluster(TestEnvironment env) {
+
+    switch (env.info.getRequest().getDatabaseInstances()) {
+      case SINGLE_INSTANCE:
+        initAwsCredentials(env);
+        env.numOfInstances = 1;
+        createDbCluster(env, 1);
+        break;
+      case MULTI_INSTANCE:
+        initAwsCredentials(env);
+
+        env.numOfInstances = env.info.getRequest().getNumOfInstances();
+        if (env.numOfInstances < 1 || env.numOfInstances > 15) {
+          LOGGER.warning(
+              env.numOfInstances + " instances were requested but the requested number must be "
+                  + "between 1 and 15. 5 instances will be used as a default.");
+          env.numOfInstances = 5;
+        }
+
+        createDbCluster(env, env.numOfInstances);
+        break;
+      default:
+        throw new NotImplementedException(env.info.getRequest().getDatabaseEngine().toString());
+    }
+  }
+
+  private static void createDbCluster(TestEnvironment env, int numOfInstances) {
+
+    env.info.setRegion(
+        !StringUtils.isNullOrEmpty(config.rdsDbRegion)
+            ? config.rdsDbRegion
+            : "us-east-2");
+
+    env.reuseAuroraDbCluster = config.reuseRdsCluster;
+    env.auroraClusterName = config.rdsClusterName; // "cluster-mysql"
+    env.auroraClusterDomain = config.rdsClusterDomain; // "XYZ.us-west-2.rds.amazonaws.com"
+
+    env.auroraUtil =
+        new AuroraTestUtility(
+            env.info.getRegion(),
+            env.awsAccessKeyId,
+            env.awsSecretAccessKey,
+            env.awsSessionToken);
+
+    ArrayList<TestInstanceInfo> instances = new ArrayList<>();
+
+    if (env.reuseAuroraDbCluster) {
+      if (StringUtils.isNullOrEmpty(env.auroraClusterDomain)) {
+        throw new RuntimeException("Environment variable AURORA_CLUSTER_DOMAIN is required.");
+      }
+
+      if (!env.auroraUtil.doesClusterExist(env.auroraClusterName)) {
+        throw new RuntimeException(
+            "It's requested to reuse existing DB cluster but it doesn't exist: "
+                + env.auroraClusterName
+                + "."
+                + env.auroraClusterDomain);
+      }
+      LOGGER.finer(
+          "Reuse existing cluster " + env.auroraClusterName + ".cluster-" + env.auroraClusterDomain);
+
+      DBCluster clusterInfo = env.auroraUtil.getClusterInfo(env.auroraClusterName);
+
+      DatabaseEngine existingClusterDatabaseEngine = env.auroraUtil.getClusterEngine(clusterInfo);
+      if (existingClusterDatabaseEngine != env.info.getRequest().getDatabaseEngine()) {
+        throw new RuntimeException(
+            "Existing cluster is "
+                + existingClusterDatabaseEngine
+                + " cluster. "
+                + env.info.getRequest().getDatabaseEngine()
+                + " is expected.");
+      }
+
+      env.info.setDatabaseEngine(clusterInfo.engine());
+      env.info.setDatabaseEngineVersion(clusterInfo.engineVersion());
+      instances.addAll(env.auroraUtil.getClusterInstanceIds(env.auroraClusterName));
+
+    } else {
+      if (StringUtils.isNullOrEmpty(env.auroraClusterName)) {
+        env.auroraClusterName = getRandomName(env.info.getRequest());
+        LOGGER.finer("Cluster to create: " + env.auroraClusterName);
+      }
+
+      try {
+        String engine = getDbEngine(env.info.getRequest());
+        String engineVersion = getDbEngineVersion(env.info.getRequest());
+        String instanceClass = getDbInstanceClass(env.info.getRequest());
+
+        env.auroraClusterDomain =
+            env.auroraUtil.createCluster(
+                env.info.getDatabaseInfo().getUsername(),
+                env.info.getDatabaseInfo().getPassword(),
+                env.info.getDatabaseInfo().getDefaultDbName(),
+                env.auroraClusterName,
+                env.info.getRequest().getDatabaseEngineDeployment(),
+                engine,
+                instanceClass,
+                engineVersion,
+                numOfInstances,
+                instances);
+        env.info.setDatabaseEngine(engine);
+        env.info.setDatabaseEngineVersion(engineVersion);
+        LOGGER.finer(
+            "Created a new cluster " + env.auroraClusterName + ".cluster-" + env.auroraClusterDomain);
+      } catch (Exception e) {
+
+        LOGGER.finer("Error creating a cluster " + env.auroraClusterName + ". " + e.getMessage());
+
+        // remove cluster and instances
+        LOGGER.finer("Deleting cluster " + env.auroraClusterName);
+        env.auroraUtil.deleteCluster(env.auroraClusterName);
+        LOGGER.finer("Deleted cluster " + env.auroraClusterName);
+
+        throw new RuntimeException(e);
+      }
+    }
+
+    env.info.setClusterName(env.auroraClusterName);
+
+    int port = getPort(env.info.getRequest());
+
+    env.info
+        .getDatabaseInfo()
+        .setClusterEndpoint(env.auroraClusterName + ".cluster-" + env.auroraClusterDomain, port);
+    env.info
+        .getDatabaseInfo()
+        .setClusterReadOnlyEndpoint(
+            env.auroraClusterName + ".cluster-ro-" + env.auroraClusterDomain, port);
+    env.info.getDatabaseInfo().setInstanceEndpointSuffix(env.auroraClusterDomain, port);
+
+    env.info.getDatabaseInfo().getInstances().clear();
+    env.info.getDatabaseInfo().getInstances().addAll(instances);
+
+    authorizeIP(env);
+
+    DatabaseEngineDeployment deployment = env.info.getRequest().getDatabaseEngineDeployment();
+    DatabaseEngine engine = env.info.getRequest().getDatabaseEngine();
+    if (DatabaseEngineDeployment.RDS_MULTI_AZ.equals(deployment) && DatabaseEngine.PG.equals(engine)) {
+      DriverHelper.registerDriver(engine);
+
+      try (Connection conn = DriverHelper.getDriverConnection(env.info);
+          Statement stmt = conn.createStatement()) {
+        stmt.execute("CREATE EXTENSION IF NOT EXISTS rds_tools");
+      } catch (SQLException e) {
+        throw new RuntimeException("An exception occurred while creating the rds_tools extension.", e);
+      }
+    }
+  }
+
+  private static void authorizeIP(TestEnvironment env) {
+    try {
+      env.runnerIP = env.auroraUtil.getPublicIPAddress();
+    } catch (UnknownHostException e) {
+      throw new RuntimeException(e);
+    }
+    env.auroraUtil.ec2AuthorizeIP(env.runnerIP);
+  }
+
+  private static String getRandomName(TestEnvironmentRequest request) {
+    switch (request.getDatabaseEngine()) {
+      case MYSQL:
+        return "test-mysql-" + System.nanoTime();
+      case PG:
+        return "test-pg-" + System.nanoTime();
+      default:
+        return String.valueOf(System.nanoTime());
+    }
+  }
+
+  private static String getDbEngine(TestEnvironmentRequest request) {
+    switch (request.getDatabaseEngineDeployment()) {
+      case AURORA:
+        return getAuroraDbEngine(request);
+      case RDS:
+      case RDS_MULTI_AZ:
+        return getRdsEngine(request);
+      default:
+        throw new NotImplementedException(request.getDatabaseEngineDeployment().toString());
+    }
+  }
+
+  private static String getAuroraDbEngine(TestEnvironmentRequest request) {
+    switch (request.getDatabaseEngine()) {
+      case MYSQL:
+        return "aurora-mysql";
+      case PG:
+        return "aurora-postgresql";
+      default:
+        throw new NotImplementedException(request.getDatabaseEngine().toString());
+    }
+  }
+
+  private static String getRdsEngine(TestEnvironmentRequest request) {
+    switch (request.getDatabaseEngine()) {
+      case MYSQL:
+        return "mysql";
+      case PG:
+        return "postgres";
+      default:
+        throw new NotImplementedException(request.getDatabaseEngine().toString());
+    }
+  }
+
+  private static String getDbEngineVersion(TestEnvironmentRequest request) {
+    switch (request.getDatabaseEngineDeployment()) {
+      case AURORA:
+        return getAuroraDbEngineVersion(request);
+      case RDS:
+      case RDS_MULTI_AZ:
+        return getRdsEngineVersion(request);
+      default:
+        throw new NotImplementedException(request.getDatabaseEngineDeployment().toString());
+    }
+  }
+
+  private static String getAuroraDbEngineVersion(TestEnvironmentRequest request) {
+    switch (request.getDatabaseEngine()) {
+      case MYSQL:
+        return "8.0.mysql_aurora.3.03.0";
+      case PG:
+        return "15.2";
+      default:
+        throw new NotImplementedException(request.getDatabaseEngine().toString());
+    }
+  }
+
+  private static String getRdsEngineVersion(TestEnvironmentRequest request) {
+    switch (request.getDatabaseEngine()) {
+      case MYSQL:
+        return "8.0.33";
+      case PG:
+        return "15.4";
+      default:
+        throw new NotImplementedException(request.getDatabaseEngine().toString());
+    }
+  }
+
+  private static String getDbInstanceClass(TestEnvironmentRequest request) {
+    switch (request.getDatabaseEngineDeployment()) {
+      case AURORA:
+        return "db.r6g.large";
+      case RDS:
+      case RDS_MULTI_AZ:
+        return "db.m5d.large";
+      default:
+        throw new NotImplementedException(request.getDatabaseEngine().toString());
+    }
+  }
+
+  private static int getPort(TestEnvironmentRequest request) {
+    switch (request.getDatabaseEngine()) {
+      case MYSQL:
+        return 3306;
+      case PG:
+        return 5432;
+      default:
+        throw new NotImplementedException(request.getDatabaseEngine().toString());
+    }
+  }
+
+  private static void initDatabaseParams(TestEnvironment env) {
+    final String dbName =
+        !StringUtils.isNullOrEmpty(config.dbName)
+            ? config.dbName
+            : "test_database";
+    final String dbUsername =
+        !StringUtils.isNullOrEmpty(config.dbUsername)
+            ? config.dbUsername
+            : "test_user";
+    final String dbPassword =
+        !StringUtils.isNullOrEmpty(config.dbPassword)
+            ? config.dbPassword
+            : "secret_password";
+
+    env.info.setDatabaseInfo(new TestDatabaseInfo());
+    env.info.getDatabaseInfo().setUsername(dbUsername);
+    env.info.getDatabaseInfo().setPassword(dbPassword);
+    env.info.getDatabaseInfo().setDefaultDbName(dbName);
+  }
+
+  private static void initAwsCredentials(TestEnvironment env) {
+    env.awsAccessKeyId = config.awsAccessKeyId;
+    env.awsSecretAccessKey = config.awsSecretAccessKey;
+    env.awsSessionToken = config.awsSessionToken;
+
+    if (StringUtils.isNullOrEmpty(env.awsAccessKeyId)) {
+      throw new RuntimeException("Environment variable AWS_ACCESS_KEY_ID is required.");
+    }
+    if (StringUtils.isNullOrEmpty(env.awsSecretAccessKey)) {
+      throw new RuntimeException("Environment variable AWS_SECRET_ACCESS_KEY is required.");
+    }
+
+    if (env.info
+        .getRequest()
+        .getFeatures()
+        .contains(TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED)) {
+      env.info.setAwsAccessKeyId(env.awsAccessKeyId);
+      env.info.setAwsSecretAccessKey(env.awsSecretAccessKey);
+      if (!StringUtils.isNullOrEmpty(env.awsSessionToken)) {
+        env.info.setAwsSessionToken(env.awsSessionToken);
+      }
+    }
+  }
+
+  private static void createProxyContainers(TestEnvironment env) throws IOException {
+    ContainerHelper containerHelper = new ContainerHelper();
+
+    int port = getPort(env.info.getRequest());
+
+    env.info.setProxyDatabaseInfo(new TestProxyDatabaseInfo());
+    env.info.getProxyDatabaseInfo().setControlPort(PROXY_CONTROL_PORT);
+    env.info.getProxyDatabaseInfo().setUsername(env.info.getDatabaseInfo().getUsername());
+    env.info.getProxyDatabaseInfo().setPassword(env.info.getDatabaseInfo().getPassword());
+    env.info.getProxyDatabaseInfo().setDefaultDbName(env.info.getDatabaseInfo().getDefaultDbName());
+
+    env.proxyContainers = new ArrayList<>();
+
+    for (TestInstanceInfo instance : env.info.getDatabaseInfo().getInstances()) {
+      ToxiproxyContainer container =
+          containerHelper.createProxyContainer(env.network, instance, PROXIED_DOMAIN_NAME_SUFFIX);
+
+      container.start();
+      env.proxyContainers.add(container);
+      final ToxiproxyClient toxiproxyClient = new ToxiproxyClient(
+          container.getHost(),
+          container.getMappedPort(PROXY_CONTROL_PORT));
+
+      containerHelper.createProxy(
+          toxiproxyClient,
+          instance.getHost(),
+          instance.getPort());
+    }
+
+    if (!StringUtils.isNullOrEmpty(env.info.getDatabaseInfo().getClusterEndpoint())) {
+      env.proxyContainers.add(
+          containerHelper.createAndStartProxyContainer(
+              env.network,
+              "proxy-cluster",
+              env.info.getDatabaseInfo().getClusterEndpoint() + PROXIED_DOMAIN_NAME_SUFFIX,
+              env.info.getDatabaseInfo().getClusterEndpoint(),
+              port));
+
+      env.info
+          .getProxyDatabaseInfo()
+          .setClusterEndpoint(
+              env.info.getDatabaseInfo().getClusterEndpoint() + PROXIED_DOMAIN_NAME_SUFFIX,
+              PROXY_PORT);
+    }
+
+    if (!StringUtils.isNullOrEmpty(env.info.getDatabaseInfo().getClusterReadOnlyEndpoint())) {
+      env.proxyContainers.add(
+          containerHelper.createAndStartProxyContainer(
+              env.network,
+              "proxy-ro-cluster",
+              env.info.getDatabaseInfo().getClusterReadOnlyEndpoint() + PROXIED_DOMAIN_NAME_SUFFIX,
+              env.info.getDatabaseInfo().getClusterReadOnlyEndpoint(),
+              port));
+
+      env.info
+          .getProxyDatabaseInfo()
+          .setClusterReadOnlyEndpoint(
+              env.info.getDatabaseInfo().getClusterReadOnlyEndpoint() + PROXIED_DOMAIN_NAME_SUFFIX,
+              PROXY_PORT);
+    }
+
+    if (!StringUtils.isNullOrEmpty(env.info.getDatabaseInfo().getInstanceEndpointSuffix())) {
+      env.info
+          .getProxyDatabaseInfo()
+          .setInstanceEndpointSuffix(
+              env.info.getDatabaseInfo().getInstanceEndpointSuffix() + PROXIED_DOMAIN_NAME_SUFFIX,
+              PROXY_PORT);
+    }
+
+    for (TestInstanceInfo instanceInfo : env.info.getDatabaseInfo().getInstances()) {
+      TestInstanceInfo proxyInstanceInfo =
+          new TestInstanceInfo(
+              instanceInfo.getInstanceId(),
+              instanceInfo.getHost() + PROXIED_DOMAIN_NAME_SUFFIX,
+              PROXY_PORT);
+      env.info.getProxyDatabaseInfo().getInstances().add(proxyInstanceInfo);
+    }
+  }
+
+  private static void createTestContainer(TestEnvironment env) {
+    final ContainerHelper containerHelper = new ContainerHelper();
+
+    env.testContainer = containerHelper.createTestContainer(
+        "aws/rds-test-container",
+        getContainerBaseImageName(env.info.getRequest()));
+
+    env.testContainer
+        .withNetworkAliases(TEST_CONTAINER_NAME)
+        .withNetwork(env.network)
+        .withEnv("TEST_ENV_INFO_JSON", getEnvironmentInfoAsString(env))
+        .withEnv("TEST_ENV_DESCRIPTION", env.info.getRequest().getDisplayName());
+
+    if (env.info
+        .getRequest()
+        .getFeatures()
+        .contains(TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED)) {
+      env.testContainer
+          .withEnv("AWS_ACCESS_KEY_ID", env.awsAccessKeyId)
+          .withEnv("AWS_SECRET_ACCESS_KEY", env.awsSecretAccessKey)
+          .withEnv("AWS_SESSION_TOKEN", env.awsSessionToken);
+    }
+
+    env.testContainer.start();
+  }
+
+  private static void createTelemetryXRayContainer(TestEnvironment env) {
+    String xrayAwsRegion =
+        !StringUtils.isNullOrEmpty(System.getenv("XRAY_AWS_REGION"))
+            ? System.getenv("XRAY_AWS_REGION")
+            : "us-east-2";
+
+    LOGGER.finest("Creating XRay telemetry container");
+    final ContainerHelper containerHelper = new ContainerHelper();
+
+    env.telemetryXRayContainer = containerHelper.createTelemetryXrayContainer(
+        xrayAwsRegion,
+        env.network,
+        TELEMETRY_XRAY_CONTAINER_NAME);
+
+    if (!env.info
+        .getRequest()
+        .getFeatures()
+        .contains(TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED)) {
+      throw new RuntimeException("AWS_CREDENTIALS_ENABLED is required for XRay telemetry.");
+    }
+
+    env.telemetryXRayContainer
+        .withEnv("AWS_ACCESS_KEY_ID", env.awsAccessKeyId)
+        .withEnv("AWS_SECRET_ACCESS_KEY", env.awsSecretAccessKey)
+        .withEnv("AWS_SESSION_TOKEN", env.awsSessionToken);
+
+    env.info.setTracesTelemetryInfo(new TestTelemetryInfo(TELEMETRY_XRAY_CONTAINER_NAME, 2000));
+    LOGGER.finest("Starting XRay telemetry container");
+    env.telemetryXRayContainer.start();
+  }
+
+  private static void createTelemetryOtlpContainer(TestEnvironment env) {
+
+    LOGGER.finest("Creating OTLP telemetry container");
+    final ContainerHelper containerHelper = new ContainerHelper();
+
+    env.telemetryOtlpContainer = containerHelper.createTelemetryOtlpContainer(
+        env.network,
+        TELEMETRY_OTLP_CONTAINER_NAME);
+
+    if (!env.info
+        .getRequest()
+        .getFeatures()
+        .contains(TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED)) {
+      throw new RuntimeException("AWS_CREDENTIALS_ENABLED is required for OTLP telemetry.");
+    }
+
+    String otlpRegion = !StringUtils.isNullOrEmpty(System.getenv("OTLP_AWS_REGION"))
+        ? System.getenv("OTLP_AWS_REGION")
+        : "us-east-2";
+
+    env.telemetryOtlpContainer
+        .withEnv("AWS_ACCESS_KEY_ID", env.awsAccessKeyId)
+        .withEnv("AWS_SECRET_ACCESS_KEY", env.awsSecretAccessKey)
+        .withEnv("AWS_SESSION_TOKEN", env.awsSessionToken)
+        .withEnv("AWS_REGION", otlpRegion);
+
+    if (USE_OTLP_CONTAINER_FOR_TRACES) {
+      env.info.setTracesTelemetryInfo(new TestTelemetryInfo(TELEMETRY_OTLP_CONTAINER_NAME, 2000));
+    }
+    env.info.setMetricsTelemetryInfo(new TestTelemetryInfo(TELEMETRY_OTLP_CONTAINER_NAME, 4317));
+
+    LOGGER.finest("Starting OTLP telemetry container");
+    env.telemetryOtlpContainer.start();
+  }
+
+  private static String getContainerBaseImageName(TestEnvironmentRequest request) {
+    switch (request.getTargetPythonVersion()) {
+      case PYTHON_3_8:
+        return "python:3.8.18";
+      case PYTHON_3_11:
+        return "python:3.11.5";
+      default:
+        throw new NotImplementedException(request.getTargetPythonVersion().toString());
+    }
+  }
+
+  private static void configureIamAccess(TestEnvironment env) {
+
+    if (env.info.getRequest().getDatabaseEngineDeployment() != DatabaseEngineDeployment.AURORA) {
+      throw new UnsupportedOperationException(
+          env.info.getRequest().getDatabaseEngineDeployment().toString());
+    }
+
+    env.info.setIamUsername(
+        !StringUtils.isNullOrEmpty(config.iamUser)
+            ? config.iamUser
+            : "jane_doe");
+
+    if (!env.reuseAuroraDbCluster) {
+      try {
+        Class.forName(DriverHelper.getDriverClassname(env.info.getRequest().getDatabaseEngine()));
+      } catch (ClassNotFoundException e) {
+        throw new RuntimeException(
+            "Driver not found: "
+                + DriverHelper.getDriverClassname(env.info.getRequest().getDatabaseEngine()),
+            e);
+      }
+
+      final String url =
+          String.format(
+              "%s%s:%d/%s",
+              DriverHelper.getDriverProtocol(env.info.getRequest().getDatabaseEngine()),
+              env.info.getDatabaseInfo().getClusterEndpoint(),
+              env.info.getDatabaseInfo().getClusterEndpointPort(),
+              env.info.getDatabaseInfo().getDefaultDbName());
+
+      try {
+        env.auroraUtil.addAuroraAwsIamUser(
+            env.info.getRequest().getDatabaseEngine(),
+            url,
+            env.info.getDatabaseInfo().getUsername(),
+            env.info.getDatabaseInfo().getPassword(),
+            env.info.getIamUsername(),
+            env.info.getDatabaseInfo().getDefaultDbName());
+
+      } catch (SQLException e) {
+        throw new RuntimeException("Error configuring IAM access.", e);
+      }
+    }
+  }
+
+  private static String getEnvironmentInfoAsString(TestEnvironment env) {
+    try {
+      final ObjectMapper mapper = new ObjectMapper();
+      return mapper.writeValueAsString(env.info);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("Error serializing environment details.", e);
+    }
+  }
+
+  private String getPrimaryInfo() {
+    TestEnvironmentRequest request = this.info.getRequest();
+    String deployment = request.getDatabaseEngineDeployment().toString();
+    String engine = request.getDatabaseEngine().toString();
+    String numInstances = Integer.toString(request.getNumOfInstances());
+    String pythonVersion = request.getTargetPythonVersion().toString();
+    return String.format("%s-%s-%s_instance-%s", deployment, engine, numInstances, pythonVersion);
+  }
+
+  public void runTests(String taskName) throws IOException, InterruptedException {
+    final ContainerHelper containerHelper = new ContainerHelper();
+
+    TestEnvironmentConfiguration config = new TestEnvironmentConfiguration();
+    containerHelper.runTest(this.testContainer, taskName, this.getPrimaryInfo(), config);
+  }
+
+  public void debugTests(String taskName) throws IOException, InterruptedException {
+    final ContainerHelper containerHelper = new ContainerHelper();
+
+    TestEnvironmentConfiguration config = new TestEnvironmentConfiguration();
+    containerHelper.debugTest(this.testContainer, taskName, this.getPrimaryInfo(), config);
+  }
+
+  @Override
+  public void close() throws Exception {
+    if (this.databaseContainers != null) {
+      for (GenericContainer<?> container : this.databaseContainers) {
+        try {
+          container.stop();
+        } catch (Exception ex) {
+          // ignore
+        }
+      }
+      this.databaseContainers.clear();
+    }
+
+    if (this.testContainer != null) {
+      this.testContainer.stop();
+      this.testContainer = null;
+    }
+
+    if (this.telemetryXRayContainer != null) {
+      this.telemetryXRayContainer.stop();
+      this.telemetryXRayContainer = null;
+    }
+
+    if (this.telemetryOtlpContainer != null) {
+      this.telemetryOtlpContainer.stop();
+      this.telemetryOtlpContainer = null;
+    }
+
+    if (this.proxyContainers != null) {
+      for (ToxiproxyContainer proxyContainer : this.proxyContainers) {
+        proxyContainer.stop();
+      }
+      this.proxyContainers = null;
+    }
+
+    switch (this.info.getRequest().getDatabaseEngineDeployment()) {
+      case AURORA:
+      case RDS_MULTI_AZ:
+        deleteDbCluster();
+        break;
+      case RDS:
+        throw new NotImplementedException(this.info.getRequest().getDatabaseEngineDeployment().toString());
+      default:
+        // do nothing
+    }
+  }
+
+  private void deleteDbCluster() {
+    if (!this.reuseAuroraDbCluster && !StringUtils.isNullOrEmpty(this.runnerIP)) {
+      auroraUtil.ec2DeauthorizesIP(runnerIP);
+    }
+
+    if (!this.reuseAuroraDbCluster) {
+      LOGGER.finest("Deleting cluster " + this.auroraClusterName + ".cluster-" + this.auroraClusterDomain);
+      auroraUtil.deleteCluster(this.auroraClusterName);
+      LOGGER.finest("Deleted cluster " + this.auroraClusterName + ".cluster-" + this.auroraClusterDomain);
+    }
+  }
+
+  private static void preCreateEnvironment(int currentEnvIndex) {
+    int index = currentEnvIndex + 1; // inclusive
+    int endIndex = index + NUM_OR_ENV_PRE_CREATE; //  exclusive
+    if (endIndex > TestEnvironmentProvider.preCreateInfos.size()) {
+      endIndex = TestEnvironmentProvider.preCreateInfos.size();
+    }
+
+    while (index < endIndex) {
+      EnvPreCreateInfo preCreateInfo = TestEnvironmentProvider.preCreateInfos.get(index);
+
+      if (preCreateInfo.envPreCreateFuture == null
+          && (preCreateInfo.request.getDatabaseEngineDeployment() == DatabaseEngineDeployment.AURORA
+          || preCreateInfo.request.getDatabaseEngineDeployment() == DatabaseEngineDeployment.RDS
+          || preCreateInfo.request.getDatabaseEngineDeployment() == DatabaseEngineDeployment.RDS_MULTI_AZ)) {
+
+        // run environment creation in advance
+        int finalIndex = index;
+        LOGGER.finest(() -> String.format("Pre-create environment for [%d] - %s",
+            finalIndex, preCreateInfo.request.getDisplayName()));
+
+        final TestEnvironment env = new TestEnvironment(preCreateInfo.request);
+
+        preCreateInfo.envPreCreateFuture = envPreCreateExecutor.submit(() -> {
+          final long startTime = System.nanoTime();
+          try {
+            initDatabaseParams(env);
+            createDbCluster(env);
+            if (env.info.getRequest().getFeatures().contains(TestEnvironmentFeatures.IAM)) {
+              if (env.info.getRequest().getDatabaseEngineDeployment() == DatabaseEngineDeployment.RDS_MULTI_AZ) {
+                throw new RuntimeException("IAM isn't supported by " + DatabaseEngineDeployment.RDS_MULTI_AZ);
+              }
+              configureIamAccess(env);
+            }
+            return env;
+
+          } catch (Exception ex) {
+            return ex;
+          } finally {
+            final long duration = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startTime);
+            LOGGER.finest(() -> String.format(
+                "Pre-create environment task [%d] run in background for %d sec.",
+                finalIndex,
+                duration));
+          }
+        });
+
+      }
+      index++;
+    }
   }
 }

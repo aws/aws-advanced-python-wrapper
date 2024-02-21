@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration;
 
 import java.util.ArrayList;
 import java.util.List;
