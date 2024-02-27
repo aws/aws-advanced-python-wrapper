@@ -67,6 +67,11 @@ def driver_dialect_mock(mocker):
 
 
 @pytest.fixture
+def configuration_profile_mock(mocker):
+    return mocker.MagicMock()
+
+
+@pytest.fixture
 def plugin_service_mock(mocker, driver_dialect_mock):
     service_mock = mocker.MagicMock()
     service_mock.driver_dialect = driver_dialect_mock
@@ -82,44 +87,54 @@ def plugin_service_manager_container_mock(mocker, plugin_service_mock):
 
 
 @pytest.fixture
-def plugin_manager_with_execute_time_plugin(plugin_service_manager_container_mock, props_with_execute_time_plugin):
-    manager: PluginManager = PluginManager(plugin_service_manager_container_mock, props_with_execute_time_plugin)
+def plugin_manager_with_execute_time_plugin(
+        plugin_service_manager_container_mock,
+        props_with_execute_time_plugin,
+        configuration_profile_mock):
+    manager: PluginManager = PluginManager(
+        plugin_service_manager_container_mock,
+        props_with_execute_time_plugin,
+        configuration_profile_mock)
     return manager
 
 
 @pytest.fixture
 def plugin_manager_with_aurora_connection_tracker_plugin(
-        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_plugin):
-
+        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_plugin, configuration_profile_mock):
     manager: PluginManager = PluginManager(
-        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_plugin)
+        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_plugin, configuration_profile_mock)
     return manager
 
 
 @pytest.fixture
 def plugin_manager_with_execute_time_and_aurora_connection_tracker_plugin(
-        plugin_service_manager_container_mock, props_with_execute_time_and_aurora_connection_tracker_plugin):
-
+        plugin_service_manager_container_mock,
+        props_with_execute_time_and_aurora_connection_tracker_plugin,
+        configuration_profile_mock):
     manager: PluginManager = PluginManager(
-        plugin_service_manager_container_mock, props_with_execute_time_and_aurora_connection_tracker_plugin)
+        plugin_service_manager_container_mock,
+        props_with_execute_time_and_aurora_connection_tracker_plugin,
+        configuration_profile_mock)
     return manager
 
 
 @pytest.fixture
 def plugin_manager_with_read_write_splitting_plugin(
-        plugin_service_manager_container_mock, props_with_read_write_splitting_plugin):
-
+        plugin_service_manager_container_mock, props_with_read_write_splitting_plugin, configuration_profile_mock):
     manager: PluginManager = PluginManager(
-        plugin_service_manager_container_mock, props_with_read_write_splitting_plugin)
+        plugin_service_manager_container_mock, props_with_read_write_splitting_plugin, configuration_profile_mock)
     return manager
 
 
 @pytest.fixture
 def plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugin(
-        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_and_read_write_splitting_plugin):
-
+        plugin_service_manager_container_mock,
+        props_with_aurora_connection_tracker_and_read_write_splitting_plugin,
+        configuration_profile_mock):
     manager: PluginManager = PluginManager(
-        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_and_read_write_splitting_plugin)
+        plugin_service_manager_container_mock,
+        props_with_aurora_connection_tracker_and_read_write_splitting_plugin,
+        configuration_profile_mock)
     return manager
 
 
@@ -131,21 +146,18 @@ def init_and_release(mocker, plugin_service_mock, plugin_manager):
 
 def test_init_and_release_with_execution_time_plugin(
         benchmark, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin):
-
     result = benchmark(init_and_release, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin)
     assert result is not None
 
 
 def test_init_and_release_with_aurora_connection_tracker_plugin(
         benchmark, mocker, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_plugin):
-
     result = benchmark(init_and_release, mocker, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_plugin)
     assert result is not None
 
 
 def test_init_and_release_with_execute_time_and_aurora_connection_tracker_plugin(
         benchmark, mocker, plugin_service_mock, plugin_manager_with_execute_time_and_aurora_connection_tracker_plugin):
-
     result = benchmark(
         init_and_release, mocker, plugin_service_mock, plugin_manager_with_execute_time_and_aurora_connection_tracker_plugin)
     assert result is not None
@@ -153,14 +165,12 @@ def test_init_and_release_with_execute_time_and_aurora_connection_tracker_plugin
 
 def test_init_and_release_with_read_write_splitting_plugin(
         benchmark, mocker, plugin_service_mock, plugin_manager_with_read_write_splitting_plugin):
-
     result = benchmark(init_and_release, mocker, plugin_service_mock, plugin_manager_with_read_write_splitting_plugin)
     assert result is not None
 
 
 def test_init_and_release_with_aurora_connection_tracker_and_read_write_splitting_plugin(
         benchmark, mocker, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugin):
-
     result = benchmark(
         init_and_release,
         mocker,
@@ -184,7 +194,6 @@ def init_and_release_internal_connection_pools(mocker, plugin_service_mock, plug
 
 def test_init_and_release_with_read_write_splitting_plugin_internal_connection_pools(
         benchmark, mocker, plugin_service_mock, plugin_manager_with_read_write_splitting_plugin):
-
     result = benchmark(
         init_and_release_internal_connection_pools,
         mocker,
@@ -195,7 +204,6 @@ def test_init_and_release_with_read_write_splitting_plugin_internal_connection_p
 
 def test_init_and_release_with_aurora_connection_tracker_and_read_write_splitting_plugin_internal_connection_pools(
         benchmark, mocker, plugin_service_mock, plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugin):
-
     result = benchmark(
         init_and_release_internal_connection_pools,
         mocker,
@@ -224,6 +232,5 @@ def execute_query(mocker, plugin_service, plugin_manager):
 
 def test_execute_query_with_execute_time_plugin(
         benchmark, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin):
-
     result = benchmark(execute_query, mocker, plugin_service_mock, plugin_manager_with_execute_time_plugin)
     assert result is not None

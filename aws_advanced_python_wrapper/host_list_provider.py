@@ -127,7 +127,7 @@ class HostListProviderService(Protocol):
         ...
 
     @initial_connection_host_info.setter
-    def initial_connection_host_info(self, value: HostInfo):
+    def initial_connection_host_info(self, value: Optional[HostInfo]):
         ...
 
     def is_static_host_list_provider(self) -> bool:

@@ -64,6 +64,19 @@ class OpenedConnectionTracker:
 
         self._track_connection(instance_endpoint, conn)
 
+    def invalidate_current_connection(self, host_info: HostInfo, conn: Optional[Connection]):
+        host: Optional[str] = host_info.as_alias() \
+            if self._rds_utils.is_rds_instance(host_info.host) \
+            else next(alias for alias in host_info.aliases if self._rds_utils.is_rds_instance(alias))
+
+        if not host:
+            return
+
+        connection_set: Optional[WeakSet] = self._opened_connections.get(host)
+        if connection_set is not None:
+            self._log_connection_set(host, connection_set)
+            connection_set.discard(conn)
+
     def invalidate_all_connections(self, host_info: Optional[HostInfo] = None, host: Optional[FrozenSet[str]] = None):
         """
         Invalidates all opened connections pointing to the same host in a daemon thread.
@@ -77,14 +90,10 @@ class OpenedConnectionTracker:
             self.invalidate_all_connections(host=host_info.as_aliases())
             return
 
-        instance_endpoint: Optional[str] = None
         if host is None:
             return
 
-        for instance in host:
-            if instance is not None and self._rds_utils.is_rds_instance(instance):
-                instance_endpoint = instance
-                break
+        instance_endpoint = next(instance for instance in host if self._rds_utils.is_rds_instance(instance))
 
         if not instance_endpoint:
             return
@@ -135,8 +144,8 @@ class OpenedConnectionTracker:
 
         return logger.debug("OpenedConnectionTracker.OpenedConnectionsTracked", msg)
 
-    def _log_connection_set(self, host: str, conn_set: Optional[WeakSet]):
-        if conn_set is None or len(conn_set) == 0:
+    def _log_connection_set(self, host: Optional[str], conn_set: Optional[WeakSet]):
+        if host is None or conn_set is None or len(conn_set) == 0:
             return
 
         conn = ""
@@ -148,13 +157,14 @@ class OpenedConnectionTracker:
 
 
 class AuroraConnectionTrackerPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"*"}
+    _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
     _current_writer: Optional[HostInfo] = None
     _need_update_current_writer: bool = False
+    _METHOD_CLOSE = "Connection.close"
 
     @property
     def subscribed_methods(self) -> Set[str]:
-        return self._SUBSCRIBED_METHODS
+        return AuroraConnectionTrackerPlugin._SUBSCRIBED_METHODS.union(self._plugin_service.network_bound_methods)
 
     def __init__(self,
                  plugin_service: PluginService,
@@ -201,19 +211,20 @@ class AuroraConnectionTrackerPlugin(Plugin):
         return conn
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
-        if self._current_writer is None or self._need_update_current_writer:
-            self._current_writer = self._get_writer(self._plugin_service.hosts)
-            self._need_update_current_writer = False
+        self._remember_writer()
 
         try:
-            return execute_func()
+            results = execute_func()
+            if method_name == AuroraConnectionTrackerPlugin._METHOD_CLOSE and self._plugin_service.current_host_info is not None:
+                self._tracker.invalidate_current_connection(self._plugin_service.current_host_info, self._plugin_service.current_connection)
+            elif self._need_update_current_writer:
+                self._check_writer_changed()
+            return results
 
         except Exception as e:
             # Check that e is a FailoverError and that the writer has changed
-            if isinstance(e, FailoverError) and self._get_writer(self._plugin_service.hosts) != self._current_writer:
-                self._tracker.invalidate_all_connections(host_info=self._current_writer)
-                self._tracker.log_opened_connections()
-                self._need_update_current_writer = True
+            if isinstance(e, FailoverError):
+                self._check_writer_changed()
             raise e
 
     def _get_writer(self, hosts: Tuple[HostInfo, ...]) -> Optional[HostInfo]:
@@ -221,6 +232,23 @@ class AuroraConnectionTrackerPlugin(Plugin):
             if host.role == HostRole.WRITER:
                 return host
         return None
+
+    def _remember_writer(self):
+        if self._current_writer is None or self._need_update_current_writer:
+            self._current_writer = self._get_writer(self._plugin_service.hosts)
+            self._need_update_current_writer = False
+
+    def _check_writer_changed(self):
+        host_info_after_failover = self._get_writer(self._plugin_service.hosts)
+
+        if self._current_writer is None:
+            self._current_writer = host_info_after_failover
+            self._need_update_current_writer = False
+        elif self._current_writer != host_info_after_failover:
+            self._tracker.invalidate_all_connections(self._current_writer)
+            self._tracker.log_opened_connections()
+            self._current_writer = host_info_after_failover
+            self._need_update_current_writer = False
 
 
 class AuroraConnectionTrackerPluginFactory(PluginFactory):

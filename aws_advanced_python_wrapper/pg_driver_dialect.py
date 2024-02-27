@@ -58,7 +58,9 @@ class PgDriverDialect(DriverDialect):
     }
 
     def is_dialect(self, connect_func: Callable) -> bool:
-        return PgDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
+        if PgDriverDialect.TARGET_DRIVER_CODE not in str(signature(connect_func)):
+            return PgDriverDialect.TARGET_DRIVER_CODE.lower() in (connect_func.__module__ + connect_func.__qualname__).lower()
+        return True
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):

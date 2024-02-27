@@ -77,7 +77,7 @@ def props():
 
 
 def test_track_new_instance_connection(
-        mocker, mock_plugin_service, mock_rds_utils, mock_tracker, mock_cursor, mock_callable):
+        mocker, mock_plugin_service, mock_rds_utils, mock_tracker, mock_cursor, mock_callable, mock_conn):
     host_info: HostInfo = HostInfo("instance1")
     mock_plugin_service.hosts = [host_info]
     mock_plugin_service.current_host_info = host_info
@@ -116,4 +116,4 @@ def test_invalidate_opened_connections(
         plugin.execute(mock_cursor, "Cursor.execute", mock_callable, ("select 1", {}))
 
     mock_tracker.invalidate_current_connection.assert_not_called()
-    mock_tracker.invalidate_all_connections.assert_called_with(host_info=original_host)
+    mock_tracker.invalidate_all_connections.assert_called_with(original_host)
