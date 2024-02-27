@@ -116,8 +116,6 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
     def get_result_from_future(self, current_topology: Tuple[HostInfo, ...]) -> WriterFailoverResult:
         writer_host: Optional[HostInfo] = self.get_writer(current_topology)
         if writer_host is not None:
-            self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.UNAVAILABLE)
-
             with ThreadPoolExecutor(thread_name_prefix="WriterFailoverHandlerExecutor") as executor:
                 try:
                     futures = [executor.submit(self.reconnect_to_writer, writer_host),
