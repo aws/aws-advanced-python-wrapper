@@ -1497,13 +1497,13 @@ requests = "*"
 
 [[package]]
 name = "types-aws-xray-sdk"
-version = "2.12.0.3"
+version = "2.13.0.20240308"
 description = "Typing stubs for aws-xray-sdk"
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = [
-    {file = "types-aws-xray-sdk-2.12.0.3.tar.gz", hash = "sha256:f7d56120015563421e824688137db7584b155e246ee2acd0318d26f9cde64f6b"},
-    {file = "types_aws_xray_sdk-2.12.0.3-py3-none-any.whl", hash = "sha256:31f83187953bc6a239f5a72814edb924589467c09f386bd8db15a354052414bc"},
+    {file = "types-aws-xray-sdk-2.13.0.20240308.tar.gz", hash = "sha256:034f76378a5f0854f59aa8df17bfd3ee526e9172cee410757e4382b67c8f86da"},
+    {file = "types_aws_xray_sdk-2.13.0.20240308-py3-none-any.whl", hash = "sha256:e29e3ef6a3c10d962575ad32cc1d623a079a30c287b980e6372017292a4c9e55"},
 ]
 
 [[package]]
@@ -1658,4 +1658,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "cad3ee84032decc7b728a6b293ebe696278d1a3ea6b616e651dc9773e7468c46"
+content-hash = "b2c56e14f57f5ec97021d8dae100f2d5bb0f6df9914ec74be64800e004745016"
