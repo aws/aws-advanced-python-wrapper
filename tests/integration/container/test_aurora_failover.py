@@ -21,7 +21,8 @@ import pytest
 
 from aws_advanced_python_wrapper.errors import (
     FailoverSuccessError, TransactionResolutionUnknownError)
-from aws_advanced_python_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from .utils.conditions import (disable_on_features, enable_on_deployments,
                                enable_on_features, enable_on_num_instances)
 from .utils.database_engine_deployment import DatabaseEngineDeployment
@@ -40,7 +41,7 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 
 
 @enable_on_num_instances(min_instances=2)
-@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.MULTI_AZ])
+@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ])
 @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
 class TestAuroraFailover:
     IDLE_CONNECTIONS_NUM: int = 5
@@ -53,7 +54,19 @@ class TestAuroraFailover:
 
     @pytest.fixture(scope='class')
     def props(self):
-        return {"plugins": "failover", "connect_timeout": 60, "topology_refresh_ms": 10, "autocommit": True}
+        p: Properties = Properties({"plugins": "failover", "connect_timeout": 60, "topology_refresh_ms": 10, "autocommit": True})
+
+        features = TestEnvironment.get_current().get_features()
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in features \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in features:
+            WrapperProperties.ENABLE_TELEMETRY.set(p, True)
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(p, True)
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in features:
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(p, "XRAY")
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in features:
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(p, "OTLP")
+
+        return p
 
     @pytest.fixture(scope='class')
     def proxied_props(self, props, conn_utils):

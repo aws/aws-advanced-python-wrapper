@@ -14,11 +14,21 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration.util;
 
-public enum DatabaseEngineDeployment {
-  DOCKER,
-  RDS,
-  AURORA,
-  MULTI_AZ
+import org.checkerframework.checker.nullness.qual.EnsuresNonNullIf;
+import org.checkerframework.checker.nullness.qual.Nullable;
+
+public class StringUtils {
+
+  /**
+   * Check if the supplied string is null or empty.
+   *
+   * @param s the string to analyze
+   * @return true if the supplied string is null or empty
+   */
+  @EnsuresNonNullIf(expression = "#1", result = false)
+  public static boolean isNullOrEmpty(@Nullable final String s) {
+    return s == null || s.equals("");
+  }
 }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration;
 
 public enum DatabaseInstances {
   SINGLE_INSTANCE,

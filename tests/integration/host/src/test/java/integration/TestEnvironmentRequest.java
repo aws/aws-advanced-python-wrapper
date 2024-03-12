@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -24,6 +24,9 @@ import java.util.Set;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TestEnvironmentRequest {
+
+  @JsonIgnore
+  private int envPreCreateIndex;
 
   @JsonProperty("engine")
   private DatabaseEngine engine;
@@ -104,5 +107,15 @@ public class TestEnvironmentRequest {
     return String.format(
         "Test environment [%s, %s, %s, %s, %d, %s]",
         deployment, engine, targetPythonVersion, instances, numOfInstances, features);
+  }
+
+  @JsonIgnore
+  public int getEnvPreCreateIndex() {
+    return this.envPreCreateIndex;
+  }
+
+  @JsonIgnore
+  public void setEnvPreCreateIndex(int index) {
+    this.envPreCreateIndex = index;
   }
 }

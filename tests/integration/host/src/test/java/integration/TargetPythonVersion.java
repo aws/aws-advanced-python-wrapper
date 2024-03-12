@@ -14,17 +14,9 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration;
 
-public class TestProxyDatabaseInfo extends TestDatabaseInfo {
-
-  private int controlPort;
-
-  public void setControlPort(int controlPort) {
-    this.controlPort = controlPort;
-  }
-
-  public int getControlPort() {
-    return this.controlPort;
-  }
+public enum TargetPythonVersion {
+  PYTHON_3_11,
+  PYTHON_3_8
 }

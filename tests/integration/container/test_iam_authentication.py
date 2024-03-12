@@ -16,12 +16,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
 
 if TYPE_CHECKING:
     from tests.integration.container.utils.test_driver import TestDriver
-    from tests.integration.container.utils.test_environment import TestEnvironment
     from tests.integration.container.utils.test_instance_info import TestInstanceInfo
 
 from socket import gethostbyname
@@ -34,12 +35,32 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from tests.integration.container.utils.conditions import (disable_on_features,
                                                           enable_on_features)
 from tests.integration.container.utils.driver_helper import DriverHelper
+from tests.integration.container.utils.test_environment import TestEnvironment
 
 
 @enable_on_features([TestEnvironmentFeatures.IAM])
 @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
 class TestAwsIamAuthentication:
-    def test_iam_wrong_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
+
+    @pytest.fixture(scope='class')
+    def props(self):
+        p: Properties = Properties()
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.ENABLE_TELEMETRY.set(p, "True")
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(p, "True")
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(p, "XRAY")
+
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(p, "OTLP")
+
+        return p
+
+    def test_iam_wrong_database_username(self, test_environment: TestEnvironment,
+                                         test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         user = f"WRONG_{conn_utils.iam_user}_USER"
         params = conn_utils.get_connect_params(user=user)
@@ -49,46 +70,50 @@ class TestAwsIamAuthentication:
             AwsWrapperConnection.connect(
                 target_driver_connect,
                 **params,
-                plugins="iam")
+                plugins="iam",
+                **props)
 
-    def test_iam_no_database_username(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
+    def test_iam_no_database_username(self, test_environment: TestEnvironment,
+                                      test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         params = conn_utils.get_connect_params()
         params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
         params.pop("user", None)
 
         with pytest.raises(AwsWrapperError):
-            AwsWrapperConnection.connect(target_driver_connect, **params, plugins="iam")
+            AwsWrapperConnection.connect(target_driver_connect, **params, plugins="iam", **props)
 
-    def test_iam_using_ip_address(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
+    def test_iam_using_ip_address(self, test_environment: TestEnvironment,
+                                  test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         instance: TestInstanceInfo = test_environment.get_writer()
         ip_address = self.get_ip_address(instance.get_host())
 
-        params = conn_utils.get_connect_params(host=ip_address, user=conn_utils.iam_user, password="<anything>")
+        params = conn_utils.get_connect_params(host=ip_address, user=conn_utils.iam_user,
+                                               password="<anything>")
         params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
         params.update({"iam_host": instance.get_host(), "plugins": "iam"})
 
-        self.validate_connection(target_driver_connect, **params)
+        self.validate_connection(target_driver_connect, **params, **props)
 
     def test_iam_valid_connection_properties(
-            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
+            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         params = conn_utils.get_connect_params(user=conn_utils.iam_user, password="<anything>")
         params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
         params["plugins"] = "iam"
 
-        self.validate_connection(target_driver_connect, **params)
+        self.validate_connection(target_driver_connect, **params, **props)
 
     def test_iam_valid_connection_properties_no_password(
-            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils):
+            self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         params = conn_utils.get_connect_params(user=conn_utils.iam_user)
         params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
         params.pop("password", None)
         params["plugins"] = "iam"
 
-        self.validate_connection(target_driver_connect, **params)
+        self.validate_connection(target_driver_connect, **params, **props)
 
     def get_ip_address(self, hostname: str):
         return gethostbyname(hostname)

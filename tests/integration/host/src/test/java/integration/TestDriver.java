@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration;
 
-public enum TargetPythonVersion {
-  PYTHON_3_11,
-  PYTHON_3_8
+public enum TestDriver {
+  PG,
+  MYSQL
 }

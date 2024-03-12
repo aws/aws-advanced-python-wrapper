@@ -16,15 +16,15 @@
 
 package integration.host;
 
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.io.File;
-import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import integration.TestEnvironmentRequest;
 
 @ExtendWith(TestEnvironmentProvider.class)
 public class TestRunner {
@@ -62,8 +62,8 @@ public class TestRunner {
 
   @TestTemplate
   public void runTests(TestEnvironmentRequest testEnvironmentRequest) throws Exception {
-    try (final TestEnvironmentConfig config = TestEnvironmentConfig.build(testEnvironmentRequest)) {
-      config.runTests("./tests/integration/container");
+    try (final TestEnvironment environment = TestEnvironment.build(testEnvironmentRequest)) {
+      environment.runTests("./tests/integration/container");
     }
   }
 
@@ -74,8 +74,8 @@ public class TestRunner {
                                  "Please set 'DEBUG_ENV' to 'PYCHARM' or 'VSCODE'.");
     }
 
-    try (final TestEnvironmentConfig config = TestEnvironmentConfig.build(testEnvironmentRequest)) {
-      config.debugTests("./tests/integration/container");
+    try (final TestEnvironment environment = TestEnvironment.build(testEnvironmentRequest)) {
+      environment.debugTests("./tests/integration/container");
     }
   }
 

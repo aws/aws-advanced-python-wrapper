@@ -24,7 +24,8 @@ from aws_advanced_python_wrapper.errors import (
 from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
-from aws_advanced_python_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from tests.integration.container.utils.conditions import (
     disable_on_engines, disable_on_features, enable_on_deployments,
     enable_on_features, enable_on_num_instances)
@@ -41,7 +42,7 @@ from tests.integration.container.utils.test_environment_features import \
 
 
 @enable_on_num_instances(min_instances=2)
-@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.MULTI_AZ])
+@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ])
 @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
 class TestReadWriteSplitting:
     @pytest.fixture(scope='class')
@@ -57,7 +58,20 @@ class TestReadWriteSplitting:
 
     @pytest.fixture(scope='class')
     def props(self):
-        return {"plugins": "read_write_splitting", "connect_timeout": 10, "autocommit": True}
+        p: Properties = Properties({"plugins": "read_write_splitting", "connect_timeout": 10, "autocommit": True})
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.ENABLE_TELEMETRY.set(p, "True")
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(p, "True")
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(p, "XRAY")
+
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(p, "OTLP")
+
+        return p
 
     @pytest.fixture(scope='class')
     def failover_props(self):
@@ -367,10 +381,12 @@ class TestReadWriteSplitting:
 
         ProxyHelper.enable_all_connectivity()
         conn.read_only = False
+        assert not conn.is_closed
         current_id = rds_utils.query_instance_id(conn)
         assert writer_id == current_id
 
         conn.read_only = True
+        assert not conn.is_closed
         current_id = rds_utils.query_instance_id(conn)
         assert other_reader_id == current_id
 
@@ -509,7 +525,7 @@ class TestReadWriteSplitting:
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         conn = AwsWrapperConnection.connect(
-            target_driver_connect, **conn_utils.get_proxy_connect_params(),  **proxied_failover_props)
+            target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props)
         assert isinstance(conn.target_connection, PoolProxiedConnection)
         initial_driver_conn = conn.target_connection.driver_connection
         writer_id = rds_utils.query_instance_id(conn)

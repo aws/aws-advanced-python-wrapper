@@ -211,7 +211,7 @@ class RdsTestUtility:
 
         if DatabaseEngineDeployment.AURORA == database_deployment:
             return self._query_aurora_instance_id(conn, database_engine)
-        elif DatabaseEngineDeployment.MULTI_AZ == database_deployment:
+        elif DatabaseEngineDeployment.RDS_MULTI_AZ == database_deployment:
             return self._query_multi_az_instance_id(conn, database_engine)
         else:
             raise RuntimeError(Messages.get_formatted(
@@ -275,7 +275,7 @@ class RdsTestUtility:
         deployment: DatabaseEngineDeployment = test_environment.get_deployment()
         if DatabaseEngineDeployment.AURORA == deployment:
             return self._get_aurora_instance_ids()
-        elif DatabaseEngineDeployment.MULTI_AZ == deployment:
+        elif DatabaseEngineDeployment.RDS_MULTI_AZ == deployment:
             return self._get_multi_az_instance_ids()
         else:
             raise RuntimeError("RdsTestUtility.MethodNotSupportedForDeployment", "get_instance_ids", deployment)
@@ -299,9 +299,14 @@ class RdsTestUtility:
     def _get_multi_az_instance_ids(self) -> List[str]:
         test_environment: TestEnvironment = TestEnvironment.get_current()
         engine: DatabaseEngine = test_environment.get_engine()
-        instance_info: TestInstanceInfo = test_environment.get_writer()
+        cluster_endpoint_instance_info: TestInstanceInfo = TestInstanceInfo({
+            "host": test_environment.get_database_info().get_cluster_endpoint(),
+            "port": test_environment.get_database_info().get_cluster_endpoint_port()
+        })
 
-        conn = self._open_connection(instance_info)
+        self.logger.debug("Testing._get_multi_az_instance_ids_connecting", cluster_endpoint_instance_info.get_host())
+
+        conn = self._open_connection(cluster_endpoint_instance_info)
         cursor = conn.cursor()
         get_writer_id_query = self._get_multi_az_writer_sql(engine)
         cursor.execute(get_writer_id_query)
@@ -325,6 +330,8 @@ class RdsTestUtility:
             result.append(instance_id)
         conn.close()
 
+        self.logger.debug("Testing._get_multi_az_instance_ids", result)
+
         return result
 
     def _open_connection(self, instance_info: TestInstanceInfo) -> Any:
@@ -342,7 +349,7 @@ class RdsTestUtility:
         conn_params = DriverHelper.get_connect_params(
             instance_info.get_host(), instance_info.get_port(), user, password, db, test_driver)
 
-        conn = target_driver_connect(**conn_params, connect_timeout=3)
+        conn = target_driver_connect(**conn_params, connect_timeout=10)
         return conn
 
     def _get_aurora_topology_sql(self, engine: DatabaseEngine) -> str:

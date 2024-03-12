@@ -15,7 +15,9 @@
 from __future__ import annotations
 
 import atexit
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
+from aws_xray_sdk.core import xray_recorder
 
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
@@ -29,6 +31,7 @@ from aws_advanced_python_wrapper.utils.log import Logger
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
+    from aws_xray_sdk.core.models.segment import Segment
 
 import socket
 import timeit
@@ -53,11 +56,23 @@ def conn_utils():
 
 
 def pytest_runtest_setup(item):
+    test_name: Optional[str] = None
     if hasattr(item, "callspec"):
         current_driver = item.callspec.params.get("test_driver")
         TestEnvironment.get_current().set_current_driver(current_driver)
+        test_name = item.callspec.id
     else:
         TestEnvironment.get_current().set_current_driver(None)
+
+    segment: Optional[Segment] = None
+    if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+        segment = xray_recorder.begin_segment("test: setup")
+        segment.put_annotation("engine", TestEnvironment.get_current().get_engine().name)
+        segment.put_annotation("deployment", TestEnvironment.get_current().get_deployment().name)
+        segment.put_annotation("python_version", TestEnvironment.get_current()
+                               .get_info().get_request().get_target_python_version().name)
+        if test_name is not None:
+            segment.put_annotation("test_name", test_name)
 
     info = TestEnvironment.get_current().get_info()
     request = info.get_request()
@@ -66,7 +81,7 @@ def pytest_runtest_setup(item):
         ProxyHelper.enable_all_connectivity()
 
     deployment = request.get_database_engine_deployment()
-    if DatabaseEngineDeployment.AURORA == deployment or DatabaseEngineDeployment.MULTI_AZ == deployment:
+    if DatabaseEngineDeployment.AURORA == deployment or DatabaseEngineDeployment.RDS_MULTI_AZ == deployment:
         rds_utility = RdsTestUtility(info.get_region())
         rds_utility.wait_until_cluster_has_desired_status(info.get_cluster_name(), "available")
 
@@ -119,6 +134,10 @@ def pytest_runtest_setup(item):
         DatabaseDialectManager.reset_custom_dialect()
         DriverDialectManager.reset_custom_dialect()
         ExceptionManager.reset_custom_handler()
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                and segment is not None:
+            xray_recorder.end_segment()
 
 
 def pytest_generate_tests(metafunc):

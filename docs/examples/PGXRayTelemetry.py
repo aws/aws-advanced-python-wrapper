@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 
 import psycopg
+from aws_xray_sdk import global_sdk_config
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core.sampling.local.sampler import LocalSampler
 
@@ -29,6 +30,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
     xray_recorder.configure(sampler=LocalSampler({"version": 1, "default": {"fixed_target": 1, "rate": 1.0}}))
+    global_sdk_config.set_sdk_enabled(True)
 
     with xray_recorder.in_segment("python_xray_telemetry_app") as segment:
         with AwsWrapperConnection.connect(

@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration;
 
-public enum TestEnvironmentFeatures {
-  IAM,
-  SECRETS_MANAGER,
-  FAILOVER_SUPPORTED,
-  ABORT_CONNECTION_SUPPORTED,
-  NETWORK_OUTAGES_ENABLED,
-  AWS_CREDENTIALS_ENABLED,
-  PERFORMANCE,
-  RUN_AUTOSCALING_TESTS_ONLY,
-  SKIP_MYSQL_DRIVER_TESTS,
-  SKIP_PG_DRIVER_TESTS
+public class TestProxyDatabaseInfo extends TestDatabaseInfo {
+
+  private int controlPort;
+
+  public void setControlPort(int controlPort) {
+    this.controlPort = controlPort;
+  }
+
+  public int getControlPort() {
+    return this.controlPort;
+  }
 }

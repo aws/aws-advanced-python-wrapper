@@ -32,6 +32,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
+
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
 
@@ -53,7 +56,20 @@ class TestBasicFunctionality:
 
     @pytest.fixture(scope='class')
     def props(self):
-        return {"plugins": "aurora_connection_tracker,failover", "connect_timeout": 10}
+        p: Properties = Properties({"plugins": "aurora_connection_tracker,failover", "connect_timeout": 10})
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.ENABLE_TELEMETRY.set(p, "True")
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(p, "True")
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(p, "XRAY")
+
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(p, "OTLP")
+
+        return p
 
     def test_execute__positional_and_keyword_args(
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils, props):

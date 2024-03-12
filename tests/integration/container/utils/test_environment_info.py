@@ -18,6 +18,7 @@ from typing import Any, Dict
 from .test_database_info import TestDatabaseInfo
 from .test_environment_request import TestEnvironmentRequest
 from .test_proxy_database_info import TestProxyDatabaseInfo
+from .test_telemetry_info import TestTelemetryInfo
 
 
 class TestEnvironmentInfo:
@@ -32,6 +33,8 @@ class TestEnvironmentInfo:
     _iam_user_name: str
     _database_info: TestDatabaseInfo
     _proxy_database_info: TestProxyDatabaseInfo
+    _traces_telemetry_info: TestTelemetryInfo
+    _metrics_telemetry_info: TestTelemetryInfo
 
     def __init__(self, test_info: Dict[str, Any]) -> None:
         if test_info is None:
@@ -55,6 +58,16 @@ class TestEnvironmentInfo:
         proxy_database_info_dict: Dict[str, Any] = typing.cast('Dict[str, Any]', test_info.get("proxyDatabaseInfo"))
         if proxy_database_info_dict is not None:
             self._proxy_database_info = TestProxyDatabaseInfo(proxy_database_info_dict)
+
+        traces_telemetry_info_dict: Dict[str, Any] = (
+            typing.cast('Dict[str, Any]', test_info.get("tracesTelemetryInfo")))
+        if traces_telemetry_info_dict is not None:
+            self._traces_telemetry_info = TestTelemetryInfo(traces_telemetry_info_dict)
+
+        metrics_telemetry_info_dict: Dict[str, Any] = (
+            typing.cast('Dict[str, Any]', test_info.get("metricsTelemetryInfo")))
+        if metrics_telemetry_info_dict is not None:
+            self._metrics_telemetry_info = TestTelemetryInfo(metrics_telemetry_info_dict)
 
     def get_database_info(self) -> TestDatabaseInfo:
         return self._database_info
@@ -82,3 +95,9 @@ class TestEnvironmentInfo:
 
     def get_iam_user_name(self) -> str:
         return self._iam_user_name
+
+    def get_traces_telemetry_info(self) -> TestTelemetryInfo:
+        return self._traces_telemetry_info
+
+    def get_metrics_telemetry_info(self) -> TestTelemetryInfo:
+        return self._metrics_telemetry_info

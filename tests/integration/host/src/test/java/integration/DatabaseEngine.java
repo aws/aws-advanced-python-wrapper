@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-package integration.host;
+package integration;
 
-public enum TestDriver {
-  PG,
-  MYSQL
+public enum DatabaseEngine {
+  MYSQL,
+  PG
 }

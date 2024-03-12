@@ -30,14 +30,15 @@ from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
 from tests.integration.container.utils.driver_helper import DriverHelper
 
 if TYPE_CHECKING:
-    from tests.integration.container.utils.test_environment import TestEnvironment
     from tests.integration.container.utils.test_driver import TestDriver
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
-from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from tests.integration.container.utils.conditions import enable_on_features
 from tests.integration.container.utils.performance_utility import (
     PerformanceUtil, PerfStatBase)
+from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
 
@@ -93,6 +94,18 @@ class TestReadWriteSplittingPerformance:
             "plugins": "connect_time,execute_time",
             "autocommit": "True"
         })
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.ENABLE_TELEMETRY.set(props, "True")
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(props, "True")
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(props, "XRAY")
+
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(props, "OTLP")
+
         return props
 
     @pytest.fixture(scope='class')
@@ -103,6 +116,18 @@ class TestReadWriteSplittingPerformance:
             "plugins": "read_write_splitting,connect_time,execute_time",
             "autocommit": "True"
         })
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
+                or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.ENABLE_TELEMETRY.set(props, "True")
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(props, "True")
+
+        if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_TRACES_BACKEND.set(props, "XRAY")
+
+        if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
+            WrapperProperties.TELEMETRY_METRICS_BACKEND.set(props, "OTLP")
+
         return props
 
     def test_switch_reader_writer_connection(

@@ -18,5 +18,5 @@ from enum import Enum
 class DatabaseEngineDeployment(str, Enum):
     DOCKER = "DOCKER"
     RDS = "RDS"
+    RDS_MULTI_AZ = "RDS_MULTI_AZ"
     AURORA = "AURORA"
-    MULTI_AZ = "MULTI-AZ"

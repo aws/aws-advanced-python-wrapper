@@ -16,6 +16,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_xray_sdk import global_sdk_config
+from aws_xray_sdk.core import xray_recorder
+from aws_xray_sdk.core.sampling.local.sampler import LocalSampler
+from opentelemetry import metrics
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import \
+    OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+
 if TYPE_CHECKING:
     from .database_engine_deployment import DatabaseEngineDeployment
     from .test_database_info import TestDatabaseInfo
@@ -82,6 +92,29 @@ class TestEnvironment:
 
             if TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED in env.get_features():
                 TestEnvironment._init_proxies(env)
+
+            if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in env.get_features():
+                xray_daemon_endpoint: str = ('{0}:{1}'
+                                             .format(env.get_info().get_traces_telemetry_info()
+                                                     .get_endpoint(),
+                                                     str(env.get_info().get_traces_telemetry_info()
+                                                         .get_endpoint_port())))
+                xray_recorder.configure(daemon_address=xray_daemon_endpoint,
+                                        context_missing="IGNORE_ERROR",
+                                        sampler=LocalSampler(
+                                            {"version": 1, "default": {"fixed_target": 1, "rate": 1.0}}))
+                global_sdk_config.set_sdk_enabled(True)
+
+            if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in env.get_features():
+                otlp_daemon_endpoint: str = ('http://{0}:{1}'
+                                             .format(env.get_info().get_metrics_telemetry_info().get_endpoint(),
+                                                     str(env.get_info().get_metrics_telemetry_info()
+                                                         .get_endpoint_port())))
+                resource = Resource.create(attributes={SERVICE_NAME: "integration_tests"})
+                reader = PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=otlp_daemon_endpoint),
+                                                       export_interval_millis=10000)
+                provider = MeterProvider(resource=resource, metric_readers=[reader])
+                metrics.set_meter_provider(provider)
 
             return env
 
@@ -204,7 +237,7 @@ class TestEnvironment:
             disabled_by_feature = TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS in features
         elif test_driver == TestDriver.PG:
             driver_compatible_to_database_engine = (
-                database_engine == DatabaseEngine.PG)
+                    database_engine == DatabaseEngine.PG)
             disabled_by_feature = TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS in features
         else:
             raise UnsupportedOperationError(test_driver.value)
