@@ -38,7 +38,7 @@ To create a custom target driver dialect, implement the [`DriverDialect`](../../
 
 - [PgDriverDialect](../../aws_advanced_python_wrapper/pg_driver_dialect.py)
     - This is a dialect that should work with [Psycopg](https://github.com/psycopg/psycopg).
-- [MysqlTargetDriverDialect](../../aws_advanced_python_wrapper/mysql_driver_dialect.py)
+- [MysqlDriverDialect](../../aws_advanced_python_wrapper/mysql_driver_dialect.py)
     - This is a dialect that should work with [MySQL Connector/Python](https://github.com/mysql/mysql-connector-python).
 
 Once the custom driver dialect class has been created, tell the AWS Advanced Python Driver to use it by setting the `custom_dialect` attribute in the `DriverDialectManager` class. It is not necessary to set the `wrapper_driver_dialect` parameter. See below for an example:

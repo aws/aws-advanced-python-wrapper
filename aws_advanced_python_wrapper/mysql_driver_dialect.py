@@ -148,6 +148,9 @@ class MySQLDriverDialect(DriverDialect):
                 isinstance(to_conn, CMySQLConnection) or isinstance(to_conn, MySQLConnection)):
             to_conn.autocommit = from_conn.autocommit
 
+    def ping(self, conn: Connection) -> bool:
+        return not self.is_closed(conn)
+
     def prepare_connect_info(self, host_info: HostInfo, original_props: Properties) -> Properties:
         driver_props: Properties = Properties(original_props.copy())
         PropertiesUtils.remove_wrapper_props(driver_props)

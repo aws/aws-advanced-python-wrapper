@@ -349,6 +349,7 @@ class Monitor:
     _INACTIVE_SLEEP_MS = 100
     _MIN_HOST_CHECK_TIMEOUT_MS = 3000
     _MONITORING_PROPERTY_PREFIX = "monitoring-"
+    _QUERY = "SELECT 1"
 
     def __init__(
             self,
@@ -560,7 +561,7 @@ class Monitor:
     def _execute_conn_check(self, conn: Connection, timeout_sec: float):
         driver_dialect = self._plugin_service.driver_dialect
         with conn.cursor() as cursor:
-            query = "SELECT 1"
+            query = Monitor._QUERY
             driver_dialect.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
             cursor.fetchone()
 
