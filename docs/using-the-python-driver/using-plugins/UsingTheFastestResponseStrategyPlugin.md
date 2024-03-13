@@ -5,7 +5,7 @@ The host response time is measured at an interval set by `response_measurement_i
 
 ## Using the Fastest Response Strategy Plugin
 
-The plugin can be loaded by adding the plugin code `fastest_response_strategy` to the [`plugins`](../UsingThePythonDriver.md#aws-advanced-python-driver-parameters) parameter. The Fastest Response Strategy Plugin is not loaded by default, and must be loaded along with the `[read_write_splitting](https://github.com/awslabs/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheReadWriteSplittingPlugin.md)` plugin.
+The plugin can be loaded by adding the plugin code `fastest_response_strategy` to the [`plugins`](../UsingThePythonDriver.md#aws-advanced-python-driver-parameters) parameter. The Fastest Response Strategy Plugin is not loaded by default, and must be loaded along with the [`read_write_splitting`](https://github.com/awslabs/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheReadWriteSplittingPlugin.md) plugin.
 
 > [!IMPORTANT]\
 > **`reader_response_strategy` must be set to `fastest_reponse` when using this plugin. Otherwise an error will be thrown:** 
