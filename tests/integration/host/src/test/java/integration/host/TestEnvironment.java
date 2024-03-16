@@ -16,8 +16,6 @@
 
 package integration.host;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
@@ -44,6 +42,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
@@ -70,6 +69,7 @@ public class TestEnvironment implements AutoCloseable {
   private static final TestEnvironmentConfiguration config = new TestEnvironmentConfiguration();
   private static final boolean USE_OTLP_CONTAINER_FOR_TRACES = false;
 
+  private static final AtomicInteger ipAddressUsageRefCount = new AtomicInteger(0);
   private final TestEnvironmentInfo info =
       new TestEnvironmentInfo(); // only this info is passed to test container
 
@@ -102,12 +102,22 @@ public class TestEnvironment implements AutoCloseable {
   }
 
   public static TestEnvironment build(TestEnvironmentRequest request) throws IOException {
+      DatabaseEngineDeployment deployment = request.getDatabaseEngineDeployment();
+    if (deployment == DatabaseEngineDeployment.AURORA
+        || deployment == DatabaseEngineDeployment.RDS
+        || deployment == DatabaseEngineDeployment.RDS_MULTI_AZ) {
+      // These environment require creating external database cluster that should be publicly available.
+      // Corresponding AWS Security Groups should be configured and the test task runner IP address
+      // should be whitelisted.
+      ipAddressUsageRefCount.incrementAndGet();
+    }
+
     LOGGER.finest("Building test env: " + request.getEnvPreCreateIndex());
     preCreateEnvironment(request.getEnvPreCreateIndex());
 
     TestEnvironment env;
 
-    switch (request.getDatabaseEngineDeployment()) {
+    switch (deployment) {
       case DOCKER:
         env = new TestEnvironment(request);
         initDatabaseParams(env);
@@ -185,8 +195,7 @@ public class TestEnvironment implements AutoCloseable {
       if (result instanceof Exception) {
         throw new RuntimeException((Exception) result);
       }
-      if (result instanceof TestEnvironment) {
-        TestEnvironment resultTestEnvironment = (TestEnvironment) result;
+      if (result instanceof TestEnvironment resultTestEnvironment) {
         LOGGER.finer(() -> String.format("Use pre-created DB cluster: %s.cluster-%s",
             resultTestEnvironment.auroraClusterName, resultTestEnvironment.auroraClusterDomain));
 
@@ -894,7 +903,11 @@ public class TestEnvironment implements AutoCloseable {
 
   private void deleteDbCluster() {
     if (!this.reuseAuroraDbCluster && !StringUtils.isNullOrEmpty(this.runnerIP)) {
-      auroraUtil.ec2DeauthorizesIP(runnerIP);
+      if (ipAddressUsageRefCount.decrementAndGet() == 0) {
+        // Another test environments are still in use of test task runner IP address.
+        // The last execute tst environment will do the cleanup.
+        auroraUtil.ec2DeauthorizesIP(runnerIP);
+      }
     }
 
     if (!this.reuseAuroraDbCluster) {

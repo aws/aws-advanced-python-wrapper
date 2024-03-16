@@ -156,6 +156,7 @@ class RdsTestUtility:
             sleep(1)
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
+        self.make_sure_instances_up(self.get_instance_ids())
         self.logger.debug("Testing.FinishedFailover", initial_writer_id, str((perf_counter_ns() - start) / 1_000_000))
 
     def failover_cluster(self, cluster_id: Optional[str] = None) -> None:
