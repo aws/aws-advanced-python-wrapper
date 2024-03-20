@@ -326,7 +326,7 @@ class WrapperProperties:
                                                             "random")
 
     OPEN_CONNECTION_RETRY_TIMEOUT_MS = WrapperProperty("open_connection_retry_timeout_ms",
-                                                       "Maximum allowed time for the retries opening a connection.", 30_000)
+                                                       "Maximum allowed time in milliseconds for the retries opening a connection.", 30_000)
     OPEN_CONNECTION_RETRY_INTERVAL_MS = WrapperProperty("open_connection_retry_interval_ms", "Time between each retry of opening a connection.", 1000)
 
 

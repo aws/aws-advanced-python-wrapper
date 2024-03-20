@@ -67,17 +67,17 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
         return self._connect_internal(host_info, props, is_initial_connection, force_connect_func)
 
     def _connect_internal(self, host_info: HostInfo, props: Properties, is_initial_connection: bool, connect_func: Callable) -> Connection:
-        urlType: RdsUrlType = self._rds_utils.identify_rds_type(host_info.host)
-        if not urlType.is_rds_cluster:
+        url_type: RdsUrlType = self._rds_utils.identify_rds_type(host_info.host)
+        if not url_type.is_rds_cluster:
             return connect_func()
 
-        if urlType == RdsUrlType.RDS_WRITER_CLUSTER:
+        if url_type == RdsUrlType.RDS_WRITER_CLUSTER:
             writer_candidate_conn = self._get_verified_writer_connection(props, is_initial_connection, connect_func)
             if writer_candidate_conn is None:
                 return connect_func()
             return writer_candidate_conn
 
-        if urlType == RdsUrlType.RDS_READER_CLUSTER:
+        if url_type == RdsUrlType.RDS_READER_CLUSTER:
             reader_candidate_conn = self._get_verified_reader_connection(props, is_initial_connection, connect_func)
             if reader_candidate_conn is None:
                 return connect_func()
