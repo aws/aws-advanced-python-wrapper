@@ -16,16 +16,21 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from aws_advanced_python_wrapper.aurora_connection_tracker_plugin import AuroraConnectionTrackerPluginFactory
-from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import AuroraInitialConnectionStrategyPluginFactory
+from aws_advanced_python_wrapper.aurora_connection_tracker_plugin import \
+    AuroraConnectionTrackerPluginFactory
+from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
+    AuroraInitialConnectionStrategyPluginFactory
 from aws_advanced_python_wrapper.failover_plugin import FailoverPluginFactory
-from aws_advanced_python_wrapper.host_monitoring_plugin import HostMonitoringPluginFactory
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    HostMonitoringPluginFactory
 from aws_advanced_python_wrapper.profiles.configuration_profile import \
     ConfigurationProfile
 from aws_advanced_python_wrapper.profiles.configuration_profile_preset_codes import \
     ConfigurationProfilePresetCodes
-from aws_advanced_python_wrapper.read_write_splitting_plugin import ReadWriteSplittingPluginFactory
-from aws_advanced_python_wrapper.sql_alchemy_connection_provider import SqlAlchemyPooledConnectionProvider
+from aws_advanced_python_wrapper.read_write_splitting_plugin import \
+    ReadWriteSplittingPluginFactory
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
+    SqlAlchemyPooledConnectionProvider
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsPluginFactory
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
