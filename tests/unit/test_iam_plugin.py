@@ -405,6 +405,7 @@ def test_aws_supported_regions_url_exists():
     pytest.param("^"),
     pytest.param("https://foo.com/abc.html"),
     pytest.param("foo.boo//"),
+    pytest.param("8.8.8.8"),
     pytest.param("a.b"),
 ])
 def test_invalid_iam_host(host, mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
