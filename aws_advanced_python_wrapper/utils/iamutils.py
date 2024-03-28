@@ -42,8 +42,8 @@ class IamAuthUtils:
             raise AwsWrapperError(Messages.get_formatted("IAMAuthPlugin.InvalidHost", "[No host provided]"))
 
         utils = RdsUtils()
-        type = utils.identify_rds_type(host)
-        if type == RdsUrlType.OTHER:
+        rds_type = utils.identify_rds_type(host)
+        if rds_type == RdsUrlType.OTHER or rds_type == RdsUrlType.IP_ADDRESS:
             raise AwsWrapperError(Messages.get_formatted("IAMAuthPlugin.InvalidHost", host))
 
     @staticmethod
