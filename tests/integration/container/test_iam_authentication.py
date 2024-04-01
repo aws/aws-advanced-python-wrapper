@@ -73,8 +73,7 @@ class TestAwsIamAuthentication:
                 plugins="iam",
                 **props)
 
-    def test_iam_no_database_username(self, test_environment: TestEnvironment,
-                                      test_driver: TestDriver, conn_utils, props):
+    def test_iam_no_database_username(self, test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         params = conn_utils.get_connect_params()
         params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
@@ -82,6 +81,15 @@ class TestAwsIamAuthentication:
 
         with pytest.raises(AwsWrapperError):
             AwsWrapperConnection.connect(target_driver_connect, **params, plugins="iam", **props)
+
+    def test_iam_invalid_host(self, test_driver: TestDriver, conn_utils, props):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        params = conn_utils.get_connect_params()
+        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        params.update({"iam_host": "<>", "plugins": "iam"})
+
+        with pytest.raises(AwsWrapperError):
+            AwsWrapperConnection.connect(target_driver_connect, **params, **props)
 
     def test_iam_using_ip_address(self, test_environment: TestEnvironment,
                                   test_driver: TestDriver, conn_utils, props):

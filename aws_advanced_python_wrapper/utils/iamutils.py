@@ -17,6 +17,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
+from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
 
@@ -25,10 +30,21 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 
 
 class IamAuthUtils:
-
     @staticmethod
     def get_iam_host(props: Properties, host_info: HostInfo):
-        return WrapperProperties.IAM_HOST.get(props) if WrapperProperties.IAM_HOST.get(props) else host_info.host
+        host = WrapperProperties.IAM_HOST.get(props) if WrapperProperties.IAM_HOST.get(props) else host_info.host
+        IamAuthUtils.validate_iam_host(host)
+        return host
+
+    @staticmethod
+    def validate_iam_host(host: str | None):
+        if host is None:
+            raise AwsWrapperError(Messages.get_formatted("IAMAuthPlugin.InvalidHost", "[No host provided]"))
+
+        utils = RdsUtils()
+        rds_type = utils.identify_rds_type(host)
+        if rds_type == RdsUrlType.OTHER or rds_type == RdsUrlType.IP_ADDRESS:
+            raise AwsWrapperError(Messages.get_formatted("IAMAuthPlugin.InvalidHost", host))
 
     @staticmethod
     def get_port(props: Properties, host_info: HostInfo, dialect_default_port: int) -> int:

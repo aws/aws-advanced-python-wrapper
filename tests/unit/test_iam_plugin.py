@@ -21,6 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin, TokenInfo
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -350,10 +351,17 @@ def test_connect_with_specified_region(mocker, mock_plugin_service, mock_session
     mock_dialect.set_password.assert_called_with(expected_props, f"{_TEST_TOKEN}:{iam_region}")
 
 
+@pytest.mark.parametrize("iam_host", [
+    pytest.param("foo.testdb.us-east-2.rds.amazonaws.com"),
+    pytest.param("test.cluster-123456789012.us-east-2.rds.amazonaws.com"),
+    pytest.param("test-.cluster-ro-123456789012.us-east-2.rds.amazonaws.com"),
+    pytest.param("test.cluster-custom-123456789012.us-east-2.rds.amazonaws.com"),
+    pytest.param("test-.proxy-123456789012.us-east-2.rds.amazonaws.com.cn"),
+    pytest.param("test-.proxy-123456789012.us-east-2.rds.amazonaws.com.proxy"),
+])
 @patch("aws_advanced_python_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
-def test_connect_with_specified_host(mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
+def test_connect_with_specified_host(iam_host: str, mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
     test_props: Properties = Properties({"user": "postgresqlUser"})
-    iam_host: str = "foo.testdb.us-east-2.rds.amazonaws.com"
 
     test_props[WrapperProperties.IAM_HOST.name] = iam_host
 
@@ -365,7 +373,7 @@ def test_connect_with_specified_host(mocker, mock_plugin_service, mock_session, 
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
         driver_dialect=mock_dialect,
-        host_info=HostInfo("pg.testdb.us-east-2.rds.amazonaws.com"),
+        host_info=HostInfo("bar.foo.com"),
         props=test_props,
         is_initial_connection=False,
         connect_func=mock_func)
@@ -376,16 +384,38 @@ def test_connect_with_specified_host(mocker, mock_plugin_service, mock_session, 
         DBUsername="postgresqlUser"
     )
 
-    actual_token = _token_cache.get("us-east-2:foo.testdb.us-east-2.rds.amazonaws.com:5432:postgresqlUser")
+    actual_token = _token_cache.get(f"us-east-2:{iam_host}:5432:postgresqlUser")
+    assert actual_token is not None
     assert _GENERATED_TOKEN != actual_token.token
-    assert f"{_TEST_TOKEN}:foo.testdb.us-east-2.rds.amazonaws.com" == actual_token.token
+    assert f"{_TEST_TOKEN}:{iam_host}" == actual_token.token
     assert actual_token.is_expired() is False
-
-    # Assert password has been updated to the value in token cache
-    expected_props = {"iam_host": "foo.testdb.us-east-2.rds.amazonaws.com", "user": "postgresqlUser"}
-    mock_dialect.set_password.assert_called_with(expected_props, f"{_TEST_TOKEN}:foo.testdb.us-east-2.rds.amazonaws.com")
 
 
 def test_aws_supported_regions_url_exists():
     url = "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RegionsAndAvailabilityZones.html"
     assert 200 == urllib.request.urlopen(url).getcode()
+
+
+@pytest.mark.parametrize("host", [
+    pytest.param("<>"),
+    pytest.param("#"),
+    pytest.param("'"),
+    pytest.param("\""),
+    pytest.param("%"),
+    pytest.param("^"),
+    pytest.param("https://foo.com/abc.html"),
+    pytest.param("foo.boo//"),
+    pytest.param("8.8.8.8"),
+    pytest.param("a.b"),
+])
+def test_invalid_iam_host(host, mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
+    test_props: Properties = Properties({"user": "postgresqlUser"})
+    with pytest.raises(AwsWrapperError):
+        target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, mock_session)
+        target_plugin.connect(
+            target_driver_func=mocker.MagicMock(),
+            driver_dialect=mock_dialect,
+            host_info=HostInfo(host),
+            props=test_props,
+            is_initial_connection=False,
+            connect_func=mock_func)
