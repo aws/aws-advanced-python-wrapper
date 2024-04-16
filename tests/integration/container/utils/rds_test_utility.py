@@ -404,7 +404,7 @@ class RdsTestUtility:
             instance_info: TestInstanceInfo = database_info.get_instance(i)
             success: bool = False
             start_time = timeit.default_timer()
-            while (timeit.default_timer() - start_time) < 300:  # 5 min
+            while (timeit.default_timer() - start_time) < 600:  # 10 min
                 try:
                     conn = self._open_connection(instance_info)
                     conn.close()
