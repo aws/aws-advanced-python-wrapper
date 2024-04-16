@@ -117,7 +117,8 @@ class RdsUtils:
         return self._contains(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
 
     def is_rds_instance(self, host: str) -> bool:
-        return self._contains(host, [self.AURORA_INSTANCE_PATTERN, self.AURORA_CHINA_INSTANCE_PATTERN])
+        return (self._contains(host, [self.AURORA_INSTANCE_PATTERN, self.AURORA_CHINA_INSTANCE_PATTERN])
+                and self.is_rds_dns(host))
 
     def is_rds_proxy_dns(self, host: str) -> bool:
         return self._contains(host, [self.AURORA_PROXY_DNS_PATTERN, self.AURORA_CHINA_PROXY_DNS_PATTERN])

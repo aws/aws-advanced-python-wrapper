@@ -483,10 +483,26 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             result = cursor_execute_func_with_timeout(connection)
             if result:
                 host_id = result[0]
-                hosts = self.refresh()
+                hosts = self.refresh(connection)
+                is_force_refresh = False
+                if not hosts:
+                    hosts = self.force_refresh(connection)
+                    is_force_refresh = True
+
                 if not hosts:
                     return None
-                return next((host_info for host_info in hosts if host_info.host_id == host_id), None)
+
+                found_host: Optional[HostInfo] = next((host_info for host_info in hosts if host_info.host_id == host_id), None)
+                if not found_host and not is_force_refresh:
+                    hosts = self.force_refresh(connection)
+                    if not hosts:
+                        return None
+
+                    found_host = next(
+                        (host_info for host_info in hosts if host_info.host_id == host_id),
+                        None)
+
+                return found_host
         except TimeoutError as e:
             raise QueryTimeoutError(Messages.get("RdsHostListProvider.IdentifyConnectionTimeout")) from e
 

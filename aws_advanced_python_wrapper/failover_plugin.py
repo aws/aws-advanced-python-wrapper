@@ -295,7 +295,7 @@ class FailoverPlugin(Plugin):
         self._failover_reader_triggered_counter.inc()
 
         try:
-            logger.debug("FailoverPlugin.StartReaderFailover")
+            logger.info("FailoverPlugin.StartReaderFailover")
 
             old_aliases = None
             if self._plugin_service.current_host_info is not None:
@@ -322,7 +322,7 @@ class FailoverPlugin(Plugin):
 
             self._update_topology(True)
 
-            logger.debug("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
+            logger.info("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
 
             self._failover_reader_success_counter.inc()
         except FailoverSuccessError as fse:
@@ -346,7 +346,7 @@ class FailoverPlugin(Plugin):
         self._failover_writer_triggered_counter.inc()
 
         try:
-            logger.debug("FailoverPlugin.StartWriterFailover")
+            logger.info("FailoverPlugin.StartWriterFailover")
 
             result: WriterFailoverResult = self._writer_failover_handler.failover(self._plugin_service.hosts)
 
@@ -361,7 +361,7 @@ class FailoverPlugin(Plugin):
 
             self._plugin_service.set_current_connection(result.new_connection, writer_host)
 
-            logger.debug("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
+            logger.info("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
 
             self._plugin_service.refresh_host_list()
 
@@ -461,7 +461,7 @@ class FailoverPlugin(Plugin):
             self._plugin_service.set_current_connection(connection_for_host, host)
             self._plugin_service.update_in_transaction(False)
 
-            logger.debug("FailoverPlugin.EstablishedConnection", host)
+            logger.info("FailoverPlugin.EstablishedConnection", host)
         except Exception as ex:
             if self._plugin_service is not None:
                 logger.debug("FailoverPlugin.ConnectionToHostFailed",
