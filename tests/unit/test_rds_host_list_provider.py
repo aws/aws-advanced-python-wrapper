@@ -153,7 +153,7 @@ def test_get_topology_multiple_writers(mocker, mock_provider_service, mock_conn,
     result = provider.refresh()
 
     assert 1 == len(result)
-    assert "new_writer.xyz.us-east-2.rds.amazonaws.com" == result[0].host
+    assert result[0].host == "new_writer.xyz.us-east-2.rds.amazonaws.com"
     spy.assert_called_once()
 
 
@@ -377,3 +377,22 @@ def test_initialize_rds_proxy(mock_provider_service):
     provider = RdsHostListProvider(mock_provider_service, props)
     provider._initialize()
     assert provider._cluster_id == "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com"
+
+
+def test_get_topology_returns_last_writer(mocker, mock_provider_service, mock_conn, mock_cursor):
+    mock_provider_service.current_connection = mock_conn
+    mock_topology_query(mock_conn, mock_cursor, [
+        ("expected_writer_host", True, 0, 0, None),
+        ("unexpected_writer_host_0", True, 0, 0, None),
+        ("unexpected_writer_host_no_last_update_time_0", True, 0, 0, datetime.strptime("1000-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")),
+        ("unexpected_writer_host_no_last_update_time_1", True, 0, 0, datetime.strptime("2000-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")),
+        ("expected_writer_host", True, 0, 0, datetime.strptime("3000-01-01 00:00:00", "%Y-%m-%d %H:%M:%S"))])
+
+    props = Properties({"host": "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com"})
+    provider = RdsHostListProvider(mock_provider_service, props)
+    spy = mocker.spy(provider, "_query_for_topology")
+    provider._initialize()
+
+    result = provider._get_topology(mock_conn, True)
+    assert result.hosts[0].host == "expected_writer_host.xyz.us-east-2.rds.amazonaws.com"
+    spy.assert_called_once()

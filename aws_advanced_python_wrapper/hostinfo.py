@@ -12,13 +12,17 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum, auto
-from typing import ClassVar, FrozenSet, Optional, Set
+from typing import TYPE_CHECKING, ClassVar, FrozenSet, Optional, Set
 
 from aws_advanced_python_wrapper.host_availability import (
     HostAvailability, HostAvailabilityStrategy)
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 class HostRole(Enum):
@@ -41,7 +45,7 @@ class HostInfo:
             host_availability_strategy=HostAvailabilityStrategy(),
             weight: int = DEFAULT_WEIGHT,
             host_id: Optional[str] = None,
-            last_update_time: datetime = datetime.now()):
+            last_update_time: Optional[datetime] = None):
         self.host = host
         self.port = port
         self.role = role

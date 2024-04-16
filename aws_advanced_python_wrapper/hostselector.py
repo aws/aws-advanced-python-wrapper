@@ -18,6 +18,8 @@ import random
 from re import search
 from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, Tuple
 
+from .host_availability import HostAvailability
+
 if TYPE_CHECKING:
     from .hostinfo import HostInfo, HostRole
 
@@ -41,7 +43,7 @@ class RandomHostSelector(HostSelector):
 
     def get_host(self, hosts: Tuple[HostInfo, ...], role: HostRole, props: Optional[Properties] = None) -> HostInfo:
 
-        eligible_hosts = [host for host in hosts if host.role == role]
+        eligible_hosts = [host for host in hosts if host.role == role and host.get_availability() == HostAvailability.AVAILABLE]
 
         if len(eligible_hosts) == 0:
             raise Error(Messages.get("HostSelector.NoEligibleHost"))
@@ -96,7 +98,7 @@ class RoundRobinHostSelector(HostSelector):
 
     def get_host(self, hosts: Tuple[HostInfo, ...], role: HostRole, props: Optional[Properties] = None) -> HostInfo:
 
-        eligible_hosts: List[HostInfo] = [host for host in hosts if host.role == role]
+        eligible_hosts: List[HostInfo] = [host for host in hosts if host.role == role and host.get_availability() == HostAvailability.AVAILABLE]
         eligible_hosts.sort(key=lambda host: host.host, reverse=False)
         if len(eligible_hosts) == 0:
             raise AwsWrapperError(Messages.get_formatted("HostSelector.NoHostsMatchingRole", role))
@@ -107,7 +109,6 @@ class RoundRobinHostSelector(HostSelector):
         cluster_info: Optional[RoundRobinClusterInfo] = RoundRobinHostSelector._round_robin_cache.get(current_cluster_info_key)
 
         last_host_index: int = -1
-        target_host_index: int = 0
         if cluster_info is None:
             raise AwsWrapperError(Messages.get("RoundRobinHostSelector.ClusterInfoNone"))
 
