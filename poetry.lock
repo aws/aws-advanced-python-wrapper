@@ -1310,13 +1310,13 @@ use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
 
 [[package]]
 name = "resourcebundle"
-version = "2.1.0"
-description = "ResourceBundle is a module that manages internationalization of string resources"
+version = "2.2.0"
+description = "ResourceBundle is a module that manages internationalization of string resources."
 optional = false
-python-versions = ">=3.6"
+python-versions = ">=3.5"
 files = [
-    {file = "ResourceBundle-2.1.0-py3-none-any.whl", hash = "sha256:024411e031f18411a4539888dfe5f9f9b0be3a31c8c9b83cf1f367e1c801cfbc"},
-    {file = "ResourceBundle-2.1.0.tar.gz", hash = "sha256:32bcbfd8af9c0331c19e6851db58774bf84c54433c1d2378fc9a4cc4cbb3b00c"},
+    {file = "ResourceBundle-2.2.0-py3-none-any.whl", hash = "sha256:d5d817bb54a46fb27d91382ac3537a52aae6b7b0eb1eab0a5b9aedababa2d484"},
+    {file = "resourcebundle-2.2.0.tar.gz", hash = "sha256:0b72659901082e46929e65e29bbe0ffe7fa16a209c2f4b551fb7be02ac7247f8"},
 ]
 
 [[package]]
@@ -1645,4 +1645,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "17acc0c44670ad522c424262a9d9b6df082c5ff38d843a386c18e8c6cedcb1ed"
+content-hash = "3788234baad62cebebdbf9b02227214e538317d70e9df4b35b239cecb87f417b"
