@@ -15,21 +15,21 @@ You can now make changes in the repository.
 
 The AWS Advanced Python Driver uses the following tests to verify its correctness:
 
-| Tests                                         | Description                                                                                                                                              |
-|-----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Unit tests                                    | Tests for AWS Advanced Python Driver correctness.                                                                                                                   |
-| Failover integration tests                    | Driver-specific tests for different reader and writer failover workflows using the Failover Connection Plugin.                                           |
-| Enhanced failure monitoring integration tests | Driver-specific tests for the enhanced failure monitoring functionality using the Host Monitoring Connection Plugin.                                     |
-| AWS authentication integration tests          | Driver-specific tests for AWS authentication methods with the AWS Secrets Manager Plugin or the AWS IAM Authentication Plugin.                           |
+| Tests                                         | Description                                                                                                                    |
+|-----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| Unit tests                                    | Tests for AWS Advanced Python Driver correctness.                                                                              |
+| Failover integration tests                    | Driver-specific tests for different reader and writer failover workflows using the Failover Connection Plugin.                 |
+| Enhanced failure monitoring integration tests | Driver-specific tests for the enhanced failure monitoring functionality using the Host Monitoring Connection Plugin.           |
+| AWS authentication integration tests          | Driver-specific tests for AWS authentication methods with the AWS Secrets Manager Plugin or the AWS IAM Authentication Plugin. |
 
 ### Performance Tests
 
 The AWS Advanced Python Driver has the following tests to verify its performance:
 
-| Tests                                         | Description                                                                                                                                              |
-|-----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Connection plugin manager benchmarks          | The [benchmarks](../../benchmarks/README.md) subproject measures the overhead from executing Python method calls with multiple connection plugins enabled. |
-| Manually-triggered performance tests          | The [failover plugin performance tests](../../tests/integration/container/test_failover_performance.py) and [enhanced failure monitoring performance tests](../..tests/integration/container/test_read_write_splitting_performance.py) measure the plugins' performance under different configurations |
+| Tests                                | Description                                                                                                                                                                                                                                                                                            |
+|--------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Connection plugin manager benchmarks | The [benchmarks](../../benchmarks/README.md) subproject measures the overhead from executing Python method calls with multiple connection plugins enabled.                                                                                                                                             |
+| Manually-triggered performance tests | The [failover plugin performance tests](../../tests/integration/container/test_failover_performance.py) and [enhanced failure monitoring performance tests](../..tests/integration/container/test_read_write_splitting_performance.py) measure the plugins' performance under different configurations |
 
 ### Running the Tests
 

@@ -26,7 +26,7 @@ The following properties are required for the AWS Secrets Manager Connection Plu
 *NOTE* A Secret ARN has the following format: `arn:aws:secretsmanager:<Region>:<AccountId>:secret:Secre78tName-6RandomCharacters`
 
 ## Secret Data
-The plugin assumes that the secret contains the following properties `username` and `password`
+The plugin assumes that the secret contains the following properties: `username` and `password`.
 
 ### Example
 

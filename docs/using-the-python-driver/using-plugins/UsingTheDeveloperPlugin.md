@@ -1,6 +1,7 @@
-## Developer Plugin
+# Developer Plugin
 
-> [!WARNING] The plugin is NOT intended to be used in production environments. It's designed for the purpose of testing.
+> [!WARNING]\
+> The plugin is NOT intended to be used in production environments. It's designed for the purpose of testing.
 
 The Developer Plugin allows developers to simulate failures by providing a mechanism to raise exceptions when connection operations occur. By simulating these failures, developers can verify that their application handles these scenarios correctly.
 
@@ -8,7 +9,7 @@ Since some exceptions raised by the drivers rarely happen, testing for those mig
 
 The `dev` plugin code should be added to the connection plugins parameter in order to be able to intercept Python calls and raise a test exception when conditions are met.
 
-### Simulate an exception while opening a new connection
+## Simulate an exception while opening a new connection
 
 The plugin introduces a new class `ExceptionSimulatorManager` that will handle how a given exception will be passed to the connection to be tested.
 
@@ -32,7 +33,7 @@ AwsWrapperConnection.connect(psycopg.Connection.connect, **params) # this throws
 AwsWrapperConnection.connect(psycopg.Connection.connect, **params) # goes as usual with no exception
 ```
 
-### Simulate an exception with already opened connection
+## Simulate an exception with already opened connection
 
 It is possible to also simulate an exception thrown in a connection after the connection has been opened.
 

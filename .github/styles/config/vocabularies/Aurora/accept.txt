@@ -13,3 +13,5 @@ autocommit
 hostname
 [Kk]eepalive
 [Bb]ackoff
+[Xx]ray
+[Cc]loudwatch
