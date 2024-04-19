@@ -5,3 +5,7 @@ updates:
     target-branch: "main"
     schedule:
       interval: "daily"
+    ignore:
+      - dependency-name: "resourcebundle"
+        versions:
+          - 2.2.0

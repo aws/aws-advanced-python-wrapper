@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, List, Type
 
+from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
+    AuroraInitialConnectionStrategyPluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
@@ -578,7 +580,8 @@ class PluginManager(CanReleaseResources):
         "connect_time": ConnectTimePluginFactory,
         "execute_time": ExecuteTimePluginFactory,
         "dev": DeveloperPluginFactory,
-        "federated_auth": FederatedAuthPluginFactory
+        "federated_auth": FederatedAuthPluginFactory,
+        "initial_connection": AuroraInitialConnectionStrategyPluginFactory
     }
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
@@ -587,6 +590,7 @@ class PluginManager(CanReleaseResources):
     # the highest values. The first plugin of the list will have the lowest weight, and the
     # last one will have the highest weight.
     PLUGIN_FACTORY_WEIGHTS: Dict[Type[PluginFactory], int] = {
+        AuroraInitialConnectionStrategyPluginFactory: 50,
         AuroraConnectionTrackerPluginFactory: 100,
         StaleDnsPluginFactory: 200,
         ReadWriteSplittingPluginFactory: 300,

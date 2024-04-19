@@ -319,6 +319,23 @@ class WrapperProperties:
         False
     )
 
+    READER_INITIAL_HOST_SELECTOR_STRATEGY = WrapperProperty(
+        "reader_initial_connection_host_selector_strategy",
+        "The strategy that should be used to select a new reader host while opening a new connection.",
+        "random")
+
+    OPEN_CONNECTION_RETRY_TIMEOUT_MS = WrapperProperty(
+        "open_connection_retry_timeout_ms",
+        "Maximum allowed time for the retries opening a connection.",
+        30000
+    )
+
+    OPEN_CONNECTION_RETRY_INTERVAL_MS = WrapperProperty(
+        "open_connection_retry_interval_ms",
+        "Time between each retry of opening a connection.",
+        1000
+    )
+
 
 class PropertiesUtils:
     @staticmethod

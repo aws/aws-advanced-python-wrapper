@@ -14,10 +14,10 @@
 
 import pathlib
 
-import ResourceBundle  # type: ignore
+import ResourceBundle
 
 MessagePath = pathlib.Path(__file__).parent.parent.joinpath("resources/").resolve()
-MessageBundle = ResourceBundle.get_bundle("aws_advanced_python_wrapper_messages", None, MessagePath)
+MessageBundle = ResourceBundle.get_bundle(bundle_name="aws_advanced_python_wrapper_messages", path=MessagePath)
 
 
 class Messages:
