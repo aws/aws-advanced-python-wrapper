@@ -156,6 +156,7 @@ class RdsTestUtility:
             sleep(1)
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
+        self.make_sure_instances_up(self.get_instance_ids())
         self.logger.debug("Testing.FinishedFailover", initial_writer_id, str((perf_counter_ns() - start) / 1_000_000))
 
     def failover_cluster(self, cluster_id: Optional[str] = None) -> None:
@@ -403,7 +404,7 @@ class RdsTestUtility:
             instance_info: TestInstanceInfo = database_info.get_instance(i)
             success: bool = False
             start_time = timeit.default_timer()
-            while (timeit.default_timer() - start_time) < 300:  # 5 min
+            while (timeit.default_timer() - start_time) < 600:  # 10 min
                 try:
                     conn = self._open_connection(instance_info)
                     conn.close()
