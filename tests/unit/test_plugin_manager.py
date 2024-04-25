@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_advanced_python_wrapper import AwsWrapperConnection
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -136,12 +138,11 @@ def test_sort_plugins_with_stick_to_prior(mocker):
 
 
 def test_unknown_profile(mocker, mock_telemetry_factory):
-    props = Properties(profile_name="unknown_profile")
     with pytest.raises(AwsWrapperError):
-        PluginManager(mocker.MagicMock(), props, mock_telemetry_factory())
+        AwsWrapperConnection.connect(mocker.MagicMock(), "host=localhost wrapper_driver_dialect=mysql-connector-python profile_name=unknown_profile")
 
 
-def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect, mock_telemetry_factory):
+def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect, mock_telemetry_factory, mock_plugin_service):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
@@ -189,7 +190,7 @@ def _target_call(calls: List[str]):
     return "result_value"
 
 
-def test_execute_call_b(mocker, container, mock_driver_dialect, mock_telemetry_factory):
+def test_execute_call_b(mocker, container, mock_driver_dialect, mock_telemetry_factory, mock_conn):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
@@ -212,7 +213,7 @@ def test_execute_call_b(mocker, container, mock_driver_dialect, mock_telemetry_f
     assert calls[4] == "TestPluginOne:after execute"
 
 
-def test_execute_call_c(mocker, container, mock_driver_dialect, mock_telemetry_factory):
+def test_execute_call_c(mocker, container, mock_driver_dialect, mock_telemetry_factory, mock_conn):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
@@ -233,7 +234,7 @@ def test_execute_call_c(mocker, container, mock_driver_dialect, mock_telemetry_f
     assert calls[2] == "TestPluginOne:after execute"
 
 
-def test_execute_against_old_target(mocker, container, mock_driver_dialect, mock_telemetry_factory):
+def test_execute_against_old_target(mocker, container, mock_driver_dialect, mock_telemetry_factory, mock_conn):
     mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._container = container

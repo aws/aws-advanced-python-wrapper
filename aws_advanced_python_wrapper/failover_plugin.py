@@ -273,6 +273,10 @@ class FailoverPlugin(Plugin):
 
         :param failed_host: The host with network errors.
         """
+
+        if failed_host is not None:
+            self._plugin_service.set_availability(failed_host.as_aliases(), HostAvailability.AVAILABLE)
+
         if self._failover_mode == FailoverMode.STRICT_WRITER:
             self._failover_writer()
         else:

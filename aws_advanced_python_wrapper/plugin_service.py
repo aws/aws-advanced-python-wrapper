@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect_manager import DriverDialectManager
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+    from aws_advanced_python_wrapper.profiles.configuration_profile import ConfigurationProfile
     from threading import Event
 
 from abc import abstractmethod
@@ -47,8 +48,6 @@ from aws_advanced_python_wrapper.database_dialect import (
     UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
 from aws_advanced_python_wrapper.developer_plugin import DeveloperPluginFactory
-from aws_advanced_python_wrapper.driver_configuration_profiles import \
-    DriverConfigurationProfiles
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError,
                                                 UnsupportedOperationError)
@@ -251,7 +250,6 @@ class PluginService(ExceptionHandler, Protocol):
 
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
-
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
@@ -262,10 +260,12 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             props: Properties,
             target_func: Callable,
             driver_dialect_manager: DriverDialectManager,
-            driver_dialect: DriverDialect):
+            driver_dialect: DriverDialect,
+            profile: Optional[ConfigurationProfile] = None):
         self._container = container
         self._container.plugin_service = self
         self._props = props
+        self._configuration_profile = profile
         self._original_url = PropertiesUtils.get_url(props)
         self._host_list_provider: HostListProvider = ConnectionStringHostListProvider(self, props)
 
@@ -279,7 +279,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._target_func = target_func
         self._driver_dialect_manager = driver_dialect_manager
         self._driver_dialect = driver_dialect
-        self._database_dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
+        self._database_dialect = self._configuration_profile.database_dialect \
+            if self._configuration_profile is not None and self._configuration_profile.database_dialect is not None \
+            else self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
 
     @property
     def hosts(self) -> Tuple[HostInfo, ...]:
@@ -601,14 +603,18 @@ class PluginManager(CanReleaseResources):
         FederatedAuthPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN
     }
 
-    def __init__(
-            self, container: PluginServiceManagerContainer, props: Properties, telemetry_factory: TelemetryFactory):
+    def __init__(self,
+                 container: PluginServiceManagerContainer,
+                 props: Properties,
+                 telemetry_factory: TelemetryFactory,
+                 profile: Optional[ConfigurationProfile] = None):
         self._props: Properties = props
         self._function_cache: Dict[str, Callable] = {}
         self._container = container
         self._container.plugin_manager = self
         self._connection_provider_manager = ConnectionProviderManager()
         self._telemetry_factory = telemetry_factory
+        self._configuration_profile: Optional[ConfigurationProfile] = profile
         self._plugins = self.get_plugins()
 
     @property
@@ -636,12 +642,10 @@ class PluginManager(CanReleaseResources):
         plugin_factories: List[PluginFactory] = []
         plugins: List[Plugin] = []
 
-        profile_name = WrapperProperties.PROFILE_NAME.get(self._props)
-        if profile_name is not None:
-            if not DriverConfigurationProfiles.contains_profile(profile_name):
-                raise AwsWrapperError(
-                    Messages.get_formatted("PluginManager.ConfigurationProfileNotFound", profile_name))
-            plugin_factories = DriverConfigurationProfiles.get_plugin_factories(profile_name)
+        if self._configuration_profile is not None:
+            factories = self._configuration_profile.plugin_factories
+            if factories is not None:
+                plugin_factories = self._configuration_profile.plugin_factories
         else:
             plugin_codes = WrapperProperties.PLUGINS.get(self._props)
             if plugin_codes is None:

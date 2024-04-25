@@ -18,6 +18,12 @@ from typing import (TYPE_CHECKING, Any, Callable, Iterator, List, Optional,
                     Union)
 
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.profiles.configuration_profile import ConfigurationProfile
+
+from aws_advanced_python_wrapper.profiles.driver_configuration_profiles import \
+    DriverConfigurationProfiles
+
+if TYPE_CHECKING:
     from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
 
 from aws_advanced_python_wrapper.driver_dialect_manager import \
@@ -32,7 +38,8 @@ from aws_advanced_python_wrapper.plugin_service import (
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
-                                                          PropertiesUtils)
+                                                          PropertiesUtils,
+                                                          WrapperProperties)
 from aws_advanced_python_wrapper.utils.telemetry.default_telemetry_factory import \
     DefaultTelemetryFactory
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
@@ -137,10 +144,19 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         try:
             driver_dialect_manager: DriverDialectManager = DriverDialectManager()
             driver_dialect = driver_dialect_manager.get_dialect(target_func, props)
+
+            profile_name: Optional[str] = WrapperProperties.PROFILE_NAME.get(props)
+            configuration_profile: Optional[ConfigurationProfile] = None
+            if profile_name:
+                configuration_profile = DriverConfigurationProfiles.get_profile_configuration(profile_name)
+                if configuration_profile is None:
+                    raise AwsWrapperError(Messages.get_formatted("Wrapper.ConfigurationProfileNotFound", configuration_profile))
+                props = Properties({**props, **configuration_profile.properties})
+
             container: PluginServiceManagerContainer = PluginServiceManagerContainer()
             plugin_service = PluginServiceImpl(
-                container, props, target_func, driver_dialect_manager, driver_dialect)
-            plugin_manager: PluginManager = PluginManager(container, props, telemetry_factory)
+                container, props, target_func, driver_dialect_manager, driver_dialect, configuration_profile)
+            plugin_manager: PluginManager = PluginManager(container, props, telemetry_factory, configuration_profile)
 
             return AwsWrapperConnection(target_func, plugin_service, plugin_service, plugin_manager)
         except Exception as ex:

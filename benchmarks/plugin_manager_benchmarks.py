@@ -18,15 +18,18 @@ from typing import TYPE_CHECKING, List
 
 import pytest
 
+from aws_advanced_python_wrapper.profiles.configuration_profile import \
+    ConfigurationProfile
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.plugin import PluginFactory
 
-from aws_advanced_python_wrapper.driver_configuration_profiles import \
-    DriverConfigurationProfiles
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.plugin_service import (
     PluginManager, PluginServiceManagerContainer)
+from aws_advanced_python_wrapper.profiles.driver_configuration_profiles import \
+    DriverConfigurationProfiles
 from aws_advanced_python_wrapper.utils.properties import Properties
 from benchmarks.benchmark_plugin import BenchmarkPluginFactory
 
@@ -43,7 +46,9 @@ def props_with_plugins():
     factories: List[PluginFactory] = []
     for _ in range(10):
         factories.append(BenchmarkPluginFactory())
-    DriverConfigurationProfiles.add_or_replace_profile("benchmark", factories)
+    DriverConfigurationProfiles.add_or_replace_profile(
+        "benchmark",
+        ConfigurationProfile(name="benchmark", plugin_factories=factories))
     return Properties({"profile_name": "benchmark"})
 
 
