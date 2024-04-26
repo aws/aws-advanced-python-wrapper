@@ -21,7 +21,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from threading import RLock
-from typing import (TYPE_CHECKING, ClassVar, Optional, Protocol, Tuple,
+from typing import (TYPE_CHECKING, ClassVar, List, Optional, Protocol, Tuple,
                     runtime_checkable)
 
 if TYPE_CHECKING:
@@ -370,14 +370,17 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             hosts.append(writers[0])
         else:
             # Take the latest updated writer host as the current writer. All others will be ignored.
-            writers.sort(reverse=True, key=lambda h: h.last_update_time)
-            hosts.append(writers[0])
+            existing_writers: List[HostInfo] = [x for x in writers if x is not None]
+            existing_writers.sort(reverse=True, key=lambda h: h.last_update_time is not None and h.last_update_time)
+            hosts.append(existing_writers[0])
 
         return tuple(hosts)
 
     def _create_host(self, record: Tuple) -> HostInfo:
         """
-        Convert a topology query record into a :py:class:`HostInfo` object containing the information for a database instance in the cluster.
+        Convert a topology query record into a :py:class:`HostInfo`
+        object containing the information for a database instance in the cluster.
+
         :param record: a query record containing information about a database instance in the cluster.
         :return: a :py:class:`HostInfo` object representing a database instance in the cluster.
         """
