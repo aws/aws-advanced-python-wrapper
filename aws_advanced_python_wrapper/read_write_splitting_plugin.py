@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from io import UnsupportedOperation
 from typing import TYPE_CHECKING, Any, Callable, Optional, Set, Tuple
 
 if TYPE_CHECKING:
@@ -88,8 +87,8 @@ class ReadWriteSplittingPlugin(Plugin):
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
         if not self._plugin_service.accepts_strategy(host_info.role, self._reader_selector_strategy):
-            raise UnsupportedOperation(
-                Messages.get_formatted("ReadWriteSplittingPlugin.UnsupportedHostSpecSelectorStrategy",
+            raise AwsWrapperError(
+                Messages.get_formatted("ReadWriteSplittingPlugin.UnsupportedHostInfoSelectorStrategy",
                                        self._reader_selector_strategy))
 
         return self.connect_internal(is_initial_connection, connect_func)

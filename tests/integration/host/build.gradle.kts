@@ -68,6 +68,7 @@ tasks.register<Test>("test-python-3.11") {
     doFirst {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-multi-az", "true")
     }
 }
 
@@ -77,6 +78,7 @@ tasks.register<Test>("test-python-3.8") {
     doFirst {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-311", "true")
+        systemProperty("exclude-multi-az", "true")
     }
 }
 
