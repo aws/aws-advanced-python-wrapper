@@ -61,3 +61,15 @@ class Logger:
                 self.logger.warning(Messages.get(msg), **kwargs)
             except NotInResourceBundleError:
                 self.logger.warning(msg, **kwargs)
+
+    def info(self, msg, *args, **kwargs):
+        if not self.logger.isEnabledFor(logging.INFO):
+            return
+
+        if args is not None and len(args) > 0:
+            self.logger.info(Messages.get_formatted(msg, *args), **kwargs)
+        else:
+            try:
+                self.logger.info(Messages.get(msg), **kwargs)
+            except NotInResourceBundleError:
+                self.logger.info(msg, **kwargs)
