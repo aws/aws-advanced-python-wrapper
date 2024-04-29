@@ -62,23 +62,55 @@ tasks.withType<Test> {
     systemProperty("java.util.logging.config.file", "${project.buildDir}/resources/test/logging-test.properties")
 }
 
-tasks.register<Test>("test-python-3.11") {
+tasks.register<Test>("test-python-3.11-mysql") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-38", "true")
         systemProperty("exclude-multi-az", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
     }
 }
 
-tasks.register<Test>("test-python-3.8") {
+tasks.register<Test>("test-python-3.8-mysql") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
     doFirst {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-311", "true")
         systemProperty("exclude-multi-az", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.11-pg") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-multi-az", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.8-pg") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-python-311", "true")
+        systemProperty("exclude-multi-az", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
     }
 }
 
@@ -113,6 +145,8 @@ tasks.register<Test>("test-pg-aurora") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
     }
 }
 
@@ -148,6 +182,8 @@ tasks.register<Test>("test-pg-multi-az") {
         systemProperty("exclude-aurora", "true")
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
     }
 }
 

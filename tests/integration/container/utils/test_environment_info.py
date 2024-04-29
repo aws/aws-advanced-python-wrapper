@@ -29,6 +29,7 @@ class TestEnvironmentInfo:
     _aws_secret_access_key: str
     _aws_session_token: str
     _region: str
+    _rds_endpoint: str
     _cluster_name: str
     _iam_user_name: str
     _database_info: TestDatabaseInfo
@@ -48,6 +49,7 @@ class TestEnvironmentInfo:
         self._aws_secret_access_key = typing.cast('str', test_info.get("awsSecretAccessKey"))
         self._aws_session_token = typing.cast('str', test_info.get("awsSessionToken"))
         self._region = typing.cast('str', test_info.get("region"))
+        self._rds_endpoint = typing.cast('str', test_info.get("rdsEndpoint"))
         self._cluster_name = typing.cast('str', test_info.get("clusterName"))
         self._iam_user_name = typing.cast('str', test_info.get("iamUsername"))
 
@@ -89,6 +91,9 @@ class TestEnvironmentInfo:
 
     def get_region(self) -> str:
         return self._region
+
+    def get_rds_endpoint(self) -> str:
+        return self._rds_endpoint
 
     def get_cluster_name(self) -> str:
         return self._cluster_name

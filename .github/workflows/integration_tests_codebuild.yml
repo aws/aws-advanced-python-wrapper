@@ -1,12 +1,20 @@
-name: PG Performance Tests
+name: Integration Tests CodeBuild
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-performance-tests:
-    name: Run Performance Tests on PG
+  build-integration-tests-codebuild:
+    name: Run Integration Tests With CodeBuild
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.8", "3.11" ]
+        environment: [ "mysql", "pg" ]
+        engine_version: ["latest"]
+
     runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}_integ
 
     steps:
       - name: 'Clone repository'
@@ -29,7 +37,7 @@ jobs:
         run: poetry install
 
       - name: 'Configure AWS Credentials'
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -49,22 +57,23 @@ jobs:
           echo "TEMP_AWS_SECRET_ACCESS_KEY=${creds[1]}" >> $GITHUB_ENV
           echo "TEMP_AWS_SESSION_TOKEN=${creds[2]}" >> $GITHUB_ENV
 
-      - name: 'Run PG Performance Tests'
+      - name: 'Run Integration Tests'
         run: |
-          ./gradlew --no-parallel --no-daemon test-pg-aurora-performance --info
+          ./gradlew --no-parallel --no-daemon test-python-${{ matrix.python-version }}-${{ matrix.environment }} --info
         env:
           RDS_CLUSTER_DOMAIN: ${{ secrets.DB_CONN_SUFFIX }}
-          AURORA_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          RDS_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
           AWS_ACCESS_KEY_ID: ${{ env.TEMP_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ env.TEMP_AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ env.TEMP_AWS_SESSION_TOKEN }}
-          AURORA_MYSQL_DB_ENGINE_VERSION: "lts"
-          AURORA_PG_ENGINE_VERSION: "lts"
+          RDS_ENDPOINT: ${{ secrets.RDS_ENDPOINT }}
+          AURORA_MYSQL_DB_ENGINE_VERSION: ${{ secrets.engine_version }}
+          AURORA_PG_ENGINE_VERSION: ${{ matrix.engine_version }}
 
       - name: 'Archive results'
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: pytest-performance-report
+          name: pytest-integration-report-${{ matrix.environment }}
           path: ./tests/integration/container/reports
           retention-days: 5
