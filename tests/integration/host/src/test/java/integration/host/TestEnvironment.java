@@ -35,6 +35,7 @@ import integration.host.TestEnvironmentProvider.EnvPreCreateInfo;
 import integration.util.AuroraTestUtility;
 import integration.util.ContainerHelper;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -80,6 +81,7 @@ public class TestEnvironment implements AutoCloseable {
   private boolean reuseAuroraDbCluster;
   private String auroraClusterName; // "cluster-mysql"
   private String auroraClusterDomain; // "XYZ.us-west-2.rds.amazonaws.com"
+  private String rdsEndpoint; // "https://rds-int.amazon.com"
 
   private String awsAccessKeyId;
   private String awsSecretAccessKey;
@@ -101,7 +103,7 @@ public class TestEnvironment implements AutoCloseable {
     this.info.setRequest(request);
   }
 
-  public static TestEnvironment build(TestEnvironmentRequest request) throws IOException {
+  public static TestEnvironment build(TestEnvironmentRequest request) throws IOException, URISyntaxException {
     LOGGER.finest("Building test env: " + request.getEnvPreCreateIndex());
     preCreateEnvironment(request.getEnvPreCreateIndex());
 
@@ -154,7 +156,7 @@ public class TestEnvironment implements AutoCloseable {
     return env;
   }
 
-  private static TestEnvironment createAuroraOrMultiAzEnvironment(TestEnvironmentRequest request) {
+  private static TestEnvironment createAuroraOrMultiAzEnvironment(TestEnvironmentRequest request) throws URISyntaxException {
 
     EnvPreCreateInfo preCreateInfo =
         TestEnvironmentProvider.preCreateInfos.get(request.getEnvPreCreateIndex());
@@ -282,7 +284,7 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static void createDbCluster(TestEnvironment env) {
+  private static void createDbCluster(TestEnvironment env) throws URISyntaxException {
 
     switch (env.info.getRequest().getDatabaseInstances()) {
       case SINGLE_INSTANCE:
@@ -308,7 +310,7 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static void createDbCluster(TestEnvironment env, int numOfInstances) {
+  private static void createDbCluster(TestEnvironment env, int numOfInstances) throws URISyntaxException {
 
     env.info.setRegion(
         !StringUtils.isNullOrEmpty(config.rdsDbRegion)
@@ -318,10 +320,13 @@ public class TestEnvironment implements AutoCloseable {
     env.reuseAuroraDbCluster = config.reuseRdsCluster;
     env.auroraClusterName = config.rdsClusterName; // "cluster-mysql"
     env.auroraClusterDomain = config.rdsClusterDomain; // "XYZ.us-west-2.rds.amazonaws.com"
+    env.rdsEndpoint = config.rdsEndpoint; // "XYZ.us-west-2.rds.amazonaws.com"
+    env.info.setRdsEndpoint(env.rdsEndpoint);
 
     env.auroraUtil =
         new AuroraTestUtility(
             env.info.getRegion(),
+            env.rdsEndpoint,
             env.awsAccessKeyId,
             env.awsSecretAccessKey,
             env.awsSessionToken);
@@ -367,7 +372,10 @@ public class TestEnvironment implements AutoCloseable {
 
       try {
         String engine = getDbEngine(env.info.getRequest());
-        String engineVersion = getDbEngineVersion(env.info.getRequest());
+        String engineVersion = getDbEngineVersion(env);
+        if (StringUtils.isNullOrEmpty(engineVersion)) {
+          throw new RuntimeException("Failed to get engine version.");
+        }
         String instanceClass = getDbInstanceClass(env.info.getRequest());
 
         env.auroraClusterDomain =
@@ -485,10 +493,11 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static String getDbEngineVersion(TestEnvironmentRequest request) {
+  private static String getDbEngineVersion(TestEnvironment env) {
+    final TestEnvironmentRequest request = env.info.getRequest();
     switch (request.getDatabaseEngineDeployment()) {
       case AURORA:
-        return getAuroraDbEngineVersion(request);
+        return getAuroraDbEngineVersion(env);
       case RDS:
       case RDS_MULTI_AZ:
         return getRdsEngineVersion(request);
@@ -497,14 +506,40 @@ public class TestEnvironment implements AutoCloseable {
     }
   }
 
-  private static String getAuroraDbEngineVersion(TestEnvironmentRequest request) {
+  private static String getAuroraDbEngineVersion(TestEnvironment env) {
+    String engineName;
+    String systemPropertyVersion;
+    TestEnvironmentRequest request = env.info.getRequest();
     switch (request.getDatabaseEngine()) {
       case MYSQL:
-        return "8.0.mysql_aurora.3.03.0";
+        engineName = "aurora-mysql";
+        systemPropertyVersion = config.auroraMySqlDbEngineVersion;
+        break;
       case PG:
-        return "15.2";
+        engineName = "aurora-postgresql";
+        systemPropertyVersion = config.auroraPgDbEngineVersion;
+        break;
       default:
         throw new NotImplementedException(request.getDatabaseEngine().toString());
+    }
+    return findAuroraDbEngineVersion(env, engineName, systemPropertyVersion);
+  }
+
+  private static String findAuroraDbEngineVersion(
+          TestEnvironment env,
+          String engineName,
+          String systemPropertyVersion) {
+
+    if (StringUtils.isNullOrEmpty(systemPropertyVersion)) {
+      return env.auroraUtil.getLTSVersion(engineName);
+    }
+    switch (systemPropertyVersion.toLowerCase()) {
+      case "lts":
+        return env.auroraUtil.getLTSVersion(engineName);
+      case "latest":
+        return env.auroraUtil.getLatestVersion(engineName);
+      default:
+        return systemPropertyVersion;
     }
   }
 

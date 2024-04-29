@@ -72,6 +72,13 @@ public class TestEnvironmentConfiguration {
   public String rdsClusterName = System.getenv("RDS_CLUSTER_NAME"); // "cluster-mysql"
   public String rdsClusterDomain =
       System.getenv("RDS_CLUSTER_DOMAIN"); // "XYZ.us-west-2.rds.amazonaws.com"
+  public String rdsEndpoint =
+          System.getenv("RDS_ENDPOINT"); // "https://rds-int.amazon.com"
+
+  // Expected values: "latest", "lts", or engine version, for example, "15.4"
+  // If left as empty, will use LTS version
+  public String auroraMySqlDbEngineVersion = System.getenv("AURORA_MYSQL_DB_ENGINE_VERSION");
+  public String auroraPgDbEngineVersion = System.getenv("AURORA_PG_ENGINE_VERSION");
 
   public String dbName = System.getenv("DB_DATABASE_NAME");
   public String dbUsername = System.getenv("DB_USERNAME");

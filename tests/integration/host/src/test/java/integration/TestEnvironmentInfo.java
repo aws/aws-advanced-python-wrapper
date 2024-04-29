@@ -25,6 +25,7 @@ public class TestEnvironmentInfo {
   private String awsSessionToken;
 
   private String region;
+  private String rdsEndpoint;
   private String clusterName;
   private String iamUsername;
 
@@ -79,6 +80,10 @@ public class TestEnvironmentInfo {
     return this.region;
   }
 
+  public String getRdsEndpoint() {
+    return this.rdsEndpoint;
+  }
+
   public String getClusterName() {
     return this.clusterName;
   }
@@ -93,6 +98,10 @@ public class TestEnvironmentInfo {
 
   public void setRegion(String region) {
     this.region = region;
+  }
+
+  public void setRdsEndpoint(String rdsEndpoint) {
+    this.rdsEndpoint = rdsEndpoint;
   }
 
   public void setClusterName(String clusterName) {
