@@ -82,7 +82,7 @@ def pytest_runtest_setup(item):
 
     deployment = request.get_database_engine_deployment()
     if DatabaseEngineDeployment.AURORA == deployment or DatabaseEngineDeployment.RDS_MULTI_AZ == deployment:
-        rds_utility = RdsTestUtility(info.get_region())
+        rds_utility = RdsTestUtility(info.get_region(), info.get_rds_endpoint())
         rds_utility.wait_until_cluster_has_desired_status(info.get_cluster_name(), "available")
 
         # Need to ensure that cluster details through API matches topology fetched through SQL

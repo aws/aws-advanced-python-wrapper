@@ -88,9 +88,9 @@ public class AuroraTestUtility {
   private String dbEngine = "aurora-postgresql";
   private String dbEngineVersion = "13.9";
   private String dbInstanceClass = "db.r5.large";
-  private String storageType = "io1";
-  private int allocatedStorage = 100;
-  private int iops = 1000;
+  private final String storageType = "io1";
+  private final int allocatedStorage = 100;
+  private final int iops = 1000;
   private final Region dbRegion;
   private final String dbSecGroup = "default";
   private int numOfInstances = 5;
@@ -101,11 +101,6 @@ public class AuroraTestUtility {
   private static final Random rand = new Random();
 
   private static final String DUPLICATE_IP_ERROR_CODE = "InvalidPermission.Duplicate";
-
-  public AuroraTestUtility(String region, String endpoint) throws URISyntaxException {
-    this(getRegionInternal(region), endpoint, DefaultCredentialsProvider.create());
-  }
-
 
   public AuroraTestUtility(
           String region, String rdsEndpoint, String awsAccessKeyId, String awsSecretAccessKey, String awsSessionToken)

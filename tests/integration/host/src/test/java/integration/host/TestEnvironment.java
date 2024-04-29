@@ -187,8 +187,7 @@ public class TestEnvironment implements AutoCloseable {
       if (result instanceof Exception) {
         throw new RuntimeException((Exception) result);
       }
-      if (result instanceof TestEnvironment) {
-        TestEnvironment resultTestEnvironment = (TestEnvironment) result;
+      if (result instanceof TestEnvironment resultTestEnvironment) {
         LOGGER.finer(() -> String.format("Use pre-created DB cluster: %s.cluster-%s",
             resultTestEnvironment.auroraClusterName, resultTestEnvironment.auroraClusterDomain));
 
@@ -320,7 +319,7 @@ public class TestEnvironment implements AutoCloseable {
     env.reuseAuroraDbCluster = config.reuseRdsCluster;
     env.auroraClusterName = config.rdsClusterName; // "cluster-mysql"
     env.auroraClusterDomain = config.rdsClusterDomain; // "XYZ.us-west-2.rds.amazonaws.com"
-    env.rdsEndpoint = config.rdsEndpoint; // "XYZ.us-west-2.rds.amazonaws.com"
+    env.rdsEndpoint = config.rdsEndpoint; // "https://rds-int.amazon.com"
     env.info.setRdsEndpoint(env.rdsEndpoint);
 
     env.auroraUtil =
