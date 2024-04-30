@@ -196,6 +196,7 @@ For all other questions, please use [GitHub discussions](https://github.com/awsl
 3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.8 and higher).
 4. Create a pull request from your fork. 
 5. Pull requests need to be approved and merged by maintainers into the main branch. <br />
+
 > [!NOTE]\
 > Before making a pull request, [run all tests](./docs/development-guide/DevelopmentGuide.md#running-the-tests) and verify everything is passing.
 
@@ -213,7 +214,7 @@ This `aws-advanced-python-wrapper` is being tested against the following Communi
 
 | Database          | Versions                                                                                                                                                                                                  |
 |-------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| MySQL             | 8.0.32                                                                                                                                                                                                    |
+| MySQL             | 8.3.0                                                                                                                                                                                                     |
 | PostgreSQL        | 15.2                                                                                                                                                                                                      |
 | Aurora MySQL      | MySQL	8.0.mysql_aurora.3.02.2 (Wire-compatible with MySQL 8.0.23 onward. For more details see [here](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraMySQLReleaseNotes/AuroraMySQL.Updates.3022.html)) |
 | Aurora PostgreSQL | 14.7 and 15.2 (Compatible with PostgreSQL 14.7 and 15.2, see release notes [here](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraPostgreSQLReleaseNotes/AuroraPostgreSQL.Updates.html))               |

@@ -42,27 +42,27 @@ When `read_only` is first set on an `AwsWrapperConnection` object, the Read/Writ
 
 The AWS Advanced Python Driver currently uses [SqlAlchemy](https://docs.sqlalchemy.org/en/20/core/pooling.html) to create and maintain its internal connection pools. The [Postgres](../../examples/PGReadWriteSplitting.py) or [MySQL](../../examples/MySQLReadWriteSplitting.py) sample code provides a useful example of how to enable this feature. The steps are as follows:
 
-1.  Create an instance of `SqlAlchemyPooledConnectionProvider`, passing in any optional arguments if desired:
+1. Create an instance of `SqlAlchemyPooledConnectionProvider`, passing in any optional arguments if desired:
     - The first optional argument takes in a `Callable` that can be used to return custom parameter settings for the connection pool. See [here](https://docs.sqlalchemy.org/en/20/core/pooling.html#sqlalchemy.pool.QueuePool) for a list of available parameters. Note that you should not set the `creator` parameter - this parameter will be set automatically by the AWS Advanced Python Driver. This is done to follow desired behavior and ensure that the Read/Write Splitting Plugin can successfully establish connections to new instances.
     - The second optional argument takes in a `Callable` that can be used to define custom key generation for the internal connection pools. Key generation is used to define when new connection pools are created; a new pool will be created each time a connection is requested with a unique key. By default, a new pool will be created for each unique instance-user combination. If you would like to define a different key system, you should pass in a `Callable` defining this logic. The `Callable` should take in a `HostInfo` and `Dict` specifying the connection properties and return a string representing the desired connection pool key. A simple example is shown below.
 
-> [!WARNING]\
-> If you do not include the username in the connection pool key, connection pools may be shared between different users. As a result, an initial connection established with a privileged user may be returned to a connection request with a lower-privilege user without re-verifying credentials. This behavior is inherent to the nature of connection pools and not a bug with the driver. `ConnectionProviderManager.release_resources` can be called to close all pools and remove all cached pool connections.
-
-    ```python
-    def get_pool_key(host_info: HostInfo, props: Dict[str, Any]):
-      # Include the URL, user, and database in the connection pool key so that a new
-      # connection pool will be opened for each different instance-user-database combination.
-      url = host_info.url
-      user = props["username"];
-      db = props["dbname"]
-      return f"{url}{user}{db}"
+    > [!WARNING]\
+    > If you do not include the username in the connection pool key, connection pools may be shared between different users. As a result, an initial connection established with a privileged user may be returned to a connection request with a lower-privilege user without re-verifying credentials. This behavior is inherent to the nature of connection pools and not a bug with the driver. `ConnectionProviderManager.release_resources` can be called to close all pools and remove all cached pool connections.
     
-    provider = SqlAlchemyPooledConnectionProvider(
-        lambda host_info, props: {"pool_size": 5},
-        get_pool_key)
-    ConnectionProviderManager.set_connection_provider(provider)
-    ```
+        ```python
+        def get_pool_key(host_info: HostInfo, props: Dict[str, Any]):
+          # Include the URL, user, and database in the connection pool key so that a new
+          # connection pool will be opened for each different instance-user-database combination.
+          url = host_info.url
+          user = props["username"];
+          db = props["dbname"]
+          return f"{url}{user}{db}"
+        
+        provider = SqlAlchemyPooledConnectionProvider(
+            lambda host_info, props: {"pool_size": 5},
+            get_pool_key)
+        ConnectionProviderManager.set_connection_provider(provider)
+        ```
 
 2. Call `ConnectionProviderManager.set_connection_provider`, passing in the `SqlAlchemyPooledConnectionProvider` you created in step 1.
 
@@ -106,7 +106,7 @@ conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 | `round_robin`                   | The round robin strategy will select a reader instance by taking turns with all available database instances in a cycle. A slight addition to the round robin strategy is the weighted round robin strategy, where more connections will be passed to reader instances based on user specified connection properties.                                                                                                                                                                                                                                             | See the rows `round_robin_host_weight_pairs` and `round_robin_default_weight` for configuration parameters |
 | `round_robin_host_weight_pairs` | This parameter value must be a `string` type comma separated list of database host-weight pairs in the format `<host>:<weight>`. The host represents the database instance name, and the weight represents how many connections should be directed to the host in one cycle through all available hosts. For example, the value `instance-1:1,instance-2:4` means that for every connection to `instance-1`, there will be four connections to `instance-2`. <br><br> **Note:** The `<weight>` value in the string must be an integer greater than or equal to 1. | `""` (empty string)                                                                                        |
 | `round_robin_default_weight`    | This parameter value must be an integer value. This parameter represents the default weight for any hosts that have not been configured with the `round_robin_host_weight_pairs` parameter. For example, if a connection were already established and host weights were set with `round_robin_host_weight_pairs` but a new reader node was added to the database, the new reader node would use the default weight. <br><br> **Note:** This value must be an integer greater than or equal to 1.                                                                  | 1                                                                                                          |
-| `fastest_response`              | The fastest_response strategy will select reader instances based on which database instance has the fastest response time. Note that this strategy requires that the `fastest_response_strategy` and `read_write_splitting` plugins are both enabled. See [`Fastest Response Strategy Plugin`](./UsingTheFastestResponseStrategyPlugin.md)                                                                                                                                                                                                                                                   | N/A                                                                                                        |
+| `fastest_response`              | The fastest_response strategy will select reader instances based on which database instance has the fastest response time. Note that this strategy requires that the `fastest_response_strategy` and `read_write_splitting` plugins are both enabled. See [`Fastest Response Strategy Plugin`](./UsingTheFastestResponseStrategyPlugin.md)                                                                                                                                                                                                                        | N/A                                                                                                        |
 
 ### Limitations
 
