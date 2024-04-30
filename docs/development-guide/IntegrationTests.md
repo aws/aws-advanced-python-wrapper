@@ -19,10 +19,10 @@ This documentation walks through the requirements and steps required to run and 
 ### Aurora Test Requirements
 
 - An AWS account with:
-    - RDS permissions
+    - RDS permissions.
     - EC2 permissions so integration tests can add the current IP address in the Aurora cluster's EC2 security group.
-    - For more information,
-      see: [Setting Up for Amazon RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_SettingUp.html).
+    - XRay and Cloudwatch permissions for the integration tests to report telemetries.
+    - For more information, see: [Setting Up for Amazon RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_SettingUp.html).
 
 ## Recommendations for ease of use
 
@@ -85,7 +85,7 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
 
        Remote path: `/app`
 
-    6. Click OK, Apply, OK.
+   4. Click OK, Apply, OK.
 3. At the top right of the Pycharm window, click the dropdown arrow and select your newly created debug configuration
 4. Click the bug symbol to start the debug configuration. Pycharm will begin listening for a debug connection
 5. Navigate to your Pycharm git bash terminal. In the terminal, navigate to the project root directory. Execute a gradle

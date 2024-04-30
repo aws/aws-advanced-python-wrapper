@@ -1,4 +1,4 @@
-## Plugin Service
+# Plugin Service
 
 <div style="center"><img src="../images/plugin_service.png" alt="diagram for the plugin service design"/></div>
 
