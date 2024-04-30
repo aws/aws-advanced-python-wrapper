@@ -1160,12 +1160,12 @@ files = [
 
 [[package]]
 name = "pydevd-pycharm"
-version = "233.15026.15"
+version = "241.15989.111"
 description = "PyCharm Debugger (used in PyCharm and PyDev)"
 optional = false
 python-versions = "*"
 files = [
-    {file = "pydevd-pycharm-233.15026.15.tar.gz", hash = "sha256:f0f75f38f9ef857c52681b21c918ab9286c8af49ed4c05fbe98241d2ff10b029"},
+    {file = "pydevd-pycharm-241.15989.111.tar.gz", hash = "sha256:d1b7ce0e4dad45b783917b158693d95457b7b1397f4368b0afe624f019dedccd"},
 ]
 
 [[package]]
@@ -1642,4 +1642,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "07cb08a00dc0056b4a56511ec25c10368730c3d7438aabdad1385815efb4f05f"
+content-hash = "10cffd9ca58ae888dd1a50ab08829f35f0098133c31a29a9d07e9b5eca6236ae"
