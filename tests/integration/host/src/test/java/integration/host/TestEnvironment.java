@@ -187,7 +187,8 @@ public class TestEnvironment implements AutoCloseable {
       if (result instanceof Exception) {
         throw new RuntimeException((Exception) result);
       }
-      if (result instanceof TestEnvironment resultTestEnvironment) {
+      if (result instanceof TestEnvironment) {
+        TestEnvironment resultTestEnvironment = (TestEnvironment) result;
         LOGGER.finer(() -> String.format("Use pre-created DB cluster: %s.cluster-%s",
             resultTestEnvironment.auroraClusterName, resultTestEnvironment.auroraClusterDomain));
 
