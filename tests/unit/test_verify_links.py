@@ -59,7 +59,6 @@ def test_verify_relative_links(docs_dict, docs_list):
             list = findall(link_re, f.read())
             for link in list:
                 full_link = docs_dict[doc] + link
-
                 assert "jdbc" not in full_link
                 assert path.exists(full_link)
 

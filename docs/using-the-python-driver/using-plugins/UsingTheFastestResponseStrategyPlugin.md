@@ -26,10 +26,10 @@ conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 ```
 
 ## Configuration Parameters
-| Parameter                          |   Value   | Required | Description                                                                                             | Default Value     |
-|------------------------------------|:---------:|:--------:|:--------------------------------------------------------------------------------------------------------|-------------------|
-| `reader_response_strategy`         | `String`  |   Yes    | Setting to `fastest_reponse` sets the reader response strategy to choose the fastest host using the Fastest Response Strategy Plugin | `random` |
-| `response_measurement_interval_ms` | `Integer` |    No    | Interval in milliseconds between measuring response time to a database host                             | `30_000`          |
+| Parameter                          |   Value   | Required | Description                                                                                                                          | Default Value |
+|------------------------------------|:---------:|:--------:|:-------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `reader_response_strategy`         | `String`  |   Yes    | Setting to `fastest_reponse` sets the reader response strategy to choose the fastest host using the Fastest Response Strategy Plugin | `random`      |
+| `response_measurement_interval_ms` | `Integer` |    No    | Interval in milliseconds between measuring response time to a database host                                                          | `30_000`      |
 
 
 ## Host Response Time Monitor
@@ -60,4 +60,4 @@ conn = AwsWrapperConnection.connect(
 
 ### Sample Code
 [Postgres fastest response strategy sample code](../../examples/PGFastestResponseStrategy.py)
-[MySQL fastest response strategy sample code](../../examples/MySQLFastestResponseStrategy.py)  
+[MySQL fastest response strategy sample code](../../examples/MySQLFastestResponseStrategy.py)

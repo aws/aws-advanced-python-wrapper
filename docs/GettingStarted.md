@@ -9,10 +9,13 @@ Before using the AWS Advanced Python Driver, you must install:
 - Your choice of underlying Python driver. 
   - To use the wrapper with Aurora with PostgreSQL compatibility, install [Psycopg](https://github.com/psycopg/psycopg).
   - To use the wrapper with Aurora with MySQL compatibility, install [MySQL Connector/Python](https://github.com/mysql/mysql-connector-python).
+> [!NOTE]\
+> The driver has been verified on Psycopg 3.1.12+ and MySQL Connector/Python 8.1.0+. Compatibility with prior versions have not been tested.
 
 ## Obtaining the AWS Advanced Python Driver
 
 You can install the AWS Advanced Python Driver and the underlying Python drivers via [pip](https://pip.pypa.io/en/stable/).
+The order of installation does not matter.
 
 To use the AWS Advanced Python Driver with Psycopg for Aurora PostgreSQL, run:
 
@@ -39,10 +42,23 @@ awsconn = AwsWrapperConnection.connect(
     Connection.connect,
     "host=database.cluster-xyz.us-east-1.rds.amazonaws.com dbname=db user=john password=pwd",
     plugins="failover",
-    wrapper_dialect="aurora-pg",
     autocommit=True
 )
 ```
+
+Similarly, to start using the driver with MySQL Connector/Python, you need to pass the connect function to the `AwsWrapperConnection#connect` method as shown in the following example:
+```python
+awsconn = AwsWrapperConnection.connect(
+        mysql.connector.Connect,
+        host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
+        database="mysql",
+        user="admin",
+        password="pwd",
+        plugins="failover",
+        autocommit=True
+)
+```
+
 The `AwsWrapperConnection#connect` method accepts the connection configuration through both the connection string and the keyword arguments.
 You can either pass the connection configuration entirely through the connection string, entirely though the keyword arguments, or through both the connection string and the keywords arguments as shown below.
 

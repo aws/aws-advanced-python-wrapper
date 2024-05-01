@@ -18,7 +18,6 @@ By default, the driver dialect is determined based on the Connection function pa
 >
 > The `wrapper_driver_dialect` parameter is not required. When it is not provided by the user, the AWS Advanced Python Driver will determine which of the existing target driver dialects to use based on the Connect function passed to the driver. If target driver specific implementation is not found, the AWS Advanced Python Driver will use a generic target driver dialect.
 
-
 ### List of Available Driver Codes
 
 Driver Dialect codes specify which driver dialect class to use. 
