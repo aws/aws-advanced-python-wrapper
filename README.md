@@ -139,7 +139,7 @@ The following table lists the connection properties used with the AWS Advanced P
 ### Using the AWS Advanced Python Driver
 
 Technical documentation regarding the functionality of the AWS Advanced Python Driver will be maintained in this GitHub repository. Since the AWS Advanced Python Driver requires an underlying Python driver, please refer to the individual driver's documentation for driver-specific information.
-To find all the documentation and concrete examples on how to use the AWS Advanced Python Driver, please refer to the [AWS Advanced Python Driver Documentation](./docs/README) page.
+To find all the documentation and concrete examples on how to use the AWS Advanced Python Driver, please refer to the [AWS Advanced Python Driver Documentation](./docs/README.md) page.
 
 ### Known Limitations
 
