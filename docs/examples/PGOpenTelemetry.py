@@ -51,8 +51,8 @@ if __name__ == "__main__":
 
     # Enable meter recordings.
     reader = PeriodicExportingMetricReader(OTLPMetricExporter(), export_interval_millis=1000)
-    meterProvider = MeterProvider(resource=resource, metric_readers=[reader])
-    metrics.set_meter_provider(meterProvider)
+    meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
+    metrics.set_meter_provider(meter_provider)
 
     tracer = trace.get_tracer(__name__)
     with tracer.start_as_current_span("python_otlp_telemetry_app") as segment:
