@@ -80,7 +80,6 @@ To record meters, see this example:
  metrics.set_meter_provider(meterProvider)
 ```
 
-
 We also provide more complete sample application using telemetry in the examples folder of this repository.
 
 - [PGOpenTelemetry](.././examples/PGOpenTelemetry.py)
@@ -88,7 +87,7 @@ We also provide more complete sample application using telemetry in the examples
 
 ### Telemetry Parameters
 
-In addition to the parameter that enables Telemetry, you can pass following parameters to the AWS Advanced Python Driver through the connection URL to configure how telemetry data will be forwarded.
+In addition to the parameter that enables Telemetry, there are other parameters configuring how telemetry data will be forwarded.
 
 | Parameter                    |  Value  | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Default Value |
 |------------------------------|:-------:|:--------:|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
