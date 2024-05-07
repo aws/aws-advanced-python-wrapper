@@ -17,7 +17,7 @@ import pytest
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.hostselector import RoundRobinHostSelector
+from aws_advanced_python_wrapper.host_selector import RoundRobinHostSelector
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 

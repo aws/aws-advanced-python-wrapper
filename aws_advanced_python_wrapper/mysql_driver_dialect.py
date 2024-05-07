@@ -63,7 +63,9 @@ class MySQLDriverDialect(DriverDialect):
     }
 
     def is_dialect(self, connect_func: Callable) -> bool:
-        return MySQLDriverDialect.TARGET_DRIVER_CODE in str(signature(connect_func))
+        if MySQLDriverDialect.TARGET_DRIVER_CODE not in str(signature(connect_func)):
+            return MySQLDriverDialect.TARGET_DRIVER_CODE.lower() in (connect_func.__module__ + connect_func.__qualname__).lower()
+        return True
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
