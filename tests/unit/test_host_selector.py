@@ -16,8 +16,8 @@
 import pytest
 
 from aws_advanced_python_wrapper import pep249
-from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.host_selector import RandomHostSelector
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 
 
 def test_random_host_selection_strategy():
