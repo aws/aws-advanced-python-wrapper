@@ -10,12 +10,12 @@ jobs:
 
     steps:
       - name: 'Clone repository'
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 50
 
       - name: 'Set up JDK 8'
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'corretto'
           java-version: 8
@@ -23,13 +23,13 @@ jobs:
       - name: Install poetry
         uses: abatilo/actions-poetry@v2
         with:
-          poetry-version: '1.4.2'
+          poetry-version: '1.8.2'
 
       - name: Install dependencies
         run: poetry install
 
       - name: 'Configure AWS Credentials'
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -63,7 +63,7 @@ jobs:
 
       - name: 'Archive results'
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pytest-performance-report
           path: ./tests/integration/container/reports

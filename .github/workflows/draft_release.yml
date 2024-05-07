@@ -32,7 +32,7 @@ jobs:
       - name: 'Install poetry'
         uses: abatilo/actions-poetry@v2
         with:
-          poetry-version: '1.4.2'
+          poetry-version: '1.8.2'
       - name: 'Install dependencies'
         run: poetry install
       - name: 'Run mypy - static type checking'
