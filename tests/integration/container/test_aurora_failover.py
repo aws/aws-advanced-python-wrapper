@@ -19,7 +19,8 @@ from typing import TYPE_CHECKING, List
 
 import pytest
 
-from aws_advanced_python_wrapper.errors import (FailoverSuccessError, TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.errors import (
+    FailoverSuccessError, TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from .utils.conditions import (disable_on_features, enable_on_deployments,
