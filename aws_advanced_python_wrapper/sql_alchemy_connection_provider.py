@@ -25,9 +25,9 @@ from sqlalchemy import QueuePool, pool
 
 from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.hostselector import (HostSelector,
-                                                      RandomHostSelector,
-                                                      RoundRobinHostSelector)
+from aws_advanced_python_wrapper.host_selector import (HostSelector,
+                                                       RandomHostSelector,
+                                                       RoundRobinHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,

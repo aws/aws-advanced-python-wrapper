@@ -23,7 +23,7 @@ from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, List, Optional,
                     Set, Tuple)
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.hostselector import RandomHostSelector
+from aws_advanced_python_wrapper.host_selector import RandomHostSelector
 from aws_advanced_python_wrapper.plugin import Plugin
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.log import Logger

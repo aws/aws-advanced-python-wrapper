@@ -15,8 +15,8 @@
 import pytest
 
 from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.host_selector import RandomHostSelector
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.hostselector import RandomHostSelector
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 HOST_ROLE = HostRole.READER
