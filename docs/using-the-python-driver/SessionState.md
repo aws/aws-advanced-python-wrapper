@@ -2,9 +2,9 @@
 
 ## What is a session state?
 
-Every connection is associated with a connection session on the server and a group of related session settings like the autoCommit flag or the readonly flag. The following session settings are tracked by the AWS Advanced Python Driver, and together they form a session state:
-- autoCommit (`autocommit`)
-- readOnly (`read_only`)
+Every connection is associated with a connection session on the server and a group of related session settings like the autocommit flag or the read_only flag. The following session settings are tracked by the AWS Advanced Python Driver, and together they form a session state:
+- autocommit
+- read_only
 
 Since the AWS Advanced Python Driver can transparently switch physical connection to a server (for instance, during a cluster failover), it's important to re-apply the current session state to a new connection during such switch.   
 
@@ -20,13 +20,13 @@ Before closing an existing connection, the AWS Advanced Python Driver may try to
 
 Before closing a connection, the AWS Advanced Python Driver sets its session state settings with the pristine values that have been previously stored in the driver. If a pristine value isn't available, it means that there have been no changes to that particular setting made by the user application, and that it's safe to assume that this setting is in its original/unchanged state. 
 
-Session state reset can be disabled by using the `reset_session_state_on_close` configuration parameter.
+Session state reset is enabled by default, and can be disabled by using the `reset_session_state_on_close` configuration parameter.
 
 ## Transfer Session State to a new Connection
 
 When the driver needs to switch to a new connection, it opens a new connection and transfers a session state to it. All current session state values are applied to the new connection. Pristine values for a new connection are also fetched and stored if needed. When a new connection is configured, it replaces the current internal connection.
 
-Session transfer can be disabled by using the `transfer_session_state_on_switch` configuration parameter.
+Session transfer is enabled by default, and can be disabled by using the `transfer_session_state_on_switch` configuration parameter.
 
 ## Session State Custom handlers
 
