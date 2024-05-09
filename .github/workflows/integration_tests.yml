@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [ "3.8", "3.11" ]
-        engine_version: ["lts", "latest"]
+        engine-version: [ "lts", "latest"]
         environment: ["mysql", "pg"]
 
     steps:
@@ -65,11 +65,13 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ env.TEMP_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ env.TEMP_AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ env.TEMP_AWS_SESSION_TOKEN }}
+          AURORA_MYSQL_DB_ENGINE_VERSION: ${{ matrix.engine-version }}
+          AURORA_PG_ENGINE_VERSION: ${{ matrix.engine-version }}
 
       - name: 'Archive results'
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-integration-report
+          name: pytest-integration-report-${{ matrix.python-version }}-${{ matrix.environment }}-${{ matrix.engine-version }}
           path: ./tests/integration/container/reports
           retention-days: 5
