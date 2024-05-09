@@ -5,7 +5,7 @@ Currently, [Psycopg](https://github.com/psycopg/psycopg) 3.1.12+ and [MySQL Conn
 
 
 ### Using the AWS Advanced Python Driver with RDS Multi-AZ database Clusters
-The [AWS RDS Multi-AZ DB Clusters](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/multi-az-db-clusters-concepts.html) are capable of switching over the current writer node to another node in the cluster within approximately 1 second or less, in case of minor engine version upgrade or OS maintenance operations.
+The [AWS RDS Multi-AZ DB Clusters](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/multi-az-db-clusters-concepts.html) are capable of switching over the current writer host to another host in the cluster within approximately 1 second or less, in case of minor engine version upgrade or OS maintenance operations.
 The AWS Advanced Python Driver has been optimized for such fast-failover when working with AWS RDS Multi-AZ DB Clusters.
 
 With the Failover plugin, the downtime during certain DB cluster operations, such as engine minor version upgrades, can be reduced to one second or even less with finely tuned parameters. It supports both MySQL and PostgreSQL clusters.

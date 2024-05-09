@@ -372,9 +372,9 @@ class Monitor:
         self._context_last_used_ns: int = perf_counter_ns()
         self._host_check_timeout_ms: int = Monitor._MIN_HOST_CHECK_TIMEOUT_MS
 
-        node_id = self._host_info.host_id if self._host_info.host_id is not None else self._host_info.host
-        self._node_invalid_counter = self._telemetry_factory.create_counter(
-            f"host_monitoring.host_unhealthy.count.{node_id}")
+        host_id = self._host_info.host_id if self._host_info.host_id is not None else self._host_info.host
+        self._host_invalid_counter = self._telemetry_factory.create_counter(
+            f"host_monitoring.host_unhealthy.count.{host_id}")
 
     @dataclass
     class HostStatus:
@@ -543,10 +543,10 @@ class Monitor:
             start_ns = perf_counter_ns()
             is_available = self._is_host_available(self._monitoring_conn, host_check_timeout_ms / 1000)
             if not is_available:
-                self._node_invalid_counter.inc()
+                self._host_invalid_counter.inc()
             return Monitor.HostStatus(is_available, perf_counter_ns() - start_ns)
         except Exception:
-            self._node_invalid_counter.inc()
+            self._host_invalid_counter.inc()
             return Monitor.HostStatus(False, perf_counter_ns() - start_ns)
         finally:
             context.close_context()
