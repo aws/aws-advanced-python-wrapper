@@ -22,6 +22,8 @@ from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
     FederatedAuthPluginFactory
+from aws_advanced_python_wrapper.states.session_state_service import (
+    SessionStateService, SessionStateServiceImpl)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -141,6 +143,11 @@ class PluginService(ExceptionHandler, Protocol):
 
     @property
     @abstractmethod
+    def session_state_service(self):
+        ...
+
+    @property
+    @abstractmethod
     def is_in_transaction(self) -> bool:
         ...
 
@@ -253,7 +260,6 @@ class PluginService(ExceptionHandler, Protocol):
 
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
-
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
@@ -264,7 +270,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             props: Properties,
             target_func: Callable,
             driver_dialect_manager: DriverDialectManager,
-            driver_dialect: DriverDialect):
+            driver_dialect: DriverDialect,
+            session_state_service: Optional[SessionStateService] = None):
         self._container = container
         self._container.plugin_service = self
         self._props = props
@@ -282,6 +289,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._driver_dialect_manager = driver_dialect_manager
         self._driver_dialect = driver_dialect
         self._database_dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
+        self._session_state_service = session_state_service if session_state_service is not None else SessionStateServiceImpl(self, props)
 
     @property
     def hosts(self) -> Tuple[HostInfo, ...]:
@@ -297,21 +305,53 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def set_current_connection(self, connection: Optional[Connection], host_info: Optional[HostInfo]):
         old_connection = self._current_connection
-        self._current_connection = connection
-        self._current_host_info = host_info
 
-        if old_connection is None:
+        if self._current_connection is None:
+            self._current_connection = connection
+            self._current_host_info = host_info
+            self.session_state_service.reset()
+
             self._container.plugin_manager.notify_connection_changed({ConnectionEvent.INITIAL_CONNECTION})
-        elif old_connection != connection:
-            self.update_in_transaction()
-            old_connection_suggested_action = \
-                self._container.plugin_manager.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
-            if old_connection_suggested_action != OldConnectionSuggestedAction.PRESERVE \
-                    and not self.driver_dialect.is_closed(old_connection):
-                try:
-                    old_connection.close()
-                except Exception:
-                    pass
+            return
+
+        if connection is not None and old_connection is not None and old_connection != connection:
+            # Update an existing connection.
+
+            is_in_transaction = self._is_in_transaction
+            self.session_state_service.begin()
+
+            try:
+                self._current_connection = connection
+                self._current_host_info = host_info
+
+                self.session_state_service.apply_current_session_state(connection)
+                self.update_in_transaction(False)
+
+                if is_in_transaction and WrapperProperties.ROLLBACK_ON_SWITCH.get_bool(self.props):
+                    try:
+                        old_connection.rollback()
+                    except Exception:
+                        # Ignore any exception.
+                        pass
+
+                old_connection_suggested_action = \
+                    self._container.plugin_manager.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
+
+                if old_connection_suggested_action != OldConnectionSuggestedAction.PRESERVE and not self.driver_dialect.is_closed(old_connection):
+
+                    try:
+                        self.session_state_service.apply_pristine_session_state(old_connection)
+                    except Exception:
+                        # Ignore any exception.
+                        pass
+
+                    try:
+                        old_connection.close()
+                    except Exception:
+                        # Ignore any exception.
+                        pass
+            finally:
+                self.session_state_service.complete()
 
     @property
     def current_host_info(self) -> Optional[HostInfo]:
@@ -332,6 +372,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     @host_list_provider.setter
     def host_list_provider(self, value: HostListProvider):
         self._host_list_provider = value
+
+    @property
+    def session_state_service(self) -> SessionStateService:
+        return self._session_state_service
 
     @property
     def is_in_transaction(self) -> bool:

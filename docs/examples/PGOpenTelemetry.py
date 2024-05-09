@@ -17,10 +17,15 @@ from __future__ import annotations
 import logging
 
 import psycopg
-from opentelemetry import trace
+from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import \
     OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import \
+    OTLPMetricExporter
 from opentelemetry.sdk.extension.aws.trace import AwsXRayIdGenerator
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
@@ -30,14 +35,26 @@ SQL_DBLIST = "select datname from pg_database;"
 
 if __name__ == "__main__":
     print("-- running application")
+
+    # Configuring the log level for the opentelemetry package.
     logging.basicConfig(level=logging.DEBUG)
 
-    provider = TracerProvider(id_generator=AwsXRayIdGenerator())
-    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint="http://localhost:4317"))
-    provider.add_span_processor(processor)
-    trace.set_tracer_provider(provider)
-    tracer = trace.get_tracer(__name__)
+    resource = Resource(attributes={
+        SERVICE_NAME: "python_otlp_telemetry_service"
+    })
 
+    # Enable trace recordings.
+    trace_provider = TracerProvider(resource=resource, id_generator=AwsXRayIdGenerator())
+    trace_processor = BatchSpanProcessor(OTLPSpanExporter(endpoint="http://localhost:4317"))
+    trace_provider.add_span_processor(trace_processor)
+    trace.set_tracer_provider(trace_provider)
+
+    # Enable meter recordings.
+    reader = PeriodicExportingMetricReader(OTLPMetricExporter(), export_interval_millis=1000)
+    meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
+    metrics.set_meter_provider(meter_provider)
+
+    tracer = trace.get_tracer(__name__)
     with tracer.start_as_current_span("python_otlp_telemetry_app") as segment:
         with AwsWrapperConnection.connect(
                 psycopg.Connection.connect,

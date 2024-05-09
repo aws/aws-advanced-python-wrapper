@@ -86,8 +86,6 @@ class FailoverPlugin(Plugin):
             self._properties)
         self._failover_reader_connect_timeout_sec = WrapperProperties.FAILOVER_READER_CONNECT_TIMEOUT_SEC.get_float(
             self._properties)
-        self._keep_session_state_on_failover = WrapperProperties.KEEP_SESSION_STATE_ON_FAILOVER.get_bool(
-            self._properties)
         self._telemetry_failover_additional_top_trace_setting = (
             WrapperProperties.TELEMETRY_FAILOVER_ADDITIONAL_TOP_TRACE.get_bool(self._properties))
         self._failover_mode: FailoverMode
@@ -162,12 +160,6 @@ class FailoverPlugin(Plugin):
         if self._is_closed and not self._allowed_on_closed_connection(method_name):
             self._invalid_invocation_on_closed_connection()
 
-        if method_name == "Connection.set_read_only" and args is not None and len(args) > 0:
-            self._saved_read_only_status = bool(args[0])
-
-        if method_name == "Connection.autocommit_setter" and args is not None and len(args) > 0:
-            self._saved_auto_commit_status = bool(args[0])
-
         try:
             if self._requires_update_topology(method_name):
                 self._update_topology(False)
@@ -234,13 +226,6 @@ class FailoverPlugin(Plugin):
                                                                           self._host_list_provider_service, host,
                                                                           properties,
                                                                           connect_func)
-        if self._keep_session_state_on_failover:
-            self._saved_read_only_status = False if self._saved_read_only_status == self._plugin_service.driver_dialect.is_read_only(
-                conn) \
-                else self._saved_read_only_status
-            self._saved_auto_commit_status = False \
-                if self._saved_read_only_status == self._plugin_service.driver_dialect.get_autocommit(conn) \
-                else self._saved_auto_commit_status
 
         if is_initial_connection:
             self._plugin_service.refresh_host_list(conn)
@@ -261,18 +246,15 @@ class FailoverPlugin(Plugin):
         else:
             self._plugin_service.refresh_host_list()
 
-    def _transfer_session_state(self, from_conn: Connection, to_conn: Connection):
-        if from_conn is None or self._plugin_service.driver_dialect.is_closed(from_conn) or to_conn is None:
-            return
-
-        self._plugin_service.driver_dialect.transfer_session_state(from_conn, to_conn)
-
     def _failover(self, failed_host: Optional[HostInfo]):
         """
         Initiates the failover procedure. This process tries to establish a new connection to an instance in the topology.
 
         :param failed_host: The host with network errors.
         """
+        if failed_host is not None:
+            self._plugin_service.set_availability(failed_host.as_aliases(), HostAvailability.UNAVAILABLE)
+
         if self._failover_mode == FailoverMode.STRICT_WRITER:
             self._failover_writer()
         else:
@@ -312,8 +294,6 @@ class FailoverPlugin(Plugin):
             else:
                 if result.exception is not None:
                     raise result.exception
-                if self._keep_session_state_on_failover:
-                    self.restore_session_state(result.connection)
                 if result.connection is not None and result.new_host is not None:
                     self._plugin_service.set_current_connection(result.connection, result.new_host)
 
@@ -342,7 +322,7 @@ class FailoverPlugin(Plugin):
 
     def _failover_writer(self):
         telemetry_factory = self._plugin_service.get_telemetry_factory()
-        context = telemetry_factory.open_telemetry_context("failover to writer node", TelemetryTraceLevel.NESTED)
+        context = telemetry_factory.open_telemetry_context("failover to writer host", TelemetryTraceLevel.NESTED)
         self._failover_writer_triggered_counter.inc()
 
         try:
@@ -356,8 +336,6 @@ class FailoverPlugin(Plugin):
                 raise FailoverFailedError(Messages.get("FailoverPlugin.UnableToConnectToWriter"))
 
             writer_host = self._get_writer(result.topology)
-            if self._keep_session_state_on_failover:
-                self.restore_session_state(result.new_connection)
 
             self._plugin_service.set_current_connection(result.new_connection, writer_host)
 
@@ -380,21 +358,6 @@ class FailoverPlugin(Plugin):
             context.close_context()
             if self._telemetry_failover_additional_top_trace_setting:
                 telemetry_factory.post_copy(context, TelemetryTraceLevel.FORCE_TOP_LEVEL)
-
-    def restore_session_state(self, conn: Optional[Connection]):
-        """
-        Restores partial session state from saved values to a connection.
-
-        :param conn: The connection to transfer state to.
-        """
-        if conn is None:
-            return
-
-        if self._saved_read_only_status is not None:
-            self._plugin_service.driver_dialect.set_read_only(conn, self._saved_read_only_status)
-
-        if self._saved_auto_commit_status is not None:
-            self._plugin_service.driver_dialect.set_autocommit(conn, self._saved_auto_commit_status)
 
     def _invalidate_current_connection(self):
         """
@@ -451,13 +414,6 @@ class FailoverPlugin(Plugin):
         """
         try:
             connection_for_host = self._plugin_service.connect(host, self._properties)
-            current_connection = self._plugin_service.current_connection
-
-            if connection_for_host is not None and current_connection is not None and \
-                    current_connection != connection_for_host:
-                self._transfer_session_state(current_connection, connection_for_host)
-                self._invalidate_current_connection()
-
             self._plugin_service.set_current_connection(connection_for_host, host)
             self._plugin_service.update_in_transaction(False)
 

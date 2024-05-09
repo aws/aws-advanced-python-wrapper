@@ -217,7 +217,7 @@ class HostResponseTimeMonitor:
 
     def run(self):
         context: TelemetryContext = self._telemetry_factory.open_telemetry_context(
-            "node response time thread", TelemetryTraceLevel.TOP_LEVEL)
+            "host response time thread", TelemetryTraceLevel.TOP_LEVEL)
         context.set_attribute("url", self._host_info.url)
         try:
             while not self.is_stopped:
@@ -296,7 +296,7 @@ class HostResponseTimeService:
     _CACHE_EXPIRATION_NS: int = 6 * 10 ^ 11  # 10 minutes
     _CACHE_CLEANUP_NS: int = 6 * 10 ^ 10  # 1 minute
     _lock: Lock = Lock()
-    _monitoring_nodes: ClassVar[SlidingExpirationCacheWithCleanupThread[str, HostResponseTimeMonitor]] = \
+    _monitoring_hosts: ClassVar[SlidingExpirationCacheWithCleanupThread[str, HostResponseTimeMonitor]] = \
         SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_NS,
                                                 should_dispose_func=lambda monitor: True,
                                                 item_disposal_func=lambda monitor: HostResponseTimeService._monitor_close(monitor))
@@ -307,7 +307,7 @@ class HostResponseTimeService:
         self._interval_ms = interval_ms
         self._hosts: Tuple[HostInfo, ...] = ()
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
-        self._host_count_gauge: TelemetryGauge = self._telemetry_factory.create_gauge("frt.nodes.count", lambda: len(self._monitoring_nodes))
+        self._host_count_gauge: TelemetryGauge = self._telemetry_factory.create_gauge("frt.hosts.count", lambda: len(self._monitoring_hosts))
 
     @property
     def hosts(self) -> Tuple[HostInfo, ...]:
@@ -325,7 +325,7 @@ class HostResponseTimeService:
             pass
 
     def get_response_time(self, host_info: HostInfo) -> int:
-        monitor: Optional[HostResponseTimeMonitor] = HostResponseTimeService._monitoring_nodes.get(host_info.url)
+        monitor: Optional[HostResponseTimeMonitor] = HostResponseTimeService._monitoring_hosts.get(host_info.url)
         if monitor is None:
             return MAX_VALUE
         return monitor.response_time
@@ -337,7 +337,7 @@ class HostResponseTimeService:
         for host in self.hosts:
             if host.url not in old_hosts_dict:
                 with self._lock:
-                    self._monitoring_nodes.compute_if_absent(host.url,
+                    self._monitoring_hosts.compute_if_absent(host.url,
                                                              lambda _: HostResponseTimeMonitor(
                                                                  self._plugin_service,
                                                                  host,

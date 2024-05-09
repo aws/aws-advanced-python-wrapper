@@ -90,6 +90,16 @@ class WrapperProperties:
         "Number of seconds to wait before sending additional keepalive probes after the initial probe has been sent.")
     TCP_KEEPALIVE_PROBES = WrapperProperty(
         "tcp_keepalive_probes", "Number of keepalive probes to send before concluding that the connection is invalid.")
+    TRANSFER_SESSION_STATE_ON_SWITCH = WrapperProperty(
+        "transfer_session_state_on_switch", "Enables session state transfer to a new connection", True)
+    RESET_SESSION_STATE_ON_CLOSE = WrapperProperty(
+        "reset_session_state_on_close",
+        "Enables to reset connection session state before closing it.",
+        True)
+    ROLLBACK_ON_SWITCH = WrapperProperty(
+        "rollback_on_switch",
+        "Enables to rollback a current transaction being in progress when switching to a new connection.",
+        True)
 
     # RdsHostListProvider
     TOPOLOGY_REFRESH_MS = WrapperProperty(
@@ -184,10 +194,6 @@ class WrapperProperties:
         "failover_reader_connect_timeout_sec",
         "Reader connection attempt timeout in seconds during a reader failover process.",
         30)
-    KEEP_SESSION_STATE_ON_FAILOVER = WrapperProperty(
-        "keep_session_state_on_failover",
-        "Allow connections to retain a partial previous session state after failover occurs.",
-        False)
 
     # Host Availability Strategy
     DEFAULT_HOST_AVAILABILITY_STRATEGY = WrapperProperty(
@@ -430,7 +436,7 @@ class PropertiesUtils:
             equals_i = to_parse.find("=")
             key_end = sep_i if -1 < sep_i < equals_i else equals_i
             if key_end == -1:
-                raise AwsWrapperError("PropertiesUtils.ErrorParsingConnectionString", conn_info)
+                raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.ErrorParsingConnectionString", conn_info))
 
             key = to_parse[0:key_end]
             to_parse = to_parse[equals_i + 1:].lstrip()

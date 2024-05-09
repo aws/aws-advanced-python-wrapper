@@ -228,7 +228,6 @@ class ReadWriteSplittingPlugin(Plugin):
         if current_conn == new_conn:
             return
 
-        self._transfer_session_state(new_conn)
         self._plugin_service.set_current_connection(new_conn, new_conn_host)
 
         logger.debug("ReadWriteSplittingPlugin.SettingCurrentConnection", new_conn_host.url)
@@ -317,20 +316,6 @@ class ReadWriteSplittingPlugin(Plugin):
         self._switch_current_connection_to(conn, reader_host)
 
         logger.debug("ReadWriteSplittingPlugin.SwitchedFromWriterToReader", reader_host.url)
-
-    def _transfer_session_state(self, conn: Connection):
-        """
-        Transfers partial session state from one connection to another, excluding the read-only status.
-        This method is only called when the connection's `read_only` property is being set.
-        The read-only status will be updated when the call to set `read_only` continues down the plugin chain.
-
-        :param conn: the connection to transfer states to.
-        """
-        from_conn: Optional[Connection] = self._plugin_service.current_connection
-        if from_conn is None or conn is None:
-            return
-
-        self._plugin_service.driver_dialect.transfer_session_state(from_conn, conn)
 
     def _close_connection_if_idle(self, internal_conn: Optional[Connection]):
         current_conn = self._plugin_service.current_connection

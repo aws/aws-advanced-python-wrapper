@@ -47,8 +47,8 @@ class RdsTestUtility:
 
     _client: Any
 
-    def __init__(self, region: str, endpoint: str):
-        config = Config(region_name=region, endpoint_url=endpoint)
+    def __init__(self, region: str, endpoint: Optional[str] = None):
+        config = Config(region_name=region, endpoint_url=endpoint) if endpoint else Config(region_name=region)
         self._client = boto3.client('rds', config=config)
 
     def get_db_instance(self, instance_id: str) -> Optional[Dict[str, Any]]:

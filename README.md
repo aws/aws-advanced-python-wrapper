@@ -106,7 +106,6 @@ The following table lists the connection properties used with the AWS Advanced P
 | `failover_reader_connect_timeout_sec`        |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
 | `failover_timeout_sec`                       |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
 | `failover_writer_reconnect_interval_sec`     |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
-| `keep_session_state_on_failover`             |                   [Failover Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)                   |
 | `failure_detection_count`                    |            [Host Monitoring Plugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)             |
 | `failure_detection_enabled`                  |            [Host Monitoring Plugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)             |
 | `failure_detection_interval_ms`              |            [Host Monitoring Plugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)             |
