@@ -436,7 +436,7 @@ class PropertiesUtils:
             equals_i = to_parse.find("=")
             key_end = sep_i if -1 < sep_i < equals_i else equals_i
             if key_end == -1:
-                raise AwsWrapperError("PropertiesUtils.ErrorParsingConnectionString", conn_info)
+                raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.ErrorParsingConnectionString", conn_info))
 
             key = to_parse[0:key_end]
             to_parse = to_parse[equals_i + 1:].lstrip()
