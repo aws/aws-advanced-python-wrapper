@@ -110,7 +110,7 @@ def verify_concurrency(mock_monitor, mock_executor, mock_future, counter, concur
     assert concurrent_counter.get() > 0
     concurrent_counter.set(0)
 
-    MonitoringThreadContainer.release_instance()
+    MonitoringThreadContainer.clean_up()
 
 
 def test_start_monitoring__connections_to_different_hosts(

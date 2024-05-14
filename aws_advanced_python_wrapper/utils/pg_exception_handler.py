@@ -35,9 +35,13 @@ class PgExceptionHandler(ExceptionHandler):
         if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
             return True
         if sql_state is None:
-            error_sql_state = getattr(error, "sqlstate")
-            if error_sql_state is not None:
-                sql_state = error_sql_state
+            try:
+                error_sql_state = getattr(error, "sqlstate")
+                if error_sql_state is not None:
+                    sql_state = error_sql_state
+            except AttributeError:
+                # getattr may throw an AttributeError if the error does not have a `sqlstate` attribute
+                pass
 
         if sql_state is not None and sql_state in self._NETWORK_ERRORS:
             return True
