@@ -80,7 +80,7 @@ def setup_teardown(mocker, mock_thread_container, mock_plugin_service, mock_moni
     yield
 
     while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.release_instance()
+        MonitoringThreadContainer.clean_up()
 
 
 def test_start_monitoring(

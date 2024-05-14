@@ -18,6 +18,9 @@ from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 import psycopg
 
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    MonitoringThreadContainer
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
@@ -61,27 +64,37 @@ def execute_queries_with_failover_handling(conn: Connection, sql: str, params: O
 
 
 if __name__ == "__main__":
+    props = {
+        "monitoring-connect_timeout": 10,
+        "monitoring-socket_timeout": 10
+    }
+
     with AwsWrapperConnection.connect(
             psycopg.Connection.connect,
             host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
             dbname="postgres",
             user="john",
             password="pwd",
-            plugins="failover",
-            wrapper_dialect="aurora-pg",
+            plugins="failover,host_monitoring",
+            connect_timeout=30,
+            socket_timeout=30,
             autocommit=True
     ) as awsconn:
-        configure_initial_session_states(awsconn)
-        execute_queries_with_failover_handling(
-            awsconn, "CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
-        execute_queries_with_failover_handling(
-            awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
-        execute_queries_with_failover_handling(
-            awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
+        try:
+            configure_initial_session_states(awsconn)
+            execute_queries_with_failover_handling(
+                awsconn, "CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
+            execute_queries_with_failover_handling(
+                awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
+            execute_queries_with_failover_handling(
+                awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
 
-        cursor = execute_queries_with_failover_handling(awsconn, "SELECT * FROM bank_test")
-        res = cursor.fetchall()
-        for record in res:
-            print(record)
+            cursor = execute_queries_with_failover_handling(awsconn, "SELECT * FROM bank_test")
+            res = cursor.fetchall()
+            for record in res:
+                print(record)
 
-        execute_queries_with_failover_handling(awsconn, "DROP TABLE bank_test")
+            execute_queries_with_failover_handling(awsconn, "DROP TABLE bank_test")
+        finally:
+            # Clean up any remaining resources created by the Host Monitoring Plugin.
+            MonitoringThreadContainer.clean_up()

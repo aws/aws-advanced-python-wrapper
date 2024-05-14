@@ -12,15 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import os
-from pathlib import Path
-
-import toml
-
-PROJECT_DIR = Path(__file__).parent.parent
-PYPROJECT = toml.load(os.path.join(PROJECT_DIR, "pyproject.toml"))
-
 
 class DriverInfo:
-    DRIVER_NAME = PYPROJECT["tool"]["poetry"]["description"]
-    DRIVER_VERSION = PYPROJECT["tool"]["poetry"]["version"]
+    DRIVER_NAME = "aws_advanced_python_wrapper"
+    DRIVER_VERSION = "1.0.0-rc"

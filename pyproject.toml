@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aws_advanced_python_wrapper"
-version = "1.0.0-rc"
+version = "1.0.0rc2"
 description = "Amazon Web Services (AWS) Advanced Python Wrapper"
 authors = ["Amazon Web Services"]
 readme = "README.md"
@@ -31,6 +31,7 @@ aws-xray-sdk = "^2.13.0"
 types_aws_xray_sdk = "^2.13.0"
 opentelemetry-api = "^1.22.0"
 opentelemetry-sdk = "^1.22.0"
+requests = "^2.31.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.9.0"

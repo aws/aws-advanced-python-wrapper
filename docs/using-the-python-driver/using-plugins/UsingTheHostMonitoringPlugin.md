@@ -16,6 +16,15 @@ One use case is to pair EFM with the [Failover Connection Plugin](./UsingTheFail
 
 The Host Monitoring Connection Plugin will be loaded by default if the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) parameter is not specified. The Host Monitoring Connection Plugin can also be explicitly loaded by adding the plugin code `host_monitoring` to the [`plugins`](../UsingThePythonDriver.md#aws-advanced-python-driver-parameters) parameter. Enhanced Failure Monitoring is enabled by default when the Host Monitoring Connection Plugin is loaded, but it can be disabled by setting the `failure_detection_enabled` parameter to `False`.
 
+This plugin only works with drivers that support aborting connections from a separate thread. At this moment, this plugin is incompatible with the MySQL Connector/Python driver.
+
+> [IMPORTANT]\
+> The Host Monitoring Plugin creates monitoring threads in the background to monitor all connections established to each cluster instance. The monitoring threads can be cleaned up in two ways:
+> 1. If there are no connections to the cluster instance the thread is monitoring for over a period of time, the Host Monitoring Plugin will automatically terminate the thread. This period of time is adjustable via the `monitor_disposal_time_ms` parameter.
+> 2. Client applications can manually call `MonitoringThreadContainer.clean_up()` to clean up any dangling resources.
+> It is best practice to call `MonitoringThreadContainer.clean_up()` at the end of the application to ensure a graceful exit; otherwise, the application may wait until the `monitor_disposal_time_ms` has been passed before terminating. This is because the Python driver waits for all daemon threads to complete before exiting.
+> See [PGFailover](../../examples/PGFailover.py) for an example.
+
 ### Enhanced Failure Monitoring Parameters
 
 <div style="text-align:center"><img src="../../images/monitor_process.png" /></div>
@@ -44,6 +53,11 @@ The Host Monitoring Connection Plugin may create new monitoring connections to c
 import psycopg
 from aws_advanced_python_wrapper import AwsWrapperConnection
 
+props = {
+    "monitoring-connect_timeout": 10,
+    "monitoring-socket_timeout": 10
+}
+    
 conn = AwsWrapperConnection.connect(
     psycopg.Connection.connect,
     host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
@@ -54,7 +68,7 @@ conn = AwsWrapperConnection.connect(
     # Configure the timeout values for all non-monitoring connections.
     connect_timeout=30, socket_timeout=30,
     # Configure different timeout values for the monitoring connections.
-    monitoring-connect_timeout=10, monitoring-socket_timeout=10)
+    **props)
 ```
 
 > [!IMPORTANT]\

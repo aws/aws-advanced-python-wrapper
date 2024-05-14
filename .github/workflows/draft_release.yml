@@ -64,4 +64,5 @@ jobs:
           draft: true
           name: "AWS Advanced Python Wrapper - v${{ env.RELEASE_VERSION }}"
           bodyFile: RELEASE_DETAILS.md
+          artifacts: ./dist/*
           token: ${{ secrets.GITHUB_TOKEN }}

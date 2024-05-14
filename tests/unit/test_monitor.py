@@ -83,7 +83,7 @@ def monitor(mock_plugin_service, host_info, props):
 def release_container():
     yield
     while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.release_instance()
+        MonitoringThreadContainer.clean_up()
 
 
 @pytest.fixture
@@ -230,7 +230,7 @@ def test_run__no_contexts(mocker, monitor):
 
     assert container._monitor_map.get(host_alias) is None
     assert container._tasks_map.get(monitor) is None
-    MonitoringThreadContainer.release_instance()
+    MonitoringThreadContainer.clean_up()
 
 
 def test_check_connection_status__valid_then_invalid(mocker, monitor):

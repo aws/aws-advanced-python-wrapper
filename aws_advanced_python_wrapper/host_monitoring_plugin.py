@@ -638,9 +638,15 @@ class MonitoringThreadContainer:
             self._monitor_map.remove_matching_values([monitor])
             self._tasks_map.compute_if_present(monitor, MonitoringThreadContainer._cancel)
 
-    # This method is only used for cleanup during testing
     @staticmethod
-    def release_instance():
+    def clean_up():
+        """Clean up any dangling monitoring threads created by the host monitoring plugin.
+        This method should be called at the end of the application.
+        The Host Monitoring Plugin creates monitoring threads in the background to monitor all connections established to each of cluster instances.
+        The threads will terminate if there are no connections to the cluster instance the thread is monitoring for over a period of time,
+        specified by the `monitor_disposal_time_ms`. Client applications can also manually call this method to clean up any dangling resources.
+        This method should be called right before application termination.
+        """
         if MonitoringThreadContainer._instance is None:
             return
 
@@ -649,7 +655,6 @@ class MonitoringThreadContainer:
                 MonitoringThreadContainer._instance._release_resources()
                 MonitoringThreadContainer._instance = None
 
-    # This method is only used for cleanup during testing
     def _release_resources(self):
         with self._monitor_lock:
             self._monitor_map.clear()
@@ -662,7 +667,9 @@ class MonitoringThreadContainer:
 
             self._tasks_map.clear()
 
+            # Reset the executor.
             self._executor.shutdown(wait=False)
+            MonitoringThreadContainer._executor = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
 
 
 class MonitorService:
