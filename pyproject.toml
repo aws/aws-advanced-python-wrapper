@@ -31,7 +31,7 @@ aws-xray-sdk = "^2.13.1"
 types_aws_xray_sdk = "^2.13.0"
 opentelemetry-api = "^1.22.0"
 opentelemetry-sdk = "^1.22.0"
-requests = "^2.31.0"
+requests = "^2.32.2"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.9.0"
