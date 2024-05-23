@@ -1,7 +1,7 @@
 # Amazon Web Services (AWS) Advanced Python Driver
 
-[![Build Status](https://github.com/awslabs/aws-advanced-python-wrapper/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/awslabs/aws-advanced-python-wrapper/actions/workflows/main.yml)
-[![Integration Tests](https://github.com/awslabs/aws-advanced-python-wrapper/actions/workflows/integration_tests.yml/badge.svg?branch=main)](https://github.com/awslabs/aws-advanced-python-wrapper/actions/workflows/integration_tests.yml)
+[![Python Check and Unit Test](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/main.yml)
+[![Integration Tests](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/integration_tests.yml/badge.svg)](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/integration_tests.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ## About the Driver
