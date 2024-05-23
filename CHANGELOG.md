@@ -1,4 +1,4 @@
-## [1.0.0] - 2024-05-16
+## [1.0.0] - 2024-05-23
 The Amazon Web Services (AWS) Advanced Python Wrapper allows an application to take advantage of the features of clustered Aurora databases.
 
 ### :magic_wand: Added
