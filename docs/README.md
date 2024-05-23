@@ -19,7 +19,6 @@
       - [IAM Authentication Plugin](./using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)
       - [AWS Secrets Manager Plugin](./using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)
       - [Federated Authentication Plugin](./using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)
-      - [Aurora Connection Tracker Plugin](./using-the-python-driver/using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)
       - [Read Write Splitting Plugin](./using-the-python-driver/using-plugins/UsingTheReadWriteSplittingPlugin.md)
         - [Reader Selection Strategies](./using-the-python-driver/ReaderSelectionStrategies.md)
       - [Fastest Response Strategy Plugin](./using-the-python-driver/using-plugins/UsingTheFastestResponseStrategyPlugin.md)
