@@ -40,7 +40,7 @@ def get_pool_key(host_info: HostInfo, props: Dict[str, Any]) -> str:
     # Include the URL, user, and database in the connection pool key so that a new
     # connection pool will be opened for each different instance-user-database combination.
     url = host_info.url
-    user = props["username"]
+    user = props["user"]
     db = props["dbname"]
     return f"{url}{user}{db}"
 
