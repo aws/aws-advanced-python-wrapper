@@ -158,8 +158,15 @@ In the event of a network failure where the host can no longer be reached, the `
 
 The official MySQL Connector/Python [offers a Python implementation and a C implementation](https://dev.mysql.com/doc/connector-python/en/connector-python-example-connecting.html#:~:text=Using%20the%20Connector/Python%20Python%20or%20C%20Extension) of the driver that can be toggled using the `use_pure` connection argument.
 The [IAM Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md) is incompatible with the Python implementation of the driver due to its 255-character password limit.
-The IAM Authentication Plugin generates a temporary AWS IAM token to authenticate users. Passing this token to the Python implementation of the driver will result in the following error:
-`struct.error: ubyte format requires 0 <= number <= 255`. To avoid this error, we recommend you set `use_pure` to `False` when using the IAM Authentication Plugin.
+The IAM Authentication Plugin generates a temporary AWS IAM token to authenticate users. Passing this token to the Python implementation of the driver will result in error messages similar to the following:
+```
+Error occurred while opening a connection: int1store requires 0 <= i <= 255
+```
+or 
+```
+struct.error: ubyte format requires 0 <= number <= 255
+```
+To avoid this error, we recommend you set `use_pure` to `False` when using the IAM Authentication Plugin.
 However, as noted in the [MySQL Connector/Python C Extension](#mysql-connectorpython-c-extension) section, doing so may cause the application to indefinitely hang if there is a network failure.
 Unfortunately, due to conflicting limitations, you will need to decide if using the IAM plugin is worth this risk for your application.
 
