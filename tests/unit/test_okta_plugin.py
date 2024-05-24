@@ -20,9 +20,9 @@ from unittest.mock import patch
 
 import pytest
 
-from aws_advanced_python_wrapper.federated_plugin import FederatedAuthPlugin
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import TokenInfo
+from aws_advanced_python_wrapper.okta_plugin import OktaAuthPlugin
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -92,16 +92,15 @@ def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection,
                                                                           "SessionToken": "test-session-token"}
 
 
-@patch("aws_advanced_python_wrapper.federated_plugin.FederatedAuthPlugin._token_cache", _token_cache)
+@patch("aws_advanced_python_wrapper.okta_plugin.OktaAuthPlugin._token_cache", _token_cache)
 def test_pg_connect_valid_token_in_cache(mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
     properties: Properties = Properties()
-    WrapperProperties.PLUGINS.set(properties, "federated_auth")
+    WrapperProperties.PLUGINS.set(properties, "okta")
     WrapperProperties.DB_USER.set(properties, _DB_USER)
     initial_token = TokenInfo(_TEST_TOKEN, datetime.now() + timedelta(minutes=5))
     _token_cache[_PG_CACHE_KEY] = initial_token
 
-    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service,
-                                                             mock_session)
+    target_plugin: OktaAuthPlugin = OktaAuthPlugin(mock_plugin_service, mock_session)
     key = "us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:" + str(_DEFAULT_PG_PORT) + ":postgesqlUser"
     _token_cache[key] = initial_token
 
@@ -121,15 +120,14 @@ def test_pg_connect_valid_token_in_cache(mocker, mock_plugin_service, mock_sessi
     assert actual_token.is_expired() is False
 
 
-@patch("aws_advanced_python_wrapper.federated_plugin.FederatedAuthPlugin._token_cache", _token_cache)
+@patch("aws_advanced_python_wrapper.okta_plugin.OktaAuthPlugin._token_cache", _token_cache)
 def test_expired_cached_token(mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect, mock_credentials_provider_factory):
-
-    test_props: Properties = Properties({"plugins": "federated_auth", "user": "postgresqlUser", "idp_username": "user", "idp_password": "password"})
+    test_props: Properties = Properties({"plugins": "okta", "user": "postgresqlUser", "idp_username": "user", "idp_password": "password"})
     WrapperProperties.DB_USER.set(test_props, _DB_USER)
     initial_token = TokenInfo(_TEST_TOKEN, datetime.now() - timedelta(minutes=5))
     _token_cache[_PG_CACHE_KEY] = initial_token
 
-    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory, mock_session)
+    target_plugin: OktaAuthPlugin = OktaAuthPlugin(mock_plugin_service, mock_credentials_provider_factory, mock_session)
 
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
@@ -143,18 +141,17 @@ def test_expired_cached_token(mocker, mock_plugin_service, mock_session, mock_fu
         DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
         Port=5432,
         DBUsername="postgresqlUser"
-        )
+    )
     assert WrapperProperties.USER.get(test_props) == _DB_USER
     assert WrapperProperties.PASSWORD.get(test_props) == _TEST_TOKEN
 
 
-@patch("aws_advanced_python_wrapper.federated_plugin.FederatedAuthPlugin._token_cache", _token_cache)
+@patch("aws_advanced_python_wrapper.okta_plugin.OktaAuthPlugin._token_cache", _token_cache)
 def test_no_cached_token(mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect, mock_credentials_provider_factory):
-
-    test_props: Properties = Properties({"plugins": "federated_auth", "user": "postgresqlUser", "idp_username": "user", "idp_password": "password"})
+    test_props: Properties = Properties({"plugins": "okta", "user": "postgresqlUser", "idp_username": "user", "idp_password": "password"})
     WrapperProperties.DB_USER.set(test_props, _DB_USER)
 
-    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory, mock_session)
+    target_plugin: OktaAuthPlugin = OktaAuthPlugin(mock_plugin_service, mock_credentials_provider_factory, mock_session)
 
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
@@ -168,12 +165,12 @@ def test_no_cached_token(mocker, mock_plugin_service, mock_session, mock_func, m
         DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
         Port=5432,
         DBUsername="postgresqlUser"
-        )
+    )
     assert WrapperProperties.USER.get(test_props) == _DB_USER
     assert WrapperProperties.PASSWORD.get(test_props) == _TEST_TOKEN
 
 
-@patch("aws_advanced_python_wrapper.federated_plugin.FederatedAuthPlugin._token_cache", _token_cache)
+@patch("aws_advanced_python_wrapper.okta_plugin.OktaAuthPlugin._token_cache", _token_cache)
 def test_connect_with_specified_iam_host_port_region(mocker,
                                                      mock_plugin_service,
                                                      mock_session,
@@ -182,7 +179,7 @@ def test_connect_with_specified_iam_host_port_region(mocker,
                                                      mock_dialect,
                                                      mock_credentials_provider_factory):
     properties: Properties = Properties()
-    WrapperProperties.PLUGINS.set(properties, "federated_auth")
+    WrapperProperties.PLUGINS.set(properties, "okta")
     WrapperProperties.DB_USER.set(properties, "specifiedUser")
 
     expected_host = "pg.testdb.us-west-2.rds.amazonaws.com"
@@ -198,7 +195,7 @@ def test_connect_with_specified_iam_host_port_region(mocker,
 
     mock_client.generate_db_auth_token.return_value = f"{_TEST_TOKEN}:{expected_region}"
 
-    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory, mock_session)
+    target_plugin: OktaAuthPlugin = OktaAuthPlugin(mock_plugin_service, mock_credentials_provider_factory, mock_session)
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
         driver_dialect=mock_dialect,

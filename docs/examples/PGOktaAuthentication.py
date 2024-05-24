@@ -12,19 +12,18 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import mysql.connector
+import psycopg
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 
 if __name__ == "__main__":
     with AwsWrapperConnection.connect(
-            mysql.connector.Connect,
+            psycopg.Connection.connect,
             host="database.cluster-xyz.us-east-2.rds.amazonaws.com",
-            database="mysql",
-            plugins="federated_auth",
-            idp_name="adfs",
-            app_id="abcde1fgh3kLZTBz1S5d7",
+            dbname="postgres",
+            plugins="okta",
             idp_endpoint="ec2amaz-ab3cdef.example.com",
+            app_id="abcde1fgh3kLZTBz1S5d7",
             iam_role_arn="arn:aws:iam::123456789012:role/adfs_example_iam_role",
             iam_idp_arn="arn:aws:iam::123456789012:saml-provider/adfs_example",
             iam_region="us-east-2",
@@ -33,7 +32,7 @@ if __name__ == "__main__":
             db_user="john",
             autocommit=True
     ) as awsconn, awsconn.cursor() as awscursor:
-        awscursor.execute("SELECT 1")
+        awscursor.execute("SELECT * FROM aurora_db_instance_identifier()")
 
         res = awscursor.fetchone()
         print(res)

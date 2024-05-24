@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from aws_advanced_python_wrapper.utils.iamutils import IamAuthUtils, TokenInfo
+from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
 
 if TYPE_CHECKING:
     from boto3 import Session
@@ -28,8 +28,6 @@ if TYPE_CHECKING:
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Optional, Set
 
-import boto3
-
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -37,8 +35,6 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
-    TelemetryTraceLevel
 
 logger = Logger(__name__)
 
@@ -75,17 +71,18 @@ class IamAuthPlugin(Plugin):
         return self._connect(host_info, props, connect_func)
 
     def _connect(self, host_info: HostInfo, props: Properties, connect_func: Callable) -> Connection:
-        if not WrapperProperties.USER.get(props):
-            raise AwsWrapperError(Messages.get_formatted("IamPlugin.IsNoneOrEmpty", WrapperProperties.USER.name))
+        user = WrapperProperties.USER.get(props)
+        if not user:
+            raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.IsNoneOrEmpty", WrapperProperties.USER.name))
 
         host = IamAuthUtils.get_iam_host(props, host_info)
         region = WrapperProperties.IAM_REGION.get(props) \
-            if WrapperProperties.IAM_REGION.get(props) else self._get_rds_region(host)
+            if WrapperProperties.IAM_REGION.get(props) else IamAuthUtils.get_rds_region(self._rds_utils, host, props, self._session)
         port = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
         token_expiration_sec: int = WrapperProperties.IAM_EXPIRATION.get_int(props)
 
-        cache_key: str = self._get_cache_key(
-            WrapperProperties.USER.get(props),
+        cache_key: str = IamAuthUtils.get_cache_key(
+            user,
             host,
             port,
             region
@@ -98,8 +95,8 @@ class IamAuthPlugin(Plugin):
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
-            token: str = self._generate_authentication_token(props, host, port, region)
-            logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
+            self._fetch_token_counter.inc()
+            token: str = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
@@ -116,10 +113,10 @@ class IamAuthPlugin(Plugin):
             # Login unsuccessful with cached token
             # Try to generate a new token and try to connect again
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
-            token = self._generate_authentication_token(props, host, port, region)
-            logger.debug("IamAuthPlugin.GeneratedNewIamToken", token)
+            self._fetch_token_counter.inc()
+            token = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
             self._plugin_service.driver_dialect.set_password(props, token)
-            IamAuthPlugin._token_cache[token] = TokenInfo(token, token_expiry)
+            IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
             try:
                 return connect_func()
@@ -135,59 +132,6 @@ class IamAuthPlugin(Plugin):
             is_initial_connection: bool,
             force_connect_func: Callable) -> Connection:
         return self._connect(host_info, props, force_connect_func)
-
-    def _generate_authentication_token(self,
-                                       props: Properties,
-                                       hostname: Optional[str],
-                                       port: Optional[int],
-                                       region: Optional[str]) -> str:
-        telemetry_factory = self._plugin_service.get_telemetry_factory()
-        context = telemetry_factory.open_telemetry_context("fetch IAM token", TelemetryTraceLevel.NESTED)
-        self._fetch_token_counter.inc()
-
-        try:
-            session = self._session if self._session else boto3.Session()
-            client = session.client(
-                'rds',
-                region_name=region,
-            )
-
-            user = WrapperProperties.USER.get(props)
-
-            token = client.generate_db_auth_token(
-                DBHostname=hostname,
-                Port=port,
-                DBUsername=user
-            )
-
-            client.close()
-
-            return token
-        except Exception as ex:
-            context.set_success(False)
-            context.set_exception(ex)
-            raise ex
-        finally:
-            context.close_context()
-
-    def _get_cache_key(self, user: Optional[str], hostname: Optional[str], port: int, region: Optional[str]) -> str:
-        return f"{region}:{hostname}:{port}:{user}"
-
-    def _get_rds_region(self, hostname: Optional[str]) -> str:
-        rds_region = self._rds_utils.get_rds_region(hostname) if hostname else None
-
-        if not rds_region:
-            exception_message = "RdsUtils.UnsupportedHostname"
-            logger.debug(exception_message, hostname)
-            raise AwsWrapperError(Messages.get_formatted(exception_message, hostname))
-
-        session = self._session if self._session else boto3.Session()
-        if rds_region not in session.get_available_regions("rds"):
-            exception_message = "AwsSdk.UnsupportedRegion"
-            logger.debug(exception_message, rds_region)
-            raise AwsWrapperError(Messages.get_formatted(exception_message, rds_region))
-
-        return rds_region
 
 
 class IamAuthPluginFactory(PluginFactory):

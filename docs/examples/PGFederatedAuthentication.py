@@ -29,7 +29,7 @@ if __name__ == "__main__":
             iam_region="us-east-2",
             idp_username="some_federated_username@example.com",
             idp_password="some_password",
-            user="john",
+            db_user="john",
             autocommit=True
     ) as awsconn, awsconn.cursor() as awscursor:
         awscursor.execute("SELECT 1")
