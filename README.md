@@ -1,7 +1,9 @@
 # Amazon Web Services (AWS) Advanced Python Driver
 
-[![Python Check and Unit Test](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/main.yml)
+[![Python Checks and Unit Tests](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/main.yml)
 [![Integration Tests](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/integration_tests.yml/badge.svg)](https://github.com/aws/aws-advanced-python-wrapper/actions/workflows/integration_tests.yml)
+![PyPI - Package Version](http://img.shields.io/pypi/v/aws-advanced-python-wrapper.svg?label=aws-advanced-python-wrapper)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/aws-advanced-python-wrapper)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ## About the Driver
@@ -55,7 +57,7 @@ The `AwsWrapperConnection#connect` method accepts the connection configuration t
 
 You can either pass the connection configuration entirely through the connection string, entirely though the keyword arguments, or through a mixture of both.
 
-To use the driver with MySQL Connection/Python, see the following example:
+To use the driver with MySQL Connector/Python, see the following example:
 
 ```python
 from aws_advanced_python_wrapper import AwsWrapperConnection
