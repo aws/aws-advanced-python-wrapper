@@ -22,6 +22,7 @@ from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
     FederatedAuthPluginFactory
+from aws_advanced_python_wrapper.okta_plugin import OktaAuthPluginFactory
 from aws_advanced_python_wrapper.states.session_state_service import (
     SessionStateService, SessionStateServiceImpl)
 
@@ -625,6 +626,7 @@ class PluginManager(CanReleaseResources):
         "execute_time": ExecuteTimePluginFactory,
         "dev": DeveloperPluginFactory,
         "federated_auth": FederatedAuthPluginFactory,
+        "okta": OktaAuthPluginFactory,
         "initial_connection": AuroraInitialConnectionStrategyPluginFactory
     }
 
@@ -643,10 +645,11 @@ class PluginManager(CanReleaseResources):
         FastestResponseStrategyPluginFactory: 600,
         IamAuthPluginFactory: 700,
         AwsSecretsManagerPluginFactory: 800,
+        FederatedAuthPluginFactory: 900,
+        OktaAuthPluginFactory: 1000,
         ConnectTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
         ExecuteTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
-        DeveloperPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
-        FederatedAuthPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN
+        DeveloperPluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN
     }
 
     def __init__(

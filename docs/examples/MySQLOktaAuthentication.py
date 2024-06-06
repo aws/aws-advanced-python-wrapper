@@ -21,10 +21,9 @@ if __name__ == "__main__":
             mysql.connector.Connect,
             host="database.cluster-xyz.us-east-2.rds.amazonaws.com",
             database="mysql",
-            plugins="federated_auth",
-            idp_name="adfs",
-            app_id="abcde1fgh3kLZTBz1S5d7",
+            plugins="okta",
             idp_endpoint="ec2amaz-ab3cdef.example.com",
+            app_id="abcde1fgh3kLZTBz1S5d7",
             iam_role_arn="arn:aws:iam::123456789012:role/adfs_example_iam_role",
             iam_idp_arn="arn:aws:iam::123456789012:saml-provider/adfs_example",
             iam_region="us-east-2",
@@ -33,7 +32,7 @@ if __name__ == "__main__":
             db_user="john",
             autocommit=True
     ) as awsconn, awsconn.cursor() as awscursor:
-        awscursor.execute("SELECT 1")
+        awscursor.execute("SELECT @@aurora_server_id")
 
         res = awscursor.fetchone()
         print(res)

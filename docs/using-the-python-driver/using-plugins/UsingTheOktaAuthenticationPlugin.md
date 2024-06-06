@@ -1,27 +1,26 @@
-# Federated Authentication Plugin
+# Okta Authentication Plugin
 
-The Federated Authentication Plugin adds support for authentication via Federated Identity and then database access via IAM. 
-Currently, only Microsoft Active Directory Federation Services (AD FS) is supported.
+The Okta Authentication Plugin adds support for authentication via Federated Identity and then database access via IAM.
 
 ## What is Federated Identity
-Federated Identity allows users to use the same set of credentials to access multiple services or resources across different organizations. This works by having Identity Providers (IdP) that manage and authenticate user credentials, and Service Providers (SP) that are services or resources that can be internal, external, and/or belonging to various organizations. Multiple Service Providers can establish trust relationships with a single IdP.
+Federated Identity allows users to use the same set of credentials to access multiple services or resources across different organizations. This works by having Identity Providers (IdP) that manage and authenticate user credentials, and Service Providers (SP) that are services or resources that can be internal, external, and/or belonging to various organizations. Multiple SPs can establish trust relationships with a single IdP.
 
 When a user wants access to a resource, it authenticates with the IdP. From this a security token generated and is passed to the SP then grants access to said resource.
-In the case of AD FS, the user signs into the AD FS sign in page. This generates a SAML Assertion which acts as a security token. The user then passes the SAML Assertion to the SP when requesting access to resources. The SP verifies the SAML Assertion and grants access to the user. 
+In the case of AD FS, the user signs into the AD FS sign in page. This generates a SAML Assertion which acts as a security token. The user then passes the SAML Assertion to the SP when requesting access to resources. The SP verifies the SAML Assertion and grants access to the user.
 
-## How to use the Federated Authentication Plugin with the AWS Advanced Python Driver 
+## How to use the Okta Authentication Plugin with the AWS Advanced Python Driver 
 
-### Enabling the Federated Authentication Plugin
+### Enabling the Okta Authentication Plugin
 > [!NOTE]\
-> AWS IAM database authentication is needed to use the Federated Authentication Plugin.
-> This is because after the plugin acquires SAML assertion from the identity provider, the SAML Assertion is then used to acquire an AWS IAM token.
-> The AWS IAM token is then subsequently used to access the database.
+> AWS IAM database authentication is needed to use the Okta Authentication Plugin. This is because after the plugin
+> acquires SAML assertion from the identity provider, the SAML Assertion is then used to acquire an AWS IAM token. The AWS
+> IAM token is then subsequently used to access the database.
 
 1. Enable AWS IAM database authentication on an existing database or create a new database with AWS IAM database authentication on the AWS RDS Console:
    - If needed, review the documentation about [IAM authentication for MariaDB, MySQL, and PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html).
-2. Set up an IAM Identity Provider and IAM role. The IAM role should be using the IAM policy set up in step 1. 
-   - If needed, review the documentation about [creating IAM identity providers](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create.html). For AD FS, see the documentation about [creating IAM SAML identity providers](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_saml.html).
-3. Add the plugin code `federated_auth` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) value, or to the current [driver profile](../UsingThePythonDriver.md#connection-plugin-manager-parameters).
+2. Configure Okta as the AWS identity provider.
+   - If needed, review the documentation about [Amazon Web Services Account Federation](https://help.okta.com/en-us/content/topics/deploymentguides/aws/aws-deployment.htm) on Okta's documentation.
+3. Add the plugin code `okta` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) value, or to the current [driver profile](../UsingThePythonDriver.md#connection-plugin-manager-parameters).
 4. Specify parameters that are required or specific to your case.
 
 ### Federated Authentication Plugin Parameters
@@ -34,9 +33,6 @@ In the case of AD FS, the user signs into the AD FS sign in page. This generates
 | `iam_role_arn`                 | String  |   Yes    | The ARN of the IAM Role that is to be assumed to access AWS Aurora.                                                                                                                                                                                                                                                                                                | `None`                   | `arn:aws:iam::123456789012:role/adfs_example_iam_role` |
 | `iam_idp_arn`                  | String  |   Yes    | The ARN of the Identity Provider.                                                                                                                                                                                                                                                                                                                                  | `None`                   | `arn:aws:iam::123456789012:saml-provider/adfs_example` |
 | `iam_region`                   | String  |   Yes    | The IAM region where the IAM token is generated.                                                                                                                                                                                                                                                                                                                   | `None`                   | `us-east-2`                                            |
-| `idp_name`                     | String  |    No    | The name of the Identity Provider implementation used.                                                                                                                                                                                                                                                                                                             | `adfs`                   | `adfs`                                                 |
-| `idp_port`                     | Integer |    No    | The port that the host for the authentication service listens at.                                                                                                                                                                                                                                                                                                  | `443`                    | `1234`                                                 |
-| `rp_identifier`                | String  |    No    | The relaying party identifier.                                                                                                                                                                                                                                                                                                                                     | `urn:amazon:webservices` | `urn:amazon:webservices`                               |
 | `iam_host`                     | String  |    No    | Overrides the host that is used to generate the IAM token.                                                                                                                                                                                                                                                                                                         | `None`                   | `database.cluster-hash.us-east-1.rds.amazonaws.com`    |
 | `iam_default_port`             | String  |    No    | This property overrides the default port that is used to generate the IAM token. The default port is determined based on the underlying driver protocol. For now, there is support for PostgreSQL and MySQL. Target drivers with different protocols will require users to provide a default port.                                                                 | `None`                   | `1234`                                                 |
 | `iam_token_expiration`         | Integer |    No    | Overrides the default IAM token cache expiration in seconds                                                                                                                                                                                                                                                                                                        | `870`                    | `123`                                                  |
@@ -44,5 +40,5 @@ In the case of AD FS, the user signs into the AD FS sign in page. This generates
 | `ssl_secure`                   | Boolean |    No    | Whether the SSL session is to be secure and the server's certificates will be verified                                                                                                                                                                                                                                                                             | `False`                  | `True`                                                 |
 
 ## Sample code
-[MySQLFederatedAuthentication.py](../../examples/MySQLFederatedAuthentication.py)
-[PGFederatedAuthentication.py](../../examples/PGFederatedAuthentication.py)
+[MySQLOktaAuthentication.py](../../examples/MySQLOktaAuthentication.py)
+[PGOktaAuthentication.py](../../examples/PGOktaAuthentication.py)

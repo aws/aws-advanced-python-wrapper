@@ -289,6 +289,10 @@ class WrapperProperties:
                               "The database user used to access the database",
                               None)
 
+    # Okta
+
+    APP_ID = WrapperProperty("app_id", "The ID of the AWS application configured on Okta", None)
+
     # Fastest Response Strategy
     RESPONSE_MEASUREMENT_INTERVAL_MILLIS = WrapperProperty("response_measurement_interval_ms",
                                                            "Interval in milliseconds between measuring response time to a database host",
