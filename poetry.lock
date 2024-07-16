@@ -1203,13 +1203,13 @@ test = ["assertpy (>=1.1)", "beautifulsoup4 (>=4.11.1)", "black (>=22.1.0)", "fl
 
 [[package]]
 name = "pytest-html-merger"
-version = "0.0.10"
+version = "0.1.0"
 description = "Pytest HTML reports merging utility"
 optional = false
 python-versions = ">=3.6.0"
 files = [
-    {file = "pytest_html_merger-0.0.10-py3-none-any.whl", hash = "sha256:1650cbaf7a3f61802f90e0ac3be0249c81609c6b8b34f178545983d8252b5880"},
-    {file = "pytest_html_merger-0.0.10.tar.gz", hash = "sha256:535586f7ddbfb42f2387dc89a86228b3f5e39fe5576071383e9561cc8c781d9f"},
+    {file = "pytest_html_merger-0.1.0-py3-none-any.whl", hash = "sha256:c1bf0574245dd67481b21630d68168fdf26a779f55b939f37e7aff4c438ea61b"},
+    {file = "pytest_html_merger-0.1.0.tar.gz", hash = "sha256:497b1e9c99c12eb06eee5fdf9abad42c10fec78524d740737def9d85b8f995e4"},
 ]
 
 [package.dependencies]
@@ -1605,4 +1605,4 @@ test = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more-it
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "e5d174e289edd63ccf622edae641d82ce8baa523447e9440010c461b75fc8f7f"
+content-hash = "47a0ecc167b2221602cf2ba98f0e8a96b5b472e0d92561715551df388a6e8844"
