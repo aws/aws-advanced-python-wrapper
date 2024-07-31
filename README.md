@@ -228,7 +228,7 @@ This `aws-advanced-python-wrapper` is being tested against the following Communi
 | Aurora PostgreSQL | - LTS version, see [here](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraPostgreSQL.Updates.LTS.html) for more details. <br><br> - Latest release, as shown on [this page](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraPostgreSQLReleaseNotes/AuroraPostgreSQL.Updates.html).)                        |
 
 The `aws-advanced-python-wrapper` is compatible with MySQL 5.7 and MySQL 8.0 as per MySQL Connector/Python.
-> WARNING\
+> [!WARNING]\
 > AWS Advanced Python Wrapper version 1.1.0 does not support MySQL version 9.0.0 yet.
 
 ## License
