@@ -229,7 +229,7 @@ This `aws-advanced-python-wrapper` is being tested against the following Communi
 
 The `aws-advanced-python-wrapper` is compatible with MySQL 5.7 and MySQL 8.0 as per MySQL Connector/Python.
 > [!WARNING]\
-> AWS Advanced Python Wrapper version 1.1.0 does not support MySQL version 9.0.0 yet.
+> Due to recent internal changes with the `v9.0.0` MySQL Connector/Python driver in regards to connection handling, the AWS Advanced Python Wrapper is not recommended for usage with `v9.0.0`. The AWS Advanced Python Wrapper will be updated in the future for `v9.0.0` compatibility with the community driver.
 
 ## License
 
