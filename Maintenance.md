@@ -1,8 +1,9 @@
 # Release Schedule
 
-| Release Date | Release                                                                                    |
-|--------------|--------------------------------------------------------------------------------------------|
-| May 16, 2024 | [Release 1.0.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.0.0) |
+| Release Date  | Release                                                                                    |
+|---------------|--------------------------------------------------------------------------------------------|
+| May 16, 2024  | [Release 1.0.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.0.0) |
+| July 31, 2024 | [Release 1.1.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.1.0) |
 
 `aws-advanced-python-wrapper` [follows semver](https://semver.org/#semantic-versioning-200) which means we will only
 release breaking changes in major versions. Generally speaking patches will be released to fix existing problems without
@@ -55,4 +56,4 @@ from the updated source after the PRs are merged.
 
 | Major Version | Latest Minor Version | Status  | Initial Release | Maintenance Window Start | Maintenance Window End |
 |---------------|----------------------|---------|-----------------|--------------------------|------------------------|
-| 1             | 1.0.0                | Current | May 16, 2024    | May 16, 2024             | N/A                    | 
+| 1             | 1.1.0                | Current | May 16, 2024    | May 16, 2024             | N/A                    | 
