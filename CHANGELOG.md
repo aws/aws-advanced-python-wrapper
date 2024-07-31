@@ -14,5 +14,5 @@ The Amazon Web Services (AWS) Advanced Python Wrapper allows an application to t
 * Support for PostgreSQL
 * Support for MySQL
 
-[1.1.0]: https://github.com/awslabs/aws-advanced-jdbc-wrapper/compare/1.0.0...1.1.0
-[1.0.0]: https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.0.0
+[1.1.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.0.0...1.1.0
+[1.0.0]: https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.0.0
