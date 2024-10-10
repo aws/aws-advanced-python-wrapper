@@ -131,8 +131,18 @@ class MySQLDriverDialect(DriverDialect):
 
         if isinstance(obj, CMySQLCursor):
             try:
-                if isinstance(obj._cnx, CMySQLConnection) or isinstance(obj._cnx, MySQLConnection):
-                    return obj._cnx
+                conn = None
+
+                if hasattr(obj, '_cnx'):
+                    conn = obj._cnx
+                elif hasattr(obj, '_connection'):
+                    conn = obj._connection
+                if conn is None:
+                    return None
+
+                if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
+                    return conn
+
             except ReferenceError:
                 return None
 
