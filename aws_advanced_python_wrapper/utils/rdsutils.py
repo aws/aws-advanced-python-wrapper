@@ -12,8 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from re import search, sub
-from typing import Optional
+from re import search, sub, Match
+from typing import Optional, Dict
 
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
@@ -81,55 +81,78 @@ class RdsUtils:
                                r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-)?" \
                                r"(?P<domain>[a-zA-Z0-9]+\." \
                                r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)"
-    AURORA_CHINA_INSTANCE_PATTERN = r"(?P<instance>.+)\." \
-                                    r"(?P<domain>[a-zA-Z0-9]+\." \
-                                    r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)"
+    AURORA_OLD_CHINA_DNS_PATTERN = r"(?P<instance>.+)\." \
+                                   r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-)?" \
+                                   r"(?P<domain>[a-zA-Z0-9]+\." \
+                                   r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)"
     AURORA_CHINA_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
                                    r"(?P<dns>cluster-|cluster-ro-)+" \
                                    r"(?P<domain>[a-zA-Z0-9]+\." \
                                    r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)"
-    AURORA_CHINA_CUSTOM_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
-                                          r"(?P<dns>cluster-custom-)+" \
-                                          r"(?P<domain>[a-zA-Z0-9]+\." \
-                                          r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)"
-    AURORA_CHINA_PROXY_DNS_PATTERN = r"(?P<instance>.+)\." \
-                                     r"(?P<dns>proxy-)+" \
-                                     r"(?P<domain>[a-zA-Z0-9]+\." \
-                                     r"(?P<region>[a-zA-Z0-9\-])+\.rds\.amazonaws\.com\.cn)"
+    AURORA_OLD_CHINA_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
+                                       r"(?P<dns>cluster-|cluster-ro-)+" \
+                                       r"(?P<domain>[a-zA-Z0-9]+\." \
+                                       r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)"
+    AURORA_GOV_DNS_PATTERN = r"^(?P<instance>.+)\." \
+                             r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|limitless-)?" \
+                             r"(?P<domain>[a-zA-Z0-9]+\.rds\.(?P<region>[a-zA-Z0-9\-]+)" \
+                             r"\.(amazonaws\.com|c2s\.ic\.gov|sc2s\.sgov\.gov))"
+    AURORA_GOV_CLUSTER_PATTERN = r"^(?P<instance>.+)\." \
+                                 r"(?P<dns>cluster-|cluster-ro-)+" \
+                                 r"(?P<domain>[a-zA-Z0-9]+\.rds\.(?P<region>[a-zA-Z0-9\-]+)" \
+                                 r"\.(amazonaws\.com|c2s\.ic\.gov|sc2s\.sgov\.gov))"
+    ELB_PATTERN = r"^(?<instance>.+)\.elb\.((?<region>[a-zA-Z0-9\-]+)\.amazonaws\.com)"
 
     IP_V4 = r"^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){1}" \
-            r"(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){2}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"
+            r"(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){2}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
     IP_V6 = r"^[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){7}$"
-    IP_V6_COMPRESSED = r"^(([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5})?)::(([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5})?)$"
+    IP_V6_COMPRESSED = r"^(([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5})?)::(([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5})?)"
 
     DNS_GROUP = "dns"
     DOMAIN_GROUP = "domain"
     INSTANCE_GROUP = "instance"
     REGION_GROUP = "region"
 
+    CACHE_DNS_PATTERNS: Dict[str, Match[str]] = {}
+    CACHE_PATTERNS: Dict[str, str] = {}
+
     def is_rds_cluster_dns(self, host: str) -> bool:
-        return self._contains(host, [self.AURORA_CLUSTER_PATTERN, self.AURORA_CHINA_CLUSTER_PATTERN])
+        dns_group = self._get_dns_group(host)
+        return dns_group is not None and dns_group.casefold() in ["cluster-", "cluster-ro-"]
 
     def is_rds_custom_cluster_dns(self, host: str) -> bool:
-        return self._contains(host, [self.AURORA_CUSTOM_CLUSTER_PATTERN, self.AURORA_CHINA_CUSTOM_CLUSTER_PATTERN])
+        dns_group = self._get_dns_group(host)
+        return dns_group is not None and dns_group.casefold() == "cluster-custom-"
 
     def is_rds_dns(self, host: str) -> bool:
-        return self._contains(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
+        if not host or not host.strip():
+            return False
+
+        pattern = self._find(host, [RdsUtils.AURORA_DNS_PATTERN,
+                                    RdsUtils.AURORA_CHINA_DNS_PATTERN,
+                                    RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
+                                    RdsUtils.AURORA_GOV_DNS_PATTERN])
+        group = self._get_regex_group(pattern, RdsUtils.DNS_GROUP)
+
+        if group:
+            RdsUtils.CACHE_PATTERNS[host] = group
+
+        return pattern is not None
 
     def is_rds_instance(self, host: str) -> bool:
-        return (self._contains(host, [self.AURORA_INSTANCE_PATTERN, self.AURORA_CHINA_INSTANCE_PATTERN])
-                and self.is_rds_dns(host))
+        return self._get_dns_group(host) is None and self.is_rds_dns(host)
 
     def is_rds_proxy_dns(self, host: str) -> bool:
-        return self._contains(host, [self.AURORA_PROXY_DNS_PATTERN, self.AURORA_CHINA_PROXY_DNS_PATTERN])
+        dns_group = self._get_dns_group(host)
+        return dns_group is not None and dns_group.casefold() == "proxy-"
 
     def get_rds_instance_host_pattern(self, host: str) -> str:
         if not host or not host.strip():
             return "?"
 
-        match = self._find(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
+        match = self._get_group(host, RdsUtils.DOMAIN_GROUP)
         if match:
-            return f"?.{match.group(self.DOMAIN_GROUP)}"
+            return f"?.{match}"
 
         return "?"
 
@@ -137,28 +160,22 @@ class RdsUtils:
         if not host or not host.strip():
             return None
 
-        match = self._find(host, [self.AURORA_DNS_PATTERN, self.AURORA_CHINA_DNS_PATTERN])
-        if match:
-            return match.group(self.REGION_GROUP)
+        group = self._get_group(host, RdsUtils.REGION_GROUP)
+        if group:
+            return group
 
+        elb_matcher = search(RdsUtils.ELB_PATTERN, host)
+        if elb_matcher:
+            return elb_matcher.group(RdsUtils.REGION_GROUP)
         return None
 
     def is_writer_cluster_dns(self, host: str) -> bool:
-        if not host or not host.strip():
-            return False
-
-        match = self._find(host, [self.AURORA_CLUSTER_PATTERN, self.AURORA_CHINA_CLUSTER_PATTERN])
-        if match:
-            return "cluster-".casefold() == match.group(self.DNS_GROUP).casefold()
-
-        return False
+        dns_group = self._get_dns_group(host)
+        return dns_group is not None and dns_group.casefold() == "cluster-"
 
     def is_reader_cluster_dns(self, host: str) -> bool:
-        match = self._find(host, [self.AURORA_CLUSTER_PATTERN, self.AURORA_CHINA_CLUSTER_PATTERN])
-        if match:
-            return "cluster-ro-".casefold() == match.group(self.DNS_GROUP).casefold()
-
-        return False
+        dns_group = self._get_dns_group(host)
+        return dns_group is not None and dns_group.casefold() == "cluster-ro-"
 
     def get_rds_cluster_host_url(self, host: str):
         if not host or not host.strip():
@@ -173,20 +190,20 @@ class RdsUtils:
         return None
 
     def get_instance_id(self, host: str) -> Optional[str]:
-        if not host or not host.strip():
-            return None
-
-        match = self._find(host, [self.AURORA_INSTANCE_PATTERN, self.AURORA_CHINA_INSTANCE_PATTERN])
-        if match:
-            return match.group(self.INSTANCE_GROUP)
+        if self._get_dns_group(host) is None:
+            return self._get_group(host, self.INSTANCE_GROUP)
 
         return None
 
     def is_ipv4(self, host: str) -> bool:
-        return self._contains(host, [self.IP_V4])
+        if host is None or not host.strip():
+            return False
+        return search(RdsUtils.IP_V4, host) is not None
 
     def is_ipv6(self, host: str) -> bool:
-        return self._contains(host, [self.IP_V6, self.IP_V6_COMPRESSED])
+        if host is None or not host.strip():
+            return False
+        return search(RdsUtils.IP_V6_COMPRESSED, host) is not None and search(RdsUtils.IP_V6, host) is not None
 
     def is_dns_pattern_valid(self, host: str) -> bool:
         return "?" in host
@@ -210,17 +227,38 @@ class RdsUtils:
 
         return RdsUrlType.OTHER
 
-    def _contains(self, host: str, patterns: list) -> bool:
-        if not host or not host.strip():
-            return False
-
-        return len([pattern for pattern in patterns if search(pattern, host)]) > 0
-
     def _find(self, host: str, patterns: list):
         if not host or not host.strip():
             return None
 
         for pattern in patterns:
-            match = search(pattern, host)
+            match = RdsUtils.CACHE_DNS_PATTERNS.get(host)
             if match:
                 return match
+
+            match = search(pattern, host)
+            if match:
+                RdsUtils.CACHE_DNS_PATTERNS[host] = match
+                return match
+
+        return None
+
+    def _get_regex_group(self, pattern: Match[str], group_name: str):
+        return pattern.group(group_name)
+
+    def _get_group(self, host: str, group: str):
+        if not host or not host.strip():
+            return None
+
+        pattern = self._find(host, [RdsUtils.AURORA_DNS_PATTERN,
+                                    RdsUtils.AURORA_CHINA_DNS_PATTERN,
+                                    RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
+                                    RdsUtils.AURORA_GOV_DNS_PATTERN])
+        return self._get_regex_group(pattern, group)
+
+    def _get_dns_group(self, host: str):
+        return self._get_group(host, RdsUtils.DNS_GROUP)
+
+    @staticmethod
+    def clear_cache():
+        RdsUtils.CACHE_PATTERNS.clear()
