@@ -12,8 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from re import search, sub, Match
-from typing import Optional, Dict
+from re import Match, search, sub
+from typing import Dict, Optional
 
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
@@ -59,40 +59,40 @@ class RdsUtils:
     """
 
     AURORA_DNS_PATTERN = r"(?P<instance>.+)\." \
-                         r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-)?" \
+                         r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|limitless-)?" \
                          r"(?P<domain>[a-zA-Z0-9]+\." \
-                         r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn$)"
+                         r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
     AURORA_INSTANCE_PATTERN = r"(?P<instance>.+)\." \
                               r"(?P<domain>[a-zA-Z0-9]+\." \
-                              r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn$)"
+                              r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
     AURORA_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
                              r"(?P<dns>cluster-|cluster-ro-)+" \
                              r"(?P<domain>[a-zA-Z0-9]+\." \
-                             r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn$)"
+                             r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
     AURORA_CUSTOM_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
                                     r"(?P<dns>cluster-custom-)+" \
                                     r"(?P<domain>[a-zA-Z0-9]+\." \
-                                    r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn$)"
+                                    r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
     AURORA_PROXY_DNS_PATTERN = r"(?P<instance>.+)\." \
                                r"(?P<dns>proxy-)+" \
                                r"(?P<domain>[a-zA-Z0-9]+\." \
-                               r"(?P<region>[a-zA-Z0-9\\-]+)\.rds\.amazonaws\.com)(?!\.cn$)"
-    AURORA_CHINA_DNS_PATTERN = r"(?P<instance>.+)\." \
-                               r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-)?" \
-                               r"(?P<domain>[a-zA-Z0-9]+\." \
-                               r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)"
+                               r"(?P<region>[a-zA-Z0-9\\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
     AURORA_OLD_CHINA_DNS_PATTERN = r"(?P<instance>.+)\." \
-                                   r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-)?" \
-                                   r"(?P<domain>[a-zA-Z0-9]+\." \
-                                   r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)"
-    AURORA_CHINA_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
-                                   r"(?P<dns>cluster-|cluster-ro-)+" \
+                                   r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|limitless-)?" \
                                    r"(?P<domain>[a-zA-Z0-9]+\." \
                                    r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)"
+    AURORA_CHINA_DNS_PATTERN = r"(?P<instance>.+)\." \
+                               r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|limitless-)?" \
+                               r"(?P<domain>[a-zA-Z0-9]+\." \
+                               r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)"
     AURORA_OLD_CHINA_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
                                        r"(?P<dns>cluster-|cluster-ro-)+" \
                                        r"(?P<domain>[a-zA-Z0-9]+\." \
-                                       r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)"
+                                       r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)"
+    AURORA_CHINA_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
+                                   r"(?P<dns>cluster-|cluster-ro-)+" \
+                                   r"(?P<domain>[a-zA-Z0-9]+\." \
+                                   r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)"
     AURORA_GOV_DNS_PATTERN = r"^(?P<instance>.+)\." \
                              r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|limitless-)?" \
                              r"(?P<domain>[a-zA-Z0-9]+\.rds\.(?P<region>[a-zA-Z0-9\-]+)" \
@@ -105,7 +105,7 @@ class RdsUtils:
 
     IP_V4 = r"^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){1}" \
             r"(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){2}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
-    IP_V6 = r"^[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){7}$"
+    IP_V6 = r"^[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){7}"
     IP_V6_COMPRESSED = r"^(([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5})?)::(([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5})?)"
 
     DNS_GROUP = "dns"
@@ -203,7 +203,7 @@ class RdsUtils:
     def is_ipv6(self, host: str) -> bool:
         if host is None or not host.strip():
             return False
-        return search(RdsUtils.IP_V6_COMPRESSED, host) is not None and search(RdsUtils.IP_V6, host) is not None
+        return search(RdsUtils.IP_V6_COMPRESSED, host) is not None or search(RdsUtils.IP_V6, host) is not None
 
     def is_dns_pattern_valid(self, host: str) -> bool:
         return "?" in host
@@ -244,6 +244,8 @@ class RdsUtils:
         return None
 
     def _get_regex_group(self, pattern: Match[str], group_name: str):
+        if pattern is None:
+            return None
         return pattern.group(group_name)
 
     def _get_group(self, host: str, group: str):

@@ -22,15 +22,37 @@ us_east_region_instance = "instance-test-name.XYZ.us-east-2.rds.amazonaws.com"
 us_east_region_proxy = "proxy-test-name.proxy-XYZ.us-east-2.rds.amazonaws.com"
 us_east_region_custom_domain = "custom-test-name.cluster-custom-XYZ.us-east-2.rds.amazonaws.com"
 china_region_cluster = "database-test-name.cluster-XYZ.cn-northwest-1.rds.amazonaws.com.cn"
-china_alt_region_cluster = "database-test-name.cluster-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
 china_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.cn-northwest-1.rds.amazonaws.com.cn"
-china_alt_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
 china_region_instance = "instance-test-name.XYZ.cn-northwest-1.rds.amazonaws.com.cn"
-china_alt_region_instance = "instance-test-name.XYZ.rds.cn-northwest-1.amazonaws.com.cn"
 china_region_proxy = "proxy-test-name.proxy-XYZ.cn-northwest-1.rds.amazonaws.com.cn"
-china_alt_region_proxy = "proxy-test-name.proxy-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
 china_region_custom_domain = "custom-test-name.cluster-custom-XYZ.cn-northwest-1.rds.amazonaws.com.cn"
+
+china_alt_region_cluster = "database-test-name.cluster-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
+china_alt_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
+china_alt_region_instance = "instance-test-name.XYZ.rds.cn-northwest-1.amazonaws.com.cn"
+china_alt_region_proxy = "proxy-test-name.proxy-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
 china_alt_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
+china_alt_region_limitless_db_shard_group = "database-test-name.limitless-XYZ.cn-northwest-1.rds.amazonaws.com.cn"
+extra_rds_china_path = "database-test-name.cluster-XYZ.rds.cn-northwest-1.rds.amazonaws.com.cn"
+missing_cn_china_path = "database-test-name.cluster-XYZ.rds.cn-northwest-1.amazonaws.com"
+missing_region_china_path = "database-test-name.cluster-XYZ.rds.amazonaws.com.cn"
+
+us_east_region_elb_url = "elb-name.elb.us-east-2.amazonaws.com"
+us_isob_east_region_cluster = "database-test-name.cluster-XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
+us_isob_east_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
+us_isob_east_region_instance = "instance-test-name.XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
+us_isob_east_region_proxy = "proxy-test-name.proxy-XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
+us_isob_east_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
+us_isob_east_region_limitless_db_shard_group = "database-test-name.limitless-XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
+us_gov_east_region_cluster = "database-test-name.cluster-XYZ.rds.us-gov-east-1.amazonaws.com"
+
+us_iso_east_region_cluster = "database-test-name.cluster-XYZ.rds.us-iso-east-1.c2s.ic.gov"
+us_iso_east_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.rds.us-iso-east-1.c2s.ic.gov"
+us_iso_east_region_instance = "instance-test-name.XYZ.rds.us-iso-east-1.c2s.ic.gov"
+us_iso_east_region_proxy = "proxy-test-name.proxy-XYZ.rds.us-iso-east-1.c2s.ic.gov"
+us_iso_east_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.us-iso-east-1.c2s.ic.gov"
+
+us_iso_east_region_limitless_db_shard_group = "database-test-name.limitless-XYZ.rds.us-iso-east-1.c2s.ic.gov"
 
 
 @pytest.mark.parametrize("test_value", [
@@ -39,7 +61,12 @@ china_alt_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.cn-nor
     china_region_cluster,
     china_alt_region_cluster,
     china_region_cluster_read_only,
-    china_alt_region_cluster_read_only
+    china_alt_region_cluster_read_only,
+    us_isob_east_region_cluster,
+    us_isob_east_region_cluster_read_only,
+    us_gov_east_region_cluster,
+    us_iso_east_region_cluster,
+    us_iso_east_region_cluster_read_only
 ])
 def test_is_rds_cluster_dns(test_value):
     target = RdsUtils()
@@ -56,7 +83,15 @@ def test_is_rds_cluster_dns(test_value):
     china_region_custom_domain,
     china_alt_region_instance,
     china_alt_region_proxy,
-    china_alt_region_custom_domain
+    china_alt_region_custom_domain,
+    china_alt_region_limitless_db_shard_group,
+    us_east_region_elb_url,
+    us_isob_east_region_instance,
+    us_isob_east_region_proxy,
+    us_isob_east_region_limitless_db_shard_group,
+    us_iso_east_region_instance,
+    us_iso_east_region_proxy,
+    us_iso_east_region_limitless_db_shard_group,
 ])
 def test_is_not_rds_cluster_dns(test_value):
     target = RdsUtils()
@@ -79,7 +114,15 @@ def test_is_not_rds_cluster_dns(test_value):
     china_alt_region_cluster_read_only,
     china_alt_region_instance,
     china_alt_region_proxy,
-    china_alt_region_custom_domain
+    china_alt_region_custom_domain,
+    china_alt_region_limitless_db_shard_group,
+    us_isob_east_region_cluster,
+    us_isob_east_region_cluster_read_only,
+    us_isob_east_region_instance,
+    us_isob_east_region_proxy,
+    us_isob_east_region_custom_domain,
+    us_isob_east_region_limitless_db_shard_group,
+    us_gov_east_region_cluster,
 ])
 def test_is_rds_dns(test_value):
     target = RdsUtils()
@@ -101,11 +144,19 @@ def test_is_rds_dns(test_value):
     ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_alt_region_cluster_read_only),
     ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_alt_region_instance),
     ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_alt_region_proxy),
-    ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_alt_region_custom_domain)
+    ("?.XYZ.rds.cn-northwest-1.amazonaws.com.cn", china_alt_region_custom_domain),
+    ("?.XYZ.cn-northwest-1.rds.amazonaws.com.cn", china_alt_region_limitless_db_shard_group),
+    ("?.XYZ.rds.us-isob-east-1.sc2s.sgov.gov", us_isob_east_region_cluster),
+    ("?.XYZ.rds.us-isob-east-1.sc2s.sgov.gov", us_isob_east_region_cluster_read_only),
+    ("?.XYZ.rds.us-isob-east-1.sc2s.sgov.gov", us_isob_east_region_instance),
+    ("?.XYZ.rds.us-isob-east-1.sc2s.sgov.gov", us_isob_east_region_proxy),
+    ("?.XYZ.rds.us-isob-east-1.sc2s.sgov.gov", us_isob_east_region_custom_domain),
+    ("?.XYZ.rds.us-isob-east-1.sc2s.sgov.gov", us_isob_east_region_limitless_db_shard_group),
+    ("?.XYZ.rds.us-gov-east-1.amazonaws.com", us_gov_east_region_cluster),
 ])
 def test_get_rds_instance_host_pattern(expected, test_value):
     target = RdsUtils()
-    assert expected == target.get_rds_instance_host_pattern(test_value)
+    assert target.get_rds_instance_host_pattern(test_value) == expected
 
 
 @pytest.mark.parametrize("expected, test_value", [
@@ -123,11 +174,19 @@ def test_get_rds_instance_host_pattern(expected, test_value):
     ("cn-northwest-1", china_alt_region_cluster_read_only),
     ("cn-northwest-1", china_alt_region_instance),
     ("cn-northwest-1", china_alt_region_proxy),
-    ("cn-northwest-1", china_alt_region_custom_domain)
+    ("cn-northwest-1", china_alt_region_custom_domain),
+    ("cn-northwest-1", china_alt_region_limitless_db_shard_group),
+    ("us-isob-east-1", us_isob_east_region_cluster),
+    ("us-isob-east-1", us_isob_east_region_cluster_read_only),
+    ("us-isob-east-1", us_isob_east_region_instance),
+    ("us-isob-east-1", us_isob_east_region_proxy),
+    ("us-isob-east-1", us_isob_east_region_custom_domain),
+    ("us-isob-east-1", us_isob_east_region_limitless_db_shard_group),
+    ("us-gov-east-1", us_gov_east_region_cluster),
 ])
 def test_get_rds_region(expected, test_value):
     target = RdsUtils()
-    assert expected == target.get_rds_region(test_value)
+    assert target.get_rds_region(test_value) == expected
 
 
 @pytest.mark.parametrize("test_value", [
@@ -152,7 +211,13 @@ def test_is_writer_cluster_dns(test_value):
     china_alt_region_cluster_read_only,
     china_alt_region_instance,
     china_alt_region_proxy,
-    china_alt_region_custom_domain
+    china_alt_region_custom_domain,
+    china_alt_region_limitless_db_shard_group,
+    us_isob_east_region_cluster_read_only,
+    us_isob_east_region_instance,
+    us_isob_east_region_proxy,
+    us_isob_east_region_custom_domain,
+    us_isob_east_region_limitless_db_shard_group,
 ])
 def test_is_not_writer_cluster_dns(test_value):
     target = RdsUtils()
@@ -163,6 +228,7 @@ def test_is_not_writer_cluster_dns(test_value):
 @pytest.mark.parametrize("test_value", [
     us_east_region_cluster_read_only,
     china_region_cluster_read_only,
+    us_isob_east_region_cluster_read_only,
 ])
 def test_is_reader_cluster_dns(test_value):
     target = RdsUtils()
@@ -182,7 +248,14 @@ def test_is_reader_cluster_dns(test_value):
     china_region_cluster,
     china_region_instance,
     china_region_proxy,
-    china_region_custom_domain
+    china_region_custom_domain,
+    china_alt_region_limitless_db_shard_group,
+    us_isob_east_region_cluster,
+    us_isob_east_region_instance,
+    us_isob_east_region_proxy,
+    us_isob_east_region_custom_domain,
+    us_isob_east_region_limitless_db_shard_group,
+    us_gov_east_region_cluster,
 ])
 def test_is_not_reader_cluster_dns(test_value):
     target = RdsUtils()
