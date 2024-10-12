@@ -264,3 +264,4 @@ class RdsUtils:
     @staticmethod
     def clear_cache():
         RdsUtils.CACHE_PATTERNS.clear()
+        RdsUtils.CACHE_DNS_PATTERNS.clear()
