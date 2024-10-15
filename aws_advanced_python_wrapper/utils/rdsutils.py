@@ -184,9 +184,9 @@ class RdsUtils:
             return None
 
         for pattern in [RdsUtils.AURORA_DNS_PATTERN,
-                         RdsUtils.AURORA_CHINA_DNS_PATTERN,
-                         RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
-                         RdsUtils.AURORA_GOV_DNS_PATTERN]:
+                        RdsUtils.AURORA_CHINA_DNS_PATTERN,
+                        RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
+                        RdsUtils.AURORA_GOV_DNS_PATTERN]:
             if search(pattern, host):
                 return sub(pattern, r"\g<instance>.cluster-\g<domain>", host)
 
