@@ -272,8 +272,8 @@ def test_get_rds_cluster_host_url():
 
     target = RdsUtils()
 
-    assert expected == target.get_rds_cluster_host_url(ro_endpoint)
-    assert expected2 == target.get_rds_cluster_host_url(china_ro_endpoint)
+    assert target.get_rds_cluster_host_url(ro_endpoint) == expected
+    assert target.get_rds_cluster_host_url(china_ro_endpoint) == expected2
 
 
 @pytest.mark.parametrize(
@@ -283,4 +283,4 @@ def test_get_rds_cluster_host_url():
 )
 def test_get_instance_id(host: str, expected_id: str):
     target = RdsUtils()
-    assert expected_id == target.get_instance_id(host)
+    assert target.get_instance_id(host) == expected_id
