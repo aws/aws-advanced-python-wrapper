@@ -187,8 +187,11 @@ class RdsUtils:
                         RdsUtils.AURORA_CHINA_DNS_PATTERN,
                         RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
                         RdsUtils.AURORA_GOV_DNS_PATTERN]:
-            if search(pattern, host):
-                return sub(pattern, r"\g<instance>.cluster-\g<domain>", host)
+            if m := search(pattern, host):
+                group = self._get_regex_group(m, RdsUtils.DNS_GROUP)
+                if group is not None:
+                    return sub(pattern, r"\g<instance>.cluster-\g<domain>", host)
+                return None
 
         return None
 
