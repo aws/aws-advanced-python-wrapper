@@ -357,7 +357,7 @@ def test_connect_with_specified_region(mocker, mock_plugin_service, mock_session
     pytest.param("test-.cluster-ro-123456789012.us-east-2.rds.amazonaws.com"),
     pytest.param("test.cluster-custom-123456789012.us-east-2.rds.amazonaws.com"),
     pytest.param("test-.proxy-123456789012.us-east-2.rds.amazonaws.com.cn"),
-    pytest.param("test-.proxy-123456789012.us-east-2.rds.amazonaws.com.proxy"),
+    pytest.param("test-.proxy-123456789012.us-east-2.rds.amazonaws.com"),
 ])
 @patch("aws_advanced_python_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
 def test_connect_with_specified_host(iam_host: str, mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
