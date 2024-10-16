@@ -60,50 +60,50 @@ class RdsUtils:
     Example: test-postgres-instance-1.123456789012.rds.cn-northwest-1.amazonaws.com.cn
     """
 
-    AURORA_DNS_PATTERN = r"(?P<instance>.+)\." \
+    AURORA_DNS_PATTERN = r"^(?P<instance>.+)\." \
                          r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|limitless-)?" \
                          r"(?P<domain>[a-zA-Z0-9]+\." \
-                         r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
-    AURORA_INSTANCE_PATTERN = r"(?P<instance>.+)\." \
+                         r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)$"
+    AURORA_INSTANCE_PATTERN = r"^(?P<instance>.+)\." \
                               r"(?P<domain>[a-zA-Z0-9]+\." \
-                              r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
-    AURORA_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
+                              r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)$"
+    AURORA_CLUSTER_PATTERN = r"^(?P<instance>.+)\." \
                              r"(?P<dns>cluster-|cluster-ro-)+" \
                              r"(?P<domain>[a-zA-Z0-9]+\." \
-                             r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
-    AURORA_CUSTOM_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
+                             r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)$"
+    AURORA_CUSTOM_CLUSTER_PATTERN = r"^(?P<instance>.+)\." \
                                     r"(?P<dns>cluster-custom-)+" \
                                     r"(?P<domain>[a-zA-Z0-9]+\." \
-                                    r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
-    AURORA_PROXY_DNS_PATTERN = r"(?P<instance>.+)\." \
+                                    r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)$"
+    AURORA_PROXY_DNS_PATTERN = r"^(?P<instance>.+)\." \
                                r"(?P<dns>proxy-)+" \
                                r"(?P<domain>[a-zA-Z0-9]+\." \
-                               r"(?P<region>[a-zA-Z0-9\\-]+)\.rds\.amazonaws\.com)(?!\.cn)"
-    AURORA_OLD_CHINA_DNS_PATTERN = r"(?P<instance>.+)\." \
+                               r"(?P<region>[a-zA-Z0-9\\-]+)\.rds\.amazonaws\.com)(?!\.cn)$"
+    AURORA_OLD_CHINA_DNS_PATTERN = r"^(?P<instance>.+)\." \
                                    r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|limitless-)?" \
                                    r"(?P<domain>[a-zA-Z0-9]+\." \
-                                   r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)"
-    AURORA_CHINA_DNS_PATTERN = r"(?P<instance>.+)\." \
+                                   r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)$"
+    AURORA_CHINA_DNS_PATTERN = r"^(?P<instance>.+)\." \
                                r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|limitless-)?" \
                                r"(?P<domain>[a-zA-Z0-9]+\." \
-                               r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)"
-    AURORA_OLD_CHINA_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
+                               r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)$"
+    AURORA_OLD_CHINA_CLUSTER_PATTERN = r"^(?P<instance>.+)\." \
                                        r"(?P<dns>cluster-|cluster-ro-)+" \
                                        r"(?P<domain>[a-zA-Z0-9]+\." \
-                                       r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)"
-    AURORA_CHINA_CLUSTER_PATTERN = r"(?P<instance>.+)\." \
+                                       r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)$"
+    AURORA_CHINA_CLUSTER_PATTERN = r"^(?P<instance>.+)\." \
                                    r"(?P<dns>cluster-|cluster-ro-)+" \
                                    r"(?P<domain>[a-zA-Z0-9]+\." \
-                                   r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)"
+                                   r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)$"
     AURORA_GOV_DNS_PATTERN = r"^(?P<instance>.+)\." \
                              r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|limitless-)?" \
                              r"(?P<domain>[a-zA-Z0-9]+\.rds\.(?P<region>[a-zA-Z0-9\-]+)" \
-                             r"\.(amazonaws\.com|c2s\.ic\.gov|sc2s\.sgov\.gov))"
+                             r"\.(amazonaws\.com|c2s\.ic\.gov|sc2s\.sgov\.gov))$"
     AURORA_GOV_CLUSTER_PATTERN = r"^(?P<instance>.+)\." \
                                  r"(?P<dns>cluster-|cluster-ro-)+" \
                                  r"(?P<domain>[a-zA-Z0-9]+\.rds\.(?P<region>[a-zA-Z0-9\-]+)" \
-                                 r"\.(amazonaws\.com|c2s\.ic\.gov|sc2s\.sgov\.gov))"
-    ELB_PATTERN = r"^(?<instance>.+)\.elb\.((?<region>[a-zA-Z0-9\-]+)\.amazonaws\.com)"
+                                 r"\.(amazonaws\.com|c2s\.ic\.gov|sc2s\.sgov\.gov))$"
+    ELB_PATTERN = r"^(?<instance>.+)\.elb\.((?<region>[a-zA-Z0-9\-]+)\.amazonaws\.com)$"
 
     IP_V4 = r"^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){1}" \
             r"(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){2}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
