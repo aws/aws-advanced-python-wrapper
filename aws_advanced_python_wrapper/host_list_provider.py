@@ -199,6 +199,8 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             else:
                 self._cluster_instance_template = HostInfo(
                     host=self._rds_utils.get_rds_instance_host_pattern(self._initial_host_info.host),
+                    host_id=self._initial_host_info.host_id,
+                    port=self._initial_host_info.port,
                     host_availability_strategy=host_availability_strategy)
             self._validate_host_pattern(self._cluster_instance_template.host)
 
@@ -216,14 +218,15 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                     self._cluster_id = cluster_id_suggestion.cluster_id
                     self._is_primary_cluster_id = cluster_id_suggestion.is_primary_cluster_id
                 else:
-                    cluster_url = self._rds_utils.get_rds_cluster_host_url(self._initial_host_info.url)
+                    cluster_url = self._rds_utils.get_rds_cluster_host_url(self._initial_host_info.host)
                     if cluster_url is not None:
-                        self._cluster_id = cluster_url
+                        self._cluster_id = f"{cluster_url}:{self._cluster_instance_template.port}" \
+                            if self._cluster_instance_template.is_port_specified() else cluster_url
                         self._is_primary_cluster_id = True
                         self._is_primary_cluster_id_cache.put(self._cluster_id, True,
                                                               self._suggested_cluster_id_refresh_ns)
 
-        self._is_initialized = True
+                    self._is_initialized = True
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):

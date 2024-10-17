@@ -57,10 +57,12 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             self,
             pool_configurator: Optional[Callable] = None,
             pool_mapping: Optional[Callable] = None,
+            accept_url_func: Optional[Callable] = None,
             pool_expiration_check_ns: int = -1,
             pool_cleanup_interval_ns: int = -1):
         self._pool_configurator = pool_configurator
         self._pool_mapping = pool_mapping
+        self._accept_url_func = accept_url_func
 
         if pool_expiration_check_ns > -1:
             SqlAlchemyPooledConnectionProvider._POOL_EXPIRATION_CHECK_NS = pool_expiration_check_ns
@@ -80,6 +82,8 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         return self._database_pools.keys()
 
     def accepts_host_info(self, host_info: HostInfo, props: Properties) -> bool:
+        if self._accept_url_func:
+            return self._accept_url_func(host_info, props)
         url_type = SqlAlchemyPooledConnectionProvider._rds_utils.identify_rds_type(host_info.host)
         return RdsUrlType.RDS_INSTANCE == url_type
 

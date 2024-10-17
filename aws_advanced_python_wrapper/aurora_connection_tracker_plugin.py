@@ -49,14 +49,31 @@ class OpenedConnectionTracker:
         :param conn: currently opened connection.
         """
 
-        aliases: FrozenSet[str] = host_info.as_aliases()
-        host: str = host_info.as_alias()
+        #     // Check if the connection was established using an instance endpoint
+        #     if (rdsUtils.isRdsInstance(hostSpec.getHost())) {
+        #       trackConnection(hostSpec.getHostAndPort(), conn);
+        #       return;
+        #     }
+        #
+        #     final String instanceEndpoint = aliases.stream()
+        #         .filter(x -> rdsUtils.isRdsInstance(rdsUtils.removePort(x)))
+        #         .max(String::compareToIgnoreCase)
+        #         .orElse(null);
+        #
+        #     if (instanceEndpoint == null) {
+        #       LOGGER.finest(
+        #           Messages.get("OpenedConnectionTracker.unableToPopulateOpenedConnectionQueue",
+        #             new Object[] {hostSpec.getHost()}));
+        #       return;
+        #     }
 
-        if self._rds_utils.is_rds_instance(host):
-            self._track_connection(host, conn)
+        aliases: FrozenSet[str] = host_info.as_aliases()
+
+        if self._rds_utils.is_rds_instance(host_info.host):
+            self._track_connection(host_info.as_alias(), conn)
             return
 
-        instance_endpoint: Optional[str] = next((alias for alias in aliases if self._rds_utils.is_rds_instance(alias)),
+        instance_endpoint: Optional[str] = next((alias for alias in aliases if self._rds_utils.is_rds_instance(self._rds_utils.remove_port(alias))),
                                                 None)
         if not instance_endpoint:
             logger.debug("OpenedConnectionTracker.UnableToPopulateOpenedConnectionSet")
