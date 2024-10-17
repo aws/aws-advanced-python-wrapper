@@ -267,6 +267,13 @@ class RdsUtils:
     def _get_dns_group(self, host: str):
         return self._get_group(host, RdsUtils.DNS_GROUP)
 
+    def remove_port(self, url: str):
+        if not url or not url.strip():
+            return None
+        if ":" in url:
+            return url.split(":")[0]
+        return url
+
     @staticmethod
     def clear_cache():
         RdsUtils.CACHE_PATTERNS.clear()
