@@ -28,6 +28,7 @@ from aws_advanced_python_wrapper.exception_handling import ExceptionManager
 from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
@@ -124,6 +125,7 @@ def pytest_runtest_setup(item):
 
         assert cluster_ip == writer_ip
 
+        RdsUtils.clear_cache()
         RdsHostListProvider._topology_cache.clear()
         RdsHostListProvider._is_primary_cluster_id_cache.clear()
         RdsHostListProvider._cluster_ids_to_update.clear()

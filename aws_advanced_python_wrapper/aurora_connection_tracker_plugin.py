@@ -49,24 +49,6 @@ class OpenedConnectionTracker:
         :param conn: currently opened connection.
         """
 
-        #     // Check if the connection was established using an instance endpoint
-        #     if (rdsUtils.isRdsInstance(hostSpec.getHost())) {
-        #       trackConnection(hostSpec.getHostAndPort(), conn);
-        #       return;
-        #     }
-        #
-        #     final String instanceEndpoint = aliases.stream()
-        #         .filter(x -> rdsUtils.isRdsInstance(rdsUtils.removePort(x)))
-        #         .max(String::compareToIgnoreCase)
-        #         .orElse(null);
-        #
-        #     if (instanceEndpoint == null) {
-        #       LOGGER.finest(
-        #           Messages.get("OpenedConnectionTracker.unableToPopulateOpenedConnectionQueue",
-        #             new Object[] {hostSpec.getHost()}));
-        #       return;
-        #     }
-
         aliases: FrozenSet[str] = host_info.as_aliases()
 
         if self._rds_utils.is_rds_instance(host_info.host):
@@ -99,7 +81,7 @@ class OpenedConnectionTracker:
             return
 
         for instance in host:
-            if instance is not None and self._rds_utils.is_rds_instance(instance):
+            if instance is not None and self._rds_utils.is_rds_instance(self._rds_utils.remove_port(instance)):
                 instance_endpoint = instance
                 break
 
