@@ -50,13 +50,12 @@ class OpenedConnectionTracker:
         """
 
         aliases: FrozenSet[str] = host_info.as_aliases()
-        host: str = host_info.as_alias()
 
-        if self._rds_utils.is_rds_instance(host):
-            self._track_connection(host, conn)
+        if self._rds_utils.is_rds_instance(host_info.host):
+            self._track_connection(host_info.as_alias(), conn)
             return
 
-        instance_endpoint: Optional[str] = next((alias for alias in aliases if self._rds_utils.is_rds_instance(alias)),
+        instance_endpoint: Optional[str] = next((alias for alias in aliases if self._rds_utils.is_rds_instance(self._rds_utils.remove_port(alias))),
                                                 None)
         if not instance_endpoint:
             logger.debug("OpenedConnectionTracker.UnableToPopulateOpenedConnectionSet")
@@ -82,7 +81,7 @@ class OpenedConnectionTracker:
             return
 
         for instance in host:
-            if instance is not None and self._rds_utils.is_rds_instance(instance):
+            if instance is not None and self._rds_utils.is_rds_instance(self._rds_utils.remove_port(instance)):
                 instance_endpoint = instance
                 break
 

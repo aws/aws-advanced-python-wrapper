@@ -515,7 +515,8 @@ class TestReadWriteSplitting:
     def test_pooled_connection__failover_failed(
             self, test_environment: TestEnvironment, test_driver: TestDriver,
             rds_utils, conn_utils, proxied_failover_props):
-        provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
+        writer_host = test_environment.get_writer().get_host()
+        provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1}, None, lambda host_info, props: writer_host in host_info.host)
         ConnectionProviderManager.set_connection_provider(provider)
 
         WrapperProperties.PLUGINS.set(proxied_failover_props, "read_write_splitting,failover,host_monitoring")
