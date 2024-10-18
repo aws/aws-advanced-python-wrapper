@@ -101,6 +101,7 @@ class TestAutoScaling:
         provider = SqlAlchemyPooledConnectionProvider(
             lambda _, __: {"pool_size": original_cluster_size},
             None,
+            None,
             120000000000,  # 2 minutes
             180000000000)  # 3 minutes
         ConnectionProviderManager.set_connection_provider(provider)
@@ -166,6 +167,7 @@ class TestAutoScaling:
 
         provider = SqlAlchemyPooledConnectionProvider(
             lambda _, __: {"pool_size": len(instances) * 5},
+            None,
             None,
             120000000000,  # 2 minutes
             180000000000)  # 3 minutes
