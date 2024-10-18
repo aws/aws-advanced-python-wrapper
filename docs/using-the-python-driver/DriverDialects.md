@@ -26,7 +26,6 @@ Driver Dialect codes specify which driver dialect class to use.
 |--------------------------|--------------------------|
 | `PSYCOPG`                | `psycopg`                |
 | `MYSQL_CONNECTOR_PYTHON` | `mysql-connector-python` |
-| `SQLALCHEMY`             | `sqlalchemy`             |
 | `GENERIC`                | `generic`                |
 
 ## Custom Driver Dialects

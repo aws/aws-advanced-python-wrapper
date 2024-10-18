@@ -13,7 +13,6 @@
 #  limitations under the License.
 
 class DriverDialectCodes:
-    SQLALCHEMY = "sqlalchemy"
     PSYCOPG = "psycopg"
     MYSQL_CONNECTOR_PYTHON = "mysql-connector-python"
     GENERIC = "generic"
