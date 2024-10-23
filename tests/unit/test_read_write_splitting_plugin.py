@@ -90,7 +90,7 @@ def driver_dialect_mock(mocker, writer_conn_mock):
 def plugin_service_mock(mocker, driver_dialect_mock):
     plugin_service_mock = mocker.MagicMock()
     plugin_service_mock.driver_dialect = driver_dialect_mock
-    plugin_service_mock.hosts = default_hosts
+    plugin_service_mock.all_hosts = default_hosts
     plugin_service_mock.is_in_transaction = False
     return plugin_service_mock
 
@@ -98,7 +98,7 @@ def plugin_service_mock(mocker, driver_dialect_mock):
 def test_set_read_only_true(plugin_service_mock):
     plugin_service_mock.current_connection = writer_conn_mock
     plugin_service_mock.get_host_info_by_strategy.return_value = reader_host1
-    plugin_service_mock.hosts = single_reader_topology
+    plugin_service_mock.all_hosts = single_reader_topology
     plugin_service_mock.connect.return_value = reader_conn_mock
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
@@ -116,7 +116,7 @@ def test_set_read_only_true(plugin_service_mock):
 def test_set_read_only_false(plugin_service_mock):
     plugin_service_mock.current_connection = reader_conn_mock
     plugin_service_mock.current_host_info = reader_host1
-    plugin_service_mock.hosts = single_reader_topology
+    plugin_service_mock.all_hosts = single_reader_topology
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
     plugin._host_list_provider_service = host_list_provider_service_mock
@@ -183,7 +183,7 @@ def test_set_read_only_false_in_transaction(plugin_service_mock):
 
 
 def test_set_read_only_true_one_host(plugin_service_mock):
-    plugin_service_mock.hosts = [writer_host]
+    plugin_service_mock.all_hosts = [writer_host]
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
     plugin._host_list_provider_service = host_list_provider_service_mock
@@ -205,7 +205,7 @@ def test_set_read_only_false_writer_connection_fails(plugin_service_mock):
     plugin_service_mock.connect.side_effect = connect_side_effect
     plugin_service_mock.current_connection = reader_conn_mock
     plugin_service_mock.current_host_info = reader_host1
-    plugin_service_mock.hosts = single_reader_topology
+    plugin_service_mock.all_hosts = single_reader_topology
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
     plugin._host_list_provider_service = host_list_provider_service_mock

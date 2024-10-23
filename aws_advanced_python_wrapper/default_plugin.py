@@ -122,7 +122,7 @@ class DefaultPlugin(Plugin):
         if HostRole.UNKNOWN == role:
             raise AwsWrapperError(Messages.get("DefaultPlugin.UnknownHosts"))
 
-        hosts = self._plugin_service.hosts
+        hosts = self._plugin_service.all_hosts
 
         if len(hosts) < 1:
             raise AwsWrapperError(Messages.get("DefaultPlugin.EmptyHosts"))

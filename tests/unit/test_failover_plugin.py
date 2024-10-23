@@ -198,7 +198,7 @@ def test_update_topology(
             refresh_mock.assert_not_called()
         force_refresh_mock.assert_not_called()
 
-    type(plugin_service_mock).hosts = PropertyMock(return_value=[HostInfo("host")])
+    type(plugin_service_mock).all_hosts = PropertyMock(return_value=[HostInfo("host")])
     driver_dialect_mock.is_closed.return_value = False
 
     with mock.patch.object(plugin_service_mock, "force_refresh_host_list") as force_refresh_mock:
@@ -243,7 +243,7 @@ def test_failover_reader_with_valid_failed_host(plugin_service_mock, host_list_p
     host._availability = HostAvailability.AVAILABLE
     host._aliases = ["alias1", "alias2"]
     hosts: Tuple[HostInfo, ...] = (host, )
-    type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
+    type(plugin_service_mock).all_hosts = PropertyMock(return_value=hosts)
 
     properties = Properties()
     WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
@@ -265,7 +265,7 @@ def test_failover_reader_with_no_failed_host(plugin_service_mock, host_list_prov
     host._availability = HostAvailability.AVAILABLE
     host._aliases = ["alias1", "alias2"]
     hosts: Tuple[HostInfo, ...] = (host, )
-    type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
+    type(plugin_service_mock).all_hosts = PropertyMock(return_value=hosts)
 
     properties = Properties()
     WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
@@ -288,7 +288,7 @@ def test_failover_writer_failed_failover_raises_error(plugin_service_mock, host_
     host: HostInfo = HostInfo("host")
     host._aliases = ["alias1", "alias2"]
     hosts: Tuple[HostInfo, ...] = (host, )
-    type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
+    type(plugin_service_mock).all_hosts = PropertyMock(return_value=hosts)
 
     properties = Properties()
     WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
@@ -309,7 +309,7 @@ def test_failover_writer_failed_failover_with_no_result(plugin_service_mock, hos
     host: HostInfo = HostInfo("host")
     host._aliases = ["alias1", "alias2"]
     hosts: Tuple[HostInfo, ...] = (host, )
-    type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
+    type(plugin_service_mock).all_hosts = PropertyMock(return_value=hosts)
 
     writer_result_mock: WriterFailoverResult = MagicMock()
     get_connection_mock = PropertyMock()
@@ -340,7 +340,7 @@ def test_failover_writer_success(plugin_service_mock, host_list_provider_service
     host: HostInfo = HostInfo("host")
     host._aliases = ["alias1", "alias2"]
     hosts: Tuple[HostInfo, ...] = (host, )
-    type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
+    type(plugin_service_mock).all_hosts = PropertyMock(return_value=hosts)
 
     properties = Properties()
     WrapperProperties.ENABLE_FAILOVER.set(properties, "True")

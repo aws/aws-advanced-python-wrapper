@@ -134,7 +134,7 @@ def test_get_verified_connection__cluster_inet_address_none(mocker, plugin_servi
 def test_get_verified_connection__no_writer_hostinfo(mocker, plugin_service_mock, host_list_provider_mock, default_properties,
                                                      initial_conn_mock, connect_func_mock, reader_host_list, writer_cluster):
     target = StaleDnsHelper(plugin_service_mock)
-    plugin_service_mock.hosts = reader_host_list
+    plugin_service_mock.all_hosts = reader_host_list
     plugin_service_mock.get_host_role.return_value = HostRole.READER
     connect_func_mock.return_value = initial_conn_mock
     socket.gethostbyname = mocker.MagicMock(return_value='2.2.2.2')
@@ -153,7 +153,7 @@ def test_get_verified_connection__writer_rds_cluster_dns_true(mocker, plugin_ser
 
     connect_func_mock.return_value = initial_conn_mock
     socket.gethostbyname = mocker.MagicMock(return_value='5.5.5.5')
-    plugin_service_mock.hosts = cluster_host_list
+    plugin_service_mock.all_hosts = cluster_host_list
 
     target = StaleDnsHelper(plugin_service_mock)
     return_conn = target.get_verified_connection(True, host_list_provider_mock, writer_cluster, default_properties, connect_func_mock)
@@ -166,7 +166,7 @@ def test_get_verified_connection__writer_rds_cluster_dns_true(mocker, plugin_ser
 def test_get_verified_connection__writer_host_address_none(mocker, plugin_service_mock, host_list_provider_mock, default_properties,
                                                            initial_conn_mock, connect_func_mock, writer_cluster, instance_host_list):
     target = StaleDnsHelper(plugin_service_mock)
-    plugin_service_mock.hosts = instance_host_list
+    plugin_service_mock.all_hosts = instance_host_list
     socket.gethostbyname = mocker.MagicMock(side_effect=['5.5.5.5', None])
     connect_func_mock.return_value = initial_conn_mock
 
@@ -179,7 +179,7 @@ def test_get_verified_connection__writer_host_address_none(mocker, plugin_servic
 def test_get_verified_connection__writer_host_info_none(mocker, plugin_service_mock, host_list_provider_mock, default_properties, initial_conn_mock,
                                                         connect_func_mock, writer_cluster, reader_host_list):
     target = StaleDnsHelper(plugin_service_mock)
-    plugin_service_mock.hosts = reader_host_list
+    plugin_service_mock.all_hosts = reader_host_list
     socket.gethostbyname = mocker.MagicMock(side_effect=['5.5.5.5', None])
     connect_func_mock.return_value = initial_conn_mock
 
@@ -194,7 +194,7 @@ def test_get_verified_connection__writer_host_address_equals_cluster_inet_addres
                                                                                   default_properties, initial_conn_mock, connect_func_mock,
                                                                                   writer_cluster, instance_host_list):
     target = StaleDnsHelper(plugin_service_mock)
-    plugin_service_mock.hosts = instance_host_list
+    plugin_service_mock.all_hosts = instance_host_list
     socket.gethostbyname = mocker.MagicMock(side_effect=['5.5.5.5', '5.5.5.5'])
     connect_func_mock.return_value = initial_conn_mock
 
@@ -209,7 +209,7 @@ def test_get_verified_connection__writer_host_address_not_equals_cluster_inet_ad
                                                                                       writer_cluster, cluster_host_list):
     target = StaleDnsHelper(plugin_service_mock)
     target._writer_host_info = writer_cluster
-    plugin_service_mock.hosts = cluster_host_list
+    plugin_service_mock.all_hosts = cluster_host_list
     socket.gethostbyname = mocker.MagicMock(side_effect=['5.5.5.5', '8.8.8.8'])
     connect_func_mock.return_value = initial_conn_mock
 
@@ -228,7 +228,7 @@ def test_get_verified_connection__initial_connection_writer_host_address_not_equ
                                                                                                          writer_cluster, cluster_host_list):
     target = StaleDnsHelper(plugin_service_mock)
     target._writer_host_info = writer_cluster
-    plugin_service_mock.hosts = cluster_host_list
+    plugin_service_mock.all_hosts = cluster_host_list
     socket.gethostbyname = mocker.MagicMock(side_effect=['5.5.5.5', '8.8.8.8'])
     connect_func_mock.return_value = initial_conn_mock
 

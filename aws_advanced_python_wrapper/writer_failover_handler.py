@@ -174,7 +174,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
                     conn = self._plugin_service.force_connect(initial_writer_host, self._initial_connection_properties, self._timeout_event)
                     self._plugin_service.force_refresh_host_list(conn)
-                    latest_topology = self._plugin_service.hosts
+                    latest_topology = self._plugin_service.all_hosts
 
                 except Exception as ex:
                     if not self._plugin_service.is_network_exception(ex):
@@ -267,7 +267,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         while not self._timeout_event.is_set():
             try:
                 self._plugin_service.force_refresh_host_list(self._current_reader_connection)
-                current_topology: Tuple[HostInfo, ...] = self._plugin_service.hosts
+                current_topology: Tuple[HostInfo, ...] = self._plugin_service.all_hosts
 
                 if len(current_topology) > 0:
                     if len(current_topology) == 1:

@@ -112,7 +112,7 @@ class PluginServiceManagerContainer:
 class PluginService(ExceptionHandler, Protocol):
     @property
     @abstractmethod
-    def hosts(self) -> Tuple[HostInfo, ...]:
+    def all_hosts(self) -> Tuple[HostInfo, ...]:
         ...
 
     @property
@@ -294,11 +294,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._session_state_service = session_state_service if session_state_service is not None else SessionStateServiceImpl(self, props)
 
     @property
-    def hosts(self) -> Tuple[HostInfo, ...]:
+    def all_hosts(self) -> Tuple[HostInfo, ...]:
         return self._hosts
 
-    @hosts.setter
-    def hosts(self, new_hosts: Tuple[HostInfo, ...]):
+    @all_hosts.setter
+    def all_hosts(self, new_hosts: Tuple[HostInfo, ...]):
         self._hosts = new_hosts
 
     @property
@@ -454,14 +454,14 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def refresh_host_list(self, connection: Optional[Connection] = None):
         connection = self.current_connection if connection is None else connection
         updated_host_list: Tuple[HostInfo, ...] = self.host_list_provider.refresh(connection)
-        if updated_host_list != self.hosts:
+        if updated_host_list != self.all_hosts:
             self._update_host_availability(updated_host_list)
             self._update_hosts(updated_host_list)
 
     def force_refresh_host_list(self, connection: Optional[Connection] = None):
         connection = self.current_connection if connection is None else connection
         updated_host_list: Tuple[HostInfo, ...] = self.host_list_provider.force_refresh(connection)
-        if updated_host_list != self.hosts:
+        if updated_host_list != self.all_hosts:
             self._update_host_availability(updated_host_list)
             self._update_hosts(updated_host_list)
 
@@ -547,12 +547,12 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 host.set_availability(availability)
 
     def _update_hosts(self, new_hosts: Tuple[HostInfo, ...]):
-        old_hosts_dict = {x.url: x for x in self.hosts}
+        old_hosts_dict = {x.url: x for x in self.all_hosts}
         new_hosts_dict = {x.url: x for x in new_hosts}
 
         changes: Dict[str, Set[HostEvent]] = {}
 
-        for host in self.hosts:
+        for host in self.all_hosts:
             corresponding_new_host = new_hosts_dict.get(host.url)
             if corresponding_new_host is None:
                 changes[host.url] = {HostEvent.HOST_DELETED}

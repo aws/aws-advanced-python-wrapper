@@ -286,7 +286,7 @@ class FailoverPlugin(Plugin):
             if failed_host is not None and failed_host.get_raw_availability() != HostAvailability.AVAILABLE:
                 failed_host = None
 
-            result: ReaderFailoverResult = self._reader_failover_handler.failover(self._plugin_service.hosts,
+            result: ReaderFailoverResult = self._reader_failover_handler.failover(self._plugin_service.all_hosts,
                                                                                   failed_host)
 
             if result is None or not result.is_connected:
@@ -328,7 +328,7 @@ class FailoverPlugin(Plugin):
         try:
             logger.info("FailoverPlugin.StartWriterFailover")
 
-            result: WriterFailoverResult = self._writer_failover_handler.failover(self._plugin_service.hosts)
+            result: WriterFailoverResult = self._writer_failover_handler.failover(self._plugin_service.all_hosts)
 
             if result is not None and result.exception is not None:
                 raise result.exception
@@ -425,7 +425,7 @@ class FailoverPlugin(Plugin):
             raise ex
 
     def _should_attempt_reader_connection(self) -> bool:
-        topology = self._plugin_service.hosts
+        topology = self._plugin_service.all_hosts
         if topology is None or self._failover_mode == FailoverMode.STRICT_WRITER:
             return False
 
@@ -438,11 +438,11 @@ class FailoverPlugin(Plugin):
     def _is_failover_enabled(self) -> bool:
         return self._enable_failover_setting and \
             self._rds_url_type != RdsUrlType.RDS_PROXY and \
-            self._plugin_service.hosts is not None and \
-            len(self._plugin_service.hosts) > 0
+            self._plugin_service.all_hosts is not None and \
+            len(self._plugin_service.all_hosts) > 0
 
     def _get_current_writer(self) -> Optional[HostInfo]:
-        topology = self._plugin_service.hosts
+        topology = self._plugin_service.all_hosts
         if topology is None:
             return None
 
