@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, ClassVar, List, Type
 
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
+from aws_advanced_python_wrapper.custom_endpoint_plugin import CustomEndpointPluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
@@ -622,6 +623,7 @@ class PluginManager(CanReleaseResources):
         "read_write_splitting": ReadWriteSplittingPluginFactory,
         "fastest_response_strategy": FastestResponseStrategyPluginFactory,
         "stale_dns": StaleDnsPluginFactory,
+        "custom_endpoint": CustomEndpointPluginFactory,
         "connect_time": ConnectTimePluginFactory,
         "execute_time": ExecuteTimePluginFactory,
         "dev": DeveloperPluginFactory,
@@ -636,6 +638,7 @@ class PluginManager(CanReleaseResources):
     # the highest values. The first plugin of the list will have the lowest weight, and the
     # last one will have the highest weight.
     PLUGIN_FACTORY_WEIGHTS: Dict[Type[PluginFactory], int] = {
+        CustomEndpointPluginFactory: 40,
         AuroraInitialConnectionStrategyPluginFactory: 50,
         AuroraConnectionTrackerPluginFactory: 100,
         StaleDnsPluginFactory: 200,
