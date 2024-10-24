@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, List, Type
 
+from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
 from aws_advanced_python_wrapper.custom_endpoint_plugin import CustomEndpointPluginFactory
@@ -113,6 +114,16 @@ class PluginService(ExceptionHandler, Protocol):
     @property
     @abstractmethod
     def all_hosts(self) -> Tuple[HostInfo, ...]:
+        ...
+
+    @property
+    @abstractmethod
+    def hosts(self) -> Tuple[HostInfo, ...]:
+        ...
+
+    @property
+    @abstractmethod
+    def allowed_and_blocked_hosts(self) -> Optional[AllowedAndBlockedHosts]:
         ...
 
     @property
@@ -280,7 +291,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._original_url = PropertiesUtils.get_url(props)
         self._host_list_provider: HostListProvider = ConnectionStringHostListProvider(self, props)
 
-        self._hosts: Tuple[HostInfo, ...] = ()
+        self._all_hosts: Tuple[HostInfo, ...] = ()
+        self._allowed_and_blocked_hosts: Optional[AllowedAndBlockedHosts] = None
         self._current_connection: Optional[Connection] = None
         self._current_host_info: Optional[HostInfo] = None
         self._initial_connection_host_info: Optional[HostInfo] = None
@@ -295,11 +307,37 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     @property
     def all_hosts(self) -> Tuple[HostInfo, ...]:
-        return self._hosts
+        return self._all_hosts
 
     @all_hosts.setter
     def all_hosts(self, new_hosts: Tuple[HostInfo, ...]):
-        self._hosts = new_hosts
+        self._all_hosts = new_hosts
+
+    @property
+    def hosts(self) -> Tuple[HostInfo, ...]:
+        host_permissions = self.allowed_and_blocked_hosts
+        if host_permissions is None:
+            return self._all_hosts
+
+        hosts = self._all_hosts
+        allowed_ids = host_permissions.allowed_host_ids
+        blocked_ids = host_permissions.blocked_host_ids
+
+        if allowed_ids is not None:
+            hosts = [host for host in hosts if host.host_id in allowed_ids]
+
+        if blocked_ids is not None:
+            hosts = [host for host in hosts if host.host_id not in blocked_ids]
+
+        return hosts
+
+    @property
+    def allowed_and_blocked_hosts(self) -> Optional[AllowedAndBlockedHosts]:
+        return self._allowed_and_blocked_hosts
+
+    @allowed_and_blocked_hosts.setter
+    def allowed_and_blocked_hosts(self, allowed_and_blocked_hosts: Optional[AllowedAndBlockedHosts]):
+        self._allowed_and_blocked_hosts = allowed_and_blocked_hosts
 
     @property
     def current_connection(self) -> Optional[Connection]:
