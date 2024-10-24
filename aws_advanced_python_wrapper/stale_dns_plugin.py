@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
     from aws_advanced_python_wrapper.utils.properties import Properties
 
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -109,6 +110,15 @@ class StaleDnsHelper:
 
         if self._writer_host_address != cluster_inet_address:
             logger.debug("StaleDnsHelper.StaleDnsDetected", self._writer_host_info)
+
+            allowed_hosts = self._plugin_service.hosts
+            allowed_hostnames = [host.host for host in allowed_hosts]
+            if self._writer_host_info.host not in allowed_hostnames:
+                raise AwsWrapperError(
+                    Messages.get_formatted(
+                        "StaleDnsHelper.CurrentWriterNotAllowed",
+                        "<null>" if self._writer_host_info is None else self._writer_host_info.host,
+                        LogUtils.log_topology(allowed_hosts)))
 
             writer_conn: Connection = self._plugin_service.connect(self._writer_host_info, props)
             if is_initial_connection:
