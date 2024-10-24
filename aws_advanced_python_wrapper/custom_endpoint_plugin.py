@@ -11,8 +11,8 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
-from typing import Set, Optional, ClassVar, Callable
+from enum import Enum
+from typing import Set, Optional, ClassVar, Callable, Dict, Union, List
 
 from boto3 import Session
 
@@ -28,6 +28,92 @@ from aws_advanced_python_wrapper.utils.sliding_expiration_cache import SlidingEx
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import TelemetryFactory, TelemetryCounter
 
 logger = Logger(__name__)
+
+
+class CustomEndpointRoleType(Enum):
+    """
+    Enum representing the possible roles of instances specified by a custom endpoint. Note that, currently, it is not
+    possible to create a WRITER custom endpoint.
+    """
+    ANY = "ANY"
+    READER = "READER"
+
+    @classmethod
+    def from_string(cls, value):
+        return CustomEndpointRoleType(value)
+
+
+class MemberGroupType(Enum):
+    """
+    Enum representing the member group type of a custom endpoint. This information can be used together with a member
+    set to determine which instances are included or excluded from a custom endpoint.
+    """
+    STATIC_GROUP = "STATIC_GROUP"
+    """
+    The member list for the custom endpoint specifies which instances are included in the custom endpoint. If new
+    instances are added to the cluster, they will not be automatically added to the custom endpoint.    
+    """
+
+    EXCLUSION_GROUP = "EXCLUSION_GROUP"
+    """
+    The member list for the custom endpoint specifies which instances are excluded from the custom endpoint. If new
+    instances are added to the cluster, they will be automatically added to the custom endpoint.    
+    """
+
+class CustomEndpointInfo:
+    def __init__(self,
+                 endpoint_id: str,
+                 cluster_id: str,
+                 endpoint: str,
+                 role_type: CustomEndpointRoleType,
+                 members: Set[str],
+                 member_group_type: MemberGroupType):
+        self._endpoint_id = endpoint_id
+        self._cluster_id = cluster_id
+        self._endpoint = endpoint
+        self._role_type = role_type
+        self._members = members
+        self._member_group_type = member_group_type
+
+    @classmethod
+    def from_db_cluster_endpoint(cls, endpoint_response_info: Dict[str, Union[str, List[str]]]):
+        static_members = endpoint_response_info.get("StaticMembers")
+        if static_members:
+            members = static_members
+            member_group_type = MemberGroupType.STATIC_GROUP
+        else:
+            members = endpoint_response_info.get("ExcludedMembers")
+            member_group_type = MemberGroupType.EXCLUSION_GROUP
+
+        return CustomEndpointInfo(
+            endpoint_response_info.get("DBClusterEndpointIdentifier"),
+            endpoint_response_info.get("DBClusterIdentifier"),
+            endpoint_response_info.get("Endpoint"),
+            CustomEndpointRoleType.from_string(endpoint_response_info.get("EndpointType")),
+            set(members),
+            member_group_type
+        )
+
+    def __eq__(self, other: object):
+        if self is object:
+            return True
+        if not isinstance(other, CustomEndpointInfo):
+            return False
+
+        return self._endpoint_id == other._endpoint_id \
+            and self._cluster_id == other._cluster_id \
+            and self._endpoint == other._endpoint \
+            and self._role_type == other._role_type \
+            and self._members == other._members \
+            and self._member_group_type == other._member_group_type
+
+    def __hash__(self):
+        return hash((self._endpoint_id, self._cluster_id, self._endpoint, self._role_type, self._member_group_type))
+
+    def __str__(self):
+        return (f"CustomEndpointInfo[endpoint={self._endpoint}, cluster_id={self._cluster_id}, "
+                f"role_type={self._role_type}, endpoint_id={self._endpoint_id}, members={self._members}, "
+                f"member_group_type={self._member_group_type}]")
 
 
 class CustomEndpointMonitor:
