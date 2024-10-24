@@ -195,7 +195,7 @@ class ReadWriteSplittingPlugin(Plugin):
             except Exception:
                 pass  # Swallow exception
 
-        hosts = self._plugin_service.all_hosts
+        hosts = self._plugin_service.hosts
         if hosts is None or len(hosts) == 0:
             self._log_and_raise_exception("ReadWriteSplittingPlugin.EmptyHostList")
 
@@ -293,7 +293,7 @@ class ReadWriteSplittingPlugin(Plugin):
         conn: Optional[Connection] = None
         reader_host: Optional[HostInfo] = None
 
-        conn_attempts = len(self._plugin_service.all_hosts) * 2
+        conn_attempts = len(self._plugin_service.hosts) * 2
         for _ in range(conn_attempts):
             host = self._plugin_service.get_host_info_by_strategy(HostRole.READER, self._reader_selector_strategy)
             if host is not None:

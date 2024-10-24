@@ -173,7 +173,7 @@ class GoodPlugin(Plugin):
         return {"*"}
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
-        if len(self._plugin_service.all_hosts) == 0:
+        if len(self._plugin_service.hosts) == 0:
             # Re-fetch host info if it is empty.
             self._plugin_service.force_refresh_host_list()
 

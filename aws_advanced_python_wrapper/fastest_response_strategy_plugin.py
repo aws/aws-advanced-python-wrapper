@@ -112,7 +112,7 @@ class FastestResponseStrategyPlugin(Plugin):
         if fastest_response_host is not None:
 
             # Found a fastest host. Let's find it in the the latest topology.
-            for host in self._plugin_service.all_hosts:
+            for host in self._plugin_service.hosts:
                 if host == fastest_response_host:
                     # found the fastest host in the topology
                     return host
@@ -121,7 +121,7 @@ class FastestResponseStrategyPlugin(Plugin):
 
         # Cached result isn't available. Need to find the fastest response time host.
         eligible_hosts: List[FastestResponseStrategyPlugin.ResponseTimeTuple] = []
-        for host in self._plugin_service.all_hosts:
+        for host in self._plugin_service.hosts:
             if role == host.role:
                 response_time_tuple = FastestResponseStrategyPlugin.ResponseTimeTuple(host,
                                                                                       self._host_response_time_service.get_response_time(host))
@@ -135,7 +135,7 @@ class FastestResponseStrategyPlugin(Plugin):
         if calculated_fastest_response_host is None or \
                 self._host_response_time_service.get_response_time(calculated_fastest_response_host) == MAX_VALUE:
             logger.debug("FastestResponseStrategyPlugin.RandomHostSelected")
-            return self._random_host_selector.get_host(self._plugin_service.all_hosts, role, self._properties)
+            return self._random_host_selector.get_host(self._plugin_service.hosts, role, self._properties)
 
         self._cached_fastest_response_host_by_role.put(role.name,
                                                        calculated_fastest_response_host,
@@ -144,7 +144,7 @@ class FastestResponseStrategyPlugin(Plugin):
         return calculated_fastest_response_host
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        self._hosts = self._plugin_service.all_hosts
+        self._hosts = self._plugin_service.hosts
         if self._host_response_time_service is not None:
             self._host_response_time_service.set_hosts(self._hosts)
 
