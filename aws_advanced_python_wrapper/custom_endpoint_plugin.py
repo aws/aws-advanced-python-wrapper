@@ -11,16 +11,24 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-from enum import Enum
-from typing import Set, Optional, ClassVar, Callable, Dict, Union, List
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Set, Optional, ClassVar, Callable, Dict, Union, List
+
+if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.driver_dialect import DriverDialect
+    from aws_advanced_python_wrapper.pep249 import Connection
+    from aws_advanced_python_wrapper.plugin_service import PluginService
+    from aws_advanced_python_wrapper.utils.properties import Properties
 
 from boto3 import Session
+from enum import Enum
 
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249 import Connection
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
-from aws_advanced_python_wrapper.plugin_service import PluginService
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils

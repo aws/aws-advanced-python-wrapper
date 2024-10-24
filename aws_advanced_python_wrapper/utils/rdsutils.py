@@ -195,6 +195,15 @@ class RdsUtils:
 
         return None
 
+    def get_cluster_id(self, host: str) -> Optional[str]:
+        if host is None or not host.strip():
+            return None
+
+        if self._get_dns_group(host) is not None:
+            return self._get_group(host, self.INSTANCE_GROUP)
+
+        return None
+
     def get_instance_id(self, host: str) -> Optional[str]:
         if self._get_dns_group(host) is None:
             return self._get_group(host, self.INSTANCE_GROUP)
