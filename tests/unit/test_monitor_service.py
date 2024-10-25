@@ -108,7 +108,7 @@ def test_start_monitoring__multiple_calls(monitor_service_with_container, mock_m
             mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
     assert num_calls == mock_monitor.start_monitoring.call_count
-    mock_executor.submit.assert_called_once_with(mock_monitor.run)
+    mock_executor.submit.assert_called_once_with(mock_monitor._run)
     assert mock_monitor == monitor_service_with_container._cached_monitor()
     assert aliases == monitor_service_with_container._cached_monitor_aliases
 

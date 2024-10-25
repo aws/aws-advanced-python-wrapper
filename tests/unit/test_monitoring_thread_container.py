@@ -77,7 +77,7 @@ def test_get_or_create_monitor__monitor_created(
     assert mock_monitor1 == result
 
     mock_monitor_supplier.assert_called_once()
-    mock_executor.submit.assert_called_once_with(mock_monitor1.run)
+    mock_executor.submit.assert_called_once_with(mock_monitor1._run)
     assert mock_monitor1 == container._monitor_map.get("alias-1")
     assert mock_monitor1 == container._monitor_map.get("alias-2")
 

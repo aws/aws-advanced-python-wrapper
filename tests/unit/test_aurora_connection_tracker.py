@@ -79,7 +79,7 @@ def props():
 def test_track_new_instance_connection(
         mocker, mock_plugin_service, mock_rds_utils, mock_tracker, mock_cursor, mock_callable):
     host_info: HostInfo = HostInfo("instance1")
-    mock_plugin_service.all_hosts = [host_info]
+    mock_plugin_service._all_hosts = [host_info]
     mock_plugin_service.current_host_info = host_info
     mock_rds_utils.is_rds_instance.return_value = True
     mock_callable.return_value = mock_conn
@@ -107,7 +107,7 @@ def test_invalidate_opened_connections(
     new_host = HostInfo("new-host")
     mock_callable.side_effect = expected_exception
     mock_hosts_prop = mocker.PropertyMock(side_effect=[(original_host,), (new_host,)])
-    type(mock_plugin_service).all_hosts = mock_hosts_prop
+    type(mock_plugin_service)._all_hosts = mock_hosts_prop
 
     plugin: AuroraConnectionTrackerPlugin = AuroraConnectionTrackerPlugin(
         mock_plugin_service, Properties(), mock_rds_utils, mock_tracker)

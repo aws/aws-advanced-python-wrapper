@@ -610,7 +610,7 @@ class MonitoringThreadContainer:
                 if supplied_monitor is None:
                     raise AwsWrapperError(Messages.get("MonitoringThreadContainer.SupplierMonitorNone"))
                 self._tasks_map.compute_if_absent(
-                    supplied_monitor, lambda _: MonitoringThreadContainer._executor.submit(supplied_monitor.run))
+                    supplied_monitor, lambda _: MonitoringThreadContainer._executor.submit(supplied_monitor._run))
                 return supplied_monitor
 
             if monitor is None:
