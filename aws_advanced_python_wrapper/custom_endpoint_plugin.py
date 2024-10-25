@@ -14,7 +14,12 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Executor, ThreadPoolExecutor
+from threading import Event
+from time import perf_counter_ns
 from typing import TYPE_CHECKING, Set, Optional, ClassVar, Callable, Dict, Union, List
+
+from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -125,8 +130,64 @@ class CustomEndpointInfo:
 
 
 class CustomEndpointMonitor:
-    def __init__(self):
-        ...
+    _CUSTOM_ENDPOINT_INFO_EXPIRATION_NS: ClassVar[int] = 5 * 60_000_000_000  # 5 minutes
+    # Keys are custom endpoint URLs, values are information objects for the associated custom endpoint.
+    _custom_endpoint_info_cache: ClassVar[CacheMap[str, CustomEndpointInfo]] = CacheMap()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
+    _rds_utils: ClassVar[RdsUtils] = RdsUtils()
+
+    def __init__(self,
+                 plugin_service: PluginService,
+                 custom_endpoint_host_info: HostInfo,
+                 endpoint_id: str,
+                 region: str,
+                 refresh_rate_ns: int,
+                 session: Optional[Session] = None
+                 ):
+        self._plugin_service = plugin_service
+        self._custom_endpoint_host_info = custom_endpoint_host_info
+        self._endpoint_id = endpoint_id
+        self._region = region
+        self._refresh_rate_ns = refresh_rate_ns
+        self._client = session.client('rds', region_name=region)
+
+        telemetry_factory = self._plugin_service.get_telemetry_factory()
+        self._info_changed_counter = telemetry_factory.create_counter("customEndpoint.infoChanged.counter")
+        self._stop_event = Event()
+
+    def run(self):
+        logger.debug("CustomEndpointMonitorImpl.StartingMonitor", self._custom_endpoint_host_info.host)
+
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    start = perf_counter_ns()
+
+                    response = self._client.describe_db_cluster_endpoints(
+                        DBClusterEndpointIdentifier=self._endpoint_id,
+                        Filters=[
+                            {
+                                "Name": "db-cluster-endpoint-type",
+                                "Values": ["custom"]
+                            }
+                        ]
+                    )
+
+                    endpoints = response["DBClusterEndpoints"]
+                    if len(endpoints) != 1:
+                        endpoint_hostnames = [endpoint["Endpoint"] for endpoint in endpoints]
+                        logger.warning(
+                            "CustomEndpointMonitorImpl.UnexpectedNumberOfEndpoints",
+                            self._endpoint_id,
+                            self._region,
+                            len(endpoints),
+                            endpoint_hostnames)
+                finally:
+                    return
+        finally:
+            return
+
+
 
 
 class CustomEndpointPlugin(Plugin):
@@ -142,10 +203,9 @@ class CustomEndpointPlugin(Plugin):
                                                 should_dispose_func=lambda monitor: True,
                                                 item_disposal_func=lambda monitor: monitor.close())
 
-    def __init__(self, plugin_service: PluginService, props: Properties, session: Optional[Session] = None):
+    def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
         self._props = props
-        self._session = session
 
         self._should_wait_for_info: bool = WrapperProperties.WAIT_FOR_CUSTOM_ENDPOINT_INFO.get_bool(self._props)
         self._wait_for_info_timeout_ms: int = WrapperProperties.WAIT_FOR_CUSTOM_ENDPOINT_INFO_TIMEOUT_MS.get_int(self._props)
