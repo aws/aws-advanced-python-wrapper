@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from concurrent.futures import Executor, ThreadPoolExecutor
 from time import perf_counter_ns, sleep
-from typing import (Callable, ClassVar, Generic, ItemsView, KeysView, Optional,
+from typing import (Callable, Generic, ItemsView, KeysView, Optional,
                     TypeVar)
 
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
@@ -74,9 +74,22 @@ class SlidingExpirationCache(Generic[K, V]):
             self._item_disposal_func(cache_item.item)
 
     def _remove_if_expired(self, key: K):
-        cache_item = self._cdict.get(key)
-        if cache_item is None or self._should_cleanup_item(cache_item):
-            self._remove_and_dispose(key)
+        item = None
+
+        def _remove_if_expired_internal(_, cache_item):
+            if cache_item.should_dispose:
+                nonlocal item
+                item = cache_item.item
+                return None
+
+            return cache_item
+
+        self._cdict.compute_if_present(key, _remove_if_expired_internal)
+
+        if item is None or self._item_disposal_func is None:
+            return
+
+        self._item_disposal_func(item)
 
     def _should_cleanup_item(self, cache_item: CacheItem) -> bool:
         if self._should_dispose_func is not None:
@@ -101,19 +114,17 @@ class SlidingExpirationCache(Generic[K, V]):
 
 
 class SlidingExpirationCacheWithCleanupThread(SlidingExpirationCache, Generic[K, V]):
-
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="SlidingExpirationCacheWithCleanupThreadExecutor")
-
     def __init__(
             self,
             cleanup_interval_ns: int = 10 * 60_000_000_000,  # 10 minutes
             should_dispose_func: Optional[Callable] = None,
             item_disposal_func: Optional[Callable] = None):
         super().__init__(cleanup_interval_ns, should_dispose_func, item_disposal_func)
+        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="SlidingExpirationCacheWithCleanupThreadExecutor")
         self.init_cleanup_thread()
 
     def init_cleanup_thread(self) -> None:
-        SlidingExpirationCacheWithCleanupThread._executor.submit(self._cleanup_thread_internal)
+        self._executor.submit(self._cleanup_thread_internal)
 
     def _cleanup_thread_internal(self):
         logger.debug("SlidingExpirationCache.CleaningUp")
@@ -127,7 +138,7 @@ class SlidingExpirationCacheWithCleanupThread(SlidingExpirationCache, Generic[K,
             except Exception:
                 pass  # ignore
 
-        SlidingExpirationCacheWithCleanupThread._executor.shutdown()
+        self._executor.shutdown()
 
     def _cleanup(self):
         pass  # do nothing, cleanup thread does the job
