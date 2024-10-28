@@ -35,6 +35,7 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
+from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
 
@@ -63,6 +64,7 @@ class AwsSecretsManagerPlugin(Plugin):
                 Messages.get_formatted("AwsSecretsManagerPlugin.MissingRequiredConfigParameter",
                                        WrapperProperties.SECRETS_MANAGER_SECRET_ID.name))
 
+        self._region_utils = RegionUtils()
         region: str = self._get_rds_region(secret_id, props)
 
         secrets_endpoint = WrapperProperties.SECRETS_MANAGER_ENDPOINT.get(props)
@@ -194,23 +196,23 @@ class AwsSecretsManagerPlugin(Plugin):
             WrapperProperties.PASSWORD.set(properties, self._secret.password)
 
     def _get_rds_region(self, secret_id: str, props: Properties) -> str:
-        region: Optional[str] = props.get(WrapperProperties.SECRETS_MANAGER_REGION.name)
-        if not region:
-            match = search(self._SECRETS_ARN_PATTERN, secret_id)
-            if match:
-                region = match.group("region")
-            else:
-                raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerPlugin.MissingRequiredConfigParameter",
-                                           WrapperProperties.SECRETS_MANAGER_REGION.name))
-
         session = self._session if self._session else boto3.Session()
-        if region not in session.get_available_regions("rds"):
-            exception_message = "AwsSdk.UnsupportedRegion"
-            logger.debug(exception_message, region)
-            raise AwsWrapperError(Messages.get_formatted(exception_message, region))
+        region: str = \
+            self._region_utils.get_region(props, WrapperProperties.SECRETS_MANAGER_REGION.name, session=session)
 
-        return region
+        if region:
+            return region
+
+        match = search(self._SECRETS_ARN_PATTERN, secret_id)
+        if match:
+            region = match.group("region")
+
+        if region:
+            return self._region_utils.verify_region(region)
+        else:
+            raise AwsWrapperError(
+                Messages.get_formatted("AwsSecretsManagerPlugin.MissingRequiredConfigParameter",
+                                       WrapperProperties.SECRETS_MANAGER_REGION.name))
 
 
 class AwsSecretsManagerPluginFactory(PluginFactory):
