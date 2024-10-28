@@ -199,30 +199,23 @@ class WrapperProperties:
     CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS = WrapperProperty(
         "custom_endpoint_info_refresh_rate_ms",
         "Controls how frequently custom endpoint monitors fetch custom endpoint info, in milliseconds.",
-        30_000
-    )
-
+        30_000)
     CUSTOM_ENDPOINT_IDLE_MONITOR_EXPIRATION_MS = WrapperProperty(
         "custom_endpoint_idle_monitor_expiration_ms",
         "Controls how long a monitor should run without use before expiring and being removed, in milliseconds.",
-        900_000  # 15 minutes
-    )
-
+        900_000)  # 15 minutes
     WAIT_FOR_CUSTOM_ENDPOINT_INFO = WrapperProperty(
         "wait_for_custom_endpoint_info",
         """Controls whether to wait for custom endpoint info to become available before connecting or executing a
         method. Waiting is only necessary if a connection to a given custom endpoint has not been opened or used 
         recently. Note that disabling this may result in occasional connections to instances outside of the custom 
         endpoint.""",
-        True
-    )
-
+        True)
     WAIT_FOR_CUSTOM_ENDPOINT_INFO_TIMEOUT_MS = WrapperProperty(
         "wait_for_custom_endpoint_info_timeout_ms",
         """Controls the maximum amount of time that the plugin will wait for custom endpoint info to be made 
         available by the custom endpoint monitor, in milliseconds.""",
-        5_000
-    )
+        5_000)
 
     # Host Availability Strategy
     DEFAULT_HOST_AVAILABILITY_STRATEGY = WrapperProperty(

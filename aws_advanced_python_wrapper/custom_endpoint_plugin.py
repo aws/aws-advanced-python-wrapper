@@ -16,12 +16,13 @@ from __future__ import annotations
 
 from threading import Event, Thread
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Set, Optional, ClassVar, Callable, Dict, Union, List
+from typing import TYPE_CHECKING, Set, Optional, ClassVar, Callable, Dict, Union, List, Any
 
 from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -124,11 +125,12 @@ class CustomEndpointMonitor:
         self._endpoint_id = endpoint_id
         self._region = region
         self._refresh_rate_ns = refresh_rate_ns
+        self._session = session if session else Session()
         self._client = session.client('rds', region_name=region)
 
+        self._stop_event = Event()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._info_changed_counter = telemetry_factory.create_counter("customEndpoint.infoChanged.counter")
-        self._stop_event = Event()
 
         self._thread = Thread(daemon=True, name="CustomEndpointMonitorThread", target=self._run)
         self._thread.start()
@@ -207,10 +209,6 @@ class CustomEndpointMonitor:
         self._stop_event.set()
         self._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
 
-    def clear_cache(self):
-        logger.info("CustomEndpointMonitorImpl.ClearCache")
-        self._custom_endpoint_info_cache.clear()
-
 
 class CustomEndpointPlugin(Plugin):
     """
@@ -233,11 +231,13 @@ class CustomEndpointPlugin(Plugin):
         self._idle_monitor_expiration_ms: int = \
             WrapperProperties.CUSTOM_ENDPOINT_IDLE_MONITOR_EXPIRATION_MS.get_int(self._props)
 
-        telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
-        self._wait_for_info_counter: TelemetryCounter = telemetry_factory.create_counter("customEndpoint.waitForInfo.counter")
+        self._rds_utils = RdsUtils()
+        self._region_utils = RegionUtils()
+        self._region: Optional[str] = None
         self._custom_endpoint_host_info: Optional[HostInfo] = None
         self._custom_endpoint_id: Optional[str] = None
-        self._rds_utils = RdsUtils()
+        telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
+        self._wait_for_info_counter: TelemetryCounter = telemetry_factory.create_counter("customEndpoint.waitForInfo.counter")
 
         CustomEndpointPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
@@ -257,7 +257,7 @@ class CustomEndpointPlugin(Plugin):
             return connect_func()
 
         self._custom_endpoint_host_info = host_info
-        logger.debug("CustomEndpointPlugin.connectionRequestToCustomEndpoint", host_info.host)
+        logger.debug("CustomEndpointPlugin.ConnectionRequestToCustomEndpoint", host_info.host)
 
         self._custom_endpoint_id = self._rds_utils.get_cluster_id(host_info.host)
         if not self._custom_endpoint_id:
@@ -265,7 +265,63 @@ class CustomEndpointPlugin(Plugin):
                 Messages.get_formatted(
                     "CustomEndpointPlugin.ErrorParsingEndpointIdentifier", self._custom_endpoint_host_info.host))
 
+        hostname = self._custom_endpoint_host_info.host
+        self._region = self._region_utils.get_region_from_hostname(hostname)
+        if not self._region:
+            error_message = "RdsUtils.UnsupportedHostname"
+            logger.debug(error_message, hostname)
+            raise AwsWrapperError(Messages.get_formatted(error_message, hostname))
 
+        monitor = self._create_monitor_if_absent(props)
+        if self._should_wait_for_info:
+            self._wait_for_info(monitor)
+
+        return connect_func()
+
+    def _create_monitor_if_absent(self, props: Properties) -> CustomEndpointMonitor:
+        return self._monitors.compute_if_absent(
+            self._custom_endpoint_host_info.host,
+            lambda key: CustomEndpointMonitor(
+                self._plugin_service,
+                self._custom_endpoint_host_info,
+                self._custom_endpoint_id,
+                self._region,
+                WrapperProperties.CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS.get_int(props) * 1_000_000),
+            self._idle_monitor_expiration_ms * 1_000_000
+        )
+
+    def _wait_for_info(self, monitor: CustomEndpointMonitor):
+        has_info = monitor.has_custom_endpoint_info()
+        if has_info:
+            return
+
+        self._wait_for_info_counter.inc()
+        hostname = self._custom_endpoint_host_info.host
+        logger.debug("CustomEndpointPlugin.WaitingForCustomEndpointInfo", hostname, self._wait_for_info_timeout_ms)
+        wait_for_info_timeout_ns = perf_counter_ns() + self._wait_for_info_timeout_ms * 1_000_000
+
+        try:
+            while not has_info and perf_counter_ns() < wait_for_info_timeout_ns:
+                sleep(0.1)
+                has_info = monitor.has_custom_endpoint_info()
+        except InterruptedError:
+            raise AwsWrapperError(Messages.get_formatted("CustomEndpointPlugin.InterruptedThread", hostname))
+
+        if not has_info:
+            raise AwsWrapperError(
+                Messages.get_formatted(
+                    "CustomEndpointPlugin.TimedOutWaitingForCustomEndpointInfo",
+                    self._wait_for_info_timeout_ms, hostname))
+
+    def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
+        if self._custom_endpoint_host_info is None:
+            return execute_func()
+
+        monitor = self._create_monitor_if_absent(self._props)
+        if self._should_wait_for_info:
+            self._wait_for_info(monitor)
+
+        return execute_func()
 
 
 class CustomEndpointPluginFactory(PluginFactory):
