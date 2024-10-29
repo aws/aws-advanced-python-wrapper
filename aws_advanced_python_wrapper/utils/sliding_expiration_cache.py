@@ -77,7 +77,7 @@ class SlidingExpirationCache(Generic[K, V]):
         item = None
 
         def _remove_if_expired_internal(_, cache_item):
-            if cache_item.should_dispose:
+            if self._should_cleanup_item(cache_item):
                 nonlocal item
                 item = cache_item.item
                 return None

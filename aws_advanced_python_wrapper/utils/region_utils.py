@@ -36,7 +36,7 @@ class RegionUtils:
                    session: Optional[Session] = None) -> Optional[str]:
         region = props.get(prop_key)
         if region:
-            return self.verify_region(region)
+            return self.verify_region(region, session)
 
         return self.get_region_from_hostname(hostname, session)
 
