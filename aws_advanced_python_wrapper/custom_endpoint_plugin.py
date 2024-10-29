@@ -126,7 +126,7 @@ class CustomEndpointMonitor:
         self._region = region
         self._refresh_rate_ns = refresh_rate_ns
         self._session = session if session else Session()
-        self._client = session.client('rds', region_name=region)
+        self._client = self._session.client('rds', region_name=region)
 
         self._stop_event = Event()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
