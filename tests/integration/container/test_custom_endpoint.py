@@ -13,7 +13,7 @@
 #  limitations under the License.
 
 from time import perf_counter_ns, sleep
-from typing import Dict, Any, Set
+from typing import Dict, Any, Set, ClassVar
 from uuid import uuid4
 
 import pytest
@@ -32,18 +32,16 @@ from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_driver import TestDriver
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import TestEnvironmentFeatures
-from tests.unit.test_writer_failover_handler import writer
 
 
 @enable_on_num_instances(min_instances=3)
 @enable_on_deployments([DatabaseEngineDeployment.AURORA])
 @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
 class TestCustomEndpoint:
-    logger = Logger(__name__)
-    endpoint_id = f"test-endpoint-python-{uuid4()}"
-    endpoint_info: Dict[str, Any] = {}
-    reuse_existing_endpoint = False
-    current_writer = None
+    logger: ClassVar[Logger] = Logger(__name__)
+    endpoint_id: ClassVar[str] = f"test-endpoint-1-{uuid4()}"
+    endpoint_info: ClassVar[Dict[str, Any]] = {}
+    reuse_existing_endpoint: ClassVar[bool] = False
 
     @pytest.fixture(scope='class')
     def rds_utils(self):
@@ -67,18 +65,16 @@ class TestCustomEndpoint:
 
         return p
 
-    @pytest.fixture(autouse=True)
+    @pytest.fixture(scope='class', autouse=True)
     def create_endpoint(self):
         env_info = TestEnvironment.get_current().get_info()
         region = env_info.get_region()
 
         rds_client = client('rds', region_name=region)
-        if self.reuse_existing_endpoint:
-            self.wait_until_endpoint_available(rds_client)
-            return
+        if not self.reuse_existing_endpoint:
+            instances = env_info.get_database_info().get_instances()
+            self._create_endpoint(rds_client, instances[0:1])
 
-        instances = env_info.get_database_info().get_instances()
-        self._create_endpoint(rds_client, instances[0:1])
         self.wait_until_endpoint_available(rds_client)
 
         yield
@@ -94,33 +90,27 @@ class TestCustomEndpoint:
         available = False
 
         while not available and perf_counter_ns() < end_ns:
-            try:
-                response = rds_client.describe_db_cluster_endpoints(
-                    DBClusterEndpointIdentifier=self.endpoint_id,
-                    Filters=[
-                        {
-                            "Name": "db-cluster-endpoint-type",
-                            "Values": ["custom"]
-                        }
-                    ]
-                )
-            except ClientError as e:
-                if e.response['Error']['Code'] == 'DBClusterEndpointNotFoundFault':
-                    sleep(5)
-                    continue
-                else:
-                    raise e
+            response = rds_client.describe_db_cluster_endpoints(
+                DBClusterEndpointIdentifier=self.endpoint_id,
+                Filters=[
+                    {
+                        "Name": "db-cluster-endpoint-type",
+                        "Values": ["custom"]
+                    }
+                ]
+            )
 
             response_endpoints = response["DBClusterEndpoints"]
             if len(response_endpoints) != 1:
-                response_ids = [endpoint["DBClusterEndpointIdentifier"] for endpoint in response_endpoints]
-                pytest.fail("Unexpected number of endpoints returned while waiting for custom endpoint to have the "
-                            f"specified list of members. Expected 1, got {len(response_endpoints)}. "
-                            f"Endpoint IDs: {response_ids}.")
+                sleep(3)  # Endpoint needs more time to get created.
 
             response_endpoint = response_endpoints[0]
-            self.endpoint_info = response_endpoint
+            TestCustomEndpoint.endpoint_info = response_endpoint
             available = "available" == response_endpoint["Status"]
+            if available:
+                break
+            else:
+                sleep(3)
 
         if not available:
             pytest.fail("The test setup step timed out while waiting for the new custom endpoints to become available.")
@@ -147,38 +137,38 @@ class TestCustomEndpoint:
         self.wait_until_endpoint_deleted(rds_client)
 
     def wait_until_endpoint_deleted(self, rds_client):
-        end_ns = perf_counter_ns() + 5 * 60 * 1_000_000_000  # 5 minutes
+        end_ns = perf_counter_ns() + 10 * 60 * 1_000_000_000  # 10 minutes
+        deleted = False
 
-        while perf_counter_ns() < end_ns:
-            try:
-                rds_client.describe_db_cluster_endpoints(
-                    DBClusterEndpointIdentifier=self.endpoint_id,
-                    Filters=[
-                        {
-                            "Name": "db-cluster-endpoint-type",
-                            "Values": ["custom"]
-                        }
-                    ]
-                )
-            except ClientError as e:
-                if e.response['Error']['Code'] == 'DBClusterEndpointNotFoundFault':
-                    # The endpoint has been deleted
-                    return
-                else:
-                    raise e
+        while not deleted and perf_counter_ns() < end_ns:
+            response = rds_client.describe_db_cluster_endpoints(
+                DBClusterEndpointIdentifier=self.endpoint_id,
+                Filters=[
+                    {
+                        "Name": "db-cluster-endpoint-type",
+                        "Values": ["custom"]
+                    }
+                ]
+            )
+
+            deleted = len(response["DBClusterEndpoints"]) == 0
+            if deleted:
+                # The custom endpoint has been deleted.
+                break
 
             sleep(5)
 
-        pytest.fail(f"The test setup step timed out while attempting to delete a pre-existing test custom endpoint "
-                    f"with ID '{self.endpoint_id}'.")
+        if not deleted:
+            pytest.fail(f"The test timed out while attempting to delete a test custom endpoint with ID "
+                    f"'{self.endpoint_id}'.")
 
     def wait_until_endpoint_has_members(self, rds_client, expected_members: Set[str]):
         start_ns = perf_counter_ns()
 
         # Convert to set for later comparison.
         end_ns = perf_counter_ns() + 20 * 60 * 1_000_000_000  # 20 minutes
-        has_members = False
-        while not has_members and perf_counter_ns() < end_ns:
+        has_correct_state = False
+        while not has_correct_state and perf_counter_ns() < end_ns:
             response = rds_client.describe_db_cluster_endpoints(DBClusterEndpointIdentifier=self.endpoint_id)
             response_endpoints = response["DBClusterEndpoints"]
             if len(response_endpoints) != 1:
@@ -189,9 +179,9 @@ class TestCustomEndpoint:
 
             endpoint = response_endpoints[0]
             response_members = set(endpoint["StaticMembers"])
-            has_members = response_members == expected_members
+            has_correct_state = response_members == expected_members and "available" == endpoint["Status"]
 
-        if not has_members:
+        if not has_correct_state:
             pytest.fail("Timed out while waiting for the custom endpoint to stabilize.")
 
         duration_sec = (perf_counter_ns() - start_ns) / 1_000_000_000
@@ -217,6 +207,8 @@ class TestCustomEndpoint:
 
         instance_id = rds_utils.query_instance_id(conn)
         assert instance_id in endpoint_members
+
+        conn.close()
 
     def test_custom_endpoint_read_write_splitting__with_custom_endpoint_changes(
             self, test_driver: TestDriver, conn_utils, props, rds_utils):
@@ -258,7 +250,7 @@ class TestCustomEndpoint:
         rds_client = client('rds', region_name=TestEnvironment.get_current().get_aurora_region())
         rds_client.modify_db_cluster_endpoint(
             DBClusterEndpointIdentifier=self.endpoint_id,
-            StaticMembers=[new_member]
+            StaticMembers=[original_instance_id, new_member]
         )
 
         try:
@@ -288,3 +280,5 @@ class TestCustomEndpoint:
             # We are connected to the reader. Attempting to switch to the writer will throw an exception.
             with pytest.raises(ReadWriteSplittingError):
                 conn.read_only = new_read_only_value
+
+        conn.close()

@@ -80,7 +80,7 @@ class CustomEndpointInfo:
             endpoint_response_info.get("DBClusterEndpointIdentifier"),
             endpoint_response_info.get("DBClusterIdentifier"),
             endpoint_response_info.get("Endpoint"),
-            CustomEndpointRoleType.from_string(endpoint_response_info.get("EndpointType")),
+            CustomEndpointRoleType.from_string(endpoint_response_info.get("CustomEndpointType")),
             endpoint_response_info.get("StaticMembers"),
             endpoint_response_info.get("ExcludedMembers")
         )
@@ -136,7 +136,7 @@ class CustomEndpointMonitor:
         self._thread.start()
 
     def _run(self):
-        logger.debug("CustomEndpointMonitorImpl.StartingMonitor", self._custom_endpoint_host_info.host)
+        logger.debug("CustomEndpointMonitor.StartingMonitor", self._custom_endpoint_host_info.host)
 
         try:
             while not self._stop_event.is_set():
@@ -157,7 +157,7 @@ class CustomEndpointMonitor:
                     if len(endpoints) != 1:
                         endpoint_hostnames = [endpoint["Endpoint"] for endpoint in endpoints]
                         logger.warning(
-                            "CustomEndpointMonitorImpl.UnexpectedNumberOfEndpoints",
+                            "CustomEndpointMonitor.UnexpectedNumberOfEndpoints",
                             self._endpoint_id,
                             self._region,
                             len(endpoints),
@@ -167,7 +167,8 @@ class CustomEndpointMonitor:
                         continue
 
                     endpoint_info = CustomEndpointInfo.from_db_cluster_endpoint(endpoints[0])
-                    cached_info = self._custom_endpoint_info_cache.get(self._custom_endpoint_host_info.host)
+                    cached_info = \
+                        CustomEndpointMonitor._custom_endpoint_info_cache.get(self._custom_endpoint_host_info.host)
                     if cached_info is not None and cached_info == endpoint_info:
                         elapsed_time = perf_counter_ns() - start
                         sleep_duration = min(0, self._refresh_rate_ns - elapsed_time)
@@ -175,14 +176,16 @@ class CustomEndpointMonitor:
                         continue
 
                     logger.debug(
-                        "CustomEndpointMonitorImpl.DetectedChangeInCustomEndpointInfo",
+                        "CustomEndpointMonitor.DetectedChangeInCustomEndpointInfo",
                         self._custom_endpoint_host_info.host, endpoint_info)
 
                     # The custom endpoint info has changed, so we need to update the set of allowed/blocked hosts.
                     hosts = AllowedAndBlockedHosts(endpoint_info.static_members, endpoint_info.excluded_members)
                     self._plugin_service.allowed_and_blocked_hosts = hosts
-                    self._custom_endpoint_info_cache.put(
-                        self._custom_endpoint_host_info.host, endpoint_info, self._CUSTOM_ENDPOINT_INFO_EXPIRATION_NS)
+                    CustomEndpointMonitor._custom_endpoint_info_cache.put(
+                        self._custom_endpoint_host_info.host,
+                        endpoint_info,
+                        CustomEndpointMonitor._CUSTOM_ENDPOINT_INFO_EXPIRATION_NS)
                     self._info_changed_counter.inc()
 
                     elapsed_time = perf_counter_ns() - start
@@ -193,21 +196,21 @@ class CustomEndpointMonitor:
                     raise e
                 except Exception as e:
                     # If the exception is not an InterruptedException, log it and continue monitoring.
-                    logger.error("CustomEndpointMonitorImpl.Exception", self._custom_endpoint_host_info.host, e)
+                    logger.error("CustomEndpointMonitor.Exception", self._custom_endpoint_host_info.host, e)
         except InterruptedError:
-            logger.info("CustomEndpointMonitorImpl.Interrupted", self._custom_endpoint_host_info.host)
+            logger.info("CustomEndpointMonitor.Interrupted", self._custom_endpoint_host_info.host)
         finally:
-            self._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
+            CustomEndpointMonitor._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
             self._client.close()
-            logger.debug("CustomEndpointMonitorImpl.StoppedMonitor", self._custom_endpoint_host_info.host)
+            logger.debug("CustomEndpointMonitor.StoppedMonitor", self._custom_endpoint_host_info.host)
 
     def has_custom_endpoint_info(self):
-        return self._custom_endpoint_info_cache.get(self._custom_endpoint_host_info.host) is not None
+        return CustomEndpointMonitor._custom_endpoint_info_cache.get(self._custom_endpoint_host_info.host) is not None
 
     def close(self):
-        logger.debug("CustomEndpointMonitorImpl.StoppingMonitor", self._custom_endpoint_host_info.host)
+        logger.debug("CustomEndpointMonitor.StoppingMonitor", self._custom_endpoint_host_info.host)
         self._stop_event.set()
-        self._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
+        CustomEndpointMonitor._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
 
 
 class CustomEndpointPlugin(Plugin):
@@ -215,8 +218,8 @@ class CustomEndpointPlugin(Plugin):
     A plugin that analyzes custom endpoints for custom endpoint information and custom endpoint changes, such as adding
     or removing an instance in the custom endpoint.
     """
-    _SUBSCRIBED_METHODS: Set[str] = {"connect"}
-    _CACHE_CLEANUP_RATE_NS: int = 6 * 10 ^ 10  # 1 minute
+    _SUBSCRIBED_METHODS: ClassVar[Set[str]] = {"connect"}
+    _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 6 * 10 ^ 10  # 1 minute
     _monitors: ClassVar[SlidingExpirationCacheWithCleanupThread[str, CustomEndpointMonitor]] = \
         SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_RATE_NS,
                                                 should_dispose_func=lambda monitor: True,
@@ -243,7 +246,7 @@ class CustomEndpointPlugin(Plugin):
 
     @property
     def subscribed_methods(self) -> Set[str]:
-        return self._SUBSCRIBED_METHODS
+        return CustomEndpointPlugin._SUBSCRIBED_METHODS
 
     def connect(
             self,
@@ -279,7 +282,7 @@ class CustomEndpointPlugin(Plugin):
         return connect_func()
 
     def _create_monitor_if_absent(self, props: Properties) -> CustomEndpointMonitor:
-        return self._monitors.compute_if_absent(
+        return CustomEndpointPlugin._monitors.compute_if_absent(
             self._custom_endpoint_host_info.host,
             lambda key: CustomEndpointMonitor(
                 self._plugin_service,
