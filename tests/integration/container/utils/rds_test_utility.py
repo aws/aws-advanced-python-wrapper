@@ -17,8 +17,6 @@ from __future__ import annotations
 from contextlib import closing
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
-from requests.packages import target
-
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from .test_database_info import TestDatabaseInfo

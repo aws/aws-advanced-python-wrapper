@@ -324,10 +324,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         blocked_ids = host_permissions.blocked_host_ids
 
         if allowed_ids is not None:
-            hosts = [host for host in hosts if host.host_id in allowed_ids]
+            hosts = tuple(host for host in hosts if host.host_id in allowed_ids)
 
         if blocked_ids is not None:
-            hosts = [host for host in hosts if host.host_id not in blocked_ids]
+            hosts = tuple(host for host in hosts if host.host_id not in blocked_ids)
 
         return hosts
 

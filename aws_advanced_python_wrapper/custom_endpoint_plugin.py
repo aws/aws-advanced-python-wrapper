@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from threading import Event, Thread
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Set, Optional, ClassVar, Callable, Dict, Union, List, Any
+from typing import TYPE_CHECKING, Set, Optional, ClassVar, Callable, Dict, Union, List, Any, cast
 
 from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -77,12 +77,12 @@ class CustomEndpointInfo:
     @classmethod
     def from_db_cluster_endpoint(cls, endpoint_response_info: Dict[str, Union[str, List[str]]]):
         return CustomEndpointInfo(
-            endpoint_response_info.get("DBClusterEndpointIdentifier"),
-            endpoint_response_info.get("DBClusterIdentifier"),
-            endpoint_response_info.get("Endpoint"),
-            CustomEndpointRoleType.from_string(endpoint_response_info.get("CustomEndpointType")),
-            endpoint_response_info.get("StaticMembers"),
-            endpoint_response_info.get("ExcludedMembers")
+            str(endpoint_response_info.get("DBClusterEndpointIdentifier")),
+            str(endpoint_response_info.get("DBClusterIdentifier")),
+            str(endpoint_response_info.get("Endpoint")),
+            CustomEndpointRoleType.from_string(str(endpoint_response_info.get("CustomEndpointType"))),
+            set(cast(List[str], endpoint_response_info.get("StaticMembers"))),
+            set(cast(List[str], endpoint_response_info.get("ExcludedMembers")))
         )
 
     def __eq__(self, other: object):
@@ -282,16 +282,21 @@ class CustomEndpointPlugin(Plugin):
         return connect_func()
 
     def _create_monitor_if_absent(self, props: Properties) -> CustomEndpointMonitor:
-        return CustomEndpointPlugin._monitors.compute_if_absent(
-            self._custom_endpoint_host_info.host,
+        host_info = cast(HostInfo, self._custom_endpoint_host_info)
+        endpoint_id = cast(str, self._custom_endpoint_id)
+        region = cast(str, self._region)
+        monitor = CustomEndpointPlugin._monitors.compute_if_absent(
+            host_info.host,
             lambda key: CustomEndpointMonitor(
                 self._plugin_service,
-                self._custom_endpoint_host_info,
-                self._custom_endpoint_id,
-                self._region,
+                host_info,
+                endpoint_id,
+                region,
                 WrapperProperties.CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS.get_int(props) * 1_000_000),
             self._idle_monitor_expiration_ms * 1_000_000
         )
+
+        return cast(CustomEndpointMonitor, monitor)
 
     def _wait_for_info(self, monitor: CustomEndpointMonitor):
         has_info = monitor.has_custom_endpoint_info()
@@ -299,7 +304,8 @@ class CustomEndpointPlugin(Plugin):
             return
 
         self._wait_for_info_counter.inc()
-        hostname = self._custom_endpoint_host_info.host
+        host_info = cast(HostInfo, self._custom_endpoint_host_info)
+        hostname = host_info.host
         logger.debug("CustomEndpointPlugin.WaitingForCustomEndpointInfo", hostname, self._wait_for_info_timeout_ms)
         wait_for_info_timeout_ns = perf_counter_ns() + self._wait_for_info_timeout_ms * 1_000_000
 

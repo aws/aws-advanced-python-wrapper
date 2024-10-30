@@ -197,8 +197,7 @@ class AwsSecretsManagerPlugin(Plugin):
 
     def _get_rds_region(self, secret_id: str, props: Properties) -> str:
         session = self._session if self._session else boto3.Session()
-        region: str = \
-            self._region_utils.get_region(props, WrapperProperties.SECRETS_MANAGER_REGION.name, session=session)
+        region = self._region_utils.get_region(props, WrapperProperties.SECRETS_MANAGER_REGION.name, session=session)
 
         if region:
             return region
