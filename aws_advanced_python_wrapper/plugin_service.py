@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, List, Type
 
-from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
 from aws_advanced_python_wrapper.custom_endpoint_plugin import CustomEndpointPluginFactory
@@ -29,6 +28,7 @@ from aws_advanced_python_wrapper.states.session_state_service import (
     SessionStateService, SessionStateServiceImpl)
 
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.driver_dialect_manager import DriverDialectManager
     from aws_advanced_python_wrapper.pep249 import Connection

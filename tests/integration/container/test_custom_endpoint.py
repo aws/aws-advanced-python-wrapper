@@ -12,8 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
+from typing import ClassVar, Dict, Any, Set, TYPE_CHECKING
+if TYPE_CHECKING:
+    from tests.integration.container.utils.test_driver import TestDriver
+
 from time import perf_counter_ns, sleep
-from typing import Dict, Any, Set, ClassVar
 from uuid import uuid4
 
 import pytest
@@ -29,7 +34,6 @@ from tests.integration.container.utils.conditions import enable_on_num_instances
 from tests.integration.container.utils.database_engine_deployment import DatabaseEngineDeployment
 from tests.integration.container.utils.driver_helper import DriverHelper
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
-from tests.integration.container.utils.test_driver import TestDriver
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import TestEnvironmentFeatures
 
@@ -160,7 +164,7 @@ class TestCustomEndpoint:
 
         if not deleted:
             pytest.fail(f"The test timed out while attempting to delete a test custom endpoint with ID "
-                    f"'{self.endpoint_id}'.")
+                        f"'{self.endpoint_id}'.")
 
     def wait_until_endpoint_has_members(self, rds_client, expected_members: Set[str]):
         start_ns = perf_counter_ns()

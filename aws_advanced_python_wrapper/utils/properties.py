@@ -207,13 +207,13 @@ class WrapperProperties:
     WAIT_FOR_CUSTOM_ENDPOINT_INFO = WrapperProperty(
         "wait_for_custom_endpoint_info",
         """Controls whether to wait for custom endpoint info to become available before connecting or executing a
-        method. Waiting is only necessary if a connection to a given custom endpoint has not been opened or used 
-        recently. Note that disabling this may result in occasional connections to instances outside of the custom 
+        method. Waiting is only necessary if a connection to a given custom endpoint has not been opened or used
+        recently. Note that disabling this may result in occasional connections to instances outside of the custom
         endpoint.""",
         True)
     WAIT_FOR_CUSTOM_ENDPOINT_INFO_TIMEOUT_MS = WrapperProperty(
         "wait_for_custom_endpoint_info_timeout_ms",
-        """Controls the maximum amount of time that the plugin will wait for custom endpoint info to be made 
+        """Controls the maximum amount of time that the plugin will wait for custom endpoint info to be made
         available by the custom endpoint monitor, in milliseconds.""",
         5_000)
 

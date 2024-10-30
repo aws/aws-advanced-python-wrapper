@@ -342,7 +342,7 @@ class FailoverPlugin(Plugin):
                 raise FailoverFailedError(
                     Messages.get_formatted(
                         "FailoverPlugin.NewWriterNotAllowed",
-                        "<null>" if  writer_host is None else writer_host.host,
+                        "<null>" if writer_host is None else writer_host.host,
                         LogUtils.log_topology(allowed_hosts)))
 
             self._plugin_service.set_current_connection(result.new_connection, writer_host)
