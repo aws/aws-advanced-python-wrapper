@@ -202,6 +202,9 @@ class TestEnvironment:
     def get_writer(self) -> TestInstanceInfo:
         return self.get_instances()[0]
 
+    def get_cluster_name(self) -> str:
+        return self.get_info().get_cluster_name()
+
     def get_proxy_database_info(self) -> TestProxyDatabaseInfo:
         return self.get_info().get_proxy_database_info()
 
