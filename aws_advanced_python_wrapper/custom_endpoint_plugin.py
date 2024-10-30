@@ -16,9 +16,11 @@ from __future__ import annotations
 
 from threading import Event, Thread
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Set, Optional, ClassVar, Callable, Dict, Union, List, Any, cast
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, List,
+                    Optional, Set, Union, cast)
 
-from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
+from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
+    AllowedAndBlockedHosts
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -31,15 +33,18 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
     from aws_advanced_python_wrapper.utils.properties import Properties
 
-from boto3 import Session
 from enum import Enum
+
+from boto3 import Session
 
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import SlidingExpirationCacheWithCleanupThread
-from aws_advanced_python_wrapper.utils.telemetry.telemetry import TelemetryFactory, TelemetryCounter
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
+    SlidingExpirationCacheWithCleanupThread
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
+    TelemetryCounter, TelemetryFactory)
 
 logger = Logger(__name__)
 

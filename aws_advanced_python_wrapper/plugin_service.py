@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING, ClassVar, List, Type
 
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
-from aws_advanced_python_wrapper.custom_endpoint_plugin import CustomEndpointPluginFactory
+from aws_advanced_python_wrapper.custom_endpoint_plugin import \
+    CustomEndpointPluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \

@@ -14,7 +14,8 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Dict, Any, Set, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, Set
+
 if TYPE_CHECKING:
     from tests.integration.container.utils.test_driver import TestDriver
 
@@ -26,16 +27,20 @@ from boto3 import client
 from botocore.exceptions import ClientError
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
-from aws_advanced_python_wrapper.errors import FailoverSuccessError, ReadWriteSplittingError
+from aws_advanced_python_wrapper.errors import (FailoverSuccessError,
+                                                ReadWriteSplittingError)
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
-from tests.integration.container.utils.conditions import enable_on_num_instances, enable_on_deployments, \
-    disable_on_features
-from tests.integration.container.utils.database_engine_deployment import DatabaseEngineDeployment
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
+from tests.integration.container.utils.conditions import (
+    disable_on_features, enable_on_deployments, enable_on_num_instances)
+from tests.integration.container.utils.database_engine_deployment import \
+    DatabaseEngineDeployment
 from tests.integration.container.utils.driver_helper import DriverHelper
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
-from tests.integration.container.utils.test_environment_features import TestEnvironmentFeatures
+from tests.integration.container.utils.test_environment_features import \
+    TestEnvironmentFeatures
 
 
 @enable_on_num_instances(min_instances=3)
@@ -192,7 +197,7 @@ class TestCustomEndpoint:
         self.logger.debug(f"wait_until_endpoint_has_specified_members took {duration_sec} seconds.")
 
     def test_custom_endpoint_failover(self, test_driver: TestDriver, conn_utils, props, rds_utils):
-        props["failover_mode"] = "reader-or-writer"
+        props["failover_mode"] = "reader_or_writer"
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         kwargs = conn_utils.get_connect_params()

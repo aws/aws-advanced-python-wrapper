@@ -16,8 +16,7 @@ from __future__ import annotations
 
 from concurrent.futures import Executor, ThreadPoolExecutor
 from time import perf_counter_ns, sleep
-from typing import (Callable, Generic, ItemsView, KeysView, Optional,
-                    TypeVar)
+from typing import Callable, Generic, ItemsView, KeysView, Optional, TypeVar
 
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict

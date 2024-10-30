@@ -21,7 +21,8 @@ from aws_xray_sdk.core import xray_recorder
 
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
-from aws_advanced_python_wrapper.custom_endpoint_plugin import CustomEndpointPlugin, CustomEndpointMonitor
+from aws_advanced_python_wrapper.custom_endpoint_plugin import (
+    CustomEndpointMonitor, CustomEndpointPlugin)
 from aws_advanced_python_wrapper.database_dialect import DatabaseDialectManager
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
