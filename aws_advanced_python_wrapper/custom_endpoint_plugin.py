@@ -111,6 +111,10 @@ class CustomEndpointInfo:
 
 
 class CustomEndpointMonitor:
+    """
+    A custom endpoint monitor. This class uses a background thread to monitor a given custom endpoint for custom
+    endpoint information and future changes to the custom endpoint.
+    """
     _CUSTOM_ENDPOINT_INFO_EXPIRATION_NS: ClassVar[int] = 5 * 60_000_000_000  # 5 minutes
     # Keys are custom endpoint URLs, values are information objects for the associated custom endpoint.
     _custom_endpoint_info_cache: ClassVar[CacheMap[str, CustomEndpointInfo]] = CacheMap()
@@ -121,8 +125,7 @@ class CustomEndpointMonitor:
                  endpoint_id: str,
                  region: str,
                  refresh_rate_ns: int,
-                 session: Optional[Session] = None
-                 ):
+                 session: Optional[Session] = None):
         self._plugin_service = plugin_service
         self._custom_endpoint_host_info = custom_endpoint_host_info
         self._endpoint_id = endpoint_id
@@ -144,7 +147,7 @@ class CustomEndpointMonitor:
         try:
             while not self._stop_event.is_set():
                 try:
-                    start = perf_counter_ns()
+                    start_ns = perf_counter_ns()
 
                     response = self._client.describe_db_cluster_endpoints(
                         DBClusterEndpointIdentifier=self._endpoint_id,
@@ -173,7 +176,7 @@ class CustomEndpointMonitor:
                     cached_info = \
                         CustomEndpointMonitor._custom_endpoint_info_cache.get(self._custom_endpoint_host_info.host)
                     if cached_info is not None and cached_info == endpoint_info:
-                        elapsed_time = perf_counter_ns() - start
+                        elapsed_time = perf_counter_ns() - start_ns
                         sleep_duration = min(0, self._refresh_rate_ns - elapsed_time)
                         sleep(sleep_duration / 1_000_000_000)
                         continue
@@ -191,19 +194,20 @@ class CustomEndpointMonitor:
                         CustomEndpointMonitor._CUSTOM_ENDPOINT_INFO_EXPIRATION_NS)
                     self._info_changed_counter.inc()
 
-                    elapsed_time = perf_counter_ns() - start
+                    elapsed_time = perf_counter_ns() - start_ns
                     sleep_duration = min(0, self._refresh_rate_ns - elapsed_time)
                     sleep(sleep_duration / 1_000_000_000)
                     continue
                 except InterruptedError as e:
                     raise e
                 except Exception as e:
-                    # If the exception is not an InterruptedException, log it and continue monitoring.
+                    # If the exception is not an InterruptedError, log it and continue monitoring.
                     logger.error("CustomEndpointMonitor.Exception", self._custom_endpoint_host_info.host, e)
         except InterruptedError:
             logger.info("CustomEndpointMonitor.Interrupted", self._custom_endpoint_host_info.host)
         finally:
             CustomEndpointMonitor._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
+            self._stop_event.set()
             self._client.close()
             logger.debug("CustomEndpointMonitor.StoppedMonitor", self._custom_endpoint_host_info.host)
 
@@ -212,8 +216,8 @@ class CustomEndpointMonitor:
 
     def close(self):
         logger.debug("CustomEndpointMonitor.StoppingMonitor", self._custom_endpoint_host_info.host)
-        self._stop_event.set()
         CustomEndpointMonitor._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
+        self._stop_event.set()
 
 
 class CustomEndpointPlugin(Plugin):
@@ -225,7 +229,7 @@ class CustomEndpointPlugin(Plugin):
     _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 6 * 10 ^ 10  # 1 minute
     _monitors: ClassVar[SlidingExpirationCacheWithCleanupThread[str, CustomEndpointMonitor]] = \
         SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_RATE_NS,
-                                                should_dispose_func=lambda monitor: True,
+                                                should_dispose_func=lambda _: True,
                                                 item_disposal_func=lambda monitor: monitor.close())
 
     def __init__(self, plugin_service: PluginService, props: Properties):
@@ -296,8 +300,7 @@ class CustomEndpointPlugin(Plugin):
                 endpoint_id,
                 region,
                 WrapperProperties.CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS.get_int(props) * 1_000_000),
-            self._idle_monitor_expiration_ms * 1_000_000
-        )
+            self._idle_monitor_expiration_ms * 1_000_000)
 
         return cast('CustomEndpointMonitor', monitor)
 

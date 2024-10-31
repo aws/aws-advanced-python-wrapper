@@ -79,6 +79,11 @@ class IamAuthPlugin(Plugin):
 
         host = IamAuthUtils.get_iam_host(props, host_info)
         region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host, self._session)
+        if not region:
+            error_message = "RdsUtils.UnsupportedHostname"
+            logger.debug(error_message, host)
+            raise AwsWrapperError(Messages.get_formatted(error_message, host))
+
         port = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
         token_expiration_sec: int = WrapperProperties.IAM_EXPIRATION.get_int(props)
 

@@ -75,7 +75,7 @@ class TestCustomEndpoint:
         return p
 
     @pytest.fixture(scope='class', autouse=True)
-    def create_endpoint(self):
+    def setup_and_teardown(self):
         env_info = TestEnvironment.get_current().get_info()
         region = env_info.get_region()
 
@@ -88,10 +88,9 @@ class TestCustomEndpoint:
 
         yield
 
-        if self.reuse_existing_endpoint:
-            return
+        if not self.reuse_existing_endpoint:
+            self.delete_endpoint(rds_client)
 
-        self.delete_endpoint(rds_client)
         rds_client.close()
 
     def wait_until_endpoint_available(self, rds_client):
@@ -112,6 +111,7 @@ class TestCustomEndpoint:
             response_endpoints = response["DBClusterEndpoints"]
             if len(response_endpoints) != 1:
                 sleep(3)  # Endpoint needs more time to get created.
+                continue
 
             response_endpoint = response_endpoints[0]
             TestCustomEndpoint.endpoint_info = response_endpoint
@@ -122,7 +122,7 @@ class TestCustomEndpoint:
                 sleep(3)
 
         if not available:
-            pytest.fail("The test setup step timed out while waiting for the new custom endpoints to become available.")
+            pytest.fail("The test setup step timed out while waiting for the test custom endpoint to become available.")
 
     def _create_endpoint(self, rds_client, instances):
         instance_ids = [instance.get_instance_id() for instance in instances]
@@ -141,40 +141,8 @@ class TestCustomEndpoint:
             if e.response['Error']['Code'] != 'DBClusterEndpointNotFoundFault':
                 pytest.fail(e)
 
-        # TODO: Is this necessary if the endpoint has a unique ID and is consequently unlikely to be used elsewhere?
-        #  We could save some time by skipping this step.
-        self.wait_until_endpoint_deleted(rds_client)
-
-    def wait_until_endpoint_deleted(self, rds_client):
-        end_ns = perf_counter_ns() + 10 * 60 * 1_000_000_000  # 10 minutes
-        deleted = False
-
-        while not deleted and perf_counter_ns() < end_ns:
-            response = rds_client.describe_db_cluster_endpoints(
-                DBClusterEndpointIdentifier=self.endpoint_id,
-                Filters=[
-                    {
-                        "Name": "db-cluster-endpoint-type",
-                        "Values": ["custom"]
-                    }
-                ]
-            )
-
-            deleted = len(response["DBClusterEndpoints"]) == 0
-            if deleted:
-                # The custom endpoint has been deleted.
-                break
-
-            sleep(5)
-
-        if not deleted:
-            pytest.fail(f"The test timed out while attempting to delete a test custom endpoint with ID "
-                        f"'{self.endpoint_id}'.")
-
     def wait_until_endpoint_has_members(self, rds_client, expected_members: Set[str]):
         start_ns = perf_counter_ns()
-
-        # Convert to set for later comparison.
         end_ns = perf_counter_ns() + 20 * 60 * 1_000_000_000  # 20 minutes
         has_correct_state = False
         while not has_correct_state and perf_counter_ns() < end_ns:
@@ -189,6 +157,10 @@ class TestCustomEndpoint:
             endpoint = response_endpoints[0]
             response_members = set(endpoint["StaticMembers"])
             has_correct_state = response_members == expected_members and "available" == endpoint["Status"]
+            if has_correct_state:
+                break
+            else:
+                sleep(3)
 
         if not has_correct_state:
             pytest.fail("Timed out while waiting for the custom endpoint to stabilize.")
