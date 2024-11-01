@@ -177,7 +177,7 @@ class CustomEndpointMonitor:
                         CustomEndpointMonitor._custom_endpoint_info_cache.get(self._custom_endpoint_host_info.host)
                     if cached_info is not None and cached_info == endpoint_info:
                         elapsed_time = perf_counter_ns() - start_ns
-                        sleep_duration = min(0, self._refresh_rate_ns - elapsed_time)
+                        sleep_duration = max(0, self._refresh_rate_ns - elapsed_time)
                         sleep(sleep_duration / 1_000_000_000)
                         continue
 
@@ -195,7 +195,7 @@ class CustomEndpointMonitor:
                     self._info_changed_counter.inc()
 
                     elapsed_time = perf_counter_ns() - start_ns
-                    sleep_duration = min(0, self._refresh_rate_ns - elapsed_time)
+                    sleep_duration = max(0, self._refresh_rate_ns - elapsed_time)
                     sleep(sleep_duration / 1_000_000_000)
                     continue
                 except InterruptedError as e:

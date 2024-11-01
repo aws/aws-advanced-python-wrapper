@@ -97,7 +97,7 @@ class TestCustomEndpoint:
         end_ns = perf_counter_ns() + 5 * 60 * 1_000_000_000  # 5 minutes
         available = False
 
-        while not available and perf_counter_ns() < end_ns:
+        while perf_counter_ns() < end_ns:
             response = rds_client.describe_db_cluster_endpoints(
                 DBClusterEndpointIdentifier=self.endpoint_id,
                 Filters=[
@@ -118,11 +118,12 @@ class TestCustomEndpoint:
             available = "available" == response_endpoint["Status"]
             if available:
                 break
-            else:
-                sleep(3)
+
+            sleep(3)
 
         if not available:
-            pytest.fail("The test setup step timed out while waiting for the test custom endpoint to become available.")
+            pytest.fail(f"The test setup step timed out while waiting for the test custom endpoint to become available: "
+                        f"'{TestCustomEndpoint.endpoint_id}'.")
 
     def _create_endpoint(self, rds_client, instances):
         instance_ids = [instance.get_instance_id() for instance in instances]
@@ -145,7 +146,7 @@ class TestCustomEndpoint:
         start_ns = perf_counter_ns()
         end_ns = perf_counter_ns() + 20 * 60 * 1_000_000_000  # 20 minutes
         has_correct_state = False
-        while not has_correct_state and perf_counter_ns() < end_ns:
+        while perf_counter_ns() < end_ns:
             response = rds_client.describe_db_cluster_endpoints(DBClusterEndpointIdentifier=self.endpoint_id)
             response_endpoints = response["DBClusterEndpoints"]
             if len(response_endpoints) != 1:
@@ -159,11 +160,12 @@ class TestCustomEndpoint:
             has_correct_state = response_members == expected_members and "available" == endpoint["Status"]
             if has_correct_state:
                 break
-            else:
-                sleep(3)
+
+            sleep(3)
 
         if not has_correct_state:
-            pytest.fail("Timed out while waiting for the custom endpoint to stabilize.")
+            pytest.fail(f"Timed out while waiting for the custom endpoint to stabilize: "
+                        f"'{TestCustomEndpoint.endpoint_id}'.")
 
         duration_sec = (perf_counter_ns() - start_ns) / 1_000_000_000
         self.logger.debug(f"wait_until_endpoint_has_specified_members took {duration_sec} seconds.")
