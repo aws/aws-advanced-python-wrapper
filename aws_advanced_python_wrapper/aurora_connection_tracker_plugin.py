@@ -201,7 +201,7 @@ class AuroraConnectionTrackerPlugin(Plugin):
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         if self._current_writer is None or self._need_update_current_writer:
-            self._current_writer = self._get_writer(self._plugin_service.hosts)
+            self._current_writer = self._get_writer(self._plugin_service.all_hosts)
             self._need_update_current_writer = False
 
         try:
@@ -209,7 +209,7 @@ class AuroraConnectionTrackerPlugin(Plugin):
 
         except Exception as e:
             # Check that e is a FailoverError and that the writer has changed
-            if isinstance(e, FailoverError) and self._get_writer(self._plugin_service.hosts) != self._current_writer:
+            if isinstance(e, FailoverError) and self._get_writer(self._plugin_service.all_hosts) != self._current_writer:
                 self._tracker.invalidate_all_connections(host_info=self._current_writer)
                 self._tracker.log_opened_connections()
                 self._need_update_current_writer = True

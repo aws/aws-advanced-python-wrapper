@@ -128,7 +128,14 @@ class RdsTestUtility:
         return clusters[0]
 
     def failover_cluster_and_wait_until_writer_changed(
-            self, initial_writer_id: Optional[str] = None, cluster_id: Optional[str] = None) -> None:
+            self,
+            initial_writer_id: Optional[str] = None,
+            cluster_id: Optional[str] = None,
+            target_id: Optional[str] = None) -> None:
+        deployment = TestEnvironment.get_current().get_deployment()
+        if DatabaseEngineDeployment.RDS_MULTI_AZ == deployment and target_id is not None:
+            raise Exception(Messages.get_formatted("RdsTestUtility.FailoverToTargetNotSupported", target_id, deployment))
+
         start = perf_counter_ns()
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
@@ -140,14 +147,14 @@ class RdsTestUtility:
         cluster_endpoint = database_info.get_cluster_endpoint()
         initial_cluster_address = socket.gethostbyname(cluster_endpoint)
 
-        self.failover_cluster(cluster_id)
+        self.failover_cluster(cluster_id, target_id)
         remaining_attempts = 5
         while not self.writer_changed(initial_writer_id, cluster_id, 300):
             # if writer is not changed, try triggering failover again
             remaining_attempts -= 1
             if remaining_attempts == 0:
                 raise Exception(Messages.get("RdsTestUtility.FailoverRequestNotSuccessful"))
-            self.failover_cluster(cluster_id)
+            self.failover_cluster(cluster_id, target_id)
 
         # Failover has finished, wait for DNS to be updated so cluster endpoint resolves to the new writer instance.
         cluster_address = socket.gethostbyname(cluster_endpoint)
@@ -158,7 +165,7 @@ class RdsTestUtility:
 
         self.logger.debug("Testing.FinishedFailover", initial_writer_id, str((perf_counter_ns() - start) / 1_000_000))
 
-    def failover_cluster(self, cluster_id: Optional[str] = None) -> None:
+    def failover_cluster(self, cluster_id: Optional[str] = None, target_id: Optional[str] = None) -> None:
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
 
@@ -168,13 +175,19 @@ class RdsTestUtility:
         while remaining_attempts > 0:
             remaining_attempts -= 1
             try:
-                result = self._client.failover_db_cluster(DBClusterIdentifier=cluster_id)
+                if not target_id:
+                    result = self._client.failover_db_cluster(DBClusterIdentifier=cluster_id)
+                else:
+                    result = self._client.failover_db_cluster(
+                        DBClusterIdentifier=cluster_id, TargetDBInstanceIdentifier=target_id)
                 http_status_code = result.get("ResponseMetadata").get("HTTPStatusCode")
                 if result.get("DBCluster") is not None and http_status_code == 200:
                     return
                 sleep(1)
             except Exception:
                 sleep(1)
+
+        raise Exception(Messages.get_formatted("RdsTestUtility.FailoverClusterFailed", cluster_id))
 
     def writer_changed(self, initial_writer_id: str, cluster_id: str, timeout: int) -> bool:
         wait_until = timeit.default_timer() + timeout

@@ -126,7 +126,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
                     self._plugin_service.force_refresh_host_list(result.connection)
                     if result.new_host is not None:
-                        topology = self._plugin_service.hosts
+                        topology = self._plugin_service.all_hosts
                         for host in topology:
                             # found new connection host in the latest topology
                             if host.url == result.new_host.url and host.role == HostRole.READER:

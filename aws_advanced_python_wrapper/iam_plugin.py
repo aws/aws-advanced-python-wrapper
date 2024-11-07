@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
+from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 
 if TYPE_CHECKING:
     from boto3 import Session
@@ -51,6 +52,7 @@ class IamAuthPlugin(Plugin):
         self._plugin_service = plugin_service
         self._session = session
 
+        self._region_utils = RegionUtils()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = telemetry_factory.create_counter("iam.fetch_token.count")
         self._cache_size_gauge = telemetry_factory.create_gauge(
@@ -76,8 +78,12 @@ class IamAuthPlugin(Plugin):
             raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.IsNoneOrEmpty", WrapperProperties.USER.name))
 
         host = IamAuthUtils.get_iam_host(props, host_info)
-        region = WrapperProperties.IAM_REGION.get(props) \
-            if WrapperProperties.IAM_REGION.get(props) else IamAuthUtils.get_rds_region(self._rds_utils, host, props, self._session)
+        region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host, self._session)
+        if not region:
+            error_message = "RdsUtils.UnsupportedHostname"
+            logger.debug(error_message, host)
+            raise AwsWrapperError(Messages.get_formatted(error_message, host))
+
         port = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
         token_expiration_sec: int = WrapperProperties.IAM_EXPIRATION.get_int(props)
 

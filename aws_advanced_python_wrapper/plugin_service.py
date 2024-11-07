@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, ClassVar, List, Type
 
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
+from aws_advanced_python_wrapper.custom_endpoint_plugin import \
+    CustomEndpointPluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
@@ -27,6 +29,7 @@ from aws_advanced_python_wrapper.states.session_state_service import (
     SessionStateService, SessionStateServiceImpl)
 
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.driver_dialect_manager import DriverDialectManager
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -111,7 +114,21 @@ class PluginServiceManagerContainer:
 class PluginService(ExceptionHandler, Protocol):
     @property
     @abstractmethod
+    def all_hosts(self) -> Tuple[HostInfo, ...]:
+        ...
+
+    @property
+    @abstractmethod
     def hosts(self) -> Tuple[HostInfo, ...]:
+        ...
+
+    @property
+    @abstractmethod
+    def allowed_and_blocked_hosts(self) -> Optional[AllowedAndBlockedHosts]:
+        ...
+
+    @allowed_and_blocked_hosts.setter
+    def allowed_and_blocked_hosts(self, allowed_and_blocked_hosts: Optional[AllowedAndBlockedHosts]):
         ...
 
     @property
@@ -279,7 +296,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._original_url = PropertiesUtils.get_url(props)
         self._host_list_provider: HostListProvider = ConnectionStringHostListProvider(self, props)
 
-        self._hosts: Tuple[HostInfo, ...] = ()
+        self._all_hosts: Tuple[HostInfo, ...] = ()
+        self._allowed_and_blocked_hosts: Optional[AllowedAndBlockedHosts] = None
         self._current_connection: Optional[Connection] = None
         self._current_host_info: Optional[HostInfo] = None
         self._initial_connection_host_info: Optional[HostInfo] = None
@@ -293,12 +311,34 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._session_state_service = session_state_service if session_state_service is not None else SessionStateServiceImpl(self, props)
 
     @property
-    def hosts(self) -> Tuple[HostInfo, ...]:
-        return self._hosts
+    def all_hosts(self) -> Tuple[HostInfo, ...]:
+        return self._all_hosts
 
-    @hosts.setter
-    def hosts(self, new_hosts: Tuple[HostInfo, ...]):
-        self._hosts = new_hosts
+    @property
+    def hosts(self) -> Tuple[HostInfo, ...]:
+        host_permissions = self.allowed_and_blocked_hosts
+        if host_permissions is None:
+            return self._all_hosts
+
+        hosts = self._all_hosts
+        allowed_ids = host_permissions.allowed_host_ids
+        blocked_ids = host_permissions.blocked_host_ids
+
+        if allowed_ids is not None:
+            hosts = tuple(host for host in hosts if host.host_id in allowed_ids)
+
+        if blocked_ids is not None:
+            hosts = tuple(host for host in hosts if host.host_id not in blocked_ids)
+
+        return hosts
+
+    @property
+    def allowed_and_blocked_hosts(self) -> Optional[AllowedAndBlockedHosts]:
+        return self._allowed_and_blocked_hosts
+
+    @allowed_and_blocked_hosts.setter
+    def allowed_and_blocked_hosts(self, allowed_and_blocked_hosts: Optional[AllowedAndBlockedHosts]):
+        self._allowed_and_blocked_hosts = allowed_and_blocked_hosts
 
     @property
     def current_connection(self) -> Optional[Connection]:
@@ -453,14 +493,14 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def refresh_host_list(self, connection: Optional[Connection] = None):
         connection = self.current_connection if connection is None else connection
         updated_host_list: Tuple[HostInfo, ...] = self.host_list_provider.refresh(connection)
-        if updated_host_list != self.hosts:
+        if updated_host_list != self._all_hosts:
             self._update_host_availability(updated_host_list)
             self._update_hosts(updated_host_list)
 
     def force_refresh_host_list(self, connection: Optional[Connection] = None):
         connection = self.current_connection if connection is None else connection
         updated_host_list: Tuple[HostInfo, ...] = self.host_list_provider.force_refresh(connection)
-        if updated_host_list != self.hosts:
+        if updated_host_list != self._all_hosts:
             self._update_host_availability(updated_host_list)
             self._update_hosts(updated_host_list)
 
@@ -546,12 +586,12 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 host.set_availability(availability)
 
     def _update_hosts(self, new_hosts: Tuple[HostInfo, ...]):
-        old_hosts_dict = {x.url: x for x in self.hosts}
+        old_hosts_dict = {x.url: x for x in self._all_hosts}
         new_hosts_dict = {x.url: x for x in new_hosts}
 
         changes: Dict[str, Set[HostEvent]] = {}
 
-        for host in self.hosts:
+        for host in self._all_hosts:
             corresponding_new_host = new_hosts_dict.get(host.url)
             if corresponding_new_host is None:
                 changes[host.url] = {HostEvent.HOST_DELETED}
@@ -565,7 +605,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 changes[key] = {HostEvent.HOST_ADDED}
 
         if len(changes) > 0:
-            self.hosts = tuple(new_hosts) if new_hosts is not None else ()
+            self._all_hosts = tuple(new_hosts) if new_hosts is not None else ()
             self._container.plugin_manager.notify_host_list_changed(changes)
 
     def _compare(self, host_a: HostInfo, host_b: HostInfo) -> Set[HostEvent]:
@@ -622,6 +662,7 @@ class PluginManager(CanReleaseResources):
         "read_write_splitting": ReadWriteSplittingPluginFactory,
         "fastest_response_strategy": FastestResponseStrategyPluginFactory,
         "stale_dns": StaleDnsPluginFactory,
+        "custom_endpoint": CustomEndpointPluginFactory,
         "connect_time": ConnectTimePluginFactory,
         "execute_time": ExecuteTimePluginFactory,
         "dev": DeveloperPluginFactory,
@@ -636,6 +677,7 @@ class PluginManager(CanReleaseResources):
     # the highest values. The first plugin of the list will have the lowest weight, and the
     # last one will have the highest weight.
     PLUGIN_FACTORY_WEIGHTS: Dict[Type[PluginFactory], int] = {
+        CustomEndpointPluginFactory: 40,
         AuroraInitialConnectionStrategyPluginFactory: 50,
         AuroraConnectionTrackerPluginFactory: 100,
         StaleDnsPluginFactory: 200,

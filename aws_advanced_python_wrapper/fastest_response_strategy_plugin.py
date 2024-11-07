@@ -111,7 +111,7 @@ class FastestResponseStrategyPlugin(Plugin):
         fastest_response_host: Optional[HostInfo] = self._cached_fastest_response_host_by_role.get(role.name)
         if fastest_response_host is not None:
 
-            # Found a fastest host. Let's find it in the the latest topology.
+            # Found a fastest host. Let's find it in the latest topology.
             for host in self._plugin_service.hosts:
                 if host == fastest_response_host:
                     # found the fastest host in the topology

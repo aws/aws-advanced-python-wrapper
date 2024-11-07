@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Callable, Dict, Optional, Set
 from aws_advanced_python_wrapper.credentials_provider_factory import (
     CredentialsProviderFactory, SamlCredentialsProviderFactory)
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
+from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 from aws_advanced_python_wrapper.utils.saml_utils import SamlUtils
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ class OktaAuthPlugin(Plugin):
         self._credentials_provider_factory = credentials_provider_factory
         self._session = session
 
+        self._region_utils = RegionUtils()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = telemetry_factory.create_counter("okta.fetch_token.count")
         self._cache_size_gauge = telemetry_factory.create_gauge("okta.token_cache.size", lambda: len(OktaAuthPlugin._token_cache))
@@ -78,7 +80,11 @@ class OktaAuthPlugin(Plugin):
 
         host = IamAuthUtils.get_iam_host(props, host_info)
         port = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
-        region: str = IamAuthUtils.get_rds_region(self._rds_utils, host, props, self._session)
+        region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host, self._session)
+        if not region:
+            error_message = "RdsUtils.UnsupportedHostname"
+            logger.debug(error_message, host)
+            raise AwsWrapperError(Messages.get_formatted(error_message, host))
 
         user = WrapperProperties.DB_USER.get(props)
         cache_key: str = IamAuthUtils.get_cache_key(

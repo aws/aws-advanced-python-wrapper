@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 from typing import Any, Callable, Dict, Optional, Set
 
+from aws_advanced_python_wrapper import LogUtils
 from aws_advanced_python_wrapper.errors import (
     AwsWrapperError, FailoverFailedError, FailoverSuccessError,
     TransactionResolutionUnknownError)
@@ -328,17 +329,23 @@ class FailoverPlugin(Plugin):
         try:
             logger.info("FailoverPlugin.StartWriterFailover")
 
-            result: WriterFailoverResult = self._writer_failover_handler.failover(self._plugin_service.hosts)
-
+            result: WriterFailoverResult = self._writer_failover_handler.failover(self._plugin_service.all_hosts)
             if result is not None and result.exception is not None:
                 raise result.exception
             elif result is None or not result.is_connected:
                 raise FailoverFailedError(Messages.get("FailoverPlugin.UnableToConnectToWriter"))
 
             writer_host = self._get_writer(result.topology)
+            allowed_hosts = self._plugin_service.hosts
+            allowed_hostnames = [host.host for host in allowed_hosts]
+            if writer_host.host not in allowed_hostnames:
+                raise FailoverFailedError(
+                    Messages.get_formatted(
+                        "FailoverPlugin.NewWriterNotAllowed",
+                        "<null>" if writer_host is None else writer_host.host,
+                        LogUtils.log_topology(allowed_hosts)))
 
             self._plugin_service.set_current_connection(result.new_connection, writer_host)
-
             logger.info("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
 
             self._plugin_service.refresh_host_list()
@@ -438,11 +445,11 @@ class FailoverPlugin(Plugin):
     def _is_failover_enabled(self) -> bool:
         return self._enable_failover_setting and \
             self._rds_url_type != RdsUrlType.RDS_PROXY and \
-            self._plugin_service.hosts is not None and \
-            len(self._plugin_service.hosts) > 0
+            self._plugin_service.all_hosts is not None and \
+            len(self._plugin_service.all_hosts) > 0
 
     def _get_current_writer(self) -> Optional[HostInfo]:
-        topology = self._plugin_service.hosts
+        topology = self._plugin_service.all_hosts
         if topology is None:
             return None
 

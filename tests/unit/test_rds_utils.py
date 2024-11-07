@@ -284,3 +284,33 @@ def test_get_rds_cluster_host_url():
 def test_get_instance_id(host: str, expected_id: str):
     target = RdsUtils()
     assert target.get_instance_id(host) == expected_id
+
+
+@pytest.mark.parametrize("expected, test_value", [
+    ("database-test-name", us_east_region_cluster),
+    ("database-test-name", us_east_region_cluster_read_only),
+    (None, us_east_region_instance),
+    ("proxy-test-name", us_east_region_proxy),
+    ("custom-test-name", us_east_region_custom_domain),
+    ("database-test-name", china_region_cluster),
+    ("database-test-name", china_region_cluster_read_only),
+    (None, china_region_instance),
+    ("proxy-test-name", china_region_proxy),
+    ("custom-test-name", china_region_custom_domain),
+    ("database-test-name", china_alt_region_cluster),
+    ("database-test-name", china_alt_region_cluster_read_only),
+    (None, china_alt_region_instance),
+    ("proxy-test-name", china_alt_region_proxy),
+    ("custom-test-name", china_alt_region_custom_domain),
+    ("database-test-name", china_alt_region_limitless_db_shard_group),
+    ("database-test-name", us_isob_east_region_cluster),
+    ("database-test-name", us_isob_east_region_cluster_read_only),
+    (None, us_isob_east_region_instance),
+    ("proxy-test-name", us_isob_east_region_proxy),
+    ("custom-test-name", us_isob_east_region_custom_domain),
+    ("database-test-name", us_isob_east_region_limitless_db_shard_group),
+    ("database-test-name", us_gov_east_region_cluster),
+])
+def test_get_cluster_id(expected, test_value):
+    target = RdsUtils()
+    assert target.get_cluster_id(test_value) == expected

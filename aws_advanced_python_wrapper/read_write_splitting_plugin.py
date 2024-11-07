@@ -263,6 +263,11 @@ class ReadWriteSplittingPlugin(Plugin):
                 self._is_connection_usable(current_conn, driver_dialect)):
             return
 
+        hostnames = [host_info.host for host_info in hosts]
+        if self._reader_host_info is not None and self._reader_host_info.host not in hostnames:
+            # The old reader cannot be used anymore because it is no longer in the list of allowed hosts.
+            self._close_connection_if_idle(self._reader_connection)
+
         self._in_read_write_split = True
         if not self._is_connection_usable(self._reader_connection, driver_dialect):
             self._initialize_reader_connection(hosts)

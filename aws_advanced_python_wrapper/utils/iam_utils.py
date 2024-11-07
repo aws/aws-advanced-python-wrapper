@@ -71,25 +71,6 @@ class IamAuthUtils:
         return f"{region}:{hostname}:{port}:{user}"
 
     @staticmethod
-    def get_rds_region(rds_utils: RdsUtils, hostname: Optional[str], props: Properties, client_session: Optional[Session] = None) -> str:
-        rds_region = WrapperProperties.IAM_REGION.get(props)
-        if rds_region is None or rds_region == "":
-            rds_region = rds_utils.get_rds_region(hostname)
-
-        if not rds_region:
-            error_message = "RdsUtils.UnsupportedHostname"
-            logger.debug(error_message, hostname)
-            raise AwsWrapperError(Messages.get_formatted(error_message, hostname))
-
-        session = client_session if client_session else boto3.Session()
-        if rds_region not in session.get_available_regions("rds"):
-            error_message = "AwsSdk.UnsupportedRegion"
-            logger.debug(error_message, rds_region)
-            raise AwsWrapperError(Messages.get_formatted(error_message, rds_region))
-
-        return rds_region
-
-    @staticmethod
     def generate_authentication_token(
             plugin_service: PluginService,
             user: Optional[str],

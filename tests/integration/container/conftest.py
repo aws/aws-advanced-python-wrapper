@@ -21,6 +21,8 @@ from aws_xray_sdk.core import xray_recorder
 
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
+from aws_advanced_python_wrapper.custom_endpoint_plugin import (
+    CustomEndpointMonitor, CustomEndpointPlugin)
 from aws_advanced_python_wrapper.database_dialect import DatabaseDialectManager
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
@@ -131,6 +133,8 @@ def pytest_runtest_setup(item):
         RdsHostListProvider._cluster_ids_to_update.clear()
         PluginServiceImpl._host_availability_expiring_cache.clear()
         DatabaseDialectManager._known_endpoint_dialects.clear()
+        CustomEndpointPlugin._monitors.clear()
+        CustomEndpointMonitor._custom_endpoint_info_cache.clear()
 
         ConnectionProviderManager.reset_provider()
         DatabaseDialectManager.reset_custom_dialect()

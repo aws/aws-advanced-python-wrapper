@@ -198,7 +198,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
         sleep(delay_ms / 1000)
 
     def _get_writer(self) -> Optional[HostInfo]:
-        for host in self._plugin_service.hosts:
+        for host in self._plugin_service.all_hosts:
             if host.role == HostRole.WRITER:
                 return host
 
@@ -225,10 +225,10 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
         init_host_provider_func(props)
 
     def _has_no_readers(self) -> bool:
-        if len(self._plugin_service.hosts) == 0:
+        if len(self._plugin_service.all_hosts) == 0:
             return False
 
-        for host in self._plugin_service.hosts:
+        for host in self._plugin_service.all_hosts:
             if host.role == HostRole.READER:
                 return False
 
