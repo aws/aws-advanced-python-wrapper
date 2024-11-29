@@ -668,6 +668,10 @@ public class AuroraTestUtility {
             DescribeDbEngineVersionsRequest.builder().engine(engine).build()
     );
     for (DBEngineVersion version : versions.dbEngineVersions()) {
+      if (version.engineVersion().contains("limitless")) {
+        // Skip limitless engine version until limitless support is complete.
+        continue;
+      }
       res.add(version.engineVersion());
     }
     return res;
