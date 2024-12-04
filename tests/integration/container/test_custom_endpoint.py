@@ -201,6 +201,7 @@ class TestCustomEndpoint:
         # This setting is not required for the test, but it allows us to also test re-creation of expired monitors since
         # it takes more than 30 seconds to modify the cluster endpoint (usually around 140s).
         props["custom_endpoint_idle_monitor_expiration_ms"] = 30_000
+        props["wait_for_custom_endpoint_info_timeout_ms"] = 30_000
         conn = AwsWrapperConnection.connect(target_driver_connect, **kwargs, **props)
 
         endpoint_members = self.endpoint_info["StaticMembers"]
