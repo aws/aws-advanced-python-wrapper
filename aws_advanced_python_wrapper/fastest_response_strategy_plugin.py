@@ -50,6 +50,8 @@ MAX_VALUE = 2147483647
 class FastestResponseStrategyPlugin(Plugin):
     _FASTEST_RESPONSE_STRATEGY_NAME = "fastest_response"
     _SUBSCRIBED_METHODS: Set[str] = {"accepts_strategy",
+                                     "connect",
+                                     "force_connect",
                                      "get_host_info_by_strategy",
                                      "notify_host_list_changed"}
 
