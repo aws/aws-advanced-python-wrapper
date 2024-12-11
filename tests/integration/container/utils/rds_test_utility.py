@@ -163,6 +163,9 @@ class RdsTestUtility:
             sleep(1)
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
+        # wait until all instances except initial writer instance to be available
+        instances = [x.get_instance_id() for x in TestEnvironment.get_current().get_instances() if x.get_instance_id() != initial_writer_id]
+        self.make_sure_instances_up(instances)
         self.logger.debug("Testing.FinishedFailover", initial_writer_id, str((perf_counter_ns() - start) / 1_000_000))
 
     def failover_cluster(self, cluster_id: Optional[str] = None, target_id: Optional[str] = None) -> None:
