@@ -14,7 +14,7 @@
 
 from typing import List, Optional
 
-from mysql.connector import InterfaceError, OperationalError
+from mysql.connector import DatabaseError, InterfaceError
 
 from aws_advanced_python_wrapper.errors import QueryTimeoutError
 from aws_advanced_python_wrapper.exception_handling import ExceptionHandler
@@ -52,7 +52,7 @@ class MySQLExceptionHandler(ExceptionHandler):
             # e.g. 2013 (HY000): Lost connection to MySQL server during query
             return True
 
-        if isinstance(error, OperationalError):
+        if isinstance(error, DatabaseError):
             if error.errno in self._NETWORK_ERRORS:
                 return True
             if error.msg is not None and self._UNAVAILABLE_CONNECTION in error.msg:
