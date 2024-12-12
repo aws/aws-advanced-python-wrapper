@@ -59,6 +59,7 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
       - name: 'Create a Draft Release'
+        if: always()
         uses: ncipollo/release-action@v1
         with:
           draft: true
