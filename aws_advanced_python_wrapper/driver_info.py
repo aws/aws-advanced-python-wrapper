@@ -15,4 +15,4 @@
 
 class DriverInfo:
     DRIVER_NAME = "aws_advanced_python_wrapper"
-    DRIVER_VERSION = "1.1.1"
+    DRIVER_VERSION = "1.2.0"

@@ -3,6 +3,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/#semantic-versioning-200).
 
+## [1.2.0] - 2024-12-12
+### :magic_wand: Added
+* [Custom endpoint plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheCustomEndpointPlugin.md), which adds support for RDS custom endpoints.
+
 ## [1.1.1] - 2024-10-18
 ### :magic_wand: Added
 * Support for MySQL version 9+ ([PR #713](https://github.com/aws/aws-advanced-python-wrapper/pull/713)).
@@ -22,6 +26,7 @@ The Amazon Web Services (AWS) Advanced Python Wrapper allows an application to t
 * Support for PostgreSQL
 * Support for MySQL
 
+[1.2.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.1.1...1.2.0
 [1.1.1]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.1.0...1.1.1
 [1.1.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.0.0...1.1.0
 [1.0.0]: https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.0.0
