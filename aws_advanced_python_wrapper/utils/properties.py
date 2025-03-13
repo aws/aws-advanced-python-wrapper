@@ -300,7 +300,8 @@ class WrapperProperties:
                                            60)
 
     SSL_SECURE = WrapperProperty("ssl_secure",
-                                 "Whether the SSL session is to be secure and the server's certificates will be verified. We do not recommend disabling this for production use.",
+                                 "Whether the SSL session is to be secure and the server's certificates will be verified."
+                                 " We do not recommend disabling this for production use.",
                                  True)
 
     IDP_NAME = WrapperProperty("idp_name",
