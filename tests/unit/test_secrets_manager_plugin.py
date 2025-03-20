@@ -57,6 +57,8 @@ class TestAwsSecretsManagerPlugin(TestCase):
     _TEST_ENDPOINT = None
     _TEST_USERNAME = "testUser"
     _TEST_PASSWORD = "testPassword"
+    _TEST_USERNAME_KEY = "testUserKey"
+    _TEST_PASSWORD_KEY = "testPasswordKey"
     _TEST_PORT = 5432
     _VALID_SECRET_STRING = {'SecretString': f'{{"username":"{_TEST_USERNAME}","password":"{_TEST_PASSWORD}"}}'}
     _INVALID_SECRET_STRING = {'SecretString': {"username": "invalid", "password": "invalid"}}
@@ -108,7 +110,7 @@ class TestAwsSecretsManagerPlugin(TestCase):
             "secrets_manager_region": self._TEST_REGION,
             "secrets_manager_secret_id": self._TEST_SECRET_ID,
         })
-
+    
     @patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_connect_with_cached_secrets(self):
         self._secrets_cache[self._SECRET_CACHE_KEY] = self._TEST_SECRET
@@ -239,3 +241,21 @@ class TestAwsSecretsManagerPlugin(TestCase):
         # The region specified in `secrets_manager_region` should override the region parsed from ARN.
         self._mock_session.client.assert_called_with('secretsmanager', region_name=expected_region, endpoint_url=None)
         self._mock_client.get_secret_value.assert_called_with(SecretId=arn)
+
+    @patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
+    def test_connect_with_different_secret_keys(self):
+        self._properties["secrets_manager_secret_username_key"] = self._TEST_USERNAME_KEY
+        self._properties["secrets_manager_secret_password_key"] = self._TEST_PASSWORD_KEY
+        self._mock_client.get_secret_value.return_value = {'SecretString': f'{{"{self._TEST_USERNAME_KEY}":"{self._TEST_USERNAME}","{self._TEST_PASSWORD_KEY}":"{self._TEST_PASSWORD}"}}'}
+
+        target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(self._mock_plugin_service,
+                                                                         self._properties,
+                                                                         self._mock_session)
+        target_plugin.connect(
+            MagicMock(), MagicMock(), self._TEST_HOST_INFO, self._properties, True, self._mock_func)
+
+        assert 1 == len(self._secrets_cache)
+        self._mock_client.get_secret_value.assert_called_once()
+        self._mock_func.assert_called_once()
+        assert self._TEST_USERNAME == self._properties.get("user")
+        assert self._TEST_PASSWORD == self._properties.get("password")
