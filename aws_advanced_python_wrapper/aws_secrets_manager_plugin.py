@@ -188,12 +188,15 @@ class AwsSecretsManagerPlugin(Plugin):
         """
         Updates credentials in provided properties. Other plugins in the plugin chain may change them if needed.
         Eventually, credentials will be used to open a new connection in :py:class:`DefaultConnectionPlugin`.
-
-        :param properties: Properties to store credentials.
         """
         if self._secret:
-            WrapperProperties.USER.set(properties, self._secret.username)
-            WrapperProperties.PASSWORD.set(properties, self._secret.password)
+            username_key = WrapperProperties.SECRETS_MANAGER_SECRET_USERNAME_KEY.get(properties)
+            username_value = getattr(self._secret, str(username_key))
+            WrapperProperties.USER.set(properties, username_value)
+
+            password_key = WrapperProperties.SECRETS_MANAGER_SECRET_PASSWORD_KEY.get(properties)
+            password_value = getattr(self._secret, str(password_key))
+            WrapperProperties.PASSWORD.set(properties, password_value)
 
     def _get_rds_region(self, secret_id: str, props: Properties) -> str:
         session = self._session if self._session else boto3.Session()
