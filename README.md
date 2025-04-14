@@ -120,6 +120,8 @@ The following table lists the connection properties used with the AWS Advanced P
 | `secrets_manager_secret_id`                  |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
 | `secrets_manager_region`                     |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
 | `secrets_manager_endpoint`                   |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
+| `secrets_manager_secret_username`            |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
+| `secrets_manager_secret_password`            |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
 | `reader_host_selector_strategy`              | [Connection Strategy](./docs/using-the-python-driver/using-plugins/UsingTheReadWriteSplittingPlugin.md#connection-strategies) |
 | `db_user`                                    |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
 | `idp_username`                               |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
