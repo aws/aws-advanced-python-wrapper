@@ -133,7 +133,7 @@ class WrapperProperties:
     SECRETS_MANAGER_SECRET_USERNAME_KEY = WrapperProperty(
         "secrets_manager_secret_username_key",
         "The key of the secret to retrieve, which contains the username.",
-    "username")
+        "username")
     SECRETS_MANAGER_SECRET_PASSWORD_KEY = WrapperProperty(
         "secrets_manager_secret_password_key",
         "The key of the secret to retrieve, which contains the password.",

@@ -110,7 +110,7 @@ class TestAwsSecretsManagerPlugin(TestCase):
             "secrets_manager_region": self._TEST_REGION,
             "secrets_manager_secret_id": self._TEST_SECRET_ID,
         })
-    
+
     @patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_connect_with_cached_secrets(self):
         self._secrets_cache[self._SECRET_CACHE_KEY] = self._TEST_SECRET
@@ -246,7 +246,9 @@ class TestAwsSecretsManagerPlugin(TestCase):
     def test_connect_with_different_secret_keys(self):
         self._properties["secrets_manager_secret_username_key"] = self._TEST_USERNAME_KEY
         self._properties["secrets_manager_secret_password_key"] = self._TEST_PASSWORD_KEY
-        self._mock_client.get_secret_value.return_value = {'SecretString': f'{{"{self._TEST_USERNAME_KEY}":"{self._TEST_USERNAME}","{self._TEST_PASSWORD_KEY}":"{self._TEST_PASSWORD}"}}'}
+        self._mock_client.get_secret_value.return_value = {
+            'SecretString': f'{{"{self._TEST_USERNAME_KEY}":"{self._TEST_USERNAME}","{self._TEST_PASSWORD_KEY}":"{self._TEST_PASSWORD}"}}'
+        }
 
         target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(self._mock_plugin_service,
                                                                          self._properties,
