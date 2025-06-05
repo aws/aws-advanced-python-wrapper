@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, List, Type, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, List, Type, TypeVar
 
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
@@ -111,6 +111,7 @@ class PluginServiceManagerContainer:
 
 
 T = TypeVar('T')
+
 
 class PluginService(ExceptionHandler, Protocol):
     @property
@@ -288,7 +289,7 @@ class PluginService(ExceptionHandler, Protocol):
         ...
 
     @abstractmethod
-    def get_status(self, clazz: Type[T], key: str) -> T:
+    def get_status(self, clazz: Type[T], key: str) -> Optional[T]:
         ...
 
 
@@ -675,8 +676,22 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         key_str = "" if key is None else key.strip().lower()
         return f"{key_str}::{clazz.__name__}"
 
-    def get_status(self, clazz: Type[T], key: str) -> T:
-        return cast(clazz, PluginServiceImpl._status_cache.get(self._get_status_cache_key(clazz, key)))
+    def get_status(self, clazz: Type[T], key: str) -> Optional[T]:
+        cache_key = self._get_status_cache_key(clazz, key)
+        status = PluginServiceImpl._status_cache.get(cache_key)
+        if status is None:
+            return None
+
+        if not isinstance(status, clazz):
+            raise ValueError(
+                Messages.get_formatted(
+                    "PluginServiceImpl.incorrectStatusType",
+                    clazz.__name__,
+                    key,
+                    status.__class__.__name__,
+                    status))
+
+        return status
 
 
 class PluginManager(CanReleaseResources):
