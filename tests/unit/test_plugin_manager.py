@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from tests.unit.test_fastest_response_strategy_plugin import plugin
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -141,7 +143,7 @@ def test_unknown_profile(mocker, mock_telemetry_factory):
         PluginManager(mocker.MagicMock(), props, mock_telemetry_factory())
 
 
-def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect, mock_telemetry_factory):
+def test_execute_call_a(mocker, mock_conn, container, mock_plugin_service, mock_driver_dialect, mock_telemetry_factory):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
@@ -157,7 +159,7 @@ def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect, mock_
     make_pipeline_func = mocker.patch.object(manager, '_make_pipeline', wraps=manager._make_pipeline)
     result = manager.execute(mock_conn, "test_call_a", lambda: _target_call(calls), *args)
 
-    make_pipeline_func.assert_called_once_with("test_call_a")
+    make_pipeline_func.assert_called_once_with("test_call_a", None)
     assert result == "result_value"
     assert len(calls) == 7
     assert calls[0] == "TestPluginOne:before execute"
@@ -172,7 +174,7 @@ def test_execute_call_a(mocker, mock_conn, container, mock_driver_dialect, mock_
     result = manager.execute(mock_conn, "test_call_a", lambda: _target_call(calls), *args)
 
     # The first execute call should cache the pipeline
-    make_pipeline_func.assert_called_once_with("test_call_a")
+    make_pipeline_func.assert_called_once_with("test_call_a", None)
     assert result == "result_value"
     assert len(calls) == 7
     assert calls[0] == "TestPluginOne:before execute"
@@ -189,7 +191,7 @@ def _target_call(calls: List[str]):
     return "result_value"
 
 
-def test_execute_call_b(mocker, container, mock_driver_dialect, mock_telemetry_factory):
+def test_execute_call_b(mocker, container, mock_driver_dialect, mock_telemetry_factory, mock_conn):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
@@ -212,7 +214,7 @@ def test_execute_call_b(mocker, container, mock_driver_dialect, mock_telemetry_f
     assert calls[4] == "TestPluginOne:after execute"
 
 
-def test_execute_call_c(mocker, container, mock_driver_dialect, mock_telemetry_factory):
+def test_execute_call_c(mocker, container, mock_driver_dialect, mock_telemetry_factory, mock_conn):
     calls = []
     args = [10, "arg2", 3.33]
     plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls)]
@@ -233,7 +235,7 @@ def test_execute_call_c(mocker, container, mock_driver_dialect, mock_telemetry_f
     assert calls[2] == "TestPluginOne:after execute"
 
 
-def test_execute_against_old_target(mocker, container, mock_driver_dialect, mock_telemetry_factory):
+def test_execute_against_old_target(mocker, container, mock_driver_dialect, mock_telemetry_factory, mock_conn):
     mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._container = container
@@ -267,6 +269,87 @@ def test_connect(mocker, container, mock_conn, mock_driver_dialect, mock_telemet
     assert calls[1] == "TestPluginThree:before connect"
     assert calls[2] == "TestPluginThree:after connect"
     assert calls[3] == "TestPluginOne:after connect"
+
+
+def test_connect__skip_plugin(mocker, container, mock_conn, mock_driver_dialect, mock_telemetry_factory):
+    calls = []
+
+    plugin1 = TestPluginOne(calls)
+    plugins = [plugin1, TestPluginTwo(calls), TestPluginThree(calls, mock_conn)]
+
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
+    manager._telemetry_factory = mock_telemetry_factory
+    manager._container = container
+
+    result = manager.connect(mocker.MagicMock(), mocker.MagicMock(), HostInfo("localhost"), Properties(), True, plugin1)
+
+    assert result == mock_conn
+    assert len(calls) == 2
+    assert calls[0] == "TestPluginThree:before connect"
+    assert calls[1] == "TestPluginThree:after connect"
+
+
+def test_force_connect(mocker, container, mock_conn, mock_driver_dialect, mock_telemetry_factory):
+    calls = []
+
+    plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls, mock_conn)]
+
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
+    manager._telemetry_factory = mock_telemetry_factory
+    manager._container = container
+
+    make_pipeline_func = mocker.patch.object(manager, '_make_pipeline', wraps=manager._make_pipeline)
+    # The first call to force_connect should generate the plugin pipeline and cache it
+    result = manager.force_connect(mocker.MagicMock(), mocker.MagicMock(), HostInfo("localhost"), Properties(), True)
+
+    make_pipeline_func.assert_called_once_with("force_connect", None)
+    assert result == mock_conn
+    assert len(calls) == 4
+    assert calls[0] == "TestPluginOne:before forceConnect"
+    assert calls[1] == "TestPluginThree:before forceConnect"
+    assert calls[2] == "TestPluginThree:after forceConnect"
+    assert calls[3] == "TestPluginOne:after forceConnect"
+
+    calls.clear()
+
+    result = manager.force_connect(mocker.MagicMock(), mocker.MagicMock(), HostInfo("localhost"), Properties(), True)
+
+    # The second call should have used the cached plugin pipeline, so make_pipeline should not have been called again
+    make_pipeline_func.assert_called_once_with("force_connect", None)
+    assert result == mock_conn
+    assert len(calls) == 4
+    assert calls[0] == "TestPluginOne:before forceConnect"
+    assert calls[1] == "TestPluginThree:before forceConnect"
+    assert calls[2] == "TestPluginThree:after forceConnect"
+    assert calls[3] == "TestPluginOne:after forceConnect"
+
+
+def test_force_connect__cached(mocker, container, mock_conn, mock_driver_dialect, mock_telemetry_factory):
+    calls = []
+
+    plugins = [TestPluginOne(calls), TestPluginTwo(calls), TestPluginThree(calls, mock_conn)]
+
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = plugins
+    manager._function_cache = {}
+    manager._telemetry_factory = mock_telemetry_factory
+    manager._container = container
+
+    result = manager.force_connect(mocker.MagicMock(), mocker.MagicMock(), HostInfo("localhost"), Properties(), True)
+
+    assert result == mock_conn
+    assert len(calls) == 4
+    assert calls[0] == "TestPluginOne:before forceConnect"
+    assert calls[1] == "TestPluginThree:before forceConnect"
+    assert calls[2] == "TestPluginThree:after forceConnect"
+    assert calls[3] == "TestPluginOne:after forceConnect"
 
 
 def test_exception_before_connect(mocker, container, mock_telemetry_factory):
@@ -407,6 +490,22 @@ class TestPlugin(Plugin):
         self._calls.append(type(self).__name__ + ":after connect")
         return result
 
+    def force_connect(
+            self,
+            target_driver_func: Callable,
+            driver_dialect: DriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
+        self._calls.append(type(self).__name__ + ":before forceConnect")
+        if self._connection is not None:
+            result = self._connection
+        else:
+            result = connect_func()
+        self._calls.append(type(self).__name__ + ":after forceConnect")
+        return result
+
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         self._calls.append(type(self).__name__ + ":before execute")
         result = execute_func()
@@ -446,7 +545,7 @@ class TestPluginThree(TestPlugin):
 
     @property
     def subscribed_methods(self) -> Set[str]:
-        return {"test_call_a", "connect", "notify_connection_changed", "notify_host_list_changed"}
+        return {"test_call_a", "connect", "force_connect", "notify_connection_changed", "notify_host_list_changed"}
 
     def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         self._calls.append(type(self).__name__ + ":notify_connection_changed")

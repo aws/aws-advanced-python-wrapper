@@ -34,7 +34,6 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect_manager import DriverDialectManager
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
-    from threading import Event
 
 from abc import abstractmethod
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
@@ -236,7 +235,7 @@ class PluginService(ExceptionHandler, Protocol):
     def force_refresh_host_list(self, connection: Optional[Connection] = None):
         ...
 
-    def connect(self, host_info: HostInfo, props: Properties) -> Connection:
+    def connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         """
         Establishes a connection to the given host using the given driver protocol and properties. If a
         non-default :py:class`ConnectionProvider` has been set with :py:method:`ConnectionProviderManager.set_connection_provider`,
@@ -245,11 +244,12 @@ class PluginService(ExceptionHandler, Protocol):
 
         :param host_info: the host details for the desired connection.
         :param props: the connection properties.
+        :param plugin_to_skip: the calling plugin, which will be skipped in the plugin chain when trying to connect.
         :return: a :py:class`Connection` to the requested host.
         """
         ...
 
-    def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Optional[Event]) -> Connection:
+    def force_connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         """
         Establishes a connection to the given host using the given driver protocol and properties.
         This call differs from connect in that the default :py:class`DriverConnectionProvider` will be used to establish the connection even if
@@ -257,6 +257,7 @@ class PluginService(ExceptionHandler, Protocol):
 
         :param host_info: the host details for the desired connection.
         :param props: the connection properties.
+        :param plugin_to_skip: the calling plugin, which will be skipped in the plugin chain when trying to connect.
         :return: a :py:class`Connection` to the requested host.
         """
         ...
@@ -274,6 +275,10 @@ class PluginService(ExceptionHandler, Protocol):
         ...
 
     def get_telemetry_factory(self) -> TelemetryFactory:
+        ...
+
+    @abstractmethod
+    def is_plugin_in_use(self, plugin_class: Type[Plugin]):
         ...
 
 
@@ -504,15 +509,16 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             self._update_host_availability(updated_host_list)
             self._update_hosts(updated_host_list)
 
-    def connect(self, host_info: HostInfo, props: Properties) -> Connection:
+    def connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.connect(
-            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None)
+            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None, plugin_to_skip)
 
-    def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Optional[Event]) -> Connection:
+    def force_connect(
+            self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.force_connect(
-            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None)
+            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None, plugin_to_skip)
 
     def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
         ...
@@ -629,6 +635,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             changes.add(HostEvent.HOST_CHANGED)
 
         return changes
+
+    def is_plugin_in_use(self, plugin_class: Type[Plugin]) -> bool:
+        return self._container.plugin_manager.is_plugin_in_use(plugin_class)
 
     def release_resources(self):
         try:
@@ -817,7 +826,8 @@ class PluginManager(CanReleaseResources):
                 method_name,
                 # next_plugin_func is defined later in make_pipeline
                 lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args, **kwargs),
-                target_driver_func)
+                target_driver_func,
+            None)
 
             context.set_success(True)
 
@@ -835,32 +845,41 @@ class PluginManager(CanReleaseResources):
         finally:
             context.close_context()
 
-    def _execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):
+    def _execute_with_subscribed_plugins(
+            self,
+            method_name: str,
+            plugin_func: Callable,
+            target_driver_func: Callable,
+            plugin_to_skip: Optional[Plugin] = None):
         pipeline_func: Optional[Callable] = self._function_cache.get(method_name)
         if pipeline_func is None:
-            pipeline_func = self._make_pipeline(method_name)
+            pipeline_func = self._make_pipeline(method_name, plugin_to_skip)
             self._function_cache[method_name] = pipeline_func
 
         return pipeline_func(plugin_func, target_driver_func)
 
     # Builds the plugin pipeline function chain. The pipeline is built in a way that allows plugins to perform logic
     # both before and after the target driver function call.
-    def _make_pipeline(self, method_name: str) -> Callable:
+    def _make_pipeline(self, method_name: str, plugin_to_skip: Optional[Plugin] = None) -> Callable:
         pipeline_func: Optional[Callable] = None
         num_plugins: int = len(self._plugins)
 
         # Build the pipeline starting at the end and working backwards
         for i in range(num_plugins - 1, -1, -1):
             plugin: Plugin = self._plugins[i]
+            if plugin_to_skip is not None and plugin_to_skip == plugin:
+                continue
+
             subscribed_methods: Set[str] = plugin.subscribed_methods
             is_subscribed: bool = PluginManager._ALL_METHODS in subscribed_methods or method_name in subscribed_methods
+            if not is_subscribed:
+                continue
 
-            if is_subscribed:
-                if pipeline_func is None:
-                    # Defines the call to DefaultPlugin, which is the last plugin in the pipeline
-                    pipeline_func = self._create_base_pipeline_func(plugin)
-                else:
-                    pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
+            if pipeline_func is None:
+                # Defines the call to DefaultPlugin, which is the last plugin in the pipeline
+                pipeline_func = self._create_base_pipeline_func(plugin)
+            else:
+                pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
 
         if pipeline_func is None:
             raise AwsWrapperError(Messages.get("PluginManager.PipelineNone"))
@@ -887,7 +906,8 @@ class PluginManager(CanReleaseResources):
             driver_dialect: DriverDialect,
             host_info: Optional[HostInfo],
             props: Properties,
-            is_initial_connection: bool) -> Connection:
+            is_initial_connection: bool,
+            plugin_to_skip: Optional[Plugin] = None) -> Connection:
         context = self._telemetry_factory.open_telemetry_context("connect", TelemetryTraceLevel.NESTED)
         try:
             return self._execute_with_subscribed_plugins(
@@ -895,7 +915,8 @@ class PluginManager(CanReleaseResources):
                 lambda plugin, func: plugin.connect(
                     target_func, driver_dialect, host_info, props, is_initial_connection, func),
                 # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
-                lambda: None)
+                lambda: None,
+                plugin_to_skip)
         finally:
             context.close_context()
 
@@ -905,13 +926,15 @@ class PluginManager(CanReleaseResources):
             driver_dialect: DriverDialect,
             host_info: Optional[HostInfo],
             props: Properties,
-            is_initial_connection: bool) -> Connection:
+            is_initial_connection: bool,
+            plugin_to_skip: Optional[Plugin] = None) -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._FORCE_CONNECT_METHOD,
             lambda plugin, func: plugin.force_connect(
                 target_func, driver_dialect, host_info, props, is_initial_connection, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
-            lambda: None)
+            lambda: None,
+            plugin_to_skip)
 
     def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         old_conn_suggestions: Set[OldConnectionSuggestedAction] = set()
@@ -980,9 +1003,20 @@ class PluginManager(CanReleaseResources):
             return self._execute_with_subscribed_plugins(
                 PluginManager._INIT_HOST_LIST_PROVIDER_METHOD,
                 lambda plugin, func: plugin.init_host_provider(props, host_list_provider_service, func),
-                lambda: None)
+                lambda: None,
+                None)
         finally:
             context.close_context()
+
+    def is_plugin_in_use(self, plugin_class: Type[Plugin]) -> bool:
+        if not self._plugins:
+            return False
+
+        for plugin in self._plugins:
+            if isinstance(plugin, plugin_class):
+                return True
+
+        return False
 
     def release_resources(self):
         """

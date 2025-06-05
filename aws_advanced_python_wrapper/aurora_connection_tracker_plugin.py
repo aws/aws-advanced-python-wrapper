@@ -173,19 +173,6 @@ class AuroraConnectionTrackerPlugin(Plugin):
             props: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
-        return self._connect(host_info, connect_func)
-
-    def force_connect(
-            self,
-            target_driver_func: Callable,
-            driver_dialect: DriverDialect,
-            host_info: HostInfo,
-            props: Properties,
-            is_initial_connection: bool,
-            force_connect_func: Callable) -> Connection:
-        return self._connect(host_info, force_connect_func)
-
-    def _connect(self, host_info: HostInfo, connect_func: Callable):
         conn = connect_func()
 
         if conn:

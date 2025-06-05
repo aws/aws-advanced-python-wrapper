@@ -194,7 +194,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
         logger.debug("ReaderFailoverHandler.AttemptingReaderConnection", host.url, PropertiesUtils.mask_properties(props))
 
         try:
-            conn: Connection = self._plugin_service.force_connect(host, props, self._timeout_event)
+            conn: Connection = self._plugin_service.force_connect(host, props)
             self._plugin_service.set_availability(host.all_aliases, HostAvailability.AVAILABLE)
 
             logger.debug("ReaderFailoverHandler.SuccessfulReaderConnection", host.url)
