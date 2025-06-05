@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, List, Type
+from typing import TYPE_CHECKING, ClassVar, List, Type, TypeVar, cast
 
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
@@ -109,6 +109,8 @@ class PluginServiceManagerContainer:
     def plugin_manager(self, value):
         self._plugin_manager = value
 
+
+T = TypeVar('T')
 
 class PluginService(ExceptionHandler, Protocol):
     @property
@@ -281,9 +283,19 @@ class PluginService(ExceptionHandler, Protocol):
     def is_plugin_in_use(self, plugin_class: Type[Plugin]):
         ...
 
+    @abstractmethod
+    def set_status(self, clazz: Type[T], status: Optional[T], key: str):
+        ...
+
+    @abstractmethod
+    def get_status(self, clazz: Type[T], key: str) -> T:
+        ...
+
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
+    _STATUS_CACHE_EXPIRATION_NANO = 60 * 1_000_000_000  # one hour
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
+    _status_cache: ClassVar[CacheMap[str, Any]] = CacheMap()
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
 
@@ -652,6 +664,20 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if host_list_provider is not None and isinstance(host_list_provider, CanReleaseResources):
             host_list_provider.release_resources()
 
+    def set_status(self, clazz: Type[T], status: Optional[T], key: str):
+        cache_key = self._get_status_cache_key(clazz, key)
+        if status is None:
+            self._status_cache.remove(cache_key)
+        else:
+            self._status_cache.put(cache_key, status, PluginServiceImpl._STATUS_CACHE_EXPIRATION_NANO)
+
+    def _get_status_cache_key(self, clazz: Type[T], key: str) -> str:
+        key_str = "" if key is None else key.strip().lower()
+        return f"{key_str}::{clazz.__name__}"
+
+    def get_status(self, clazz: Type[T], key: str) -> T:
+        return cast(clazz, PluginServiceImpl._status_cache.get(self._get_status_cache_key(clazz, key)))
+
 
 class PluginManager(CanReleaseResources):
     _ALL_METHODS: str = "*"
@@ -827,7 +853,7 @@ class PluginManager(CanReleaseResources):
                 # next_plugin_func is defined later in make_pipeline
                 lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args, **kwargs),
                 target_driver_func,
-            None)
+                None)
 
             context.set_success(True)
 
