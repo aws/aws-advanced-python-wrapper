@@ -148,6 +148,11 @@ class PluginService(ExceptionHandler, Protocol):
 
     @property
     @abstractmethod
+    def original_url(self) -> str:
+        ...
+
+    @property
+    @abstractmethod
     def initial_connection_host_info(self) -> Optional[HostInfo]:
         ...
 
@@ -415,6 +420,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     @property
     def current_host_info(self) -> Optional[HostInfo]:
         return self._current_host_info
+
+    @property
+    def original_url(self) -> str:
+        return self._original_url
 
     @property
     def initial_connection_host_info(self) -> Optional[HostInfo]:
