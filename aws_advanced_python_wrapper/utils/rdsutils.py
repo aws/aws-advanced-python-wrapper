@@ -210,6 +210,9 @@ class RdsUtils:
 
         return None
 
+    def is_ip(self, host: str) -> bool:
+        return self.is_ipv4(host) or self.is_ipv6(host)
+
     def is_ipv4(self, host: str) -> bool:
         if host is None or not host.strip():
             return False
@@ -227,7 +230,7 @@ class RdsUtils:
         if host is None or not host.strip():
             return RdsUrlType.OTHER
 
-        if self.is_ipv4(host) or self.is_ipv6(host):
+        if self.is_ip(host):
             return RdsUrlType.IP_ADDRESS
         elif self.is_writer_cluster_dns(host):
             return RdsUrlType.RDS_WRITER_CLUSTER
