@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, ClassVar, List, Type, TypeVar
 
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
+from aws_advanced_python_wrapper.blue_green_plugin import \
+    BlueGreenPluginFactory
 from aws_advanced_python_wrapper.custom_endpoint_plugin import \
     CustomEndpointPluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
@@ -497,6 +499,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if original_dialect != self._database_dialect:
             host_list_provider_init = self._database_dialect.get_host_list_provider_supplier()
             self.host_list_provider = host_list_provider_init(self, self._props)
+            self.refresh_host_list(connection)
 
     def update_driver_dialect(self, connection_provider: ConnectionProvider):
         self._driver_dialect = self._driver_dialect_manager.get_pool_connection_driver_dialect(
@@ -727,7 +730,8 @@ class PluginManager(CanReleaseResources):
         "dev": DeveloperPluginFactory,
         "federated_auth": FederatedAuthPluginFactory,
         "okta": OktaAuthPluginFactory,
-        "initial_connection": AuroraInitialConnectionStrategyPluginFactory
+        "initial_connection": AuroraInitialConnectionStrategyPluginFactory,
+        "bg": BlueGreenPluginFactory
     }
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
@@ -743,6 +747,7 @@ class PluginManager(CanReleaseResources):
         ReadWriteSplittingPluginFactory: 300,
         FailoverPluginFactory: 400,
         HostMonitoringPluginFactory: 500,
+        BlueGreenPluginFactory: 550,
         FastestResponseStrategyPluginFactory: 600,
         IamAuthPluginFactory: 700,
         AwsSecretsManagerPluginFactory: 800,
