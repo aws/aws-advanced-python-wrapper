@@ -20,7 +20,9 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 
 
 class Properties(Dict[str, Any]):
-    pass
+    def put_if_absent(self, key: str, value: Any):
+        if self.get(key) is None:
+            self[key] = value
 
 
 class WrapperProperty:

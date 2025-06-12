@@ -15,8 +15,9 @@
 from __future__ import annotations
 
 import socket
+from datetime import datetime
 from time import perf_counter_ns
-from typing import TYPE_CHECKING, FrozenSet, cast
+from typing import TYPE_CHECKING, FrozenSet, List, cast
 
 from aws_advanced_python_wrapper.database_dialect import BlueGreenDialect
 from aws_advanced_python_wrapper.host_list_provider import HostListProvider
@@ -33,18 +34,19 @@ from abc import ABC, abstractmethod
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum, auto
-from threading import Condition, Event, Thread
-from types import MappingProxyType
+from threading import Condition, Event, RLock, Thread
 from typing import (Any, Callable, ClassVar, Dict, Optional, Protocol, Set,
                     Tuple)
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                UnsupportedOperationError)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
-from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
-from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
+from aws_advanced_python_wrapper.utils.concurrent import (ConcurrentDict,
+                                                          ConcurrentSet)
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -88,19 +90,19 @@ class BlueGreenPhase(Enum):
         if not phase_str:
             return BlueGreenPhase.NOT_CREATED
 
-        match phase_str.upper():
-            case "AVAILABLE":
-                return BlueGreenPhase.CREATED
-            case "SWITCHOVER_INITIATED":
-                return BlueGreenPhase.PREPARATION
-            case "SWITCHOVER_IN_PROGRESS":
-                return BlueGreenPhase.IN_PROGRESS
-            case "SWITCHOVER_IN_POST_PROCESSING":
-                return BlueGreenPhase.POST
-            case "SWITCHOVER_COMPLETED":
-                return BlueGreenPhase.COMPLETED
-            case _:
-                raise ValueError(Messages.get_formatted("BlueGreenPhase.UnknownStatus", phase_str))
+        phase_upper = phase_str.upper()
+        if phase_upper == "AVAILABLE":
+            return BlueGreenPhase.CREATED
+        elif phase_upper == "SWITCHOVER_INITIATED":
+            return BlueGreenPhase.PREPARATION
+        elif phase_upper == "SWITCHOVER_IN_PROGRESS":
+            return BlueGreenPhase.IN_PROGRESS
+        elif phase_upper == "SWITCHOVER_IN_POST_PROCESSING":
+            return BlueGreenPhase.POST
+        elif phase_upper == "SWITCHOVER_COMPLETED":
+            return BlueGreenPhase.COMPLETED
+        else:
+            raise ValueError(Messages.get_formatted("BlueGreenPhase.UnknownStatus", phase_str))
 
 
 class BlueGreenRole(Enum):
@@ -112,13 +114,12 @@ class BlueGreenRole(Enum):
         if "1.0" != version:
             raise ValueError(Messages.get_formatted("BlueGreenRole.UnknownVersion", version))
 
-        match role_str:
-            case "BLUE_GREEN_DEPLOYMENT_SOURCE":
-                return BlueGreenRole.SOURCE
-            case "BLUE_GREEN_DEPLOYMENT_TARGET":
-                return BlueGreenRole.TARGET
-            case _:
-                raise ValueError(Messages.get_formatted("BlueGreenRole.UnknownRole", role_str))
+        if role_str == "BLUE_GREEN_DEPLOYMENT_SOURCE":
+            return BlueGreenRole.SOURCE
+        elif role_str == "BLUE_GREEN_DEPLOYMENT_TARGET":
+            return BlueGreenRole.TARGET
+        else:
+            raise ValueError(Messages.get_formatted("BlueGreenRole.UnknownRole", role_str))
 
 
 class BlueGreenStatus:
@@ -126,24 +127,31 @@ class BlueGreenStatus:
             self,
             bg_id: str,
             phase: BlueGreenPhase,
-            connect_routing: Tuple[ConnectRouting, ...] = (),
-            execute_routing: Tuple[ExecuteRouting, ...] = (),
-            role_by_host: MappingProxyType[str, BlueGreenRole] = MappingProxyType({}),
-            node_pairs_by_host: MappingProxyType[str, Tuple[HostInfo, Optional[HostInfo]]] = MappingProxyType({})):
+            connect_routings: Optional[List[ConnectRouting]] = None,
+            execute_routings: Optional[List[ExecuteRouting]] = None,
+            role_by_host: Optional[ConcurrentDict[str, BlueGreenRole]] = None,
+            corresponding_nodes: Optional[ConcurrentDict[str, Tuple[HostInfo, Optional[HostInfo]]]] = None):
         self.bg_id = bg_id
         self.phase = phase
-        self.connect_routings = connect_routing
-        self.execute_routings = execute_routing
-        self.role_by_endpoint = role_by_host
-        self.node_pairs_by_host = node_pairs_by_host
+        self.connect_routings = [] if connect_routings is None else list(connect_routings)
+        self.execute_routings = [] if execute_routings is None else list(execute_routings)
+        self.roles_by_endpoint: ConcurrentDict[str, BlueGreenRole] = ConcurrentDict()
+        if role_by_host is not None:
+            self.roles_by_endpoint.put_all(role_by_host)
+
+        self.corresponding_nodes: ConcurrentDict[str, Tuple[HostInfo, Optional[HostInfo]]] = ConcurrentDict()
+        if corresponding_nodes is not None:
+            self.corresponding_nodes.put_all(corresponding_nodes)
+
+        self.cv = Condition()
 
     def get_role(self, host_info: HostInfo) -> Optional[BlueGreenRole]:
-        return self.role_by_endpoint.get(host_info.host.lower())
+        return self.roles_by_endpoint.get(host_info.host.lower())
 
     def __str__(self) -> str:
         connect_routings_str = ',\n        '.join(str(cr) for cr in self.connect_routings)
         execute_routings_str = ',\n        '.join(str(er) for er in self.execute_routings)
-        role_mappings = ',\n        '.join(f"{endpoint}: {role}" for endpoint, role in self.role_by_endpoint.items())
+        role_mappings = ',\n        '.join(f"{endpoint}: {role}" for endpoint, role in self.roles_by_endpoint.items())
 
         return (f"{self.__class__.__name__}(\n"
                 f"    id='{self.bg_id}',\n"
@@ -283,7 +291,6 @@ class BaseRouting:
     _MIN_SLEEP_MS = 50
 
     def __init__(self, endpoint: Optional[str], bg_role: Optional[BlueGreenRole]):
-        self._cv = Condition()
         self._endpoint = endpoint  # host and optionally port as well
         self._bg_role = bg_role
 
@@ -296,8 +303,8 @@ class BaseRouting:
             return
 
         while bg_status is plugin_service.get_status(BlueGreenStatus, bg_id) and time.time() < end_time_sec:
-            with self._cv:
-                self._cv.wait(min_delay_ms / 1_000)
+            with bg_status.cv:
+                bg_status.cv.wait(min_delay_ms / 1_000)
 
     def is_match(self, host_info: Optional[HostInfo], bg_role: BlueGreenRole) -> bool:
         if self._endpoint is None:
@@ -348,11 +355,11 @@ class SubstituteConnectRouting(BaseRouting, ConnectRouting):
 
     def __init__(
             self,
-            endpoint: Optional[str],
-            bg_role: Optional[BlueGreenRole],
             substitute_host_info: HostInfo,
-            iam_hosts: Optional[Tuple[HostInfo, ...]],
-            iam_auth_success_handler: Optional[IamAuthSuccessHandler]):
+            endpoint: Optional[str] = None,
+            bg_role: Optional[BlueGreenRole] = None,
+            iam_hosts: Optional[Tuple[HostInfo, ...]] = None,
+            iam_auth_success_handler: Optional[Callable[[str], None]] = None):
         super().__init__(endpoint, bg_role)
         self._substitute_host_info = substitute_host_info
         self._iam_hosts = iam_hosts
@@ -361,9 +368,9 @@ class SubstituteConnectRouting(BaseRouting, ConnectRouting):
     def __str__(self):
         iam_hosts_str = ',\n        '.join(str(iam_host) for iam_host in self._iam_hosts)
         return (f"{self.__class__.__name__}(\n"
+                f"    substitute_host_info={self._substitute_host_info},\n"
                 f"    endpoint={self._endpoint},\n"
                 f"    bg_role={self._bg_role},\n"
-                f"    substitute_host_info={self._substitute_host_info},\n"
                 f"    iam_hosts=[\n"
                 f"        {iam_hosts_str}\n"
                 f"    ],\n"
@@ -403,7 +410,7 @@ class SubstituteConnectRouting(BaseRouting, ConnectRouting):
                 conn = plugin_service.connect(rerouted_host_info, rerouted_props)
                 if self._iam_auth_success_handler is not None:
                     try:
-                        self._iam_auth_success_handler.on_iam_success(iam_host.host)
+                        self._iam_auth_success_handler(iam_host.host)
                     except Exception:
                         pass  # do nothing
 
@@ -503,7 +510,7 @@ class SuspendUntilCorrespondingNodeFoundConnectRouting(BaseRouting, ConnectRouti
             SuspendUntilCorrespondingNodeFoundConnectRouting._TELEMETRY_SWITCHOVER, TelemetryTraceLevel.NESTED)
 
         bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
-        corresponding_pair = None if bg_status is None else bg_status.node_pairs_by_host.get(host_info.host)
+        corresponding_pair = None if bg_status is None else bg_status.corresponding_nodes.get(host_info.host)
 
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
         start_time_sec = time.time()
@@ -518,7 +525,7 @@ class SuspendUntilCorrespondingNodeFoundConnectRouting(BaseRouting, ConnectRouti
                 self.delay(
                     SuspendUntilCorrespondingNodeFoundConnectRouting._SLEEP_TIME_MS, bg_status, plugin_service, self._bg_id)
                 bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
-                corresponding_pair = None if bg_status is None else bg_status.node_pairs_by_host.get(host_info.host)
+                corresponding_pair = None if bg_status is None else bg_status.corresponding_nodes.get(host_info.host)
 
             if bg_status is None or bg_status.phase == BlueGreenPhase.COMPLETED:
                 logger.debug(
@@ -629,14 +636,14 @@ class BlueGreenPlugin(Plugin):
         self._plugin_service = plugin_service
         self._props = props
         self._telemetry_factory = plugin_service.get_telemetry_factory()
-        self._provider_supplier: Callable = \
+        self._provider_supplier: Callable[[PluginService, Properties, str], BlueGreenStatusProvider] = \
             lambda _plugin_service, _props, bg_id: BlueGreenStatusProvider(_plugin_service, _props, bg_id)
         self._bg_id = WrapperProperties.BG_ID.get_or_default(props).strip().lower()
         self._rds_utils = RdsUtils()
         self._bg_status: Optional[BlueGreenStatus] = None
         self._is_iam_in_use = False
-        self._start_time_nano = AtomicInt(0)
-        self._end_time_nano = AtomicInt(0)
+        self._start_time_ns = AtomicInt(0)
+        self._end_time_ns = AtomicInt(0)
 
         self._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
@@ -670,7 +677,7 @@ class BlueGreenPlugin(Plugin):
             if not routing:
                 return self._open_direct_connection(connect_func, is_initial_connection)
 
-            self._start_time_nano.set(perf_counter_ns())
+            self._start_time_ns.set(perf_counter_ns())
             conn: Optional[Connection] = None
             while routing is not None and conn is None:
                 conn = routing.apply(self, host_info, props, is_initial_connection, connect_func, self._plugin_service)
@@ -682,7 +689,7 @@ class BlueGreenPlugin(Plugin):
                     routing = \
                         next((r for r in self._bg_status.connect_routings if r.is_match(host_info, bg_role)), None)
 
-            self._end_time_nano.set(perf_counter_ns())
+            self._end_time_ns.set(perf_counter_ns())
             if conn is None:
                 conn = connect_func()
 
@@ -691,12 +698,12 @@ class BlueGreenPlugin(Plugin):
 
             return conn
         finally:
-            if self._start_time_nano.get() > 0:
-                self._end_time_nano.compare_and_set(0, perf_counter_ns())
+            if self._start_time_ns.get() > 0:
+                self._end_time_ns.compare_and_set(0, perf_counter_ns())
 
     def _reset_routing_time(self):
-        self._start_time_nano.set(0)
-        self._end_time_nano.set(0)
+        self._start_time_ns.set(0)
+        self._end_time_ns.set(0)
 
     def _open_direct_connection(self, connect_func: Callable, is_initial_connection: bool) -> Connection:
         conn = connect_func()
@@ -732,7 +739,7 @@ class BlueGreenPlugin(Plugin):
                 return execute_func()
 
             result: ValueContainer[Any] = ValueContainer.empty()
-            self._start_time_nano.set(perf_counter_ns())
+            self._start_time_ns.set(perf_counter_ns())
             while routing is not None and result is None:
                 result = routing.apply(
                     self,
@@ -748,14 +755,14 @@ class BlueGreenPlugin(Plugin):
                     routing = \
                         next((r for r in self._bg_status.execute_routings if r.is_match(host_info, bg_role)), None)
 
-            self._end_time_nano.set(perf_counter_ns())
+            self._end_time_ns.set(perf_counter_ns())
             if result.is_present():
                 return result.get()
 
             return execute_func()
         finally:
-            if self._start_time_nano.get() > 0:
-                self._end_time_nano.compare_and_set(0, perf_counter_ns())
+            if self._start_time_ns.get() > 0:
+                self._end_time_ns.compare_and_set(0, perf_counter_ns())
 
 
 class BlueGreenPluginFactory(PluginFactory):
@@ -763,9 +770,7 @@ class BlueGreenPluginFactory(PluginFactory):
         return BlueGreenPlugin(plugin_service, props)
 
 
-class BlueGreenInterimStatusProcessor(Protocol):
-    def process_interim_status(self, role: BlueGreenRole, interim_status: BlueGreenInterimStatus):
-        ...
+BlueGreenInterimStatusProcessor = Callable[[BlueGreenRole, BlueGreenInterimStatus], None]
 
 
 class BlueGreenStatusMonitor:
@@ -798,11 +803,11 @@ class BlueGreenStatusMonitor:
         self._should_collect_ip_addresses.set()
         self._should_collect_topology = Event()
         self._should_collect_topology.set()
-        self._use_ip_address = Event()
+        self.use_ip_address = Event()
         self._panic_mode = Event()
         self._panic_mode.set()
-        self._stop = Event()
-        self._interval_rate = BlueGreenIntervalRate.BASELINE
+        self.stop = Event()
+        self.interval_rate = BlueGreenIntervalRate.BASELINE
         self._host_list_provider: Optional[HostListProvider] = None
         self._start_topology: Tuple[HostInfo, ...] = ()
         self._current_topology: Tuple[HostInfo, ...] = ()
@@ -832,12 +837,12 @@ class BlueGreenStatusMonitor:
 
     def _run(self):
         try:
-            while not self._stop.is_set():
+            while not self.stop.is_set():
                 try:
                     old_phase = self._current_phase
                     self._open_connection()
                     self._collect_status()
-                    self._collect_topology()
+                    self.collect_topology()
                     self._collect_ip_addresses()
                     self._update_ip_address_flags()
 
@@ -845,7 +850,7 @@ class BlueGreenStatusMonitor:
                         logger.debug("BlueGreenStatusMonitor.StatusChanged", self._bg_role, self._current_phase)
 
                     if self._interim_status_processor is not None:
-                        self._interim_status_processor.process_interim_status(
+                        self._interim_status_processor(
                             self._bg_role,
                             BlueGreenInterimStatus(
                                 self._current_phase,
@@ -861,7 +866,7 @@ class BlueGreenStatusMonitor:
                                 self._all_topology_changed)
                         )
 
-                    interval_rate = BlueGreenIntervalRate.HIGH if self._panic_mode.is_set() else self._interval_rate
+                    interval_rate = BlueGreenIntervalRate.HIGH if self._panic_mode.is_set() else self.interval_rate
                     delay_ms = self._status_check_intervals_ms.get(
                         interval_rate, BlueGreenStatusMonitor._DEFAULT_STATUS_CHECK_INTERVAL_MS)
                     self._delay(delay_ms)
@@ -899,7 +904,7 @@ class BlueGreenStatusMonitor:
             self._is_host_info_correct = False
 
         try:
-            if self._use_ip_address.is_set() and ip_address is not None:
+            if self.use_ip_address.is_set() and ip_address is not None:
                 ip_host_info = copy(host_info)
                 ip_host_info.host = ip_address
                 props_copy = copy(self._props)
@@ -1070,18 +1075,18 @@ class BlueGreenStatusMonitor:
     def _delay(self, delay_ms: int):
         start_ns = perf_counter_ns()
         end_ns = start_ns + delay_ms * 1_000_000
-        initial_interval_rate = self._interval_rate
+        initial_interval_rate = self.interval_rate
         initial_panic_mode_val = self._panic_mode.is_set()
         min_delay_sec = min(delay_ms, 50) / 1_000
 
-        while self._interval_rate == initial_interval_rate and \
+        while self.interval_rate == initial_interval_rate and \
                 perf_counter_ns() < end_ns and \
-                not self._stop.is_set() and \
+                not self.stop.is_set() and \
                 initial_panic_mode_val == self._panic_mode.is_set():
             with self._cv:
                 self._cv.wait(min_delay_sec)
 
-    def _collect_topology(self):
+    def collect_topology(self):
         if self._host_list_provider is None:
             return
 
@@ -1105,8 +1110,7 @@ class BlueGreenStatusMonitor:
 
         if self._should_collect_ip_addresses:
             self._start_ip_addresses_by_host.clear()
-            for k, v in self._current_ip_addresses_by_host.items():
-                self._start_ip_addresses_by_host.put_if_absent(k, v)
+            self._start_ip_addresses_by_host.put_all(self._current_ip_addresses_by_host)
 
     def _update_ip_address_flags(self):
         if self._should_collect_topology:
@@ -1144,6 +1148,11 @@ class BlueGreenStatusMonitor:
                     start_topology_hosts and
                     all(node.host not in start_topology_hosts for node in current_topology_copy))
 
+    def reset_collected_data(self):
+        self._start_ip_addresses_by_host.clear()
+        self._start_topology = []
+        self._host_names.clear()
+
 
 @dataclass
 class BlueGreenDbStatusInfo:
@@ -1155,7 +1164,717 @@ class BlueGreenDbStatusInfo:
 
 
 class BlueGreenStatusProvider:
+    _MONITORING_PROPERTY_PREFIX: ClassVar[str] = "blue-green-monitoring-"
+    _DEFAULT_CONNECT_TIMEOUT_MS: ClassVar[int] = 10_000
+    _DEFAULT_SOCKET_TIMEOUT_MS: ClassVar[int] = 10_000
+
     def __init__(self, plugin_service: PluginService, props: Properties, bg_id: str):
         self._plugin_service = plugin_service
         self._props = props
         self._bg_id = bg_id
+
+        self._monitors: List[Optional[BlueGreenStatusMonitor]] = [None, None]
+        self._interim_status_hashes = [0, 0]
+        self._latest_context_hash = 0
+        self._interim_statuses: List[Optional[BlueGreenInterimStatus]] = [None, None]
+        self._host_ip_addresses: ConcurrentDict[str, ValueContainer[str]] = ConcurrentDict()
+        # The second element of the Tuple is None when no corresponding node is found.
+        self._corresponding_nodes: ConcurrentDict[str, Tuple[HostInfo, Optional[HostInfo]]] = ConcurrentDict()
+        # Keys are host URLs (port excluded)
+        self._roles_by_host: ConcurrentDict[str, BlueGreenRole] = ConcurrentDict()
+        self._iam_auth_success_hosts: ConcurrentDict[str, ConcurrentSet[str]] = ConcurrentDict()
+        self._green_node_name_change_times: ConcurrentDict[str, datetime] = ConcurrentDict()
+        self._summary_status: Optional[BlueGreenStatus] = None
+        self._latest_phase = BlueGreenPhase.NOT_CREATED
+        self._rollback = False
+        self._blue_dns_update_completed = False
+        self._green_dns_removed = False
+        self._green_topology_changed = False
+        self._all_green_nodes_changed_name = False
+        self._post_status_end_time_ns = 0
+        self._process_status_lock = RLock()
+        self._status_check_intervals_ms: Dict[BlueGreenIntervalRate, int] = {}
+        self._phase_times_ns: ConcurrentDict[str, PhaseTimeInfo] = ConcurrentDict()
+        self._rds_utils = RdsUtils()
+
+        self._switchover_timeout_ns = WrapperProperties.BG_SWITCHOVER_TIMEOUT_MS.get_int(props) * 1_000_000
+        self._suspend_blue_connections_when_in_progress = (
+            WrapperProperties.BG_SUSPEND_NEW_BLUE_CONNECTIONS.get_bool(props))
+        self._status_check_intervals_ms.update({
+            BlueGreenIntervalRate.BASELINE: WrapperProperties.BG_INTERVAL_BASELINE_MS.get_int(props),
+            BlueGreenIntervalRate.INCREASED: WrapperProperties.BG_INTERVAL_INCREASED_MS.get_int(props),
+            BlueGreenIntervalRate.HIGH: WrapperProperties.BG_INTERVAL_HIGH_MS.get_int(props)
+        })
+
+        dialect = self._plugin_service.database_dialect
+        if not isinstance(dialect, BlueGreenDialect):
+            # TODO: raise an error instead? Seems like we will encounter an error later if we don't raise one here.
+            logger.warning(
+                "BlueGreenStatusProvider.UnsupportedDialect", self._bg_id, dialect.__class__.__name__)
+            return
+
+        current_host_info = self._plugin_service.current_host_info
+        if current_host_info is None:
+            logger.warning("BlueGreenStatusProvider.NoCurrentHostInfo", self._bg_id)
+            return
+
+        self._monitors[BlueGreenRole.SOURCE.value] = BlueGreenStatusMonitor(
+            BlueGreenRole.SOURCE,
+            self._bg_id,
+            current_host_info,
+            self._plugin_service,
+            self._get_monitoring_props(),
+            self._status_check_intervals_ms,
+            self._process_interim_status)
+        self._monitors[BlueGreenRole.TARGET.value] = BlueGreenStatusMonitor(
+            BlueGreenRole.TARGET,
+            self._bg_id,
+            current_host_info,
+            self._plugin_service,
+            self._get_monitoring_props(),
+            self._status_check_intervals_ms,
+            self._process_interim_status)
+
+    def _get_monitoring_props(self) -> Properties:
+        monitoring_props = copy(self._props)
+        for key in self._props.keys():
+            if key.startswith(BlueGreenStatusProvider._MONITORING_PROPERTY_PREFIX):
+                new_key = key[len(BlueGreenStatusProvider._MONITORING_PROPERTY_PREFIX):]
+                monitoring_props[new_key] = self._props[key]
+                monitoring_props.pop(key, None)
+
+        monitoring_props.put_if_absent(
+            WrapperProperties.CONNECT_TIMEOUT_SEC.name, BlueGreenStatusProvider._DEFAULT_CONNECT_TIMEOUT_MS / 1_000)
+        monitoring_props.put_if_absent(
+            WrapperProperties.SOCKET_TIMEOUT_SEC.name, BlueGreenStatusProvider._DEFAULT_SOCKET_TIMEOUT_MS / 1_000)
+        return monitoring_props
+
+    def _process_interim_status(self, bg_role: BlueGreenRole, interim_status: BlueGreenInterimStatus):
+        with self._process_status_lock:
+            # TODO: don't need null check of interim_status in JDBC because interim_status is always not null
+            status_hash = interim_status.get_custom_hashcode()
+            context_hash = self._get_context_hash()
+            if self._interim_status_hashes[bg_role.value] == status_hash and self._latest_context_hash == context_hash:
+                # no changes detected
+                return
+
+            logger.debug("BlueGreenStatusProvider.InterimStatus", self._bg_id, bg_role, interim_status)
+            self._update_phase(bg_role, interim_status)
+
+            # Store interim_status and corresponding hash
+            self._interim_statuses[bg_role.value] = interim_status
+            self._interim_status_hashes[bg_role.value] = status_hash
+            self._latest_context_hash = context_hash
+
+            # Update map of IP addresses.
+            self._host_ip_addresses.put_all(interim_status.start_ip_addresses_by_host_map)
+
+            # Update role_by_host based on the provided host names.
+            self._roles_by_host.put_all({host_name.lower(): bg_role for host_name in interim_status.host_names})
+
+            self._update_corresponding_nodes()
+            self._update_summary_status(bg_role, interim_status)
+            self._update_monitors()
+            self._update_status_cache()
+            self._log_current_context()
+            self._log_switchover_final_summary()
+            self._reset_context_when_completed()
+
+    def _get_context_hash(self) -> int:
+        result = self._get_value_hash(1, str(self._all_green_nodes_changed_name))
+        result = self._get_value_hash(result, str(len(self._iam_auth_success_hosts)))
+        return result
+
+    def _get_value_hash(self, current_hash: int, val: str) -> int:
+        return current_hash * 31 + hash(val)
+
+    def _update_phase(self, bg_role: BlueGreenRole, interim_status: BlueGreenInterimStatus):
+        role_status = self._interim_statuses[bg_role.value]
+        latest_phase = BlueGreenPhase.NOT_CREATED if role_status is None else role_status.phase
+        if latest_phase is not None and \
+                interim_status.phase is not None and \
+                interim_status.phase.value < latest_phase.value:
+            self._rollback = True
+            logger.debug("BlueGreenStatusProvider.Rollback", self._bg_id)
+
+        if interim_status.phase is None:
+            return
+
+        # The phase should not move backwards unless we're rolling back.
+        if self._rollback:
+            if interim_status.phase.value < self._latest_phase.value:
+                self._latest_phase = interim_status.phase
+        else:
+            if interim_status.phase.value >= self._latest_phase.value:
+                self._latest_phase = interim_status.phase
+
+    def _update_corresponding_nodes(self):
+        """
+        Update corresponding nodes. The blue writer node is mapped to the green writer node, and each blue reader node is
+        mapped to a green reader node
+        """
+
+        self._corresponding_nodes.clear()
+        source_status = self._interim_statuses[BlueGreenRole.SOURCE.value]
+        target_status = self._interim_statuses[BlueGreenRole.TARGET.value]
+        if source_status is None or target_status is None:
+            return
+
+        if source_status.start_topology and target_status.start_topology:
+            blue_writer_host_info = self._get_writer_host(BlueGreenRole.SOURCE)
+            green_writer_host_info = self._get_writer_host(BlueGreenRole.TARGET)
+            sorted_blue_readers = self._get_reader_hosts(BlueGreenRole.SOURCE)
+            sorted_green_readers = self._get_reader_hosts(BlueGreenRole.TARGET)
+
+            if blue_writer_host_info is not None:
+                # green_writer_host_info may be None, but that will be handled properly by the corresponding routing.
+                self._corresponding_nodes.put(
+                    blue_writer_host_info.host, (blue_writer_host_info, green_writer_host_info))
+
+            # TODO: port sorted blue reader length check to JDBC
+            if len(sorted_green_readers) > 0 and len(sorted_blue_readers) > 0:
+                # Map each to blue reader to a green reader.
+                green_index = 0
+                for blue_host_info in sorted_blue_readers:
+                    self._corresponding_nodes.put(
+                        blue_host_info.host, (blue_host_info, sorted_green_readers[green_index]))
+                    green_index += 1
+                    # The modulo operation prevents us from exceeding the bounds of sorted_green_readers if there are
+                    # more blue readers than green readers. In this case, multiple blue readers may be mapped to the
+                    # same green reader.
+                    green_index %= len(sorted_green_readers)
+            else:
+                # There's no green readers - map all blue reader nodes to the green writer
+                for blue_host_info in sorted_blue_readers:
+                    self._corresponding_nodes.put(blue_host_info.host, (blue_host_info, green_writer_host_info))
+
+        if source_status.host_names and target_status.host_names:
+            blue_hosts = source_status.host_names
+            green_hosts = target_status.host_names
+
+            # Map blue writer cluster host to green writer cluster host.
+            blue_cluster_host = next(
+                (blue_host for blue_host in blue_hosts if self._rds_utils.is_writer_cluster_dns(blue_host)),
+                None)
+            green_cluster_host = next(
+                (green_host for green_host in green_hosts if self._rds_utils.is_writer_cluster_dns(green_host)),
+                None)
+            if blue_cluster_host and green_cluster_host:
+                self._corresponding_nodes.put_if_absent(
+                    blue_cluster_host, (HostInfo(host=blue_cluster_host), HostInfo(host=green_cluster_host)))
+
+            # Map blue reader cluster host to green reader cluster host.
+            blue_reader_cluster_host = next(
+                (blue_host for blue_host in blue_hosts if self._rds_utils.is_reader_cluster_dns(blue_host)),
+                None)
+            green_reader_cluster_host = next(
+                (green_host for green_host in green_hosts if self._rds_utils.is_reader_cluster_dns(green_host)),
+                None)
+            if blue_reader_cluster_host and green_reader_cluster_host:
+                self._corresponding_nodes.put_if_absent(
+                    blue_reader_cluster_host,
+                    (HostInfo(host=blue_reader_cluster_host), HostInfo(host=green_reader_cluster_host)))
+
+            # Map blue custom cluster hosts to green custom cluster hosts.
+            for blue_host in blue_hosts:
+                if not self._rds_utils.is_rds_custom_cluster_dns(blue_host):
+                    continue
+
+                custom_cluster_name = self._rds_utils.get_cluster_id(blue_host)
+                if not custom_cluster_name:
+                    continue
+
+                corresponding_green_host = next(
+                    (green_host for green_host in green_hosts
+                     if self._rds_utils.is_rds_custom_cluster_dns(green_host)
+                     and custom_cluster_name == self._rds_utils.remove_green_instance_prefix(
+                        self._rds_utils.get_cluster_id(green_host))),
+                    None
+                )
+
+                if corresponding_green_host:
+                    self._corresponding_nodes.put_if_absent(
+                        blue_host, (HostInfo(blue_host), HostInfo(corresponding_green_host)))
+
+    def _get_writer_host(self, bg_role: BlueGreenRole) -> Optional[HostInfo]:
+        role_status = self._interim_statuses[bg_role.value]
+        if role_status is None:
+            return None
+
+        hosts = role_status.start_topology
+        return next((host for host in hosts if host.role == HostRole.WRITER), None)
+
+    def _get_reader_hosts(self, bg_role: BlueGreenRole) -> List[HostInfo]:
+        role_status = self._interim_statuses[bg_role.value]
+        if role_status is None:
+            return []
+
+        hosts = role_status.start_topology
+        reader_hosts = [host for host in hosts if host.role != HostRole.WRITER]
+        reader_hosts.sort(key=lambda host_info: host_info.host)
+        return reader_hosts
+
+    def _update_summary_status(self, bg_role: BlueGreenRole, interim_status: BlueGreenInterimStatus):
+        if self._latest_phase == BlueGreenPhase.NOT_CREATED:
+            self._summary_status = BlueGreenStatus(self._bg_id, BlueGreenPhase.NOT_CREATED)
+
+        elif self._latest_phase == BlueGreenPhase.CREATED:
+            self._update_dns_flags(bg_role, interim_status)
+            self._summary_status = self._get_status_of_created()
+
+        elif self._latest_phase == BlueGreenPhase.PREPARATION:
+            self._start_switchover_timer()
+            self._update_dns_flags(bg_role, interim_status)
+            self._summary_status = self._get_status_of_preparation()
+
+        elif self._latest_phase == BlueGreenPhase.IN_PROGRESS:
+            self._update_dns_flags(bg_role, interim_status)
+            self._summary_status = self._get_status_of_in_progress()
+
+        elif self._latest_phase == BlueGreenPhase.POST:
+            self._update_dns_flags(bg_role, interim_status)
+            self._summary_status = self._get_status_of_post()
+
+        elif self._latest_phase == BlueGreenPhase.COMPLETED:
+            self._update_dns_flags(bg_role, interim_status)
+            self._summary_status = self._get_status_of_completed()
+
+        else:
+            raise ValueError(Messages.get_formatted("bgd.unknownPhase", self._bg_id, self._latest_phase))
+
+    def _update_dns_flags(self, bg_role: BlueGreenRole, interim_status: BlueGreenInterimStatus):
+        if bg_role == BlueGreenRole.SOURCE and not self._blue_dns_update_completed and interim_status.all_start_topology_ip_changed:
+            logger.debug("bgd.blueDnsCompleted", self._bg_id)
+            self._blue_dns_update_completed = True
+            self._store_event_phase_time("Blue DNS updated")
+
+        if bg_role == BlueGreenRole.TARGET and not self._green_dns_removed and interim_status.all_start_topology_endpoints_removed:
+            logger.debug("bgd.greenDnsRemoved", self._bg_id)
+            self._green_dns_removed = True
+            self._store_event_phase_time("Green DNS removed")
+
+        if bg_role == BlueGreenRole.TARGET and not self._green_topology_changed and interim_status.all_topology_changed:
+            logger.debug("bgd.greenTopologyChanged", self._bg_id)
+            self._green_topology_changed = True
+            self._store_event_phase_time("Green topology changed")
+
+    def _store_event_phase_time(self, key_prefix: str, phase: Optional[BlueGreenPhase] = None):
+        rollback_str = " (rollback)" if self._rollback else ""
+        key = f"{key_prefix}{rollback_str}"
+        self._phase_times_ns.put_if_absent(key, PhaseTimeInfo(datetime.now(), perf_counter_ns(), phase))
+
+    def _start_switchover_timer(self):
+        if self._post_status_end_time_ns == 0:
+            self._post_status_end_time_ns = perf_counter_ns() + self._switchover_timeout_ns
+
+    def _get_status_of_created(self) -> BlueGreenStatus:
+        """
+        New connect requests: go to blue or green nodes; default behaviour; no routing.
+        Existing connections: default behaviour; no action.
+        Execute JDBC calls: default behaviour; no action.
+        """
+        return BlueGreenStatus(
+            self._bg_id,
+            BlueGreenPhase.CREATED,
+            [],
+            [],
+            self._roles_by_host,
+            self._corresponding_nodes
+        )
+
+    def _get_status_of_preparation(self):
+        """
+        New connect requests to blue: route to corresponding IP address.
+        New connect requests to green: route to corresponding IP address.
+        New connect requests with IP address: default behaviour; no routing.
+        Existing connections: default behaviour; no action.
+        Execute JDBC calls: default behaviour; no action.
+        """
+
+        if self._is_switchover_timer_expired():
+            logger.debug("BlueGreenStatusProvider.SwitchoverTimeout")
+            if self._rollback:
+                return self._get_status_of_created()
+            return self._get_status_of_completed()
+
+        connect_routings = self._get_blue_ip_address_connect_routings()
+        return BlueGreenStatus(
+            self._bg_id,
+            BlueGreenPhase.PREPARATION,
+            connect_routings,
+            [],
+            self._roles_by_host,
+            self._corresponding_nodes
+        )
+
+    def _is_switchover_timer_expired(self) -> bool:
+        return 0 < self._post_status_end_time_ns < perf_counter_ns()
+
+    def _get_blue_ip_address_connect_routings(self) -> List[ConnectRouting]:
+        connect_routings: List[ConnectRouting] = []
+        for host, role in self._roles_by_host.items():
+            if role == BlueGreenRole.TARGET or host not in self._corresponding_nodes.keys():
+                continue
+
+            node_pair = self._corresponding_nodes.get(host)
+            if node_pair is None:
+                # TODO: is continuing the right thing to do in this case?
+                # TODO: port to JDBC
+                continue
+
+            blue_host_info = node_pair[0]
+            blue_ip = self._host_ip_addresses.get(blue_host_info.host)
+            if blue_ip is None or not blue_ip.is_present():
+                blue_ip_host_info = blue_host_info
+            else:
+                blue_ip_host_info = copy(blue_host_info)
+                blue_host_info.host = blue_ip.get()
+
+            host_routing = SubstituteConnectRouting(blue_ip_host_info, host, role, (blue_host_info,))
+            host_and_port = self._get_host_and_port(host, self._interim_statuses[role.value].port)
+            host_and_port_routing = SubstituteConnectRouting(blue_ip_host_info, host_and_port, role, (blue_host_info,))
+            connect_routings.extend([host_routing, host_and_port_routing])
+
+        return connect_routings
+
+    def _get_host_and_port(self, host: str, port: int):
+        return f"{host}:{port}" if port > 0 else host
+
+    def _get_status_of_in_progress(self) -> BlueGreenStatus:
+        """
+        New connect requests to blue: suspend or route to corresponding IP address (depending on settings).
+        New connect requests to green: suspend.
+        New connect requests with IP address: suspend.
+        Existing connections: default behaviour; no action.
+        Execute JDBC calls: suspend.
+        """
+
+        if self._is_switchover_timer_expired():
+            logger.debug("BlueGreenStatusProvider.SwitchoverTimeout")
+            if self._rollback:
+                return self._get_status_of_created()
+            return self._get_status_of_completed()
+
+        connect_routings: List[ConnectRouting] = []
+        if self._suspend_blue_connections_when_in_progress:
+            connect_routings.append(SuspendConnectRouting(None, BlueGreenRole.SOURCE, self._bg_id))
+        else:
+            # If we aren't suspending new blue connections, we should use IP addresses.
+            connect_routings.extend(self._get_blue_ip_address_connect_routings())
+
+        connect_routings.append(SuspendConnectRouting(None, BlueGreenRole.TARGET, self._bg_id))
+
+        # TODO: the code below is quite repetitive, see if we can refactor to clean things up
+        ip_addresses: Set[str] = {address_container.get() for address_container in self._host_ip_addresses.values()
+                                  if address_container.is_present()}
+        for ip_address in ip_addresses:
+            if self._suspend_blue_connections_when_in_progress:
+                # Check if the IP address belongs to one of the blue nodes.
+                interim_status = self._interim_statuses[BlueGreenRole.SOURCE.value]
+                if interim_status is not None and self._interim_status_contains_ip_address(interim_status, ip_address):
+                    host_connect_routing = SuspendConnectRouting(ip_address, None, self._bg_id)
+                    host_and_port = self._get_host_and_port(ip_address, interim_status.port)
+                    host_port_connect_routing = SuspendConnectRouting(host_and_port, None, self._bg_id)
+                    connect_routings.extend([host_connect_routing, host_port_connect_routing])
+                    continue
+
+            # Check if the IP address belongs to one of the green nodes.
+            interim_status = self._interim_statuses[BlueGreenRole.TARGET.value]
+            if interim_status is not None and self._interim_status_contains_ip_address(interim_status, ip_address):
+                host_connect_routing = SuspendConnectRouting(ip_address, None, self._bg_id)
+                host_and_port = self._get_host_and_port(ip_address, interim_status.port)
+                host_port_connect_routing = SuspendConnectRouting(host_and_port, None, self._bg_id)
+                connect_routings.extend([host_connect_routing, host_port_connect_routing])
+                continue
+
+        # All blue and green traffic should be suspended.
+        execute_routings: List[ExecuteRouting] = [
+            SuspendExecuteRouting(None, BlueGreenRole.SOURCE, self._bg_id),
+            SuspendExecuteRouting(None, BlueGreenRole.TARGET, self._bg_id)]
+
+        # All traffic through connections with IP addresses that belong to blue or green nodes should be suspended.
+        for ip_address in ip_addresses:
+            # Check if the IP address belongs to one of the blue nodes.
+            interim_status = self._interim_statuses[BlueGreenRole.SOURCE.value]
+            if interim_status is not None and self._interim_status_contains_ip_address(interim_status, ip_address):
+                host_execute_routing = SuspendExecuteRouting(ip_address, None, self._bg_id)
+                host_and_port = self._get_host_and_port(ip_address, interim_status.port)
+                host_port_execute_routing = SuspendExecuteRouting(host_and_port, None, self._bg_id)
+                execute_routings.extend([host_execute_routing, host_port_execute_routing])
+                continue
+
+            # Check if the IP address belongs to one of the green nodes.
+            interim_status = self._interim_statuses[BlueGreenRole.TARGET.value]
+            if interim_status is not None and self._interim_status_contains_ip_address(interim_status, ip_address):
+                host_execute_routing = SuspendExecuteRouting(ip_address, None, self._bg_id)
+                host_and_port = self._get_host_and_port(ip_address, interim_status.port)
+                host_port_execute_routing = SuspendExecuteRouting(host_and_port, None, self._bg_id)
+                execute_routings.extend([host_execute_routing, host_port_execute_routing])
+                continue
+
+            execute_routings.append(SuspendExecuteRouting(ip_address, None, self._bg_id))
+
+        return BlueGreenStatus(
+            self._bg_id,
+            BlueGreenPhase.IN_PROGRESS,
+            connect_routings,
+            execute_routings,
+            self._roles_by_host,
+            self._corresponding_nodes
+        )
+
+    def _interim_status_contains_ip_address(self, interim_status: BlueGreenInterimStatus, ip_address: str) -> bool:
+        for ip_address_container in interim_status.start_ip_addresses_by_host_map.values():
+            if ip_address_container.is_present() and ip_address_container.get() == ip_address:
+                return True
+
+        return False
+
+    def _get_status_of_post(self) -> BlueGreenStatus:
+        if self._is_switchover_timer_expired():
+            logger.debug("BlueGreenStatusProvider.SwitchoverTimeout")
+            if self._rollback:
+                return self._get_status_of_created()
+            return self._get_status_of_completed()
+
+        return BlueGreenStatus(
+            self._bg_id,
+            BlueGreenPhase.POST,
+            self._get_post_status_connect_routings(),
+            [],
+            self._roles_by_host,
+            self._corresponding_nodes
+        )
+
+    def _get_post_status_connect_routings(self) -> List[ConnectRouting]:
+        if self._blue_dns_update_completed and self._all_green_nodes_changed_name:
+            return [] if self._green_dns_removed else [RejectConnectRouting(None, BlueGreenRole.TARGET)]
+
+        routings: List[ConnectRouting] = []
+        # New connect calls to blue nodes should be routed to green nodes
+        for host, role in self._roles_by_host.items():
+            if role != BlueGreenRole.SOURCE or host not in self._corresponding_nodes.keys():
+                continue
+
+            blue_host = host
+            is_blue_host_instance = self._rds_utils.is_rds_instance(blue_host)
+            node_pair = self._corresponding_nodes.get(blue_host)
+            # TODO: port null check to JDBC
+            blue_host_info = None if node_pair is None else node_pair[0]
+            green_host_info = None if node_pair is None else node_pair[1]
+
+            if green_host_info is None:
+                # The corresponding green node was not found. We need to suspend the connection request.
+                host_suspend_routing = SuspendUntilCorrespondingNodeFoundConnectRouting(blue_host, role, self._bg_id)
+                interim_status = self._interim_statuses[role.value]
+                host_and_port = self._get_host_and_port(blue_host, interim_status.port)
+                host_port_suspend_routing = (
+                    SuspendUntilCorrespondingNodeFoundConnectRouting(host_and_port, None, self._bg_id))
+                routings.extend([host_suspend_routing, host_port_suspend_routing])
+            else:
+                green_host = green_host_info.host
+                green_ip_container = self._host_ip_addresses.get(green_host)
+                if green_ip_container is None or not green_ip_container.is_present():
+                    green_ip_host_info = green_host_info
+                else:
+                    green_ip_host_info = copy(green_host_info)
+                    green_ip_host_info.host = green_ip_container.get()
+
+                # Check whether the green host has already been connected a non-prefixed blue IAM host name.
+                if self._is_already_successfully_connected(green_host, blue_host):
+                    # Green node has already changed its name, and it's not a new non-prefixed blue node.
+                    # TODO: port to JDBC
+                    iam_hosts: Optional[Tuple[HostInfo, ...]] = None if blue_host_info is None else (blue_host_info,)
+                else:
+                    # The green node has not yet changed ist name, so we need to try both possible IAM hosts.
+                    # TODO: port to JDBC
+                    iam_hosts = (green_host_info,) if blue_host_info is None else (green_host_info, blue_host_info)
+
+                iam_auth_success_handler = None if is_blue_host_instance \
+                    else lambda iam_host: self._register_iam_host(green_host, iam_host)
+                host_substitute_routing = SubstituteConnectRouting(
+                    green_ip_host_info, blue_host, role, iam_hosts, iam_auth_success_handler)
+                interim_status = self._interim_statuses[role.value]
+                host_and_port = self._get_host_and_port(blue_host, interim_status.port)
+                host_port_substitute_routing = SubstituteConnectRouting(
+                    green_ip_host_info, host_and_port, role, iam_hosts, iam_auth_success_handler)
+                routings.extend([host_substitute_routing, host_port_substitute_routing])
+
+        if not self._green_dns_removed:
+            routings.append(RejectConnectRouting(None, BlueGreenRole.TARGET))
+
+        return routings
+
+    def _is_already_successfully_connected(self, connect_host: str, iam_host: str):
+        success_hosts = self._iam_auth_success_hosts.compute_if_absent(connect_host, lambda _: ConcurrentSet())
+        return success_hosts is not None and iam_host in success_hosts
+
+    def _register_iam_host(self, connect_host: str, iam_host: str):
+        success_hosts = self._iam_auth_success_hosts.compute_if_absent(connect_host, lambda _: ConcurrentSet())
+        if success_hosts is None:
+            success_hosts = ConcurrentSet()
+
+        if connect_host != iam_host:
+            if success_hosts is not None and iam_host in success_hosts:
+                self._green_node_name_change_times.compute_if_absent(connect_host, lambda _: datetime.now())
+                logger.debug("BlueGreenStatusProvider.GreenNodeChangedName", connect_host, iam_host)
+
+        success_hosts.add(iam_host)
+        if connect_host != iam_host:
+            # Check whether all IAM hosts have changed their names
+            all_hosts_changed_names = all(
+                any(iam_host != original_host for iam_host in iam_hosts)
+                for original_host, iam_hosts in self._iam_auth_success_hosts.items()
+                if iam_hosts  # Filter out empty sets
+            )
+
+            if all_hosts_changed_names and not self._all_green_nodes_changed_name:
+                logger.debug("BlueGreenStatusProvider.AllGreenNodesChangedName")
+                self._all_green_nodes_changed_name = True
+                self._store_event_phase_time("Green node certificates changed")
+
+    def _get_status_of_completed(self) -> BlueGreenStatus:
+        if self._is_switchover_timer_expired():
+            logger.debug("BlueGreenStatusProvider.SwitchoverTimeout")
+            if self._rollback:
+                return self._get_status_of_created()
+
+            return BlueGreenStatus(
+                self._bg_id, BlueGreenPhase.COMPLETED, [], [], self._roles_by_host, self._corresponding_nodes)
+
+        if not self._blue_dns_update_completed or not self._green_dns_removed:
+            return self._get_status_of_post()
+
+        return BlueGreenStatus(
+            self._bg_id, BlueGreenPhase.COMPLETED, [], [], self._roles_by_host, ConcurrentDict())
+
+    def _update_monitors(self):
+        phase = self._summary_status.phase
+        if phase == BlueGreenPhase.NOT_CREATED:
+            for monitor in self._monitors:
+                monitor.interval_rate = BlueGreenIntervalRate.BASELINE
+                monitor.collect_ip_address = False
+                monitor.collect_topology = False
+                monitor.use_ip_address = False
+        elif phase == BlueGreenPhase.CREATED:
+            for monitor in self._monitors:
+                monitor.interval_rate = BlueGreenIntervalRate.INCREASED
+                monitor.collect_ip_address = True
+                monitor.collect_topology = True
+                monitor.use_ip_address = False
+                if self._rollback:
+                    monitor.reset_collected_data()
+        elif phase == BlueGreenPhase.PREPARATION \
+                or phase == BlueGreenPhase.IN_PROGRESS \
+                or phase == BlueGreenPhase.POST:
+            for monitor in self._monitors:
+                monitor.interval_rate = BlueGreenIntervalRate.HIGH
+                monitor.collect_ip_address = False
+                monitor.collect_topology = False
+                monitor.use_ip_address = True
+        elif phase == BlueGreenPhase.COMPLETED:
+            for monitor in self._monitors:
+                monitor.interval_rate = BlueGreenIntervalRate.BASELINE
+                monitor.collect_ip_address = False
+                monitor.collect_topology = False
+                monitor.use_ip_address = False
+                monitor.reset_collected_data()
+
+            # Stop monitoring old1 cluster/instance.
+            if not self._rollback and self._monitors[BlueGreenRole.SOURCE.value] is not None:
+                self._monitors[BlueGreenRole.SOURCE.value].stop = True
+        else:
+            raise UnsupportedOperationError(
+                Messages.get_formatted(
+                    "BlueGreenStatusProvider.UnknownPhase", self._bg_id, self._summary_status.phase))
+
+    def _update_status_cache(self):
+        latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
+        self._plugin_service.set_status(BlueGreenStatus, self._summary_status, self._bg_id)
+
+        if latest_status is not None:
+            # Notify all waiting threads that the status has been updated.
+            with latest_status:
+                latest_status.cv.notify_all()
+
+    def _log_current_context(self):
+        logger.debug(f"[bg_id: '{self._bg_id}'] Summary status: \n{self._summary_status}")
+        nodes_str = "\n".join(
+            f"   {blue_host} -> {node_pair[1] if node_pair else None}"
+            for blue_host, node_pair in self._corresponding_nodes.items())
+        logger.debug(f"Corresponding nodes:\n{nodes_str}")
+        phase_times = \
+            "\n".join(f"   {event_desc} -> {info.date_time}" for event_desc, info in self._phase_times_ns.items())
+        logger.debug(f"Phase times:\n{phase_times}")
+        change_name_times = \
+            "\n".join(f"   {host} -> {date_time}" for host, date_time in self._green_node_name_change_times.items())
+        logger.debug(f"Green node certificate change times:\n{change_name_times}")
+        logger.debug("\n"
+                     f"   latest_status_phase: {self._latest_phase}\n"
+                     f"   blue_dns_update_completed: {self._blue_dns_update_completed}\n"
+                     f"   green_dns_removed: {self._green_dns_removed}\n"
+                     f"   all_green_nodes_changed_name: {self._all_green_nodes_changed_name}\n"
+                     f"   green_topology_changed: {self._green_topology_changed}\n")
+
+    def _log_switchover_final_summary(self):
+        switchover_completed = (not self._rollback and self._summary_status.phase == BlueGreenPhase.COMPLETED) or \
+                               (self._rollback and self._summary_status.phase == BlueGreenPhase.CREATED)
+        has_active_switchover_phases = \
+            any(phase_info.phase is not None and phase_info.phase.is_active_switchover_completed
+                for phase_info in self._phase_times_ns.values())
+
+        if not switchover_completed or not has_active_switchover_phases:
+            return
+
+        # TODO: Key is not quite right, need to fix it
+        # TODO: port fix to JDBC
+        time_zero_phase = BlueGreenPhase.PREPARATION if self._rollback else BlueGreenPhase.IN_PROGRESS
+        time_zero = self._phase_times_ns.get(time_zero_phase.name)
+        sorted_phase_entries = sorted(self._phase_times_ns.items(), key=lambda entry: entry[1].timestamp_ns)
+        phase_time_lines = [
+            f"{entry[1].date_time:>28s} "
+            f"{'' if time_zero is None else (entry[1].timestamp_ns - time_zero.timestamp_ns) / 1_000_000:>18s} ms "
+            f"{entry[0]:>31s}" for entry in sorted_phase_entries
+        ]
+        phase_times_str = "\n".join(phase_time_lines)
+        divider = "----------------------------------------------------------------------------------\n"
+        log_message = (f"[bg_id: '{self._bg_id}']\n{divider}"
+                       f"{'timestamp':<28s} {'time offset (ms)':>21s} {'event':>31s}{divider}"
+                       f"{phase_times_str}\n{divider}")
+        logger.debug(log_message)
+
+    def _reset_context_when_completed(self):
+        switchover_completed = (not self._rollback and self._summary_status.phase == BlueGreenPhase.COMPLETED) or \
+                               (self._rollback and self._summary_status.phase == BlueGreenPhase.CREATED)
+        has_active_switchover_phases = \
+            any(phase_info.phase is not None and phase_info.phase.is_active_switchover_completed
+                for phase_info in self._phase_times_ns.values())
+
+        if not switchover_completed or not has_active_switchover_phases:
+            return
+
+        logger.debug("BlueGreenStatusProvider.ResetContext")
+        self._rollback = False
+        self._summary_status = None
+        self._latest_phase = BlueGreenPhase.NOT_CREATED
+        self._phase_times_ns.clear()
+        self._blue_dns_update_completed = False
+        self._green_dns_removed = False
+        self._green_topology_changed = False
+        self._all_green_nodes_changed_name = False
+        self._post_status_end_time_ns = 0
+        self._interim_status_hashes = [0, 0]
+        self._latest_context_hash = 0
+        self._interim_statuses = [None, None]
+        self._host_ip_addresses.clear()
+        self._corresponding_nodes.clear()
+        self._roles_by_host.clear()
+        self._iam_auth_success_hosts.clear()
+        self._green_node_name_change_times.clear()
+
+
+@dataclass
+class PhaseTimeInfo:
+    date_time: datetime
+    timestamp_ns: int
+    phase: Optional[BlueGreenPhase]
