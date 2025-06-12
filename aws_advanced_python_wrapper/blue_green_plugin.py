@@ -682,10 +682,10 @@ class BlueGreenPlugin(Plugin):
             while routing is not None and conn is None:
                 conn = routing.apply(self, host_info, props, is_initial_connection, connect_func, self._plugin_service)
                 if conn is None:
-                    self._bg_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
-                    if self._bg_status is None:
-                        # TODO: should we just continue in this case?
-                        continue
+                    latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
+                    if latest_status is not None:
+                        self._bg_status = latest_status
+
                     routing = \
                         next((r for r in self._bg_status.connect_routings if r.is_match(host_info, bg_role)), None)
 
@@ -751,7 +751,10 @@ class BlueGreenPlugin(Plugin):
                     *args,
                     **kwargs)
                 if not result.is_present():
-                    self._bg_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
+                    latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
+                    if latest_status is not None:
+                        self._bg_status = latest_status
+
                     routing = \
                         next((r for r in self._bg_status.execute_routings if r.is_match(host_info, bg_role)), None)
 
@@ -1121,13 +1124,7 @@ class BlueGreenStatusMonitor:
 
         if not self._should_collect_ip_addresses:
             # Check whether all hosts in start_topology resolve to new IP addresses
-            # TODO: do we need to make the value type equivalent to Java.Optional?
-            self._all_start_topology_ip_changed = bool(self._start_topology) and \
-                all(
-                    self._start_ip_addresses_by_host.get(node.host) is not None and
-                    self._current_ip_addresses_by_host.get(node.host) is not None and
-                    self._start_ip_addresses_by_host.get(node.host) != self._current_ip_addresses_by_host.get(node.host)
-                    for node in self._start_topology)
+            self._all_start_topology_ip_changed = self._has_all_start_topology_ip_changed()
 
         # Check whether all hosts in start_topology no longer have IP addresses. This indicates that the start_topology
         # hosts can no longer be resolved because their DNS entries no longer exist.
@@ -1147,6 +1144,22 @@ class BlueGreenStatusMonitor:
                     current_topology_copy and
                     start_topology_hosts and
                     all(node.host not in start_topology_hosts for node in current_topology_copy))
+
+    def _has_all_start_topology_ip_changed(self) -> bool:
+        if not self._start_topology:
+            return False
+
+        for host_info in self._start_topology:
+            start_ip = self._start_ip_addresses_by_host.get(host_info.host)
+            current_ip = self._start_ip_addresses_by_host.get(host_info.host)
+            if start_ip is None or not start_ip.is_present() or \
+                    current_ip is None or not current_ip.is_present():
+                return False
+
+            if start_ip.get() == current_ip.get():
+                return False
+
+        return True
 
     def reset_collected_data(self):
         self._start_ip_addresses_by_host.clear()
@@ -1215,6 +1228,7 @@ class BlueGreenStatusProvider:
 
         current_host_info = self._plugin_service.current_host_info
         if current_host_info is None:
+            # TODO: raise an error instead?
             logger.warning("BlueGreenStatusProvider.NoCurrentHostInfo", self._bg_id)
             return
 
@@ -1251,7 +1265,6 @@ class BlueGreenStatusProvider:
 
     def _process_interim_status(self, bg_role: BlueGreenRole, interim_status: BlueGreenInterimStatus):
         with self._process_status_lock:
-            # TODO: don't need null check of interim_status in JDBC because interim_status is always not null
             status_hash = interim_status.get_custom_hashcode()
             context_hash = self._get_context_hash()
             if self._interim_status_hashes[bg_role.value] == status_hash and self._latest_context_hash == context_hash:
@@ -1331,22 +1344,24 @@ class BlueGreenStatusProvider:
                 self._corresponding_nodes.put(
                     blue_writer_host_info.host, (blue_writer_host_info, green_writer_host_info))
 
-            # TODO: port sorted blue reader length check to JDBC
-            if len(sorted_green_readers) > 0 and len(sorted_blue_readers) > 0:
-                # Map each to blue reader to a green reader.
-                green_index = 0
-                for blue_host_info in sorted_blue_readers:
-                    self._corresponding_nodes.put(
-                        blue_host_info.host, (blue_host_info, sorted_green_readers[green_index]))
-                    green_index += 1
-                    # The modulo operation prevents us from exceeding the bounds of sorted_green_readers if there are
-                    # more blue readers than green readers. In this case, multiple blue readers may be mapped to the
-                    # same green reader.
-                    green_index %= len(sorted_green_readers)
-            else:
-                # There's no green readers - map all blue reader nodes to the green writer
-                for blue_host_info in sorted_blue_readers:
-                    self._corresponding_nodes.put(blue_host_info.host, (blue_host_info, green_writer_host_info))
+            if sorted_blue_readers:
+                # Map blue readers to green nodes
+                if sorted_green_readers:
+                    # Map each to blue reader to a green reader.
+                    green_index = 0
+                    for blue_host_info in sorted_blue_readers:
+                        self._corresponding_nodes.put(
+                            blue_host_info.host, (blue_host_info, sorted_green_readers[green_index]))
+                        green_index += 1
+                        # The modulo operation prevents us from exceeding the bounds of sorted_green_readers if there are
+                        # more blue readers than green readers. In this case, multiple blue readers may be mapped to the
+                        # same green reader.
+                        green_index %= len(sorted_green_readers)
+                else:
+                    # There's no green readers - map all blue reader nodes to the green writer
+                    for blue_host_info in sorted_blue_readers:
+                        self._corresponding_nodes.put(blue_host_info.host, (blue_host_info, green_writer_host_info))
+
 
         if source_status.host_names and target_status.host_names:
             blue_hosts = source_status.host_names
@@ -1404,7 +1419,7 @@ class BlueGreenStatusProvider:
         hosts = role_status.start_topology
         return next((host for host in hosts if host.role == HostRole.WRITER), None)
 
-    def _get_reader_hosts(self, bg_role: BlueGreenRole) -> List[HostInfo]:
+    def _get_reader_hosts(self, bg_role: BlueGreenRole) -> Optional[List[HostInfo]]:
         role_status = self._interim_statuses[bg_role.value]
         if role_status is None:
             return []
@@ -1513,13 +1528,8 @@ class BlueGreenStatusProvider:
     def _get_blue_ip_address_connect_routings(self) -> List[ConnectRouting]:
         connect_routings: List[ConnectRouting] = []
         for host, role in self._roles_by_host.items():
-            if role == BlueGreenRole.TARGET or host not in self._corresponding_nodes.keys():
-                continue
-
             node_pair = self._corresponding_nodes.get(host)
-            if node_pair is None:
-                # TODO: is continuing the right thing to do in this case?
-                # TODO: port to JDBC
+            if role == BlueGreenRole.TARGET or node_pair is None:
                 continue
 
             blue_host_info = node_pair[0]
@@ -1531,7 +1541,11 @@ class BlueGreenStatusProvider:
                 blue_host_info.host = blue_ip.get()
 
             host_routing = SubstituteConnectRouting(blue_ip_host_info, host, role, (blue_host_info,))
-            host_and_port = self._get_host_and_port(host, self._interim_statuses[role.value].port)
+            interim_status = self._interim_statuses[role.value]
+            if interim_status is None:
+                continue
+
+            host_and_port = self._get_host_and_port(host, interim_status.port)
             host_and_port_routing = SubstituteConnectRouting(blue_ip_host_info, host_and_port, role, (blue_host_info,))
             connect_routings.extend([host_routing, host_and_port_routing])
 
@@ -1564,7 +1578,6 @@ class BlueGreenStatusProvider:
 
         connect_routings.append(SuspendConnectRouting(None, BlueGreenRole.TARGET, self._bg_id))
 
-        # TODO: the code below is quite repetitive, see if we can refactor to clean things up
         ip_addresses: Set[str] = {address_container.get() for address_container in self._host_ip_addresses.values()
                                   if address_container.is_present()}
         for ip_address in ip_addresses:
@@ -1659,7 +1672,6 @@ class BlueGreenStatusProvider:
             blue_host = host
             is_blue_host_instance = self._rds_utils.is_rds_instance(blue_host)
             node_pair = self._corresponding_nodes.get(blue_host)
-            # TODO: port null check to JDBC
             blue_host_info = None if node_pair is None else node_pair[0]
             green_host_info = None if node_pair is None else node_pair[1]
 
@@ -1667,6 +1679,9 @@ class BlueGreenStatusProvider:
                 # The corresponding green node was not found. We need to suspend the connection request.
                 host_suspend_routing = SuspendUntilCorrespondingNodeFoundConnectRouting(blue_host, role, self._bg_id)
                 interim_status = self._interim_statuses[role.value]
+                if interim_status is None:
+                    continue
+
                 host_and_port = self._get_host_and_port(blue_host, interim_status.port)
                 host_port_suspend_routing = (
                     SuspendUntilCorrespondingNodeFoundConnectRouting(host_and_port, None, self._bg_id))
@@ -1683,11 +1698,9 @@ class BlueGreenStatusProvider:
                 # Check whether the green host has already been connected a non-prefixed blue IAM host name.
                 if self._is_already_successfully_connected(green_host, blue_host):
                     # Green node has already changed its name, and it's not a new non-prefixed blue node.
-                    # TODO: port to JDBC
                     iam_hosts: Optional[Tuple[HostInfo, ...]] = None if blue_host_info is None else (blue_host_info,)
                 else:
                     # The green node has not yet changed ist name, so we need to try both possible IAM hosts.
-                    # TODO: port to JDBC
                     iam_hosts = (green_host_info,) if blue_host_info is None else (green_host_info, blue_host_info)
 
                 iam_auth_success_handler = None if is_blue_host_instance \
@@ -1695,6 +1708,9 @@ class BlueGreenStatusProvider:
                 host_substitute_routing = SubstituteConnectRouting(
                     green_ip_host_info, blue_host, role, iam_hosts, iam_auth_success_handler)
                 interim_status = self._interim_statuses[role.value]
+                if interim_status is None:
+                    continue
+
                 host_and_port = self._get_host_and_port(blue_host, interim_status.port)
                 host_port_substitute_routing = SubstituteConnectRouting(
                     green_ip_host_info, host_and_port, role, iam_hosts, iam_auth_success_handler)
@@ -1826,10 +1842,9 @@ class BlueGreenStatusProvider:
         if not switchover_completed or not has_active_switchover_phases:
             return
 
-        # TODO: Key is not quite right, need to fix it
-        # TODO: port fix to JDBC
         time_zero_phase = BlueGreenPhase.PREPARATION if self._rollback else BlueGreenPhase.IN_PROGRESS
-        time_zero = self._phase_times_ns.get(time_zero_phase.name)
+        time_zero_key = f"{time_zero_phase.name} (rollback)" if self._rollback else time_zero_phase.name
+        time_zero = self._phase_times_ns.get(time_zero_key)
         sorted_phase_entries = sorted(self._phase_times_ns.items(), key=lambda entry: entry[1].timestamp_ns)
         phase_time_lines = [
             f"{entry[1].date_time:>28s} "
