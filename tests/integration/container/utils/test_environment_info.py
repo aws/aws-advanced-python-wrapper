@@ -30,8 +30,11 @@ class TestEnvironmentInfo:
     _aws_session_token: str
     _region: str
     _rds_endpoint: str
-    _cluster_name: str
+    _db_name: str
     _iam_user_name: str
+    _bg_deployment_id: str
+    _cluster_parameter_group: str
+    _random_base: str
     _database_info: TestDatabaseInfo
     _proxy_database_info: TestProxyDatabaseInfo
     _traces_telemetry_info: TestTelemetryInfo
@@ -50,8 +53,11 @@ class TestEnvironmentInfo:
         self._aws_session_token = typing.cast('str', test_info.get("awsSessionToken"))
         self._region = typing.cast('str', test_info.get("region"))
         self._rds_endpoint = typing.cast('str', test_info.get("rdsEndpoint"))
-        self._cluster_name = typing.cast('str', test_info.get("clusterName"))
+        self._db_name = typing.cast('str', test_info.get("rdsDbName"))
         self._iam_user_name = typing.cast('str', test_info.get("iamUsername"))
+        self._bg_deployment_id = typing.cast('str', test_info.get("blueGreenDeploymentId"))
+        self._cluster_parameter_group = typing.cast('str', test_info.get("clusterParameterGroupName"))
+        self._random_base = typing.cast('str', test_info.get("randomBase"))
 
         database_info_dict: Dict[str, Any] = typing.cast('Dict[str, Any]', test_info.get("databaseInfo"))
         if database_info_dict is not None:
@@ -95,8 +101,8 @@ class TestEnvironmentInfo:
     def get_rds_endpoint(self) -> str:
         return self._rds_endpoint
 
-    def get_cluster_name(self) -> str:
-        return self._cluster_name
+    def get_db_name(self) -> str:
+        return self._db_name
 
     def get_iam_user_name(self) -> str:
         return self._iam_user_name

@@ -78,7 +78,7 @@ class RdsTestUtility:
             self.delete_db_instance(instance_id)
 
         self._client.create_db_instance(
-            DBClusterIdentifier=environment.get_info().get_cluster_name(),
+            DBClusterIdentifier=environment.get_info().get_db_name(),
             DBInstanceIdentifier=instance_id,
             DBInstanceClass="db.r5.large",
             Engine=self.get_aurora_engine_name(environment.get_engine()),
@@ -138,7 +138,7 @@ class RdsTestUtility:
 
         start = perf_counter_ns()
         if cluster_id is None:
-            cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
+            cluster_id = TestEnvironment.get_current().get_info().get_db_name()
 
         if initial_writer_id is None:
             initial_writer_id = self.get_cluster_writer_instance_id(cluster_id)
@@ -170,7 +170,7 @@ class RdsTestUtility:
 
     def failover_cluster(self, cluster_id: Optional[str] = None, target_id: Optional[str] = None) -> None:
         if cluster_id is None:
-            cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
+            cluster_id = TestEnvironment.get_current().get_info().get_db_name()
 
         self.wait_until_cluster_has_desired_status(cluster_id, "available")
 
@@ -268,7 +268,7 @@ class RdsTestUtility:
 
     def is_db_instance_writer(self, instance_id: str, cluster_id: Optional[str] = None) -> bool:
         if cluster_id is None:
-            cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
+            cluster_id = TestEnvironment.get_current().get_info().get_db_name()
         cluster_info = self.get_db_cluster(cluster_id)
         members = cluster_info.get("DBClusterMembers")
         for m in members:
@@ -278,7 +278,7 @@ class RdsTestUtility:
 
     def get_cluster_writer_instance_id(self, cluster_id: Optional[str] = None) -> str:
         if cluster_id is None:
-            cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
+            cluster_id = TestEnvironment.get_current().get_info().get_db_name()
         cluster_info = self.get_db_cluster(cluster_id)
         members = cluster_info.get("DBClusterMembers")
         for m in members:
