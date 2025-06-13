@@ -96,7 +96,9 @@ class OktaAuthPlugin(Plugin):
 
         token_info = OktaAuthPlugin._token_cache.get(cache_key)
 
-        if token_info is not None and not token_info.is_expired():
+        is_cached_token = token_info is not None and not token_info.is_expired()
+
+        if is_cached_token:
             logger.debug("OktaAuthPlugin.UseCachedToken", token_info.token)
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
@@ -106,7 +108,10 @@ class OktaAuthPlugin(Plugin):
 
         try:
             return connect_func()
-        except Exception:
+        except Exception as e:
+            if not is_cached_token or not self._plugin_service.is_login_exception(e):
+                raise e
+
             self._update_authentication_token(host_info, props, user, region, cache_key)
 
             try:
