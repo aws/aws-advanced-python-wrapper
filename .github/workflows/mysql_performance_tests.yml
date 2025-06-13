@@ -25,9 +25,10 @@ jobs:
           java-version: 8
 
       - name: Install poetry
-        uses: abatilo/actions-poetry@v2
-        with:
-          poetry-version: '1.8.2'
+        shell: bash
+        run: |
+          pipx install poetry==1.8.2
+          poetry config virtualenvs.prefer-active-python true
 
       - name: Install dependencies
         run: poetry install

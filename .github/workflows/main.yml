@@ -31,9 +31,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install poetry
-        uses: abatilo/actions-poetry@v3
-        with:
-          poetry-version: ${{ matrix.poetry-version }}
+        shell: bash
+        run: |
+          pipx install poetry==${{matrix.poetry-version}}
+          poetry config virtualenvs.prefer-active-python true
       - name: Install dependencies
         run: poetry install
       - name: Run mypy - static type checking
