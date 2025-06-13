@@ -91,19 +91,6 @@ class ReadWriteSplittingPlugin(Plugin):
                 Messages.get_formatted("ReadWriteSplittingPlugin.UnsupportedHostInfoSelectorStrategy",
                                        self._reader_selector_strategy))
 
-        return self.connect_internal(is_initial_connection, connect_func)
-
-    def force_connect(
-            self,
-            target_driver_func: Callable,
-            driver_dialect: DriverDialect,
-            host_info: HostInfo,
-            props: Properties,
-            is_initial_connection: bool,
-            force_connect_func: Callable) -> Connection:
-        return self.connect_internal(is_initial_connection, force_connect_func)
-
-    def connect_internal(self, is_initial_connection: bool, connect_func: Callable) -> Connection:
         current_conn = connect_func()
 
         if not is_initial_connection or self._host_list_provider_service.is_static_host_list_provider():
@@ -175,7 +162,7 @@ class ReadWriteSplittingPlugin(Plugin):
         logger.debug("ReadWriteSplittingPlugin.SetReaderConnection", reader_host_info.url)
 
     def _get_new_writer_connection(self, writer_host: HostInfo):
-        conn = self._plugin_service.connect(writer_host, self._properties)
+        conn = self._plugin_service.connect(writer_host, self._properties, self)
         provider = self._conn_provider_manager.get_connection_provider(writer_host, self._properties)
         self._is_writer_conn_from_internal_pool = (ReadWriteSplittingPlugin._POOL_PROVIDER_CLASS_NAME in str(type(provider)))
         self._set_writer_connection(conn, writer_host)
@@ -303,7 +290,7 @@ class ReadWriteSplittingPlugin(Plugin):
             host = self._plugin_service.get_host_info_by_strategy(HostRole.READER, self._reader_selector_strategy)
             if host is not None:
                 try:
-                    conn = self._plugin_service.connect(host, self._properties)
+                    conn = self._plugin_service.connect(host, self._properties, self)
                     provider = self._conn_provider_manager.get_connection_provider(host, self._properties)
                     self._is_reader_conn_from_internal_pool = (ReadWriteSplittingPlugin._POOL_PROVIDER_CLASS_NAME in str(type(provider)))
                     reader_host = host

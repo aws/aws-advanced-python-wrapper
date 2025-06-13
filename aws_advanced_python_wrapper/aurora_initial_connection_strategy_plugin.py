@@ -35,9 +35,7 @@ from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
 
 class AuroraInitialConnectionStrategyPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
-                                     "connect",
-                                     "force_connect"}
+    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider", "connect"}
 
     _host_list_provider_service: Optional[HostListProviderService] = None
 
@@ -52,28 +50,23 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
     def connect(self, target_driver_func: Callable, driver_dialect: DriverDialect, host_info: HostInfo, props: Properties,
                 is_initial_connection: bool, connect_func: Callable) -> Connection:
-        return self._connect(host_info, props, is_initial_connection, connect_func)
-
-    def force_connect(self, target_driver_func: Callable, driver_dialect: DriverDialect, host_info: HostInfo, props: Properties,
-                      is_initial_connection: bool, force_connect_func: Callable) -> Connection:
-        return self._connect(host_info, props, is_initial_connection, force_connect_func)
-
-    def _connect(self, host_info: HostInfo, props: Properties, is_initial_connection: bool, connect_func: Callable):
-        type: RdsUrlType = self._rds_utils.identify_rds_type(host_info.host)
-        if not type.is_rds_cluster:
+        url_type: RdsUrlType = self._rds_utils.identify_rds_type(host_info.host)
+        if not url_type.is_rds_cluster:
             return connect_func()
 
-        if type == RdsUrlType.RDS_WRITER_CLUSTER:
+        if url_type == RdsUrlType.RDS_WRITER_CLUSTER:
             writer_candidate_conn: Optional[Connection] = self._get_verified_writer_connection(props, is_initial_connection, connect_func)
             if writer_candidate_conn is None:
                 return connect_func()
             return writer_candidate_conn
 
-        if type == RdsUrlType.RDS_READER_CLUSTER:
+        if url_type == RdsUrlType.RDS_READER_CLUSTER:
             reader_candidate_conn: Optional[Connection] = self._get_verified_reader_connection(props, is_initial_connection, connect_func)
             if reader_candidate_conn is None:
                 return connect_func()
             return reader_candidate_conn
+
+        return connect_func()
 
     def _get_verified_writer_connection(self, props: Properties, is_initial_connection: bool, connect_func: Callable) -> Connection | None:
         retry_delay_ms: int = WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props)
@@ -84,7 +77,6 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
         while perf_counter_ns() < end_time_nano:
             writer_candidate_conn = None
-            writer_candidate = None
 
             try:
                 writer_candidate = self._get_writer()
