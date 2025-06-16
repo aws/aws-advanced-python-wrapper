@@ -130,6 +130,15 @@ class WrapperProperties:
     SECRETS_MANAGER_SECRET_ID = WrapperProperty(
         "secrets_manager_secret_id",
         "The name or the ARN of the secret to retrieve.")
+    SECRETS_MANAGER_SECRET_USERNAME_KEY = WrapperProperty(
+        "secrets_manager_secret_username_key",
+        "The key of the secret to retrieve, which contains the username.",
+        "username")
+    SECRETS_MANAGER_SECRET_PASSWORD_KEY = WrapperProperty(
+        "secrets_manager_secret_password_key",
+        "The key of the secret to retrieve, which contains the password.",
+        "password"
+    )
     SECRETS_MANAGER_REGION = WrapperProperty(
         "secrets_manager_region",
         "The region of the secret to retrieve.",
