@@ -49,9 +49,8 @@ with AwsWrapperConnection.connect(
 ) as awsconn:
     awscursor = awsconn.cursor()
     awscursor.execute("SELECT aurora_db_instance_identifier()")
-    awscursor.fetchone()
-    for record in awscursor:
-        print(record)
+    row = awscursor.fetchone()
+    print(row)
 ```
 The `AwsWrapperConnection#connect` method accepts the connection configuration through both the connection string and the keyword arguments.
 
@@ -72,9 +71,8 @@ with AwsWrapperConnection.connect(
 ) as awsconn:
     awscursor = awsconn.cursor()
     awscursor.execute("SELECT @@aurora_server_id")
-    awscursor.fetchone()
-    for record in awscursor:
-        print(record)
+    row = awscursor.fetchone()
+    print(row)
 ```
 
 For more details on how to download the AWS Advanced Python Driver, minimum requirements to use it, 
@@ -203,7 +201,7 @@ For all other questions, please use [GitHub discussions](https://github.com/awsl
 
 1. Set up your environment by following the directions in the [Development Guide](./docs/development-guide/DevelopmentGuide.md).
 2. To contribute, first make a fork of this project. 
-3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.8 and higher).
+3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.8 - 3.11 (inclusive)).
 4. Create a pull request from your fork. 
 5. Pull requests need to be approved and merged by maintainers into the main branch. <br />
 
