@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 from aws_advanced_python_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPlugin
+from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 
 if TYPE_CHECKING:
     from boto3 import Session, client
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
 from types import SimpleNamespace
-from typing import Callable, Dict, Tuple
+from typing import Callable, Tuple
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -66,6 +67,7 @@ class TestAwsSecretsManagerPlugin(TestCase):
     _SECRET_CACHE_KEY = (_TEST_SECRET_ID, _TEST_REGION, _TEST_ENDPOINT)
     _TEST_HOST_INFO = HostInfo(_TEST_HOST, _TEST_PORT)
     _TEST_SECRET = SimpleNamespace(username="testUser", password="testPassword")
+    _ONE_YEAR_IN_NANOSECONDS = 60 * 60 * 24 * 365 * 1000
 
     _MYSQL_HOST_INFO = HostInfo("mysql.testdb.us-east-2.rds.amazonaws.com")
     _PG_HOST_INFO = HostInfo("pg.testdb.us-east-2.rds.amazonaws.com")
@@ -82,7 +84,7 @@ class TestAwsSecretsManagerPlugin(TestCase):
         }
     }, "some_operation")
 
-    _secrets_cache: Dict[Tuple, SimpleNamespace] = {}
+    _secrets_cache: CacheMap[Tuple, SimpleNamespace] = CacheMap()
 
     _mock_func: Callable
     _mock_plugin_service: PluginService
@@ -113,7 +115,7 @@ class TestAwsSecretsManagerPlugin(TestCase):
 
     @patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
     def test_connect_with_cached_secrets(self):
-        self._secrets_cache[self._SECRET_CACHE_KEY] = self._TEST_SECRET
+        self._secrets_cache.put(self._SECRET_CACHE_KEY, self._TEST_SECRET, self._ONE_YEAR_IN_NANOSECONDS)
         target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(self._mock_plugin_service,
                                                                          self._properties,
                                                                          self._mock_session)
