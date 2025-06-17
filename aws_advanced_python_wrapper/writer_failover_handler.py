@@ -118,23 +118,24 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         if writer_host is not None:
             self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
-            with ThreadPoolExecutor(thread_name_prefix="WriterFailoverHandlerExecutor") as executor:
+            executor = ThreadPoolExecutor(thread_name_prefix="WriterFailoverHandlerExecutor")
+            try:
                 try:
                     futures = [executor.submit(self.reconnect_to_writer, writer_host),
                                executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
                     for future in as_completed(futures, timeout=self._max_failover_timeout_sec):
                         result = future.result()
                         if result.is_connected:
-                            executor.shutdown(wait=False)
                             self.log_task_success(result)
                             return result
                         if result.exception is not None:
-                            executor.shutdown(wait=False)
                             return result
                 except TimeoutError:
                     self._timeout_event.set()
                 finally:
                     self._timeout_event.set()
+            finally:
+                executor.shutdown(wait=False)
 
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 

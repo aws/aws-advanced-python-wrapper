@@ -49,9 +49,8 @@ with AwsWrapperConnection.connect(
 ) as awsconn:
     awscursor = awsconn.cursor()
     awscursor.execute("SELECT aurora_db_instance_identifier()")
-    awscursor.fetchone()
-    for record in awscursor:
-        print(record)
+    row = awscursor.fetchone()
+    print(row)
 ```
 The `AwsWrapperConnection#connect` method accepts the connection configuration through both the connection string and the keyword arguments.
 
@@ -72,9 +71,8 @@ with AwsWrapperConnection.connect(
 ) as awsconn:
     awscursor = awsconn.cursor()
     awscursor.execute("SELECT @@aurora_server_id")
-    awscursor.fetchone()
-    for record in awscursor:
-        print(record)
+    row = awscursor.fetchone()
+    print(row)
 ```
 
 For more details on how to download the AWS Advanced Python Driver, minimum requirements to use it, 
@@ -120,6 +118,8 @@ The following table lists the connection properties used with the AWS Advanced P
 | `secrets_manager_secret_id`                  |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
 | `secrets_manager_region`                     |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
 | `secrets_manager_endpoint`                   |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
+| `secrets_manager_secret_username`            |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
+| `secrets_manager_secret_password`            |           [Secrets Manager Plugin](./docs/using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
 | `reader_host_selector_strategy`              | [Connection Strategy](./docs/using-the-python-driver/using-plugins/UsingTheReadWriteSplittingPlugin.md#connection-strategies) |
 | `db_user`                                    |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
 | `idp_username`                               |   [Federated Authentication Plugin](./docs/using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
@@ -201,7 +201,7 @@ For all other questions, please use [GitHub discussions](https://github.com/awsl
 
 1. Set up your environment by following the directions in the [Development Guide](./docs/development-guide/DevelopmentGuide.md).
 2. To contribute, first make a fork of this project. 
-3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.8 and higher).
+3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.8 - 3.11 (inclusive)).
 4. Create a pull request from your fork. 
 5. Pull requests need to be approved and merged by maintainers into the main branch. <br />
 

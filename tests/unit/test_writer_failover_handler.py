@@ -97,12 +97,12 @@ def reader_b():
 
 @pytest.fixture
 def topology(writer, reader_a, reader_b):
-    return [writer, reader_a, reader_b]
+    return tuple([writer, reader_a, reader_b])
 
 
 @pytest.fixture
 def new_topology(new_writer_host, reader_a, reader_b):
-    return [new_writer_host, reader_a, reader_b]
+    return tuple([new_writer_host, reader_a, reader_b])
 
 
 @pytest.fixture(autouse=True)
@@ -117,7 +117,7 @@ def test_reconnect_to_writer_task_b_reader_exception(
         writer_connection_mock, plugin_service_mock, reader_failover_mock, default_properties, writer, topology):
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info, _, __) -> Connection:
+    def force_connect_side_effect(host_info, _) -> Connection:
         if host_info == writer:
             return writer_connection_mock
         else:
@@ -155,10 +155,10 @@ def test_reconnect_to_writer_slow_task_b(
     expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
                 call(writer.as_aliases(), HostAvailability.AVAILABLE)]
 
-    mock_hosts_property = mocker.PropertyMock(side_effect=chain([topology], cycle([new_topology])))
+    mock_hosts_property = mocker.PropertyMock(side_effect=chain((topology,), cycle((new_topology,))))
     type(plugin_service_mock).all_hosts = mock_hosts_property
 
-    def force_connect_side_effect(host_info, _, __) -> Connection:
+    def force_connect_side_effect(host_info, _) -> Connection:
         if host_info == writer:
             return writer_connection_mock
         elif host_info == new_writer_host:
@@ -196,7 +196,7 @@ def test_reconnect_to_writer_task_b_defers(
         writer, reader_a, reader_b, topology):
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info, _, __) -> Connection:
+    def force_connect_side_effect(host_info, _) -> Connection:
         if host_info == writer:
             sleep(5)
             return writer_connection_mock
@@ -236,7 +236,7 @@ def test_connect_to_new_writer_slow_task_a(
         reader_b, topology, new_topology):
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info, _, __) -> Connection:
+    def force_connect_side_effect(host_info, _) -> Connection:
         if host_info == writer:
             sleep(5)
             return writer_connection_mock
@@ -284,7 +284,7 @@ def test_connect_to_new_writer_task_a_defers(
 
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info, _, __) -> Connection:
+    def force_connect_side_effect(host_info, _) -> Connection:
         if host_info == writer:
             return writer_connection_mock
         elif host_info == reader_a:
@@ -333,11 +333,9 @@ def test_failed_to_connect_failover_timeout(
         reader_b, topology, new_topology):
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info, _, timeout_event) -> Connection:
+    def force_connect_side_effect(host_info, _) -> Connection:
         if host_info == writer:
             for _ in range(0, 30):
-                if timeout_event.is_set():
-                    break
                 sleep(1)
             return writer_connection_mock
         elif host_info == reader_a:
@@ -346,8 +344,6 @@ def test_failed_to_connect_failover_timeout(
             return reader_b_connection_mock
         elif host_info == new_writer_host:
             for _ in range(0, 30):
-                if timeout_event.is_set():
-                    break
                 sleep(1)
             return new_writer_connection_mock
         else:
@@ -390,7 +386,7 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(
         default_properties, new_writer_host, writer, reader_a, reader_b, topology, new_topology):
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info, _, __) -> Connection:
+    def force_connect_side_effect(host_info, _) -> Connection:
         if host_info == reader_a:
             return reader_a_connection_mock
         elif host_info == reader_b:

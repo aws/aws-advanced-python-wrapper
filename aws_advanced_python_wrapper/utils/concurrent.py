@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Iterator, Set, Union, ValuesView
 
 if TYPE_CHECKING:
-    from collections.abc import ItemsView
+    from typing import ItemsView
 
 from threading import Lock, RLock
 from typing import Callable, Generic, KeysView, List, Optional, TypeVar
