@@ -133,7 +133,7 @@ class RdsTestUtility:
             cluster_id: Optional[str] = None,
             target_id: Optional[str] = None) -> None:
         deployment = TestEnvironment.get_current().get_deployment()
-        if DatabaseEngineDeployment.RDS_MULTI_AZ == deployment and target_id is not None:
+        if DatabaseEngineDeployment.MULTI_AZ_CLUSTER == deployment and target_id is not None:
             raise Exception(Messages.get_formatted("RdsTestUtility.FailoverToTargetNotSupported", target_id, deployment))
 
         start = perf_counter_ns()
@@ -227,7 +227,7 @@ class RdsTestUtility:
 
         if DatabaseEngineDeployment.AURORA == database_deployment:
             return self._query_aurora_instance_id(conn, database_engine)
-        elif DatabaseEngineDeployment.RDS_MULTI_AZ == database_deployment:
+        elif DatabaseEngineDeployment.MULTI_AZ_CLUSTER == database_deployment:
             return self._query_multi_az_instance_id(conn, database_engine)
         else:
             raise RuntimeError(Messages.get_formatted(
@@ -291,7 +291,7 @@ class RdsTestUtility:
         deployment: DatabaseEngineDeployment = test_environment.get_deployment()
         if DatabaseEngineDeployment.AURORA == deployment:
             return self._get_aurora_instance_ids()
-        elif DatabaseEngineDeployment.RDS_MULTI_AZ == deployment:
+        elif DatabaseEngineDeployment.MULTI_AZ_CLUSTER == deployment:
             return self._get_multi_az_instance_ids()
         else:
             raise RuntimeError("RdsTestUtility.MethodNotSupportedForDeployment", "get_instance_ids", deployment)

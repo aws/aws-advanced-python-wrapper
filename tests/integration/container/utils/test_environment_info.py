@@ -107,6 +107,15 @@ class TestEnvironmentInfo:
     def get_iam_user_name(self) -> str:
         return self._iam_user_name
 
+    def get_bg_deployment_id(self) -> str:
+        return self._bg_deployment_id
+
+    def get_cluster_parameter_group(self) -> str:
+        return self._cluster_parameter_group
+
+    def get_random_base(self) -> str:
+        return self._random_base
+
     def get_traces_telemetry_info(self) -> TestTelemetryInfo:
         return self._traces_telemetry_info
 
