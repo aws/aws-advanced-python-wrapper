@@ -88,12 +88,12 @@ class CacheMap(Generic[K, V]):
 
 
 class CacheItem(Generic[V]):
-    def __init__(self, item: V, expiration_time: int):
+    def __init__(self, item: V, expiration_time_ns: int):
         self.item = item
-        self._expiration_time = expiration_time
+        self._expiration_time_ns = expiration_time_ns
 
     def __str__(self):
-        return f"CacheItem [item={str(self.item)}, expiration_time={self._expiration_time}]"
+        return f"CacheItem [item={str(self.item)}, expiration_time={self._expiration_time_ns}]"
 
     def is_expired(self) -> bool:
-        return time.perf_counter_ns() > self._expiration_time
+        return time.perf_counter_ns() > self._expiration_time_ns
