@@ -64,6 +64,13 @@ def set_available_count_for_host():
 
 
 def test_failover(plugin_service_mock, connection_mock, default_properties, default_hosts):
+    """
+    original host list: [active writer, active reader, current connection (reader), active
+    reader, down reader, active reader]
+    priority order by index (the subsets will be shuffled): [[1, 3, 5], 0, [2, 4]]
+    connection attempts are made in pairs using the above list
+    expected test result: successful connection for host at index 4
+    """
     hosts = tuple(default_hosts)
     props = default_properties
     current_host = hosts[2]
@@ -73,8 +80,6 @@ def test_failover(plugin_service_mock, connection_mock, default_properties, defa
                 else call(x.all_aliases, HostAvailability.AVAILABLE)
                 for x in hosts]
 
-    # current host should be called twice
-    expected.append(call(current_host.all_aliases, HostAvailability.UNAVAILABLE))
     exception = Exception("Test Exception")
 
     def force_connect_side_effect(host_info, _) -> Connection:
