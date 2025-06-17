@@ -1362,7 +1362,6 @@ class BlueGreenStatusProvider:
                     for blue_host_info in sorted_blue_readers:
                         self._corresponding_nodes.put(blue_host_info.host, (blue_host_info, green_writer_host_info))
 
-
         if source_status.host_names and target_status.host_names:
             blue_hosts = source_status.host_names
             green_hosts = target_status.host_names
