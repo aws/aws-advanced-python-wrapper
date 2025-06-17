@@ -154,7 +154,6 @@ class StaleDnsPlugin(Plugin):
 
     _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
                                      "connect",
-                                     "force_connect",
                                      "notify_host_list_changed"}
 
     def __init__(self, plugin_service: PluginService) -> None:
@@ -177,17 +176,6 @@ class StaleDnsPlugin(Plugin):
             connect_func: Callable) -> Connection:
         return self._stale_dns_helper.get_verified_connection(
             is_initial_connection, self._host_list_provider_service, host_info, props, connect_func)
-
-    def force_connect(
-            self,
-            target_driver_func: Callable,
-            driver_dialect: DriverDialect,
-            host_info: HostInfo,
-            props: Properties,
-            is_initial_connection: bool,
-            force_connect_func: Callable) -> Connection:
-        return self._stale_dns_helper.get_verified_connection(
-            is_initial_connection, self._host_list_provider_service, host_info, props, force_connect_func)
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         try:

@@ -86,19 +86,6 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
             props: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
-        return self._connect(host_info, connect_func)
-
-    def force_connect(
-            self,
-            target_driver_func: Callable,
-            driver_dialect: DriverDialect,
-            host_info: HostInfo,
-            props: Properties,
-            is_initial_connection: bool,
-            force_connect_func: Callable) -> Connection:
-        return self._connect(host_info, force_connect_func)
-
-    def _connect(self, host_info: HostInfo, connect_func: Callable) -> Connection:
         conn = connect_func()
         if conn:
             rds_type = self._rds_utils.identify_rds_type(host_info.host)

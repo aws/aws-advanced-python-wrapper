@@ -59,7 +59,6 @@ class FailoverPlugin(Plugin):
     """
     _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
                                      "connect",
-                                     "force_connect",
                                      "notify_host_list_changed"}
 
     _METHODS_REQUIRE_UPDATED_TOPOLOGY: Set[str] = {
@@ -205,28 +204,8 @@ class FailoverPlugin(Plugin):
             props: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
-        return self._connect(host_info, props, is_initial_connection, connect_func)
-
-    def force_connect(
-            self,
-            target_driver_func: Callable,
-            driver_dialect: DriverDialect,
-            host_info: HostInfo,
-            props: Properties,
-            is_initial_connection: bool,
-            force_connect_func: Callable) -> Connection:
-        return self._connect(host_info, props, is_initial_connection, force_connect_func)
-
-    def _connect(
-            self,
-            host: HostInfo,
-            properties: Properties,
-            is_initial_connection: bool,
-            connect_func: Callable) -> Connection:
-        conn: Connection = self._stale_dns_helper.get_verified_connection(is_initial_connection,
-                                                                          self._host_list_provider_service, host,
-                                                                          properties,
-                                                                          connect_func)
+        conn: Connection = self._stale_dns_helper.get_verified_connection(
+            is_initial_connection, self._host_list_provider_service, host_info, props, connect_func)
 
         if is_initial_connection:
             self._plugin_service.refresh_host_list(conn)

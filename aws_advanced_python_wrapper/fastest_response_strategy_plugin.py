@@ -51,7 +51,6 @@ class FastestResponseStrategyPlugin(Plugin):
     _FASTEST_RESPONSE_STRATEGY_NAME = "fastest_response"
     _SUBSCRIBED_METHODS: Set[str] = {"accepts_strategy",
                                      "connect",
-                                     "force_connect",
                                      "get_host_info_by_strategy",
                                      "notify_host_list_changed"}
 
@@ -75,24 +74,6 @@ class FastestResponseStrategyPlugin(Plugin):
             driver_dialect: DriverDialect,
             host_info: HostInfo,
             props: Properties,
-            is_initial_connection: bool,
-            connect_func: Callable) -> Connection:
-        return self._connect(host_info, props, is_initial_connection, connect_func)
-
-    def force_connect(
-            self,
-            target_driver_func: Callable,
-            driver_dialect: DriverDialect,
-            host_info: HostInfo,
-            props: Properties,
-            is_initial_connection: bool,
-            force_connect_func: Callable) -> Connection:
-        return self._connect(host_info, props, is_initial_connection, force_connect_func)
-
-    def _connect(
-            self,
-            host: HostInfo,
-            properties: Properties,
             is_initial_connection: bool,
             connect_func: Callable) -> Connection:
         conn = connect_func()
