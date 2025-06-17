@@ -97,12 +97,12 @@ def reader_b():
 
 @pytest.fixture
 def topology(writer, reader_a, reader_b):
-    return [writer, reader_a, reader_b]
+    return tuple([writer, reader_a, reader_b])
 
 
 @pytest.fixture
 def new_topology(new_writer_host, reader_a, reader_b):
-    return [new_writer_host, reader_a, reader_b]
+    return tuple([new_writer_host, reader_a, reader_b])
 
 
 @pytest.fixture(autouse=True)
@@ -155,7 +155,7 @@ def test_reconnect_to_writer_slow_task_b(
     expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
                 call(writer.as_aliases(), HostAvailability.AVAILABLE)]
 
-    mock_hosts_property = mocker.PropertyMock(side_effect=chain([topology], cycle([new_topology])))
+    mock_hosts_property = mocker.PropertyMock(side_effect=chain((topology,), cycle((new_topology,))))
     type(plugin_service_mock).all_hosts = mock_hosts_property
 
     def force_connect_side_effect(host_info, _) -> Connection:
