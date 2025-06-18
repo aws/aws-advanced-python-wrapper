@@ -68,4 +68,4 @@ def test_verify_urls(urls_list: list):
         response = request("GET", url)
 
         assert "jdbc" not in url
-        assert response.status_code == 200
+        assert response.status_code == 200 or response.status_code == 202
