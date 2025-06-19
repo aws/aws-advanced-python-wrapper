@@ -98,7 +98,7 @@ class FederatedAuthPlugin(Plugin):
             region
         )
 
-        token_info = FederatedAuthPlugin._token_cache.get(cache_key)
+        token_info: Optional[TokenInfo] = FederatedAuthPlugin._token_cache.get(cache_key)
 
         if token_info is not None and not token_info.is_expired():
             logger.debug("FederatedAuthPlugin.UseCachedToken", token_info.token)
@@ -110,7 +110,10 @@ class FederatedAuthPlugin(Plugin):
 
         try:
             return connect_func()
-        except Exception:
+        except Exception as e:
+            if token_info is None or token_info.is_expired() or not self._plugin_service.is_login_exception(e):
+                raise e
+
             self._update_authentication_token(host_info, props, user, region, cache_key)
 
             try:
