@@ -25,9 +25,9 @@ if TYPE_CHECKING:
 from threading import Lock
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.host_selector import (HostSelector,
-                                                       RandomHostSelector,
-                                                       RoundRobinHostSelector)
+from aws_advanced_python_wrapper.host_selector import (
+    HostSelector, RandomHostSelector, RoundRobinHostSelector,
+    WeightedRandomHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -96,8 +96,9 @@ class ConnectionProvider(Protocol):
 
 
 class DriverConnectionProvider(ConnectionProvider):
-    _accepted_strategies: Dict[str, HostSelector] = \
-        {"random": RandomHostSelector(), "round_robin": RoundRobinHostSelector()}
+    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector(),
+                                                     "round_robin": RoundRobinHostSelector(),
+                                                     "weighted_random": WeightedRandomHostSelector()}
 
     def accepts_host_info(self, host_info: HostInfo, props: Properties) -> bool:
         return True
