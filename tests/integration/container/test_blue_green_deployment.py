@@ -28,6 +28,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Tuple
 
+import mysql.connector
+import psycopg
+
 if TYPE_CHECKING:
     from .utils.connection_utils import ConnectionUtils
     from .utils.test_driver import TestDriver
@@ -35,7 +38,7 @@ if TYPE_CHECKING:
 import math
 import socket
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Event, Thread
 from time import perf_counter_ns, sleep
 
@@ -744,7 +747,11 @@ class TestBlueGreenDeployment:
                     results.blue_wrapper_connect_times.append(
                         TimeHolder(start_time_ns, end_time_ns, bg_plugin.get_hold_time_ns()))
                 except Exception as e:
-                    self.logger.debug(f"[WrapperBlueNewConnection @ {host_id}] Thread exception: {e}")
+                    if self.is_timeout_exception(e):
+                        self.logger.debug(f"[WrapperBlueNewConnection @ {host_id}] Thread timeout exception: {e}")
+                    else:
+                        self.logger.debug(f"[WrapperBlueNewConnection @ {host_id}] Thread exception: {e}")
+
                     end_time_ns = perf_counter_ns()
                     if conn is not None:
                         bg_plugin = conn._unwrap(BlueGreenPlugin)
@@ -766,6 +773,33 @@ class TestBlueGreenDeployment:
             self.close_connection(conn)
             finish_latch.count_down()
             self.logger.debug(f"[WrapperBlueNewConnection @ {host_id}] Thread is completed.")
+
+    def is_timeout_exception(self, exception: Exception) -> bool:
+        error_message = str(exception).lower()
+        timeout_keywords = [
+            "timeout", "timed out", "statement timeout",
+            "query execution was interrupted", "canceling statement due to",
+            "connection timed out", "lost connection", "terminated"
+        ]
+
+        # Check for timeout keywords in message
+        if any(keyword in error_message for keyword in timeout_keywords):
+            return True
+
+        # MySQL-specific checks
+        if isinstance(exception, mysql.connector.Error):
+            # MySQL timeout error codes
+            timeout_error_codes = [1205, 2013, 2006]  # Lock timeout, lost connection, server gone away
+            if hasattr(exception, 'errno') and exception.errno in timeout_error_codes:
+                return True
+
+        # PostgreSQL-specific checks
+        if isinstance(exception, psycopg.Error):
+            # PostgreSQL timeout usually contains specific text
+            if "canceling statement due to statement timeout" in error_message:
+                return True
+
+        return False
 
     # Blue DNS
     # Check time of IP address change
@@ -855,10 +889,17 @@ class TestBlueGreenDeployment:
                         TimeHolder(start_time_ns, end_time_ns, bg_plugin.get_hold_time_ns()))
                     sleep(1)
                 except Exception as e:
-                    # TODO: do we need to handle the query timeout scenario like JDBC does for sqlTimeoutException?
-                    self.logger.debug(f"[WrapperGreenConnectivity @ {host_id}] Thread exception: {e}")
-                    results.wrapper_green_lost_connection_time_ns.set(perf_counter_ns())
-                    break
+                    if self.is_timeout_exception(e):
+                        self.logger.debug(f"[WrapperGreenConnectivity @ {host_id}] Thread timeout exception: {e}")
+                        results.green_wrapper_execute_times.append(
+                            TimeHolder(start_time_ns, perf_counter_ns(), bg_plugin.get_hold_time_ns(), str(e)))
+                        if conn.is_closed:
+                            results.wrapper_green_lost_connection_time_ns.set(perf_counter_ns())
+                            break
+                    else:
+                        self.logger.debug(f"[WrapperGreenConnectivity @ {host_id}] Thread exception: {e}")
+                        results.wrapper_green_lost_connection_time_ns.set(perf_counter_ns())
+                        break
         except Exception as e:
             self.logger.debug(f"[WrapperGreenConnectivity @ {host_id}] Thread unhandled exception: {e}")
             self.unhandled_exceptions.append(e)
@@ -962,18 +1003,20 @@ class TestBlueGreenDeployment:
                         self.logger.debug(
                             f"[DirectGreenIamIp{thread_prefix} @ {host_id}] Successfully connected. Exiting thread...")
                         return
-                # TODO: do we need to handle the query timeout scenario like JDBC does for sqlTimeoutException?
                 except Exception as e:
-                    self.logger.debug(f"[DirectGreenIamIp{thread_prefix} @ {host_id}] Thread exception: {e}")
-                    end_ns = perf_counter_ns()
-                    result_queue.append(TimeHolder(start_ns, end_ns, error=str(e)))
-                    # TODO: is 'Access Denied' the error message in Python as well as JDBC?
-                    if notify_on_first_error and "access denied" in str(e).lower():
-                        results.green_node_changed_name_time_ns.compare_and_set(0, perf_counter_ns())
-                        self.logger.debug(
-                            f"[DirectGreenIamIp{thread_prefix} @ {host_id}] "
-                            f"Encountered first 'Access denied' exception. Exiting thread...")
-                        return
+                    if self.is_timeout_exception(e):
+                        self.logger.debug(f"[DirectGreenIamIp{thread_prefix} @ {host_id}] Thread exception: {e}")
+                        result_queue.append(TimeHolder(start_ns, perf_counter_ns(), error=str(e)))
+                    else:
+                        self.logger.debug(f"[DirectGreenIamIp{thread_prefix} @ {host_id}] Thread exception: {e}")
+                        result_queue.append(TimeHolder(start_ns, perf_counter_ns(), error=str(e)))
+                        # TODO: is 'Access Denied' the error message in Python as well as JDBC?
+                        if notify_on_first_error and "access denied" in str(e).lower():
+                            results.green_node_changed_name_time_ns.compare_and_set(0, perf_counter_ns())
+                            self.logger.debug(
+                                f"[DirectGreenIamIp{thread_prefix} @ {host_id}] "
+                                f"Encountered first 'Access denied' exception. Exiting thread...")
+                            return
 
                 self.close_connection(conn)
                 conn = None
@@ -1229,21 +1272,21 @@ class TimeHolder:
 
 @dataclass
 class BlueGreenResults:
-    start_time_ns: AtomicInt = AtomicInt()
-    threads_sync_time: AtomicInt = AtomicInt()
-    bg_trigger_time_ns: AtomicInt = AtomicInt()
-    direct_blue_lost_connection_time_ns: AtomicInt = AtomicInt()
-    direct_blue_idle_lost_connection_time_ns: AtomicInt = AtomicInt()
-    wrapper_blue_idle_lost_connection_time_ns: AtomicInt = AtomicInt()
-    wrapper_green_lost_connection_time_ns: AtomicInt = AtomicInt()
-    dns_blue_changed_time_ns: AtomicInt = AtomicInt()
+    start_time_ns: AtomicInt = field(default_factory=lambda: AtomicInt(0))
+    threads_sync_time: AtomicInt = field(default_factory=lambda: AtomicInt(0))
+    bg_trigger_time_ns: AtomicInt = field(default_factory=lambda: AtomicInt(0))
+    direct_blue_lost_connection_time_ns: AtomicInt = field(default_factory=lambda: AtomicInt(0))
+    direct_blue_idle_lost_connection_time_ns: AtomicInt = field(default_factory=lambda: AtomicInt(0))
+    wrapper_blue_idle_lost_connection_time_ns: AtomicInt = field(default_factory=lambda: AtomicInt(0))
+    wrapper_green_lost_connection_time_ns: AtomicInt = field(default_factory=lambda: AtomicInt(0))
+    dns_blue_changed_time_ns: AtomicInt = field(default_factory=lambda: AtomicInt(0))
     dns_blue_error: Optional[str] = None
-    dns_green_removed_time_ns: AtomicInt = AtomicInt()
-    green_node_changed_name_time_ns: AtomicInt = AtomicInt()
-    blue_status_time: ConcurrentDict[str, int] = ConcurrentDict()
-    green_status_time: ConcurrentDict[str, int] = ConcurrentDict()
-    blue_wrapper_connect_times: Deque[TimeHolder] = deque()
-    blue_wrapper_execute_times: Deque[TimeHolder] = deque()
-    green_wrapper_execute_times: Deque[TimeHolder] = deque()
-    green_direct_iam_ip_with_blue_node_connect_times: Deque[TimeHolder] = deque()
-    green_direct_iam_ip_with_green_node_connect_times: Deque[TimeHolder] = deque()
+    dns_green_removed_time_ns: AtomicInt = field(default_factory=lambda: AtomicInt(0))
+    green_node_changed_name_time_ns: AtomicInt = field(default_factory=lambda: AtomicInt(0))
+    blue_status_time: ConcurrentDict[str, int] = field(default_factory=ConcurrentDict)
+    green_status_time: ConcurrentDict[str, int] = field(default_factory=ConcurrentDict)
+    blue_wrapper_connect_times: Deque[TimeHolder] = field(default_factory=deque)
+    blue_wrapper_execute_times: Deque[TimeHolder] = field(default_factory=deque)
+    green_wrapper_execute_times: Deque[TimeHolder] = field(default_factory=deque)
+    green_direct_iam_ip_with_blue_node_connect_times: Deque[TimeHolder] = field(default_factory=deque)
+    green_direct_iam_ip_with_green_node_connect_times: Deque[TimeHolder] = field(default_factory=deque)
