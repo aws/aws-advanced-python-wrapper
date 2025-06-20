@@ -112,7 +112,8 @@ class PluginServiceManagerContainer:
         self._plugin_manager = value
 
 
-T = TypeVar('T')
+StatusType = TypeVar('StatusType')
+UnwrapType = TypeVar('UnwrapType')
 
 
 class PluginService(ExceptionHandler, Protocol):
@@ -292,11 +293,11 @@ class PluginService(ExceptionHandler, Protocol):
         ...
 
     @abstractmethod
-    def set_status(self, clazz: Type[T], status: Optional[T], key: str):
+    def set_status(self, clazz: Type[StatusType], status: Optional[StatusType], key: str):
         ...
 
     @abstractmethod
-    def get_status(self, clazz: Type[T], key: str) -> Optional[T]:
+    def get_status(self, clazz: Type[StatusType], key: str) -> Optional[StatusType]:
         ...
 
 
@@ -677,18 +678,18 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if host_list_provider is not None and isinstance(host_list_provider, CanReleaseResources):
             host_list_provider.release_resources()
 
-    def set_status(self, clazz: Type[T], status: Optional[T], key: str):
+    def set_status(self, clazz: Type[StatusType], status: Optional[StatusType], key: str):
         cache_key = self._get_status_cache_key(clazz, key)
         if status is None:
             self._status_cache.remove(cache_key)
         else:
             self._status_cache.put(cache_key, status, PluginServiceImpl._STATUS_CACHE_EXPIRATION_NANO)
 
-    def _get_status_cache_key(self, clazz: Type[T], key: str) -> str:
+    def _get_status_cache_key(self, clazz: Type[StatusType], key: str) -> str:
         key_str = "" if key is None else key.strip().lower()
         return f"{key_str}::{clazz.__name__}"
 
-    def get_status(self, clazz: Type[T], key: str) -> Optional[T]:
+    def get_status(self, clazz: Type[StatusType], key: str) -> Optional[StatusType]:
         cache_key = self._get_status_cache_key(clazz, key)
         status = PluginServiceImpl._status_cache.get(cache_key)
         if status is None:
@@ -1072,6 +1073,17 @@ class PluginManager(CanReleaseResources):
                 return True
 
         return False
+
+    # For testing purposes only.
+    def _unwrap(self, unwrap_class: Type[UnwrapType]) -> Optional[UnwrapType]:
+        if len(self._plugins) < 1:
+            return None
+
+        for plugin in self._plugins:
+            if isinstance(plugin, unwrap_class):
+                return plugin
+
+        return None
 
     def release_resources(self):
         """

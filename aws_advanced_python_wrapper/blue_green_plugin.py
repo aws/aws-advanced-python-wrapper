@@ -767,6 +767,16 @@ class BlueGreenPlugin(Plugin):
             if self._start_time_ns.get() > 0:
                 self._end_time_ns.compare_and_set(0, perf_counter_ns())
 
+    # For testing purposes only.
+    def get_hold_time_ns(self) -> int:
+        if self._start_time_ns.get() == 0:
+            return 0
+
+        if self._end_time_ns.get() == 0:
+            return perf_counter_ns() - self._start_time_ns.get()
+        else:
+            return self._end_time_ns.get() - self._start_time_ns.get()
+
 
 class BlueGreenPluginFactory(PluginFactory):
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
@@ -1847,7 +1857,7 @@ class BlueGreenStatusProvider:
         sorted_phase_entries = sorted(self._phase_times_ns.items(), key=lambda entry: entry[1].timestamp_ns)
         phase_time_lines = [
             f"{entry[1].date_time:>28s} "
-            f"{'' if time_zero is None else (entry[1].timestamp_ns - time_zero.timestamp_ns) / 1_000_000:>18s} ms "
+            f"{'' if time_zero is None else (entry[1].timestamp_ns - time_zero.timestamp_ns) // 1_000_000:>18s} ms "
             f"{entry[0]:>31s}" for entry in sorted_phase_entries
         ]
         phase_times_str = "\n".join(phase_time_lines)

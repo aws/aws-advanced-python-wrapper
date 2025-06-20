@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Dict, Iterator, Set, Union, ValuesView
 if TYPE_CHECKING:
     from typing import ItemsView
 
-from threading import Lock, RLock
+from threading import Condition, Lock, RLock
 from typing import Callable, Generic, KeysView, List, Optional, TypeVar
 
 K = TypeVar('K')
@@ -33,6 +33,9 @@ class ConcurrentDict(Generic[K, V]):
 
     def __len__(self):
         return len(self._dict)
+
+    def __contains__(self, key):
+        return key in self._dict
 
     def get(self, key: K, default_value: Optional[V] = None) -> Optional[V]:
         return self._dict.get(key, default_value)
@@ -136,3 +139,22 @@ class ConcurrentSet(Generic[V]):
     def remove(self, item: V):
         with self._lock:
             self._set.remove(item)
+
+
+class CountDownLatch:
+    def __init__(self, count=1):
+        self.count = count
+        self.condition = Condition()
+
+    def count_down(self):
+        with self.condition:
+            if self.count > 0:
+                self.count -= 1
+                if self.count == 0:
+                    self.condition.notify_all()
+
+    def wait_sec(self, timeout_sec=None):
+        with self.condition:
+            if self.count > 0:
+                return self.condition.wait(timeout_sec)
+            return True

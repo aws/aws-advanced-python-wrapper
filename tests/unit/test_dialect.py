@@ -122,13 +122,13 @@ def test_mysql_is_dialect(mock_conn, mock_cursor, mock_session, mysql_dialect, m
 def test_rds_mysql_is_dialect(mock_super, mock_cursor, mock_conn, rds_mysql_dialect, mock_driver_dialect):
     mock_super().is_dialect.return_value = True
 
-    records = [("some_value", "some_value"), ("some_value", "source distribution")]
-    mock_cursor.__iter__.return_value = records
+    records = ("some_value", "source distribution")
+    mock_cursor.fetchone.return_value = records
 
     assert rds_mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
-    records = [("some_value", "some_value"), ("some_value", "some_value")]
-    mock_cursor.__iter__.return_value = records
+    records = ("some_value", "some_value")
+    mock_cursor.fetchone.return_value = records
 
     assert not rds_mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 

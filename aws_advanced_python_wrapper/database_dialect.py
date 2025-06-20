@@ -283,7 +283,7 @@ class RdsMysqlDialect(MysqlDatabaseDialect, BlueGreenDialect):
                     return False
 
                 if "source distribution" != record[1].lower():
-                    return True
+                    return False
 
             with closing(conn.cursor()) as cursor:
                 cursor.execute("SHOW VARIABLES LIKE 'report_host'")
