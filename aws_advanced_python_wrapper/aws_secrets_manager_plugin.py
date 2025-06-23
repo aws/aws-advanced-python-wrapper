@@ -17,10 +17,12 @@ from __future__ import annotations
 from json import JSONDecodeError, loads
 from re import search
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Optional, Set, Tuple
 
 import boto3
 from botocore.exceptions import ClientError, EndpointConnectionError
+
+from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 
 if TYPE_CHECKING:
     from boto3 import Session
@@ -46,8 +48,10 @@ class AwsSecretsManagerPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
 
     _SECRETS_ARN_PATTERN = r"^arn:aws:secretsmanager:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
+    _ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365
 
-    _secrets_cache: Dict[Tuple, SimpleNamespace] = {}
+    _secret: Optional[SimpleNamespace] = None
+    _secrets_cache: CacheMap[Tuple, SimpleNamespace] = CacheMap()
     _secret_key: Tuple = ()
 
     @property
@@ -94,7 +98,13 @@ class AwsSecretsManagerPlugin(Plugin):
         return self._connect(props, force_connect_func)
 
     def _connect(self, props: Properties, connect_func: Callable) -> Connection:
-        secret_fetched: bool = self._update_secret()
+        token_expiration_sec: int = WrapperProperties.SECRETS_MANAGER_EXPIRATION.get_int(props)
+        # if value is less than 0, default to one year
+        if token_expiration_sec < 0:
+            token_expiration_sec = AwsSecretsManagerPlugin._ONE_YEAR_IN_SECONDS
+        token_expiration_ns = token_expiration_sec * 1_000_000_000
+
+        secret_fetched: bool = self._update_secret(token_expiration_ns=token_expiration_ns)
 
         try:
             self._apply_secret_to_properties(props)
@@ -105,7 +115,7 @@ class AwsSecretsManagerPlugin(Plugin):
                 raise AwsWrapperError(
                     Messages.get_formatted("AwsSecretsManagerPlugin.ConnectException", e)) from e
 
-            secret_fetched = self._update_secret(True)
+            secret_fetched = self._update_secret(token_expiration_ns=token_expiration_ns, force_refetch=True)
 
             if secret_fetched:
                 try:
@@ -117,9 +127,10 @@ class AwsSecretsManagerPlugin(Plugin):
                                                unhandled_error)) from unhandled_error
             raise AwsWrapperError(Messages.get_formatted("AwsSecretsManagerPlugin.FailedLogin", e)) from e
 
-    def _update_secret(self, force_refetch: bool = False) -> bool:
+    def _update_secret(self, token_expiration_ns: int, force_refetch: bool = False) -> bool:
         """
         Called to update credentials from the cache, or from the AWS Secrets Manager service.
+        :param token_expiration_ns: Expiration time in nanoseconds for secret stored in cache.
         :param force_refetch: Allows ignoring cached credentials and force fetches the latest credentials from the service.
         :return: `True`, if credentials were fetched from the service.
         """
@@ -135,7 +146,7 @@ class AwsSecretsManagerPlugin(Plugin):
                 try:
                     self._secret = self._fetch_latest_credentials()
                     if self._secret:
-                        AwsSecretsManagerPlugin._secrets_cache[self._secret_key] = self._secret
+                        AwsSecretsManagerPlugin._secrets_cache.put(self._secret_key, self._secret, token_expiration_ns)
                         fetched = True
                 except (ClientError, AttributeError) as e:
                     logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)
