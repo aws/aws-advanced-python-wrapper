@@ -1,7 +1,7 @@
 # Development Guide
 
 ### Setup
-Make sure you have Python 3.8+ installed, along with your choice of underlying Python driver (see [minimum requirements](../GettingStarted.md#minimum-requirements)).
+Make sure you have Python 3.8 - 3.11 (inclusive) installed, along with your choice of underlying Python driver (see [minimum requirements](../GettingStarted.md#minimum-requirements)).
 
 Clone the AWS Advanced Python Driver repository:
 
@@ -26,10 +26,10 @@ The AWS Advanced Python Driver uses the following tests to verify its correctnes
 
 The AWS Advanced Python Driver has the following tests to verify its performance:
 
-| Tests                                | Description                                                                                                                                                                                                                                                                                            |
-|--------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Connection plugin manager benchmarks | The [benchmarks](../../benchmarks/README.md) subproject measures the overhead from executing Python method calls with multiple connection plugins enabled.                                                                                                                                             |
-| Manually-triggered performance tests | The [failover plugin performance tests](../../tests/integration/container/test_failover_performance.py) and [enhanced failure monitoring performance tests](../..tests/integration/container/test_read_write_splitting_performance.py) measure the plugins' performance under different configurations |
+| Tests                                | Description                                                                                                                                                                                                                                                                                             |
+|--------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Connection plugin manager benchmarks | The [benchmarks](../../benchmarks/README.md) subproject measures the overhead from executing Python method calls with multiple connection plugins enabled.                                                                                                                                              |
+| Manually-triggered performance tests | The [failover plugin performance tests](../../tests/integration/container/test_failover_performance.py) and [enhanced failure monitoring performance tests](../../tests/integration/container/test_read_write_splitting_performance.py) measure the plugins' performance under different configurations |
 
 ### Running the Tests
 
