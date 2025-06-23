@@ -94,7 +94,7 @@ class OktaAuthPlugin(Plugin):
             region
         )
 
-        token_info = OktaAuthPlugin._token_cache.get(cache_key)
+        token_info: Optional[TokenInfo] = OktaAuthPlugin._token_cache.get(cache_key)
 
         if token_info is not None and not token_info.is_expired():
             logger.debug("OktaAuthPlugin.UseCachedToken", token_info.token)
@@ -106,7 +106,10 @@ class OktaAuthPlugin(Plugin):
 
         try:
             return connect_func()
-        except Exception:
+        except Exception as e:
+            if token_info is None or token_info.is_expired() or not self._plugin_service.is_login_exception(e):
+                raise e
+
             self._update_authentication_token(host_info, props, user, region, cache_key)
 
             try:
