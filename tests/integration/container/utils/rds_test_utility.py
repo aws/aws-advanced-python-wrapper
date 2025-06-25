@@ -54,6 +54,11 @@ class RdsTestUtility:
         else:
             self._client = boto3.client(service_name='rds', region_name=region)
 
+    @staticmethod
+    def get_utility() -> RdsTestUtility:
+        test_info = TestEnvironment.get_current().get_info()
+        return RdsTestUtility(test_info.get_region(), test_info.get_rds_endpoint())
+
     def get_db_instance(self, instance_id: str) -> Optional[Dict[str, Any]]:
         filters = [{'Name': "db-instance-id", 'Values': [f"{instance_id}"]}]
         response = self._client.describe_db_instances(DBInstanceIdentifier=instance_id,
@@ -62,6 +67,14 @@ class RdsTestUtility:
         if instances is None or len(instances) == 0:
             return None
         return instances[0]
+
+    def get_rds_client(self):
+        test_info = TestEnvironment.get_current().get_info()
+        endpoint = test_info.get_rds_endpoint()
+        if endpoint:
+            return boto3.client(region=test_info.get_region(), endpoint_url=endpoint)
+        else:
+            return boto3.client(region=test_info.get_region())
 
     def does_db_instance_exist(self, instance_id: str) -> bool:
         try:

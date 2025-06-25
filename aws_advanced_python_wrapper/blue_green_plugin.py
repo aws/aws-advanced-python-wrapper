@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 import socket
 from datetime import datetime
 from time import perf_counter_ns
@@ -812,10 +813,10 @@ class BlueGreenStatusMonitor:
 
         self._rds_utils = RdsUtils()
         self._cv = Condition()
-        self._should_collect_ip_addresses = Event()
-        self._should_collect_ip_addresses.set()
-        self._should_collect_topology = Event()
-        self._should_collect_topology.set()
+        self.should_collect_ip_addresses = Event()
+        self.should_collect_ip_addresses.set()
+        self.should_collect_topology = Event()
+        self.should_collect_topology.set()
         self.use_ip_address = Event()
         self._panic_mode = Event()
         self._panic_mode.set()
@@ -837,6 +838,7 @@ class BlueGreenStatusMonitor:
         self._connection_host_info: Optional[HostInfo] = None
         self._connected_ip_address: Optional[str] = None
         self._is_host_info_correct = Event()
+        self._has_started = Event()
 
         db_dialect = self._plugin_service.database_dialect
         if not isinstance(db_dialect, BlueGreenDialect):
@@ -846,7 +848,11 @@ class BlueGreenStatusMonitor:
 
         self._open_connection_thread: Optional[Thread] = None
         self._monitor_thread = Thread(daemon=True, name="BlueGreenMonitorThread", target=self._run)
-        self._monitor_thread.start()
+
+    def start(self):
+        if not self._has_started.is_set():
+            self._has_started.set()
+            self._monitor_thread.start()
 
     def _run(self):
         try:
@@ -973,16 +979,18 @@ class BlueGreenStatusMonitor:
             with conn.cursor() as cursor:
                 cursor.execute(self._bg_dialect.blue_green_status_query)
                 for record in cursor:
-                    version = record["version"]
+                    # columns: id, endpoint, port, role, status, version, update_stamp
+                    # TODO: is the order of columns the same for all dialects?
+                    version = record[5]
                     if version not in BlueGreenStatusMonitor._KNOWN_VERSIONS:
                         self._version = BlueGreenStatusMonitor._LATEST_KNOWN_VERSION
                         logger.warning(
                             "BlueGreenStatusMonitor.UsesVersion", self._bg_role, version, self._version)
 
-                    endpoint = record["endpoint"]
-                    port = record["port"]
-                    bg_role = BlueGreenRole.parse_role(record["role"], self._version)
-                    phase = BlueGreenPhase.parse_phase(record["status"])
+                    endpoint = record[1]
+                    port = record[2]
+                    bg_role = BlueGreenRole.parse_role(record[3], self._version)
+                    phase = BlueGreenPhase.parse_phase(record[4])
 
                     if self._bg_role != bg_role:
                         continue
@@ -1018,7 +1026,7 @@ class BlueGreenStatusMonitor:
                 self._version = status_info.version
                 self._port = status_info.port
 
-            if self._should_collect_topology.is_set():
+            if self.should_collect_topology.is_set():
                 current_host_names = {status.endpoint.lower() for status in status_entries
                                       if status.endpoint is not None and
                                       self._rds_utils.is_not_old_instance(status.endpoint)}
@@ -1108,11 +1116,11 @@ class BlueGreenStatusMonitor:
             return
 
         self._current_topology = self._host_list_provider.force_refresh(conn)
-        if self._should_collect_topology:
+        if self.should_collect_topology:
             self._start_topology = self._current_topology
 
         current_topology_copy = self._current_topology
-        if current_topology_copy is not None and self._should_collect_topology:
+        if current_topology_copy is not None and self.should_collect_topology:
             self._host_names.update({host_info.host for host_info in current_topology_copy})
 
     def _collect_ip_addresses(self):
@@ -1121,31 +1129,33 @@ class BlueGreenStatusMonitor:
             for host in self._host_names:
                 self._current_ip_addresses_by_host.put_if_absent(host, self._get_ip_address(host))
 
-        if self._should_collect_ip_addresses:
+        if self.should_collect_ip_addresses:
             self._start_ip_addresses_by_host.clear()
             self._start_ip_addresses_by_host.put_all(self._current_ip_addresses_by_host)
 
     def _update_ip_address_flags(self):
-        if self._should_collect_topology:
+        if self.should_collect_topology:
             self._all_start_topology_ip_changed = False
             self._all_start_topology_endpoints_removed = False
             self._all_topology_changed = False
             return
 
-        if not self._should_collect_ip_addresses:
+        if not self.should_collect_ip_addresses:
             # Check whether all hosts in start_topology resolve to new IP addresses
             self._all_start_topology_ip_changed = self._has_all_start_topology_ip_changed()
 
         # Check whether all hosts in start_topology no longer have IP addresses. This indicates that the start_topology
         # hosts can no longer be resolved because their DNS entries no longer exist.
-        self._all_start_topology_endpoints_removed = bool(self._start_topology) and \
-            all(
-                self._start_ip_addresses_by_host.get(node.host) is not None and
-                self._current_ip_addresses_by_host.get(node.host) is None
-                for node in self._start_topology
-            )
+        self._all_start_topology_endpoints_removed = (
+                bool(self._start_topology) and
+                all(
+                    self._start_ip_addresses_by_host.get(node.host) is not None and
+                    self._current_ip_addresses_by_host.get(node.host) is None
+                    for node in self._start_topology
+                )
+        )
 
-        if not self._should_collect_topology:
+        if not self.should_collect_topology:
             # Check whether all hosts in current_topology do not exist in start_topology
             start_topology_hosts = set() if self._start_topology is None else \
                 {host_info.host for host_info in self._start_topology}
@@ -1196,7 +1206,6 @@ class BlueGreenStatusProvider:
         self._props = props
         self._bg_id = bg_id
 
-        self._monitors: List[Optional[BlueGreenStatusMonitor]] = [None, None]
         self._interim_status_hashes = [0, 0]
         self._latest_context_hash = 0
         self._interim_statuses: List[Optional[BlueGreenInterimStatus]] = [None, None]
@@ -1242,7 +1251,7 @@ class BlueGreenStatusProvider:
             logger.warning("BlueGreenStatusProvider.NoCurrentHostInfo", self._bg_id)
             return
 
-        self._monitors[BlueGreenRole.SOURCE.value] = BlueGreenStatusMonitor(
+        blue_monitor = BlueGreenStatusMonitor(
             BlueGreenRole.SOURCE,
             self._bg_id,
             current_host_info,
@@ -1250,7 +1259,7 @@ class BlueGreenStatusProvider:
             self._get_monitoring_props(),
             self._status_check_intervals_ms,
             self._process_interim_status)
-        self._monitors[BlueGreenRole.TARGET.value] = BlueGreenStatusMonitor(
+        green_monitor = BlueGreenStatusMonitor(
             BlueGreenRole.TARGET,
             self._bg_id,
             current_host_info,
@@ -1258,6 +1267,11 @@ class BlueGreenStatusProvider:
             self._get_monitoring_props(),
             self._status_check_intervals_ms,
             self._process_interim_status)
+
+        self._monitors: List[BlueGreenStatusMonitor] = [blue_monitor, green_monitor]
+
+        for monitor in self._monitors:
+            monitor.start()
 
     def _get_monitoring_props(self) -> Properties:
         monitoring_props = copy(self._props)
@@ -1778,14 +1792,14 @@ class BlueGreenStatusProvider:
         if phase == BlueGreenPhase.NOT_CREATED:
             for monitor in self._monitors:
                 monitor.interval_rate = BlueGreenIntervalRate.BASELINE
-                monitor.collect_ip_address = False
-                monitor.collect_topology = False
+                monitor.should_collect_ip_addresses.clear()
+                monitor.should_collect_topology.clear()
                 monitor.use_ip_address = False
         elif phase == BlueGreenPhase.CREATED:
             for monitor in self._monitors:
                 monitor.interval_rate = BlueGreenIntervalRate.INCREASED
-                monitor.collect_ip_address = True
-                monitor.collect_topology = True
+                monitor.should_collect_ip_addresses.set()
+                monitor.should_collect_topology.set()
                 monitor.use_ip_address = False
                 if self._rollback:
                     monitor.reset_collected_data()
@@ -1794,14 +1808,14 @@ class BlueGreenStatusProvider:
                 or phase == BlueGreenPhase.POST:
             for monitor in self._monitors:
                 monitor.interval_rate = BlueGreenIntervalRate.HIGH
-                monitor.collect_ip_address = False
-                monitor.collect_topology = False
+                monitor.should_collect_ip_addresses.clear()
+                monitor.should_collect_topology.clear()
                 monitor.use_ip_address = True
         elif phase == BlueGreenPhase.COMPLETED:
             for monitor in self._monitors:
                 monitor.interval_rate = BlueGreenIntervalRate.BASELINE
-                monitor.collect_ip_address = False
-                monitor.collect_topology = False
+                monitor.should_collect_ip_addresses.clear()
+                monitor.should_collect_topology.clear()
                 monitor.use_ip_address = False
                 monitor.reset_collected_data()
 
@@ -1819,7 +1833,7 @@ class BlueGreenStatusProvider:
 
         if latest_status is not None:
             # Notify all waiting threads that the status has been updated.
-            with latest_status:
+            with latest_status.cv:
                 latest_status.cv.notify_all()
 
     def _log_current_context(self):

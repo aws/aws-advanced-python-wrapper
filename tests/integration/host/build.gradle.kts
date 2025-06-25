@@ -263,6 +263,88 @@ tasks.register<Test>("test-mysql-aurora-performance") {
     }
 }
 
+tasks.register<Test>("test-bgd-mysql-rds-instance") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-failover", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-instances-2", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("test-bg-only", "true")
+    }
+}
+
+tasks.register<Test>("test-bgd-mysql-aurora") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-failover", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-instances-1", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("test-bg-only", "true")
+
+    }
+}
+
+tasks.register<Test>("test-bgd-pg-rds-instance") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-failover", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-instances-2", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("test-bg-only", "true")
+    }
+}
+
+tasks.register<Test>("test-bgd-pg-aurora") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-failover", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-instances-1", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("test-bg-only", "true")
+
+    }
+}
+
 // Debug
 
 tasks.register<Test>("debug-all-environments") {
@@ -411,5 +493,25 @@ tasks.register<Test>("debug-mysql-multi-az") {
         systemProperty("exclude-pg-driver", "true")
         systemProperty("exclude-pg-engine", "true")
         systemProperty("exclude-bg", "true")
+    }
+}
+
+tasks.register<Test>("debug-bgd-pg-aurora") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.debugTests")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-failover", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-instances-1", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("test-bg-only", "true")
     }
 }

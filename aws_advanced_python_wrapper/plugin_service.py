@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, List, Type, TypeVar
 
+from aws_advanced_python_wrapper import LogUtils
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
 from aws_advanced_python_wrapper.blue_green_plugin import \
@@ -29,6 +30,7 @@ from aws_advanced_python_wrapper.federated_plugin import \
 from aws_advanced_python_wrapper.okta_plugin import OktaAuthPluginFactory
 from aws_advanced_python_wrapper.states.session_state_service import (
     SessionStateService, SessionStateServiceImpl)
+from aws_advanced_python_wrapper.utils.utils import Utils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
@@ -422,6 +424,36 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     @property
     def current_host_info(self) -> Optional[HostInfo]:
+        if self._current_host_info is not None:
+            return self._current_host_info
+
+        self._current_host_info = self._initial_connection_host_info
+        if self._current_host_info is not None:
+            logger.debug("PluginServiceImpl.SetCurrentHostInfo", self._current_host_info)
+            return self._current_host_info
+
+        all_hosts = self.all_hosts
+        if not all_hosts:
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.HostListEmpty"))
+
+        self._current_host_info = (
+            next((host_info for host_info in all_hosts if host_info.role == HostRole.WRITER), None))
+        if self._current_host_info:
+            allowed_hosts = self.hosts
+            if not Utils.contains_url(allowed_hosts, self._current_host_info.url):
+                raise AwsWrapperError(
+                    Messages.get_formatted(
+                        "PluginServiceImpl.CurrentHostNotAllowed",
+                        self._current_host_info.url, LogUtils.log_topology(allowed_hosts)))
+        else:
+            allowed_hosts = self.hosts
+            if len(allowed_hosts) > 0:
+                self._current_host_info = self.hosts[0]
+
+        if self._current_host_info is None:
+            raise AwsWrapperError("PluginServiceImpl.CouldNotDetermineCurrentHost")
+
+        logger.debug("PluginServiceImpl.SetCurrentHostInfo", self._current_host_info)
         return self._current_host_info
 
     @property

@@ -30,8 +30,13 @@ from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Tuple
 
 import mysql.connector
 import psycopg
+from mysql.connector import CMySQLConnection
+
+from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
 
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.pep249 import Connection
     from .utils.connection_utils import ConnectionUtils
     from .utils.test_driver import TestDriver
 
@@ -42,7 +47,6 @@ from dataclasses import dataclass, field
 from threading import Event, Thread
 from time import perf_counter_ns, sleep
 
-import boto3
 import pytest
 from tabulate import tabulate  # type: ignore
 
@@ -55,7 +59,8 @@ from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import (ConcurrentDict,
                                                           CountDownLatch)
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from .utils.conditions import enable_on_deployments, enable_on_features
 from .utils.database_engine import DatabaseEngine
@@ -83,17 +88,18 @@ class TestBlueGreenDeployment:
     PG_RDS_BG_STATUS_QUERY = f"SELECT * FROM rds_tools.show_topology('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')"
     results: ConcurrentDict[str, BlueGreenResults] = ConcurrentDict()
     unhandled_exceptions: Deque[Exception] = deque()
+    mysql_dialect = MySQLDriverDialect(Properties())
+    pg_dialect = PgDriverDialect(Properties())
 
     @pytest.fixture(scope='class')
     def test_utility(self):
-        region: str = TestEnvironment.get_current().get_info().get_region()
-        return RdsTestUtility(region)
+        return RdsTestUtility.get_utility()
 
     @pytest.fixture(scope='class')
     def rds_utils(self):
         return RdsUtils()
 
-    def test_switchover(self, conn_utils, test_utility, rds_utils, test_environment, test_driver):
+    def test_switchover(self, conn_utils, test_utility, rds_utils, test_environment: TestEnvironment, test_driver):
         self.results.clear()
         self.unhandled_exceptions.clear()
 
@@ -108,7 +114,7 @@ class TestBlueGreenDeployment:
 
         env = TestEnvironment.get_current()
         info = env.get_info()
-        db_name = info.get_db_name()
+        db_name = conn_utils.dbname
         test_instance = env.get_writer()
         topology_instances: List[str] = self.get_bg_endpoints(
             test_environment, test_utility, rds_utils, info.get_bg_deployment_id())
@@ -119,55 +125,56 @@ class TestBlueGreenDeployment:
             host_id = host[0:host.index(".")]
             assert host_id
 
-            self.results.put(host_id, BlueGreenResults())
+            bg_results = BlueGreenResults()
+            self.results.put(host_id, bg_results)
 
             if rds_utils.is_not_green_or_old_instance(host):
                 threads.append(Thread(
                     target=self.direct_topology_monitor,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
-                          finish_latch, self.results.get(host_id))))
+                          finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
 
                 threads.append(Thread(
                     target=self.direct_blue_connectivity_monitor,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
-                          finish_latch, self.results.get(host_id))))
+                          finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
 
                 threads.append(Thread(
                     target=self.direct_blue_idle_connectivity_monitor,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
-                          finish_latch, self.results.get(host_id))))
+                          finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
 
                 threads.append(Thread(
                     target=self.wrapper_blue_idle_connectivity_monitor,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
-                          finish_latch, self.results.get(host_id))))
+                          finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
 
                 threads.append(Thread(
                     target=self.wrapper_blue_executing_connectivity_monitor,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
-                          finish_latch, self.results.get(host_id))))
+                          finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
 
                 threads.append(Thread(
                     target=self.wrapper_blue_new_connection_monitor,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
-                          finish_latch, self.results.get(host_id))))
+                          finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
                 # TODO: should we increment thread_finish_count too?
 
                 threads.append(Thread(
                     target=self.blue_dns_monitor,
-                    args=(host_id, host, start_latch, stop, finish_latch, self.results.get(host_id))))
+                    args=(host_id, host, start_latch, stop, finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
 
@@ -175,32 +182,32 @@ class TestBlueGreenDeployment:
                 threads.append(Thread(
                     target=self.direct_topology_monitor,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
-                          finish_latch, self.results.get(host_id))))
+                          finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
 
                 threads.append(Thread(
                     target=self.wrapper_green_connectivity_monitor,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
-                          finish_latch, self.results.get(host_id))))
+                          finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
 
                 threads.append(Thread(
                     target=self.green_dns_monitor,
-                    args=(host_id, host, start_latch, stop, finish_latch, self.results.get(host_id))))
+                    args=(host_id, host, start_latch, stop, finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
 
                 if iam_enabled:
-                    rds_client = boto3.client("rds", region_name=test_environment.get_region())
+                    rds_client = test_utility.get_rds_client()
 
                     threads.append(Thread(
                         target=self.green_iam_connectivity_monitor,
                         args=(test_driver, conn_utils, rds_client, host_id, "BlueHostToken",
                               self.rds_utils().remove_green_instance_prefix(host), host, test_instance.get_port(),
-                              db_name, start_latch, stop, finish_latch, self.results.get(host_id),
-                              self.results.get(host_id).green_direct_iam_ip_with_blue_node_connect_times, False, True)))
+                              db_name, start_latch, stop, finish_latch, bg_results,
+                              bg_results.green_direct_iam_ip_with_blue_node_connect_times, False, True)))
                     thread_count += 1
                     thread_finish_count += 1
 
@@ -208,8 +215,7 @@ class TestBlueGreenDeployment:
                         target=self.green_iam_connectivity_monitor,
                         args=(test_driver, conn_utils, rds_client, host_id, "GreenHostToken", host, host,
                               test_instance.get_port(), db_name, start_latch, stop, finish_latch,
-                              self.results.get(host_id),
-                              self.results.get(host_id).green_direct_iam_ip_with_green_node_connect_times, True, False)
+                              bg_results, bg_results.green_direct_iam_ip_with_green_node_connect_times, True, False)
                     ))
                     thread_count += 1
                     thread_finish_count += 1
@@ -219,6 +225,9 @@ class TestBlueGreenDeployment:
             args=(test_utility, info.get_bg_deployment_id(), start_latch, finish_latch, self.results)))
         thread_count += 1
         thread_finish_count += 1
+
+        start_latch.set_count(thread_count)
+        finish_latch.set_count(thread_finish_count)
 
         for result in self.results.values():
             result.start_time_ns.set(start_time_ns)
@@ -237,7 +246,7 @@ class TestBlueGreenDeployment:
         stop.set()
 
         for thread in threads:
-            thread.join(timeout=10)
+            thread.join(timeout=30)
             if thread.is_alive():
                 self.logger.debug("Timed out waiting for a thread to stop running...")
 
@@ -352,10 +361,9 @@ class TestBlueGreenDeployment:
             pytest.fail(f"Unsupported database engine: {engine}")
 
         try:
-            conn = self.get_direct_connection(
+            conn = self.get_direct_connection_with_retry(
                 test_driver,
-                **conn_utils.get_connect_params(host=host, port=port, dbname=db),
-                **self.get_telemetry_params())
+                **conn_utils.get_connect_params(host=host, port=port, dbname=db))
             self.logger.debug(f"[DirectTopology] @ {host_id}] Connection opened.")
 
             sleep(1)
@@ -370,7 +378,7 @@ class TestBlueGreenDeployment:
             end_time_ns = perf_counter_ns() + 15 * 60 * 1_000_000_000  # 15 minutes
             while not stop.is_set() and perf_counter_ns() < end_time_ns:
                 if conn is None:
-                    conn = self.get_direct_connection(
+                    conn = self.get_direct_connection_with_retry(
                         test_driver, **conn_utils.get_connect_params(host=host, port=port, dbname=db))
                     self.logger.debug(f"[DirectTopology] @ {host_id}] Connection re-opened.")
 
@@ -378,9 +386,10 @@ class TestBlueGreenDeployment:
                     cursor = conn.cursor()
                     cursor.execute(query)
                     for record in cursor:
-                        role = record["role"]
-                        version = record["version"]
-                        status = record["status"]
+                        # columns: ID, hostId, endpoint, port, role, status, version
+                        role = record[4]
+                        status = record[5]
+                        version = record[6]
                         is_green = BlueGreenRole.parse_role(role, version) == BlueGreenRole.TARGET
 
                         def _log_and_return_time(_) -> int:
@@ -419,15 +428,16 @@ class TestBlueGreenDeployment:
 
         return params
 
-    def get_direct_connection(self, test_driver: TestDriver, **connect_params) -> AwsWrapperConnection:
+    def get_direct_connection_with_retry(self, test_driver: TestDriver, **connect_params) -> AwsWrapperConnection:
         conn = None
         connect_count = 0
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         while conn is None and connect_count < 10:
             try:
                 conn = target_driver_connect(**connect_params)
-            except Exception:
+            except Exception as e:
                 # ignore, try to connect again
+                print(f"asdf {e}")
                 pass
 
             connect_count += 1
@@ -437,13 +447,24 @@ class TestBlueGreenDeployment:
 
         return conn
 
-    def close_connection(self, conn: Optional[AwsWrapperConnection]):
+    def close_connection(self, conn: Optional[Connection]):
         try:
-            if conn is not None and not conn.is_closed:
+            if conn is not None and not self.is_closed(conn):
                 conn.close()
         except Exception:
             # do nothing
             pass
+
+    def is_closed(self, conn: Connection) -> bool:
+        if isinstance(conn, psycopg.Connection):
+            return self.pg_dialect.is_closed(conn)
+        elif isinstance(conn, CMySQLConnection):
+            return self.mysql_dialect.is_closed(conn)
+        elif isinstance(conn, AwsWrapperConnection):
+            return conn.is_closed
+        else:
+            pytest.fail(
+                f"Unable to determine if the connection was closed because it was of an unexpected type: {conn}")
 
     # Blue node
     # Checking: connectivity, SELECT 1
@@ -462,10 +483,9 @@ class TestBlueGreenDeployment:
             results: BlueGreenResults):
         conn = None
         try:
-            conn = self.get_direct_connection(
+            conn = self.get_direct_connection_with_retry(
                 test_driver,
-                **conn_utils.get_connect_params(host=host, port=port, dbname=db),
-                **self.get_telemetry_params())
+                **conn_utils.get_connect_params(host=host, port=port, dbname=db))
             self.logger.debug(f"[DirectBlueConnectivity @ {host_id}] Connection opened.")
 
             sleep(1)
@@ -511,10 +531,9 @@ class TestBlueGreenDeployment:
             results: BlueGreenResults):
         conn = None
         try:
-            conn = self.get_direct_connection(
+            conn = self.get_direct_connection_with_retry(
                 test_driver,
-                **conn_utils.get_connect_params(host=host, port=port, dbname=db),
-                **self.get_telemetry_params())
+                **conn_utils.get_connect_params(host=host, port=port, dbname=db))
             self.logger.debug(f"[DirectBlueIdleConnectivity @ {host_id}] Connection opened.")
 
             sleep(1)
@@ -528,7 +547,7 @@ class TestBlueGreenDeployment:
 
             while not stop.is_set():
                 try:
-                    if conn.is_closed:
+                    if self.is_closed(conn):
                         results.direct_blue_idle_lost_connection_time_ns.set(perf_counter_ns())
                         break
 
@@ -563,7 +582,7 @@ class TestBlueGreenDeployment:
         conn = None
         try:
             connect_params = self.get_wrapper_connect_params(conn_utils, host, port, db)
-            conn = self.get_wrapper_connection(test_driver, **connect_params)
+            conn = self.get_wrapper_connection_with_retry(test_driver, **connect_params)
             self.logger.debug(f"[WrapperBlueIdleConnectivity @ {host_id}] Connection opened.")
 
             sleep(1)
@@ -577,7 +596,7 @@ class TestBlueGreenDeployment:
 
             while not stop.is_set():
                 try:
-                    if conn.is_closed:
+                    if self.is_closed(conn):
                         results.wrapper_blue_idle_lost_connection_time_ns.set(perf_counter_ns())
                         break
 
@@ -622,15 +641,16 @@ class TestBlueGreenDeployment:
 
         return params
 
-    def get_wrapper_connection(self, test_driver: TestDriver, **connect_params) -> AwsWrapperConnection:
+    def get_wrapper_connection_with_retry(self, test_driver: TestDriver, **connect_params) -> AwsWrapperConnection:
         conn = None
         connect_count = 0
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         while conn is None and connect_count < 10:
             try:
                 conn = AwsWrapperConnection.connect(target_driver_connect, **connect_params)
-            except Exception:
+            except Exception as e:
                 # ignore, try to connect again
+                print(f"asdf {e}")
                 pass
 
             connect_count += 1
@@ -668,8 +688,9 @@ class TestBlueGreenDeployment:
             pytest.fail(f"Unsupported database engine: {engine}")
 
         try:
+            target_driver_connect = DriverHelper.get_connect_func(test_driver)
             connect_params = self.get_wrapper_connect_params(conn_utils, host, port, db)
-            conn = self.get_wrapper_connection(test_driver, **connect_params)
+            conn = AwsWrapperConnection.connect(target_driver_connect, **connect_params)
             bg_plugin: Optional[BlueGreenPlugin] = conn._unwrap(BlueGreenPlugin)
             assert bg_plugin is not None, f"Unable to find blue/green plugin in wrapper connection for {host}."
             self.logger.debug(f"[WrapperBlueExecute @ {host_id}] Connection opened.")
@@ -694,7 +715,7 @@ class TestBlueGreenDeployment:
                 except Exception as e:
                     results.blue_wrapper_execute_times.append(
                         TimeHolder(start_time_ns, perf_counter_ns(), bg_plugin.get_hold_time_ns(), str(e)))
-                    if conn.is_closed:
+                    if self.is_closed(conn):
                         break
 
                 sleep(1)
@@ -724,6 +745,7 @@ class TestBlueGreenDeployment:
             results: BlueGreenResults):
         conn = None
         try:
+            target_driver_connect = DriverHelper.get_connect_func(test_driver)
             connect_params = self.get_wrapper_connect_params(conn_utils, host, port, db)
 
             sleep(1)
@@ -739,7 +761,7 @@ class TestBlueGreenDeployment:
                 start_time_ns = perf_counter_ns()
 
                 try:
-                    conn = self.get_wrapper_connection(test_driver, **connect_params)
+                    conn = AwsWrapperConnection.connect(target_driver_connect, **connect_params)
                     end_time_ns = perf_counter_ns()
                     bg_plugin: Optional[BlueGreenPlugin] = conn._unwrap(BlueGreenPlugin)
                     assert bg_plugin is not None, f"Unable to find blue/green plugin in wrapper connection for {host}."
@@ -863,7 +885,7 @@ class TestBlueGreenDeployment:
         conn = None
         try:
             connect_params = self.get_wrapper_connect_params(conn_utils, host, port, db)
-            conn = self.get_wrapper_connection(test_driver, **connect_params)
+            conn = self.get_wrapper_connection_with_retry(test_driver, **connect_params)
             self.logger.debug(f"[WrapperGreenConnectivity @ {host_id}] Connection opened.")
 
             bg_plugin: Optional[BlueGreenPlugin] = conn._unwrap(BlueGreenPlugin)
@@ -893,7 +915,7 @@ class TestBlueGreenDeployment:
                         self.logger.debug(f"[WrapperGreenConnectivity @ {host_id}] Thread timeout exception: {e}")
                         results.green_wrapper_execute_times.append(
                             TimeHolder(start_time_ns, perf_counter_ns(), bg_plugin.get_hold_time_ns(), str(e)))
-                        if conn.is_closed:
+                        if self.is_closed(conn):
                             results.wrapper_green_lost_connection_time_ns.set(perf_counter_ns())
                             break
                     else:
@@ -1239,13 +1261,13 @@ class TestBlueGreenDeployment:
         bg_trigger_time_ns = next((result.bg_trigger_time_ns.get() for result in self.results.values()), None)
         assert bg_trigger_time_ns is not None, "Cannot get bg_trigger_time"
 
-        max_green_node_change_time_ms = max(
-            (0 if result.green_node_change_name_time.get() == 0
-             else (result.green_node_change_name_time.get() - bg_trigger_time_ns) // 1_000_000
+        max_green_node_changed_name_time_ms = max(
+            (0 if result.green_node_changed_name_time_ns.get() == 0
+             else (result.green_node_changed_name_time_ns.get() - bg_trigger_time_ns) // 1_000_000
              for result in self.results.values()),
             default=0
         )
-        self.logger.debug(f"max_green_node_change_time: {max_green_node_change_time_ms} ms")
+        self.logger.debug(f"max_green_node_changed_name_time: {max_green_node_changed_name_time_ms} ms")
 
         switchover_complete_time_ms = max(
             (0 if x == 0
@@ -1255,11 +1277,12 @@ class TestBlueGreenDeployment:
              for x in [result.green_status_time.get("SWITCHOVER_COMPLETED", 0)]),
             default=0
         )
-        self.logger.debug(f"switchoverCompleteTime: {switchover_complete_time_ms} ms")
+        self.logger.debug(f"switchover_complete_time: {switchover_complete_time_ms} ms")
 
         # Assertions
         assert switchover_complete_time_ms != 0, "BG switchover hasn't completed."
-        assert switchover_complete_time_ms >= max_green_node_change_time_ms, "Green node changed name after SWITCHOVER_COMPLETED."
+        assert switchover_complete_time_ms >= max_green_node_changed_name_time_ms, \
+            "Green node changed name after SWITCHOVER_COMPLETED."
 
 
 @dataclass

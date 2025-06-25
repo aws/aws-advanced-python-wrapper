@@ -87,3 +87,11 @@ class Utils:
             return getattr(m, parts[-1])(*args)
         except ModuleNotFoundError:
             return None
+
+    @staticmethod
+    def contains_url(hosts: Tuple[HostInfo, ...], url: str) -> bool:
+        for host in hosts:
+            if host.url == url:
+                return True
+
+        return False

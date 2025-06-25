@@ -648,7 +648,7 @@ public class TestEnvironment implements AutoCloseable {
     env.rdsDbName = config.rdsDbName; // "cluster-mysql"
     env.rdsDbDomain = config.rdsDbDomain; // "XYZ.us-west-2.rds.amazonaws.com"
     env.rdsEndpoint = config.rdsEndpoint; // "XYZ.us-west-2.rds.amazonaws.com"
-    env.info.setRdsEndpoint(env.rdsEndpoint);
+    env.info.setRdsEndpoint(env.rdsEndpoint); // "https://rds-int.amazon.com"
 
     env.auroraUtil =
         new AuroraTestUtility(
@@ -796,9 +796,15 @@ public class TestEnvironment implements AutoCloseable {
           throw new RuntimeException(e);
         }
       }
-      env.auroraUtil.ec2DeauthorizesIP(env.runnerIP);
-      LOGGER.finest(String.format("Test runner IP %s de-authorized. Usage count: %d",
-          env.runnerIP, ipAddressUsageRefCount.get()));
+
+      if (!env.reuseDb) {
+        env.auroraUtil.ec2DeauthorizesIP(env.runnerIP);
+        LOGGER.finest(String.format("Test runner IP %s de-authorized. Usage count: %d",
+            env.runnerIP, ipAddressUsageRefCount.get()));
+      } else {
+        LOGGER.finest("The IP address usage count hit 0, but the REUSE_RDS_DB was set to true, so IP "
+                + "de-authorization was skipped.");
+      }
     } else {
       LOGGER.finest("IP usage count: " + ipAddressUsageRefCount.get());
     }

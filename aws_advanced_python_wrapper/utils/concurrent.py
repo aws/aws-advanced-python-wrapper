@@ -146,6 +146,9 @@ class CountDownLatch:
         self.count = count
         self.condition = Condition()
 
+    def set_count(self, count: int):
+        self.count = count
+
     def count_down(self):
         with self.condition:
             if self.count > 0:
