@@ -269,7 +269,7 @@ class BlueGreenDialect(ABC):
 class RdsMysqlDialect(MysqlDatabaseDialect, BlueGreenDialect):
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_MYSQL)
 
-    _BG_STATUS_QUERY = "SELECT * FROM mysql.rds_topology"
+    _BG_STATUS_QUERY = "SELECT version, endpoint, port, role, status FROM mysql.rds_topology"
     _BG_STATUS_EXISTS_QUERY = \
         "SELECT 1 AS tmp FROM information_schema.tables WHERE table_schema = 'mysql' AND table_name = 'rds_topology'"
 
@@ -323,7 +323,8 @@ class RdsPgDialect(PgDatabaseDialect, BlueGreenDialect):
                          "WHERE name='rds.extensions'")
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG, DialectCode.MULTI_AZ_PG)
 
-    _BG_STATUS_QUERY = f"SELECT * FROM rds_tools.show_topology('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')"
+    _BG_STATUS_QUERY = (f"SELECT version, endpoint, port, role, status "
+                        f"FROM rds_tools.show_topology('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')")
     _BG_STATUS_EXISTS_QUERY = "SELECT 'rds_tools.show_topology'::regproc"
 
     def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
@@ -374,7 +375,7 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, Blu
     _HOST_ID_QUERY = "SELECT @@aurora_server_id"
     _IS_READER_QUERY = "SELECT @@innodb_read_only"
 
-    _BG_STATUS_QUERY = "SELECT * FROM mysql.rds_topology"
+    _BG_STATUS_QUERY = "SELECT version, endpoint, port, role, status FROM mysql.rds_topology"
     _BG_STATUS_EXISTS_QUERY = \
         "SELECT 1 AS tmp FROM information_schema.tables WHERE table_schema = 'mysql' AND table_name = 'rds_topology'"
 
@@ -430,7 +431,7 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, BlueGreen
     _HOST_ID_QUERY = "SELECT aurora_db_instance_identifier()"
     _IS_READER_QUERY = "SELECT pg_is_in_recovery()"
 
-    _BG_STATUS_QUERY = f"SELECT * FROM get_blue_green_fast_switchover_metadata('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')"
+    _BG_STATUS_QUERY = f"SELECT version, endpoint, port, role, status FROM get_blue_green_fast_switchover_metadata('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')"
     _BG_STATUS_EXISTS_QUERY = "SELECT 'get_blue_green_fast_switchover_metadata'::regproc"
 
     @property

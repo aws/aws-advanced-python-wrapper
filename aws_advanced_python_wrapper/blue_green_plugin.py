@@ -979,9 +979,8 @@ class BlueGreenStatusMonitor:
             with conn.cursor() as cursor:
                 cursor.execute(self._bg_dialect.blue_green_status_query)
                 for record in cursor:
-                    # columns: id, endpoint, port, role, status, version, update_stamp
-                    # TODO: is the order of columns the same for all dialects?
-                    version = record[5]
+                    # columns: version, endpoint, port, role, status
+                    version = record[0]
                     if version not in BlueGreenStatusMonitor._KNOWN_VERSIONS:
                         self._version = BlueGreenStatusMonitor._LATEST_KNOWN_VERSION
                         logger.warning(

@@ -26,11 +26,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Tuple
 
 import mysql.connector
 import psycopg
-from mysql.connector import CMySQLConnection
+from mysql.connector import CMySQLConnection, MySQLConnection
 
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
@@ -71,7 +72,7 @@ from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
 
-@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.MULTI_AZ_INSTANCE])
+@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE])
 @enable_on_features([TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT])
 class TestBlueGreenDeployment:
     logger = Logger(__name__)
@@ -85,7 +86,9 @@ class TestBlueGreenDeployment:
     PG_AURORA_BG_STATUS_QUERY = \
         ("SELECT id, SPLIT_PART(endpoint, '.', 1) as hostId, endpoint, port, role, status, version "
          "FROM get_blue_green_fast_switchover_metadata('aws_jdbc_driver')")
-    PG_RDS_BG_STATUS_QUERY = f"SELECT * FROM rds_tools.show_topology('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')"
+    PG_RDS_BG_STATUS_QUERY = \
+        (f"SELECT id, SPLIT_PART(endpoint, '.', 1) as hostId, endpoint, port, role, status, version "
+         f"FROM rds_tools.show_topology('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')")
     results: ConcurrentDict[str, BlueGreenResults] = ConcurrentDict()
     unhandled_exceptions: Deque[Exception] = deque()
     mysql_dialect = MySQLDriverDialect(Properties())
@@ -170,7 +173,6 @@ class TestBlueGreenDeployment:
                           finish_latch, bg_results)))
                 thread_count += 1
                 thread_finish_count += 1
-                # TODO: should we increment thread_finish_count too?
 
                 threads.append(Thread(
                     target=self.blue_dns_monitor,
@@ -240,7 +242,7 @@ class TestBlueGreenDeployment:
         finish_latch.wait_sec(6 * 60)
         self.logger.debug("All threads completed.")
 
-        sleep(3 * 60)
+        sleep(6 * 60)
 
         self.logger.debug("Stopping all threads...")
         stop.set()
@@ -277,7 +279,7 @@ class TestBlueGreenDeployment:
         if bg_deployment is None:
             pytest.fail(f"Blue/Green deployment with ID '{bg_id}' not found.")
 
-        if test_env.get_deployment() == DatabaseEngineDeployment.MULTI_AZ_INSTANCE:
+        if test_env.get_deployment() == DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE:
             blue_instance = test_utility.get_rds_instance_info_by_arn(bg_deployment["Source"])
             if blue_instance is None:
                 pytest.fail("Blue instance not found.")
@@ -353,7 +355,7 @@ class TestBlueGreenDeployment:
             db_deployment = test_env.get_deployment()
             if db_deployment == DatabaseEngineDeployment.AURORA:
                 query = self.PG_AURORA_BG_STATUS_QUERY
-            elif db_deployment == DatabaseEngineDeployment.MULTI_AZ_INSTANCE:
+            elif db_deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE:
                 query = self.PG_RDS_BG_STATUS_QUERY
             else:
                 pytest.fail(f"Unsupported blue/green database engine deployment: {db_deployment}")
@@ -383,23 +385,23 @@ class TestBlueGreenDeployment:
                     self.logger.debug(f"[DirectTopology] @ {host_id}] Connection re-opened.")
 
                 try:
-                    cursor = conn.cursor()
-                    cursor.execute(query)
-                    for record in cursor:
-                        # columns: ID, hostId, endpoint, port, role, status, version
-                        role = record[4]
-                        status = record[5]
-                        version = record[6]
-                        is_green = BlueGreenRole.parse_role(role, version) == BlueGreenRole.TARGET
+                    with conn.cursor() as cursor:
+                        cursor.execute(query)
+                        for record in cursor:
+                            # columns: id, hostid, endpoint, port, role, status, version
+                            role = record[4]
+                            status = record[5]
+                            version = record[6]
+                            is_green = BlueGreenRole.parse_role(role, version) == BlueGreenRole.TARGET
 
-                        def _log_and_return_time(_) -> int:
-                            self.logger.debug(f"[DirectTopology] @ {host_id}] Status changed to: {status}.")
-                            return perf_counter_ns()
+                            def _log_and_return_time(_) -> int:
+                                self.logger.debug(f"[DirectTopology] @ {host_id}] Status changed to: {status}.")
+                                return perf_counter_ns()
 
-                        if is_green:
-                            results.green_status_time.compute_if_absent(status, _log_and_return_time)
-                        else:
-                            results.blue_status_time.compute_if_absent(status, _log_and_return_time)
+                            if is_green:
+                                results.green_status_time.compute_if_absent(status, _log_and_return_time)
+                            else:
+                                results.blue_status_time.compute_if_absent(status, _log_and_return_time)
 
                     sleep(0.1)
                 except Exception as e:
@@ -458,7 +460,7 @@ class TestBlueGreenDeployment:
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
             return self.pg_dialect.is_closed(conn)
-        elif isinstance(conn, CMySQLConnection):
+        elif isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
             return self.mysql_dialect.is_closed(conn)
         elif isinstance(conn, AwsWrapperConnection):
             return conn.is_closed
@@ -499,9 +501,10 @@ class TestBlueGreenDeployment:
 
             while not stop.is_set():
                 try:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT 1")
-                    sleep(1)
+                    with conn.cursor() as cursor:
+                        cursor.execute("SELECT 1")
+                        cursor.fetchall()
+                        sleep(1)
                 except Exception as e:
                     self.logger.debug(f"[DirectBlueConnectivity @ {host_id}] Thread exception: {e}")
                     results.direct_blue_lost_connection_time_ns.set(perf_counter_ns())
@@ -626,7 +629,7 @@ class TestBlueGreenDeployment:
                 params[WrapperProperties.DIALECT.name] = DialectCode.AURORA_MYSQL
             elif engine == DatabaseEngine.PG:
                 params[WrapperProperties.DIALECT.name] = DialectCode.AURORA_PG
-        elif db_deployment == DatabaseEngineDeployment.MULTI_AZ_INSTANCE:
+        elif db_deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE:
             if engine == DatabaseEngine.MYSQL:
                 params[WrapperProperties.DIALECT.name] = DialectCode.RDS_MYSQL
             elif engine == DatabaseEngine.PG:
@@ -707,11 +710,12 @@ class TestBlueGreenDeployment:
             while not stop.is_set():
                 start_time_ns = perf_counter_ns()
                 try:
-                    cursor = conn.cursor()
-                    cursor.execute(query)
-                    end_time_ns = perf_counter_ns()
-                    results.blue_wrapper_execute_times.append(
-                        TimeHolder(start_time_ns, end_time_ns, bg_plugin.get_hold_time_ns()))
+                    with conn.cursor() as cursor:
+                        cursor.execute(query)
+                        cursor.fetchall()
+                        end_time_ns = perf_counter_ns()
+                        results.blue_wrapper_execute_times.append(
+                            TimeHolder(start_time_ns, end_time_ns, bg_plugin.get_hold_time_ns()))
                 except Exception as e:
                     results.blue_wrapper_execute_times.append(
                         TimeHolder(start_time_ns, perf_counter_ns(), bg_plugin.get_hold_time_ns(), str(e)))
@@ -903,13 +907,14 @@ class TestBlueGreenDeployment:
             start_time_ns = perf_counter_ns()
             while not stop.is_set():
                 try:
-                    cursor = conn.cursor()
-                    start_time_ns = perf_counter_ns()
-                    cursor.execute("SELECT 1")
-                    end_time_ns = perf_counter_ns()
-                    results.green_wrapper_execute_times.append(
-                        TimeHolder(start_time_ns, end_time_ns, bg_plugin.get_hold_time_ns()))
-                    sleep(1)
+                    with conn.cursor() as cursor:
+                        start_time_ns = perf_counter_ns()
+                        cursor.execute("SELECT 1")
+                        cursor.fetchall()
+                        end_time_ns = perf_counter_ns()
+                        results.green_wrapper_execute_times.append(
+                            TimeHolder(start_time_ns, end_time_ns, bg_plugin.get_hold_time_ns()))
+                        sleep(1)
                 except Exception as e:
                     if self.is_timeout_exception(e):
                         self.logger.debug(f"[WrapperGreenConnectivity @ {host_id}] Thread timeout exception: {e}")
