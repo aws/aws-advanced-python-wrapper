@@ -72,9 +72,9 @@ class RdsTestUtility:
         test_info = TestEnvironment.get_current().get_info()
         endpoint = test_info.get_rds_endpoint()
         if endpoint:
-            return boto3.client(region=test_info.get_region(), endpoint_url=endpoint)
+            return boto3.client(service_name='rds', region_name=test_info.get_region(), endpoint_url=endpoint)
         else:
-            return boto3.client(region=test_info.get_region())
+            return boto3.client(service_name='rds', region_name=test_info.get_region())
 
     def does_db_instance_exist(self, instance_id: str) -> bool:
         try:

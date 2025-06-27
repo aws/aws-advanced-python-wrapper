@@ -26,7 +26,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Tuple
 
 import mysql.connector
@@ -207,7 +206,7 @@ class TestBlueGreenDeployment:
                     threads.append(Thread(
                         target=self.green_iam_connectivity_monitor,
                         args=(test_driver, conn_utils, rds_client, host_id, "BlueHostToken",
-                              self.rds_utils().remove_green_instance_prefix(host), host, test_instance.get_port(),
+                              rds_utils.remove_green_instance_prefix(host), host, test_instance.get_port(),
                               db_name, start_latch, stop, finish_latch, bg_results,
                               bg_results.green_direct_iam_ip_with_blue_node_connect_times, False, True)))
                     thread_count += 1
@@ -242,7 +241,7 @@ class TestBlueGreenDeployment:
         finish_latch.wait_sec(6 * 60)
         self.logger.debug("All threads completed.")
 
-        sleep(6 * 60)
+        sleep(12 * 60)
 
         self.logger.debug("Stopping all threads...")
         stop.set()
@@ -437,9 +436,8 @@ class TestBlueGreenDeployment:
         while conn is None and connect_count < 10:
             try:
                 conn = target_driver_connect(**connect_params)
-            except Exception as e:
+            except Exception:
                 # ignore, try to connect again
-                print(f"asdf {e}")
                 pass
 
             connect_count += 1
@@ -642,6 +640,9 @@ class TestBlueGreenDeployment:
         else:
             params[WrapperProperties.PLUGINS.name] = "bg"
 
+        if engine == DatabaseEngine.MYSQL:
+            params["use_pure"] = False
+
         return params
 
     def get_wrapper_connection_with_retry(self, test_driver: TestDriver, **connect_params) -> AwsWrapperConnection:
@@ -651,9 +652,8 @@ class TestBlueGreenDeployment:
         while conn is None and connect_count < 10:
             try:
                 conn = AwsWrapperConnection.connect(target_driver_connect, **connect_params)
-            except Exception as e:
+            except Exception:
                 # ignore, try to connect again
-                print(f"asdf {e}")
                 pass
 
             connect_count += 1
@@ -1002,7 +1002,10 @@ class TestBlueGreenDeployment:
             green_ip = socket.gethostbyname(connect_host)
             connect_params = conn_utils.get_connect_params(host=green_ip, port=port, user=iam_user, dbname=db)
             connect_params[WrapperProperties.CONNECT_TIMEOUT_SEC.name] = 10
-            connect_params[WrapperProperties.SOCKET_TIMEOUT_SEC.name] = 10
+            if test_env.get_engine() == DatabaseEngine.MYSQL:
+                # Required to connect with IAM using the regular mysql driver
+                connect_params["auth_plugin"] = "mysql_clear_password"
+                connect_params["use_pure"] = False
 
             sleep(1)
 
@@ -1015,7 +1018,7 @@ class TestBlueGreenDeployment:
                 f"[DirectGreenIamIp{thread_prefix} @ {host_id}] Starting connectivity monitoring {iam_token_host}")
 
             while not stop.is_set():
-                token = rds_client.generate_db_auth_token(DBHostname=iam_token_host, port=port, DBUsername=iam_user)
+                token = rds_client.generate_db_auth_token(DBHostname=iam_token_host, Port=port, DBUsername=iam_user)
                 connect_params[WrapperProperties.PASSWORD.name] = token
 
                 start_ns = perf_counter_ns()

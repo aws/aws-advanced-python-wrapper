@@ -20,6 +20,9 @@ class AtomicInt:
         self._value = initial_value
         self._lock: Lock = Lock()
 
+    def __str__(self):
+        return f"AtomicInt[value={self._value}]"
+
     def get(self):
         with self._lock:
             return self._value

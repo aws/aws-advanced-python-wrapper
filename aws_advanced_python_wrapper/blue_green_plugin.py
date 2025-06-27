@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import logging
 import socket
 from datetime import datetime
 from time import perf_counter_ns

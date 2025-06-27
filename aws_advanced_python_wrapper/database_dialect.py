@@ -431,7 +431,8 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, BlueGreen
     _HOST_ID_QUERY = "SELECT aurora_db_instance_identifier()"
     _IS_READER_QUERY = "SELECT pg_is_in_recovery()"
 
-    _BG_STATUS_QUERY = f"SELECT version, endpoint, port, role, status FROM get_blue_green_fast_switchover_metadata('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')"
+    _BG_STATUS_QUERY = (f"SELECT version, endpoint, port, role, status "
+                        f"FROM get_blue_green_fast_switchover_metadata('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')")
     _BG_STATUS_EXISTS_QUERY = "SELECT 'get_blue_green_fast_switchover_metadata'::regproc"
 
     @property
