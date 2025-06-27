@@ -156,6 +156,10 @@ class WrapperProperties:
     SECRETS_MANAGER_ENDPOINT = WrapperProperty(
         "secrets_manager_endpoint",
         "The endpoint of the secret to retrieve.")
+    SECRETS_MANAGER_EXPIRATION = WrapperProperty(
+        "secrets_manager_expiration",
+        "Secret cache expiration in seconds",
+        60 * 60 * 24 * 365)
 
     DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect.")
     AUXILIARY_QUERY_TIMEOUT_SEC = WrapperProperty(
@@ -274,7 +278,8 @@ class WrapperProperties:
         True)
 
     # Host Selector
-    ROUND_ROBIN_DEFAULT_WEIGHT = WrapperProperty("round_robin_default_weight", "The default weight for any hosts that have not been " +
+    ROUND_ROBIN_DEFAULT_WEIGHT = WrapperProperty("round_robin_default_weight",
+                                                 "The default weight for any hosts that have not been " +
                                                  "configured with the `round_robin_host_weight_pairs` parameter.",
                                                  1)
 
