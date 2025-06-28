@@ -174,6 +174,37 @@ def test_no_cached_token(mocker, mock_plugin_service, mock_session, mock_func, m
 
 
 @patch("aws_advanced_python_wrapper.federated_plugin.FederatedAuthPlugin._token_cache", _token_cache)
+def test_no_cached_token_raises_exception(mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect,
+                                          mock_credentials_provider_factory):
+    test_props: Properties = Properties(
+        {"plugins": "federated_auth", "user": "postgresqlUser", "idp_username": "user", "idp_password": "password"})
+    WrapperProperties.DB_USER.set(test_props, _DB_USER)
+
+    exception_message = "generic exception"
+    mock_func.side_effect = Exception(exception_message)
+
+    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory,
+                                                             mock_session)
+    with pytest.raises(Exception) as e_info:
+        target_plugin.connect(
+            target_driver_func=mocker.MagicMock(),
+            driver_dialect=mock_dialect,
+            host_info=_PG_HOST_INFO,
+            props=test_props,
+            is_initial_connection=False,
+            connect_func=mock_func)
+
+    mock_client.generate_db_auth_token.assert_called_with(
+        DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
+        Port=5432,
+        DBUsername="postgresqlUser"
+    )
+
+    assert e_info.type == Exception
+    assert str(e_info.value) == exception_message
+
+
+@patch("aws_advanced_python_wrapper.federated_plugin.FederatedAuthPlugin._token_cache", _token_cache)
 def test_connect_with_specified_iam_host_port_region(mocker,
                                                      mock_plugin_service,
                                                      mock_session,
