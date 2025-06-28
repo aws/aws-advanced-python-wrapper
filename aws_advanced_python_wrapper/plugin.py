@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, runtime_checkable
+from typing import TYPE_CHECKING, List, runtime_checkable
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -124,6 +124,9 @@ class Plugin(ABC):
         :return: a py:class:`HostInfo` with the requested role.
         """
         raise UnsupportedOperationError(Messages.get_formatted("Plugin.UnsupportedMethod", "get_host_info_by_strategy"))
+
+    def get_host_info_from_input_by_strategy(self, host_list: List[HostInfo], role: HostRole, strategy: str) -> HostInfo:
+        raise UnsupportedOperationError(Messages.get_formatted("Plugin.UnsupportedMethod", "get_host_info_from_input_by_strategy"))
 
     def init_host_provider(
             self,
