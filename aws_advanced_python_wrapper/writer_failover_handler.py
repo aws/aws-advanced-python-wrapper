@@ -118,23 +118,24 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         if writer_host is not None:
             self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
-            with ThreadPoolExecutor(thread_name_prefix="WriterFailoverHandlerExecutor") as executor:
+            executor = ThreadPoolExecutor(thread_name_prefix="WriterFailoverHandlerExecutor")
+            try:
                 try:
                     futures = [executor.submit(self.reconnect_to_writer, writer_host),
                                executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
                     for future in as_completed(futures, timeout=self._max_failover_timeout_sec):
                         result = future.result()
                         if result.is_connected:
-                            executor.shutdown(wait=False)
                             self.log_task_success(result)
                             return result
                         if result.exception is not None:
-                            executor.shutdown(wait=False)
                             return result
                 except TimeoutError:
                     self._timeout_event.set()
                 finally:
                     self._timeout_event.set()
+            finally:
+                executor.shutdown(wait=False)
 
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
@@ -172,7 +173,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                     if conn is not None:
                         conn.close()
 
-                    conn = self._plugin_service.force_connect(initial_writer_host, self._initial_connection_properties, self._timeout_event)
+                    conn = self._plugin_service.force_connect(initial_writer_host, self._initial_connection_properties)
                     self._plugin_service.force_refresh_host_list(conn)
                     latest_topology = self._plugin_service.all_hosts
 
@@ -311,9 +312,8 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         try:
             # connect to new writer
             if writer_candidate is not None:
-                self._current_connection = self._plugin_service.force_connect(writer_candidate,
-                                                                              self._initial_connection_properties,
-                                                                              self._timeout_event)
+                self._current_connection = \
+                    self._plugin_service.force_connect(writer_candidate, self._initial_connection_properties)
                 self._plugin_service.set_availability(writer_candidate.as_aliases(), HostAvailability.AVAILABLE)
                 return True
         except Exception:
