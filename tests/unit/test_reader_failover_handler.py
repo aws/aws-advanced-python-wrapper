@@ -50,12 +50,12 @@ def default_properties():
 
 @pytest.fixture
 def default_hosts():
-    return [HostInfo("writer", 1234, HostRole.WRITER, HostAvailability.AVAILABLE),
+    return (HostInfo("writer", 1234, HostRole.WRITER, HostAvailability.AVAILABLE),
             HostInfo("reader1", 1234, HostRole.READER, HostAvailability.AVAILABLE),
             HostInfo("reader2", 1234, HostRole.READER, HostAvailability.AVAILABLE),
             HostInfo("reader3", 1234, HostRole.READER, HostAvailability.AVAILABLE),
             HostInfo("reader4", 1234, HostRole.READER, HostAvailability.AVAILABLE),
-            HostInfo("reader5", 1234, HostRole.READER, HostAvailability.AVAILABLE)]
+            HostInfo("reader5", 1234, HostRole.READER, HostAvailability.AVAILABLE))
 
 
 @pytest.fixture
@@ -64,7 +64,14 @@ def set_available_count_for_host():
 
 
 def test_failover(plugin_service_mock, connection_mock, default_properties, default_hosts):
-    hosts = default_hosts.copy()
+    """
+    original host list: [active writer, active reader, current connection (reader), active
+    reader, down reader, active reader]
+    priority order by index (the subsets will be shuffled): [[1, 3, 5], 0, [2, 4]]
+    connection attempts are made in pairs using the above list
+    expected test result: successful connection for host at index 4
+    """
+    hosts = tuple(default_hosts)
     props = default_properties
     current_host = hosts[2]
     success_host = hosts[4]
@@ -73,11 +80,9 @@ def test_failover(plugin_service_mock, connection_mock, default_properties, defa
                 else call(x.all_aliases, HostAvailability.AVAILABLE)
                 for x in hosts]
 
-    # current host should be called twice
-    expected.append(call(current_host.all_aliases, HostAvailability.UNAVAILABLE))
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
+    def force_connect_side_effect(host_info, _) -> Connection:
         if host_info == success_host:
             return connection_mock
         else:
@@ -86,8 +91,8 @@ def test_failover(plugin_service_mock, connection_mock, default_properties, defa
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
     plugin_service_mock.is_network_exception.return_value = True
 
-    hosts[2]._availability = HostAvailability.UNAVAILABLE
-    hosts[4]._availability = HostAvailability.UNAVAILABLE
+    hosts[2].availability = HostAvailability.UNAVAILABLE
+    hosts[4].availability = HostAvailability.UNAVAILABLE
 
     target: ReaderFailoverHandler = ReaderFailoverHandlerImpl(plugin_service_mock, props)
     result: ReaderFailoverResult = target.failover(hosts, current_host)
@@ -105,18 +110,14 @@ def test_failover_timeout(plugin_service_mock, connection_mock, default_properti
     props = default_properties
     current_host = hosts[2]
 
-    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
-        # Sleep for 1 second 20 times unless interrupted by timeout
-        for _ in range(0, 20):
-            if timeout_event.is_set():
-                break
-            sleep(1)
+    def force_connect_side_effect(_, __) -> Connection:
+        sleep(20)  # The failover handler should hit the max timeout before we hit the 20-second wait and return early.
         return connection_mock
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
 
-    hosts[2]._availability = HostAvailability.UNAVAILABLE
-    hosts[4]._availability = HostAvailability.UNAVAILABLE
+    hosts[2].availability = HostAvailability.UNAVAILABLE
+    hosts[4].availability = HostAvailability.UNAVAILABLE
 
     # Set max failover timeout to 5 seconds
     target: ReaderFailoverHandler = ReaderFailoverHandlerImpl(plugin_service_mock, props, 5, 30)
@@ -136,17 +137,12 @@ def test_failover_timeout(plugin_service_mock, connection_mock, default_properti
     assert duration < 6.1
 
 
-def test_failover_null_or_empty_host_list(plugin_service_mock, connection_mock, default_properties, default_hosts):
+def test_failover_empty_host_list(plugin_service_mock, connection_mock, default_properties, default_hosts):
     props = default_properties
     target: ReaderFailoverHandler = ReaderFailoverHandlerImpl(plugin_service_mock, props)
     current_host: HostInfo = HostInfo("writer", 1234)
 
-    result = target.failover(None, current_host)
-    assert not result.is_connected
-    assert result.connection is None
-    assert result.new_host is None
-
-    result = target.failover([], current_host)
+    result = target.failover((), current_host)
     assert not result.is_connected
     assert result.connection is None
     assert result.new_host is None
@@ -158,7 +154,7 @@ def test_get_reader_connection_success(plugin_service_mock, connection_mock, def
     slow_host = hosts[1]
     fast_host = hosts[2]
 
-    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
+    def force_connect_side_effect(host_info, _) -> Connection:
         # we want slow host to take 20 seconds before returning connection
         if host_info == slow_host:
             sleep(20)
@@ -182,7 +178,7 @@ def test_get_reader_connection_failure(plugin_service_mock, connection_mock, def
     props = default_properties
     exception = Exception("Test Exception")
 
-    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
+    def force_connect_side_effect(_, __) -> Connection:
         raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
@@ -201,7 +197,7 @@ def test_get_reader_connection_attempts_timeout(plugin_service_mock, connection_
     hosts = default_hosts[0:3]
     props = default_properties
 
-    def force_connect_side_effect(host_info, properties, timeout_event) -> Connection:
+    def force_connect_side_effect(_, __) -> Connection:
         try:
             sleep(5)
         except Exception:
@@ -222,9 +218,9 @@ def test_get_reader_connection_attempts_timeout(plugin_service_mock, connection_
 def test_get_host_tuples_by_priority(plugin_service_mock, connection_mock, default_properties, default_hosts):
     hosts = default_hosts
 
-    hosts[2]._availability = HostAvailability.UNAVAILABLE
-    hosts[4]._availability = HostAvailability.UNAVAILABLE
-    hosts[5]._availability = HostAvailability.UNAVAILABLE
+    hosts[2].availability = HostAvailability.UNAVAILABLE
+    hosts[4].availability = HostAvailability.UNAVAILABLE
+    hosts[5].availability = HostAvailability.UNAVAILABLE
 
     hosts_by_priority = ReaderFailoverHandlerImpl.get_hosts_by_priority(hosts, False)
 
@@ -233,7 +229,7 @@ def test_get_host_tuples_by_priority(plugin_service_mock, connection_mock, defau
     # expecting active readers
     while (i < len(hosts_by_priority) and
            hosts_by_priority[i].role == HostRole.READER and
-           hosts_by_priority[i]._availability == HostAvailability.AVAILABLE):
+           hosts_by_priority[i].availability == HostAvailability.AVAILABLE):
         i += 1
 
     # expecting a writer
@@ -243,7 +239,7 @@ def test_get_host_tuples_by_priority(plugin_service_mock, connection_mock, defau
     # expecting down readers
     while (i < len(hosts_by_priority) and
            hosts_by_priority[i].role == HostRole.READER and
-           hosts_by_priority[i]._availability == HostAvailability.UNAVAILABLE):
+           hosts_by_priority[i].availability == HostAvailability.UNAVAILABLE):
         i += 1
 
     assert i == len(hosts_by_priority)
@@ -252,9 +248,9 @@ def test_get_host_tuples_by_priority(plugin_service_mock, connection_mock, defau
 def test_get_reader_tuples_by_priority(plugin_service_mock, connection_mock, default_properties, default_hosts):
     hosts = default_hosts
 
-    hosts[2]._availability = HostAvailability.UNAVAILABLE
-    hosts[4]._availability = HostAvailability.UNAVAILABLE
-    hosts[5]._availability = HostAvailability.UNAVAILABLE
+    hosts[2].availability = HostAvailability.UNAVAILABLE
+    hosts[4].availability = HostAvailability.UNAVAILABLE
+    hosts[5].availability = HostAvailability.UNAVAILABLE
 
     hosts_by_priority = ReaderFailoverHandlerImpl.get_reader_hosts_by_priority(hosts)
 
@@ -263,13 +259,13 @@ def test_get_reader_tuples_by_priority(plugin_service_mock, connection_mock, def
     # expecting active readers
     while (i < len(hosts_by_priority) and
            hosts_by_priority[i].role == HostRole.READER and
-           hosts_by_priority[i]._availability == HostAvailability.AVAILABLE):
+           hosts_by_priority[i].availability == HostAvailability.AVAILABLE):
         i += 1
 
     # expecting down readers
     while (i < len(hosts_by_priority) and
            hosts_by_priority[i].role == HostRole.READER and
-           hosts_by_priority[i]._availability == HostAvailability.UNAVAILABLE):
+           hosts_by_priority[i].availability == HostAvailability.UNAVAILABLE):
         i += 1
 
     assert i == len(hosts_by_priority)
@@ -285,7 +281,7 @@ def test_host_failover_strict_reader_enabled(plugin_service_mock, connection_moc
     assert hosts_by_priority == (reader, )
 
     # should select the reader even if unavailable
-    reader._availability = HostAvailability.UNAVAILABLE
+    reader.availability = HostAvailability.UNAVAILABLE
     hosts_by_priority = ReaderFailoverHandlerImpl.get_hosts_by_priority(hosts, True)
     assert hosts_by_priority == (reader,)
 

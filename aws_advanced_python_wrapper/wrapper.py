@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from typing import (TYPE_CHECKING, Any, Callable, Iterator, List, Optional,
-                    Union)
+                    Type, TypeVar, Union)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
@@ -39,6 +39,8 @@ from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
 
 logger = Logger(__name__)
+
+UnwrapType = TypeVar('UnwrapType')
 
 
 class AwsWrapperConnection(Connection, CanReleaseResources):
@@ -212,6 +214,10 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         self._plugin_manager.release_resources()
         if isinstance(self._plugin_service, CanReleaseResources):
             self._plugin_service.release_resources()
+
+    # For testing purposes only
+    def _unwrap(self, unwrap_class: Type[UnwrapType]) -> Optional[UnwrapType]:
+        return self._plugin_manager._unwrap(unwrap_class)
 
     def __del__(self):
         self.release_resources()

@@ -39,7 +39,9 @@ from tests.integration.container.utils.test_environment import TestEnvironment
 
 
 @enable_on_features([TestEnvironmentFeatures.IAM])
-@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                      TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
+                      TestEnvironmentFeatures.PERFORMANCE])
 class TestAwsIamAuthentication:
 
     @pytest.fixture(scope='class')

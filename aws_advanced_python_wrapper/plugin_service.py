@@ -14,10 +14,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, List, Type
+from typing import TYPE_CHECKING, ClassVar, List, Type, TypeVar
 
+from aws_advanced_python_wrapper import LogUtils
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
+from aws_advanced_python_wrapper.blue_green_plugin import \
+    BlueGreenPluginFactory
 from aws_advanced_python_wrapper.custom_endpoint_plugin import \
     CustomEndpointPluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
@@ -27,6 +30,7 @@ from aws_advanced_python_wrapper.federated_plugin import \
 from aws_advanced_python_wrapper.okta_plugin import OktaAuthPluginFactory
 from aws_advanced_python_wrapper.states.session_state_service import (
     SessionStateService, SessionStateServiceImpl)
+from aws_advanced_python_wrapper.utils.utils import Utils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
@@ -34,7 +38,6 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect_manager import DriverDialectManager
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
-    from threading import Event
 
 from abc import abstractmethod
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
@@ -111,6 +114,10 @@ class PluginServiceManagerContainer:
         self._plugin_manager = value
 
 
+StatusType = TypeVar('StatusType')
+UnwrapType = TypeVar('UnwrapType')
+
+
 class PluginService(ExceptionHandler, Protocol):
     @property
     @abstractmethod
@@ -142,6 +149,11 @@ class PluginService(ExceptionHandler, Protocol):
     @property
     @abstractmethod
     def current_host_info(self) -> Optional[HostInfo]:
+        ...
+
+    @property
+    @abstractmethod
+    def original_url(self) -> str:
         ...
 
     @property
@@ -236,7 +248,7 @@ class PluginService(ExceptionHandler, Protocol):
     def force_refresh_host_list(self, connection: Optional[Connection] = None):
         ...
 
-    def connect(self, host_info: HostInfo, props: Properties) -> Connection:
+    def connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         """
         Establishes a connection to the given host using the given driver protocol and properties. If a
         non-default :py:class`ConnectionProvider` has been set with :py:method:`ConnectionProviderManager.set_connection_provider`,
@@ -245,11 +257,12 @@ class PluginService(ExceptionHandler, Protocol):
 
         :param host_info: the host details for the desired connection.
         :param props: the connection properties.
+        :param plugin_to_skip: the calling plugin, which will be skipped in the plugin chain when trying to connect.
         :return: a :py:class`Connection` to the requested host.
         """
         ...
 
-    def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Optional[Event]) -> Connection:
+    def force_connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         """
         Establishes a connection to the given host using the given driver protocol and properties.
         This call differs from connect in that the default :py:class`DriverConnectionProvider` will be used to establish the connection even if
@@ -257,6 +270,7 @@ class PluginService(ExceptionHandler, Protocol):
 
         :param host_info: the host details for the desired connection.
         :param props: the connection properties.
+        :param plugin_to_skip: the calling plugin, which will be skipped in the plugin chain when trying to connect.
         :return: a :py:class`Connection` to the requested host.
         """
         ...
@@ -276,9 +290,23 @@ class PluginService(ExceptionHandler, Protocol):
     def get_telemetry_factory(self) -> TelemetryFactory:
         ...
 
+    @abstractmethod
+    def is_plugin_in_use(self, plugin_class: Type[Plugin]):
+        ...
+
+    @abstractmethod
+    def set_status(self, clazz: Type[StatusType], status: Optional[StatusType], key: str):
+        ...
+
+    @abstractmethod
+    def get_status(self, clazz: Type[StatusType], key: str) -> Optional[StatusType]:
+        ...
+
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
+    _STATUS_CACHE_EXPIRATION_NANO = 60 * 1_000_000_000  # one hour
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
+    _status_cache: ClassVar[CacheMap[str, Any]] = CacheMap()
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
 
@@ -396,7 +424,41 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     @property
     def current_host_info(self) -> Optional[HostInfo]:
+        if self._current_host_info is not None:
+            return self._current_host_info
+
+        self._current_host_info = self._initial_connection_host_info
+        if self._current_host_info is not None:
+            logger.debug("PluginServiceImpl.SetCurrentHostInfo", self._current_host_info)
+            return self._current_host_info
+
+        all_hosts = self.all_hosts
+        if not all_hosts:
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.HostListEmpty"))
+
+        self._current_host_info = (
+            next((host_info for host_info in all_hosts if host_info.role == HostRole.WRITER), None))
+        if self._current_host_info:
+            allowed_hosts = self.hosts
+            if not Utils.contains_url(allowed_hosts, self._current_host_info.url):
+                raise AwsWrapperError(
+                    Messages.get_formatted(
+                        "PluginServiceImpl.CurrentHostNotAllowed",
+                        self._current_host_info.url, LogUtils.log_topology(allowed_hosts)))
+        else:
+            allowed_hosts = self.hosts
+            if len(allowed_hosts) > 0:
+                self._current_host_info = self.hosts[0]
+
+        if self._current_host_info is None:
+            raise AwsWrapperError("PluginServiceImpl.CouldNotDetermineCurrentHost")
+
+        logger.debug("PluginServiceImpl.SetCurrentHostInfo", self._current_host_info)
         return self._current_host_info
+
+    @property
+    def original_url(self) -> str:
+        return self._original_url
 
     @property
     def initial_connection_host_info(self) -> Optional[HostInfo]:
@@ -470,6 +532,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if original_dialect != self._database_dialect:
             host_list_provider_init = self._database_dialect.get_host_list_provider_supplier()
             self.host_list_provider = host_list_provider_init(self, self._props)
+            self.refresh_host_list(connection)
 
     def update_driver_dialect(self, connection_provider: ConnectionProvider):
         self._driver_dialect = self._driver_dialect_manager.get_pool_connection_driver_dialect(
@@ -504,15 +567,16 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             self._update_host_availability(updated_host_list)
             self._update_hosts(updated_host_list)
 
-    def connect(self, host_info: HostInfo, props: Properties) -> Connection:
+    def connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.connect(
-            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None)
+            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None, plugin_to_skip)
 
-    def force_connect(self, host_info: HostInfo, props: Properties, timeout_event: Optional[Event]) -> Connection:
+    def force_connect(
+            self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.force_connect(
-            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None)
+            self._target_func, self._driver_dialect, host_info, props, self.current_connection is None, plugin_to_skip)
 
     def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
         ...
@@ -630,6 +694,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         return changes
 
+    def is_plugin_in_use(self, plugin_class: Type[Plugin]) -> bool:
+        return self._container.plugin_manager.is_plugin_in_use(plugin_class)
+
     def release_resources(self):
         try:
             if self.current_connection is not None and not self.driver_dialect.is_closed(
@@ -642,6 +709,34 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         host_list_provider = self.host_list_provider
         if host_list_provider is not None and isinstance(host_list_provider, CanReleaseResources):
             host_list_provider.release_resources()
+
+    def set_status(self, clazz: Type[StatusType], status: Optional[StatusType], key: str):
+        cache_key = self._get_status_cache_key(clazz, key)
+        if status is None:
+            self._status_cache.remove(cache_key)
+        else:
+            self._status_cache.put(cache_key, status, PluginServiceImpl._STATUS_CACHE_EXPIRATION_NANO)
+
+    def _get_status_cache_key(self, clazz: Type[StatusType], key: str) -> str:
+        key_str = "" if key is None else key.strip().lower()
+        return f"{key_str}::{clazz.__name__}"
+
+    def get_status(self, clazz: Type[StatusType], key: str) -> Optional[StatusType]:
+        cache_key = self._get_status_cache_key(clazz, key)
+        status = PluginServiceImpl._status_cache.get(cache_key)
+        if status is None:
+            return None
+
+        if not isinstance(status, clazz):
+            raise ValueError(
+                Messages.get_formatted(
+                    "PluginServiceImpl.incorrectStatusType",
+                    clazz.__name__,
+                    key,
+                    status.__class__.__name__,
+                    status))
+
+        return status
 
 
 class PluginManager(CanReleaseResources):
@@ -668,7 +763,8 @@ class PluginManager(CanReleaseResources):
         "dev": DeveloperPluginFactory,
         "federated_auth": FederatedAuthPluginFactory,
         "okta": OktaAuthPluginFactory,
-        "initial_connection": AuroraInitialConnectionStrategyPluginFactory
+        "initial_connection": AuroraInitialConnectionStrategyPluginFactory,
+        "bg": BlueGreenPluginFactory
     }
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
@@ -684,6 +780,7 @@ class PluginManager(CanReleaseResources):
         ReadWriteSplittingPluginFactory: 300,
         FailoverPluginFactory: 400,
         HostMonitoringPluginFactory: 500,
+        BlueGreenPluginFactory: 550,
         FastestResponseStrategyPluginFactory: 600,
         IamAuthPluginFactory: 700,
         AwsSecretsManagerPluginFactory: 800,
@@ -817,7 +914,8 @@ class PluginManager(CanReleaseResources):
                 method_name,
                 # next_plugin_func is defined later in make_pipeline
                 lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args, **kwargs),
-                target_driver_func)
+                target_driver_func,
+                None)
 
             context.set_success(True)
 
@@ -835,32 +933,41 @@ class PluginManager(CanReleaseResources):
         finally:
             context.close_context()
 
-    def _execute_with_subscribed_plugins(self, method_name: str, plugin_func: Callable, target_driver_func: Callable):
+    def _execute_with_subscribed_plugins(
+            self,
+            method_name: str,
+            plugin_func: Callable,
+            target_driver_func: Callable,
+            plugin_to_skip: Optional[Plugin] = None):
         pipeline_func: Optional[Callable] = self._function_cache.get(method_name)
         if pipeline_func is None:
-            pipeline_func = self._make_pipeline(method_name)
+            pipeline_func = self._make_pipeline(method_name, plugin_to_skip)
             self._function_cache[method_name] = pipeline_func
 
         return pipeline_func(plugin_func, target_driver_func)
 
     # Builds the plugin pipeline function chain. The pipeline is built in a way that allows plugins to perform logic
     # both before and after the target driver function call.
-    def _make_pipeline(self, method_name: str) -> Callable:
+    def _make_pipeline(self, method_name: str, plugin_to_skip: Optional[Plugin] = None) -> Callable:
         pipeline_func: Optional[Callable] = None
         num_plugins: int = len(self._plugins)
 
         # Build the pipeline starting at the end and working backwards
         for i in range(num_plugins - 1, -1, -1):
             plugin: Plugin = self._plugins[i]
+            if plugin_to_skip is not None and plugin_to_skip == plugin:
+                continue
+
             subscribed_methods: Set[str] = plugin.subscribed_methods
             is_subscribed: bool = PluginManager._ALL_METHODS in subscribed_methods or method_name in subscribed_methods
+            if not is_subscribed:
+                continue
 
-            if is_subscribed:
-                if pipeline_func is None:
-                    # Defines the call to DefaultPlugin, which is the last plugin in the pipeline
-                    pipeline_func = self._create_base_pipeline_func(plugin)
-                else:
-                    pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
+            if pipeline_func is None:
+                # Defines the call to DefaultPlugin, which is the last plugin in the pipeline
+                pipeline_func = self._create_base_pipeline_func(plugin)
+            else:
+                pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
 
         if pipeline_func is None:
             raise AwsWrapperError(Messages.get("PluginManager.PipelineNone"))
@@ -887,7 +994,8 @@ class PluginManager(CanReleaseResources):
             driver_dialect: DriverDialect,
             host_info: Optional[HostInfo],
             props: Properties,
-            is_initial_connection: bool) -> Connection:
+            is_initial_connection: bool,
+            plugin_to_skip: Optional[Plugin] = None) -> Connection:
         context = self._telemetry_factory.open_telemetry_context("connect", TelemetryTraceLevel.NESTED)
         try:
             return self._execute_with_subscribed_plugins(
@@ -895,7 +1003,8 @@ class PluginManager(CanReleaseResources):
                 lambda plugin, func: plugin.connect(
                     target_func, driver_dialect, host_info, props, is_initial_connection, func),
                 # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
-                lambda: None)
+                lambda: None,
+                plugin_to_skip)
         finally:
             context.close_context()
 
@@ -905,13 +1014,15 @@ class PluginManager(CanReleaseResources):
             driver_dialect: DriverDialect,
             host_info: Optional[HostInfo],
             props: Properties,
-            is_initial_connection: bool) -> Connection:
+            is_initial_connection: bool,
+            plugin_to_skip: Optional[Plugin] = None) -> Connection:
         return self._execute_with_subscribed_plugins(
             PluginManager._FORCE_CONNECT_METHOD,
             lambda plugin, func: plugin.force_connect(
                 target_func, driver_dialect, host_info, props, is_initial_connection, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
-            lambda: None)
+            lambda: None,
+            plugin_to_skip)
 
     def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         old_conn_suggestions: Set[OldConnectionSuggestedAction] = set()
@@ -980,9 +1091,31 @@ class PluginManager(CanReleaseResources):
             return self._execute_with_subscribed_plugins(
                 PluginManager._INIT_HOST_LIST_PROVIDER_METHOD,
                 lambda plugin, func: plugin.init_host_provider(props, host_list_provider_service, func),
-                lambda: None)
+                lambda: None,
+                None)
         finally:
             context.close_context()
+
+    def is_plugin_in_use(self, plugin_class: Type[Plugin]) -> bool:
+        if not self._plugins:
+            return False
+
+        for plugin in self._plugins:
+            if isinstance(plugin, plugin_class):
+                return True
+
+        return False
+
+    # For testing purposes only.
+    def _unwrap(self, unwrap_class: Type[UnwrapType]) -> Optional[UnwrapType]:
+        if len(self._plugins) < 1:
+            return None
+
+        for plugin in self._plugins:
+            if isinstance(plugin, unwrap_class):
+                return plugin
+
+        return None
 
     def release_resources(self):
         """

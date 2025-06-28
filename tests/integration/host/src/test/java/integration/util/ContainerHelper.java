@@ -23,9 +23,10 @@ import com.github.dockerjava.api.command.ExecCreateCmd;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.exception.DockerException;
-import integration.DebugEnv;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
+import integration.DebugEnv;
 import integration.TestInstanceInfo;
+import integration.host.TestEnvironmentConfiguration;
 import java.io.IOException;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -44,46 +45,20 @@ import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.images.builder.dockerfile.DockerfileBuilder;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
-import integration.host.TestEnvironmentConfiguration;
+import org.testcontainers.utility.TestEnvironment;
 
 public class ContainerHelper {
 
   private static final String MYSQL_CONTAINER_IMAGE_NAME = "mysql:8.0.36";
   private static final String POSTGRES_CONTAINER_IMAGE_NAME = "postgres:latest";
   private static final DockerImageName TOXIPROXY_IMAGE =
-      DockerImageName.parse("shopify/toxiproxy:2.1.4");
+      DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.11.0");
 
   private static final int PROXY_CONTROL_PORT = 8474;
   private static final int PROXY_PORT = 8666;
 
   private static final String XRAY_TELEMETRY_IMAGE_NAME = "amazon/aws-xray-daemon";
   private static final String OTLP_TELEMETRY_IMAGE_NAME = "amazon/aws-otel-collector";
-
-  private static final String RETRIEVE_TOPOLOGY_SQL_POSTGRES =
-      "SELECT SERVER_ID, SESSION_ID FROM aurora_replica_status() "
-          + "ORDER BY CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN 0 ELSE 1 END";
-  private static final String RETRIEVE_TOPOLOGY_SQL_MYSQL =
-      "SELECT SERVER_ID, SESSION_ID FROM information_schema.replica_host_status "
-          + "ORDER BY IF(SESSION_ID = 'MASTER_SESSION_ID', 0, 1)";
-  private static final String SERVER_ID = "SERVER_ID";
-
-  public Long runCmd(GenericContainer<?> container, String... cmd)
-      throws IOException, InterruptedException {
-    System.out.println("==== Container console feed ==== >>>>");
-    Consumer<OutputFrame> consumer = new ConsoleConsumer();
-    Long exitCode = execInContainer(container, consumer, cmd);
-    System.out.println("==== Container console feed ==== <<<<");
-    return exitCode;
-  }
-
-  public Long runCmdInDirectory(GenericContainer<?> container, String workingDirectory, String... cmd)
-      throws IOException, InterruptedException {
-    System.out.println("==== Container console feed ==== >>>>");
-    Consumer<OutputFrame> consumer = new ConsoleConsumer();
-    Long exitCode = execInContainer(container, workingDirectory, consumer, cmd);
-    System.out.println("==== Container console feed ==== <<<<");
-    return exitCode;
-  }
 
   public void runTest(GenericContainer<?> container, String testFolder, String primaryInfo, TestEnvironmentConfiguration config)
       throws IOException, InterruptedException {
@@ -264,12 +239,6 @@ public class ContainerHelper {
   }
 
   protected Long execInContainer(
-      GenericContainer<?> container, String workingDirectory, Consumer<OutputFrame> consumer, String... command)
-      throws UnsupportedOperationException, IOException, InterruptedException {
-    return execInContainer(container.getContainerInfo(), consumer, workingDirectory, command);
-  }
-
-  protected Long execInContainer(
       GenericContainer<?> container,
       Consumer<OutputFrame> consumer,
       String... command)
@@ -405,11 +374,6 @@ public class ContainerHelper {
 
     public FixedExposedPortContainer(final DockerImageName dockerImageName) {
       super(dockerImageName);
-    }
-
-    public T withFixedExposedPort(int hostPort, int containerPort, InternetProtocol protocol) {
-      super.addFixedExposedPort(hostPort, containerPort, protocol);
-      return self();
     }
 
     public T withExposedPort(Integer port) {

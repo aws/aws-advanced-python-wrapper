@@ -110,6 +110,10 @@ class RdsUtils:
     IP_V6 = r"^[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){7}"
     IP_V6_COMPRESSED = r"^(([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5})?)::(([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5})?)"
 
+    BG_OLD_HOST_PATTERN = r".*(?P<prefix>-old1)\."
+    BG_GREEN_HOST_PATTERN = r".*(?P<prefix>-green-[0-9a-z]{6})\."
+    BG_GREEN_HOST_ID_PATTERN = r"(.*)-green-[0-9a-z]{6}"
+
     DNS_GROUP = "dns"
     DOMAIN_GROUP = "domain"
     INSTANCE_GROUP = "instance"
@@ -210,6 +214,9 @@ class RdsUtils:
 
         return None
 
+    def is_ip(self, host: str) -> bool:
+        return self.is_ipv4(host) or self.is_ipv6(host)
+
     def is_ipv4(self, host: str) -> bool:
         if host is None or not host.strip():
             return False
@@ -227,7 +234,7 @@ class RdsUtils:
         if host is None or not host.strip():
             return RdsUrlType.OTHER
 
-        if self.is_ipv4(host) or self.is_ipv6(host):
+        if self.is_ip(host):
             return RdsUrlType.IP_ADDRESS
         elif self.is_writer_cluster_dns(host):
             return RdsUrlType.RDS_WRITER_CLUSTER
@@ -241,6 +248,42 @@ class RdsUtils:
             return RdsUrlType.RDS_INSTANCE
 
         return RdsUrlType.OTHER
+
+    def is_green_instance(self, host: str) -> bool:
+        if not host:
+            return False
+
+        return search(RdsUtils.BG_GREEN_HOST_PATTERN, host) is not None
+
+    def is_not_old_instance(self, host: str) -> bool:
+        if host is None or not host.strip():
+            return False
+        return search(RdsUtils.BG_OLD_HOST_PATTERN, host) is None
+
+    def is_not_green_or_old_instance(self, host: str) -> bool:
+        if not host:
+            return False
+
+        return search(RdsUtils.BG_GREEN_HOST_PATTERN, host) is None and \
+            search(RdsUtils.BG_OLD_HOST_PATTERN, host) is None
+
+    def remove_green_instance_prefix(self, host: str) -> str:
+        if not host:
+            return host
+
+        host_match = search(RdsUtils.BG_GREEN_HOST_PATTERN, host)
+        if host_match is None:
+            host_id_match = search(RdsUtils.BG_GREEN_HOST_ID_PATTERN, host)
+            if host_id_match:
+                return host_id_match.group(0)
+            else:
+                return host
+
+        prefix = host_match.group("prefix")
+        if not prefix:
+            return host
+
+        return host.replace(f"{prefix}.", ".")
 
     def _find(self, host: str, patterns: list):
         if not host or not host.strip():
