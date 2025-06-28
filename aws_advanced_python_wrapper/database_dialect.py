@@ -98,6 +98,15 @@ class TopologyAwareDatabaseDialect(Protocol):
         return self._IS_READER_QUERY
 
 
+@runtime_checkable
+class AuroraLimitlessDialect(Protocol):
+    _LIMITLESS_ROUTER_ENDPOINT_QUERY: str
+
+    @property
+    def limitless_router_endpoint_query(self) -> str:
+        return self._LIMITLESS_ROUTER_ENDPOINT_QUERY
+
+
 class DatabaseDialect(Protocol):
     """
     Database dialects help the AWS Advanced Python Driver determine what kind of underlying database is being used,
@@ -342,7 +351,7 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
         return lambda provider_service, props: RdsHostListProvider(provider_service, props)
 
 
-class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
+class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLimitlessDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.MULTI_AZ_PG,)
 
     _EXTENSIONS_QUERY = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils " \
@@ -359,6 +368,7 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
 
     _HOST_ID_QUERY = "SELECT aurora_db_instance_identifier()"
     _IS_READER_QUERY = "SELECT pg_is_in_recovery()"
+    _LIMITLESS_ROUTER_ENDPOINT_QUERY = "SELECT router_endpoint, load FROM aurora_limitless_router_endpoints()"
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
