@@ -276,6 +276,15 @@ class WrapperProperties:
     ROUND_ROBIN_HOST_WEIGHT_PAIRS = WrapperProperty("round_robin_host_weight_pairs",
                                                     "Comma separated list of database host-weight pairs in the format of `<host>:<weight>`.",
                                                     "")
+
+    WEIGHTED_RANDOM_DEFAULT_WEIGHT = WrapperProperty("weighted_random_default_weight", "The default weight for any hosts that have not been " +
+                                                     "configured with the `weighted_random_host_weight_pairs` parameter.",
+                                                     1)
+
+    WEIGHTED_RANDOM_HOST_WEIGHT_PAIRS = WrapperProperty("weighted_random_host_weight_pairs",
+                                                        "Comma separated list of database host-weight pairs in the format of `<host>:<weight>`.",
+                                                        "")
+
     # Federated Auth Plugin
     IDP_ENDPOINT = WrapperProperty("idp_endpoint",
                                    "The hosting URL of the Identity Provider",

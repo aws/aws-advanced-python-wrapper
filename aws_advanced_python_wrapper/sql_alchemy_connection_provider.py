@@ -25,9 +25,9 @@ from sqlalchemy import QueuePool, pool
 
 from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.host_selector import (HostSelector,
-                                                       RandomHostSelector,
-                                                       RoundRobinHostSelector)
+from aws_advanced_python_wrapper.host_selector import (
+    HostSelector, RandomHostSelector, RoundRobinHostSelector,
+    WeightedRandomHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -46,7 +46,9 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     """
     _POOL_EXPIRATION_CHECK_NS: ClassVar[int] = 30 * 60_000_000_000  # 30 minutes
     _LEAST_CONNECTIONS: ClassVar[str] = "least_connections"
-    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector(), "round_robin": RoundRobinHostSelector()}
+    _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector(),
+                                                     "round_robin": RoundRobinHostSelector(),
+                                                     "weighted_random": WeightedRandomHostSelector()}
     _rds_utils: ClassVar[RdsUtils] = RdsUtils()
     _database_pools: ClassVar[SlidingExpirationCache[PoolKey, QueuePool]] = SlidingExpirationCache(
         should_dispose_func=lambda queue_pool: queue_pool.checkedout() == 0,
