@@ -1155,7 +1155,7 @@ version = "4.25.8"
 description = ""
 optional = false
 python-versions = ">=3.8"
-groups = ["dev", "test"]
+groups = ["test"]
 files = [
     {file = "protobuf-4.25.8-cp310-abi3-win32.whl", hash = "sha256:504435d831565f7cfac9f0714440028907f1975e4bed228e58e72ecfff58a1e0"},
     {file = "protobuf-4.25.8-cp310-abi3-win_amd64.whl", hash = "sha256:bd551eb1fe1d7e92c1af1d75bdfa572eff1ab0e5bf1736716814cdccdb2360f9"},
@@ -1284,13 +1284,13 @@ files = [
 
 [[package]]
 name = "pydevd-pycharm"
-version = "233.15619.17"
+version = "252.23309.36"
 description = "PyCharm Debugger (used in PyCharm and PyDev)"
 optional = false
 python-versions = "*"
 groups = ["test"]
 files = [
-    {file = "pydevd_pycharm-233.15619.17.tar.gz", hash = "sha256:eb92c77803279e45ae5a325e5c5777d0e745af651c84856cc3849d48ff188f17"},
+    {file = "pydevd_pycharm-252.23309.36.tar.gz", hash = "sha256:a4f9b74ac2606ba9ad1c365c4241b3c62d3fc0d0bf74b33594b0c482de9cc9a9"},
 ]
 
 [[package]]
@@ -1806,4 +1806,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.8.1"
-content-hash = "47a0ecc167b2221602cf2ba98f0e8a96b5b472e0d92561715551df388a6e8844"
+content-hash = "6812dce434fc4e629040b2e022c6601371b59601405e5320371ac66268a3065b"
