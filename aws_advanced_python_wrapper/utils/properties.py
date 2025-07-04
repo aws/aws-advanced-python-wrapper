@@ -344,6 +344,26 @@ class WrapperProperties:
                                                            "Interval in milliseconds between measuring response time to a database host",
                                                            30_000)
 
+    # Limitless
+    WAIT_FOR_ROUTER_INFO = WrapperProperty("limitless_wait_for_transaction_router_info",
+                                           "If the cache of transaction router info is empty "
+                                           "and a new connection is made, this property toggles whether "
+                                           "the plugin will wait and synchronously fetch transaction router info before selecting a transaction "
+                                           "router to connect to, or to fall back to using the provided DB Shard Group endpoint URL.",
+                                           True)
+
+    GET_ROUTER_RETRY_INTERVAL_MILLIS = WrapperProperty("limitless_get_transaction_router_retry_interval_millis",
+                                                       "Interval in millis between retries fetching Limitless Transaction Router information.",
+                                                       300)
+
+    GET_ROUTER_MAX_RETRIES = WrapperProperty("limitless_get_transaction_router_max_retries",
+                                             "Interval in millis between polling for Limitless Transaction Routers to the database.",
+                                             7500)
+
+    MAX_RETRIES = WrapperProperty("limitless_connection_max_retries",
+                                  "Max number of connection retries the Limitless Connection Plugin will attempt.",
+                                  5)
+
     # Telemetry
     ENABLE_TELEMETRY = WrapperProperty(
         "enable_telemetry",
