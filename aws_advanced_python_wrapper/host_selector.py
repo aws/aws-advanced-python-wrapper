@@ -18,6 +18,7 @@ import random
 from re import search
 from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, Tuple
 
+from aws_advanced_python_wrapper.utils.log import Logger
 from .host_availability import HostAvailability
 
 if TYPE_CHECKING:
@@ -28,6 +29,8 @@ from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from .pep249 import Error
 from .utils.messages import Messages
 from .utils.properties import Properties, WrapperProperties
+
+logger = Logger(__name__)
 
 
 class HostSelector(Protocol):
@@ -168,23 +171,92 @@ class RoundRobinHostSelector(HostSelector):
 
                 for pair in host_weight_pairs:
                     match = search(RoundRobinHostSelector._HOST_WEIGHT_PAIRS_PATTERN, pair)
+                    message = "RoundRobinHostSelector.RoundRobinInvalidHostWeightPairs"
                     if match:
                         host_name = match.group("host")
                         host_weight = match.group("weight")
                     else:
-                        raise AwsWrapperError(Messages.get("RoundRobinHostSelector.RoundRobinInvalidHostWeightPairs"))
+                        logger.error(message, pair)
+                        raise AwsWrapperError(Messages.get_formatted(message, pair))
 
                     if len(host_name) == 0 or len(host_weight) == 0:
-                        raise AwsWrapperError(Messages.get("RoundRobinHostSelector.RoundRobinInvalidHostWeightPairs"))
+                        logger.error(message, pair)
+                        raise AwsWrapperError(Messages.get_formatted(message, pair))
                     try:
                         weight: int = int(host_weight)
 
                         if weight < RoundRobinHostSelector._DEFAULT_WEIGHT:
-                            raise AwsWrapperError(Messages.get("RoundRobinHostSelector.RoundRobinInvalidHostWeightPairs"))
+                            logger.error(message, pair)
+                            raise AwsWrapperError(Messages.get_formatted(message, pair))
 
                         round_robin_cluster_info.cluster_weights_dict[host_name] = weight
                     except ValueError:
-                        raise AwsWrapperError(Messages.get("RoundRobinHostSelector.RoundRobinInvalidHostWeightPairs"))
+                        logger.error(message, pair)
+                        raise AwsWrapperError(Messages.get_formatted(message, pair))
 
     def clear_cache(self):
         RoundRobinHostSelector._round_robin_cache.clear()
+
+
+class WeightedRandomHostSelector(HostSelector):
+    _DEFAULT_WEIGHT: int = 1
+    _HOST_WEIGHT_PAIRS_PATTERN = r"((?P<host>[^:/?#]*):(?P<weight>.*))"
+    _host_weight_map: Dict[str, int] = {}
+
+    def get_host(self, hosts: Tuple[HostInfo, ...], role: HostRole, props: Optional[Properties] = None) -> HostInfo:
+
+        eligible_hosts: List[HostInfo] = [host for host in hosts if host.role == role and host.get_availability() == HostAvailability.AVAILABLE]
+        eligible_hosts.sort(key=lambda host: host.host, reverse=False)
+        if len(eligible_hosts) == 0:
+            message = "HostSelector.NoHostsMatchingRole"
+            logger.error(message, role)
+            raise AwsWrapperError(Messages.get_formatted("HostSelector.NoHostsMatchingRole", role))
+
+        self._update_host_weight_map_from_string(props)
+
+        default_weight: int = WeightedRandomHostSelector._DEFAULT_WEIGHT
+        if props is not None:
+            default_weight = WrapperProperties.WEIGHTED_RANDOM_DEFAULT_WEIGHT.get_int(props)
+            if default_weight < WeightedRandomHostSelector._DEFAULT_WEIGHT:
+                logger.error("WeightedRandomHostSelector.WeightedRandomInvalidDefaultWeight")
+                raise AwsWrapperError(Messages.get("WeightedRandomHostSelector.WeightedRandomInvalidDefaultWeight"))
+
+        selection_list: List[HostInfo] = []
+        for host in eligible_hosts:
+            if host.host in self._host_weight_map:
+                selection_list = selection_list + self._host_weight_map[host.host] * [host]
+            else:
+                selection_list = selection_list + default_weight * [host]
+
+        return random.choice(selection_list)
+
+    def _update_host_weight_map_from_string(self, props: Optional[Properties] = None) -> None:
+        if props is not None:
+            host_weights: Optional[str] = WrapperProperties.WEIGHTED_RANDOM_HOST_WEIGHT_PAIRS.get(props)
+            if host_weights is not None and len(host_weights) != 0:
+                host_weight_pairs: List[str] = host_weights.split(",")
+
+                for pair in host_weight_pairs:
+                    match = search(WeightedRandomHostSelector._HOST_WEIGHT_PAIRS_PATTERN, pair)
+                    message = "WeightedRandomHostSelector.WeightedRandomInvalidHostWeightPairs"
+                    if match:
+                        host_name = match.group("host")
+                        host_weight = match.group("weight")
+                    else:
+                        logger.error(message, pair)
+                        raise AwsWrapperError(Messages.get_formatted(message, pair))
+
+                    if len(host_name) == 0 or len(host_weight) == 0:
+                        logger.error(message, pair)
+                        raise AwsWrapperError(Messages.get_formatted(message, pair))
+                    try:
+                        weight: int = int(host_weight)
+
+                        if weight < WeightedRandomHostSelector._DEFAULT_WEIGHT:
+                            logger.error(message, pair)
+                            raise AwsWrapperError(Messages.get_formatted(message, pair))
+
+                        self._host_weight_map[host_name] = weight
+                    except ValueError:
+                        logger.error(message, pair)
+                        raise AwsWrapperError(Messages.get_formatted(message, pair))

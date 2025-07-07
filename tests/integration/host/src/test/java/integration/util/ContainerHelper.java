@@ -206,7 +206,9 @@ public class ContainerHelper {
                           .run("mkdir", "app")
                           .workDir("/app")
                           .run("curl", "-sSL", "https://install.python-poetry.org", "--output", "/app/poetry.py")
-                          .run("python3", "/app/poetry.py")
+                          // Version 1.8.5 of poetry is the last version to support python 3.8. Attempting to install a
+                          // newer version of poetry with python 3.8 will result in an error.
+                          .run("python3", "/app/poetry.py", "--version", "1.8.5")
                           .env("PATH", "${PATH}:/root/.local/bin")
                           .entryPoint("/bin/sh -c \"while true; do sleep 30; done;\"")
                           .expose(5005)
@@ -222,7 +224,9 @@ public class ContainerHelper {
                           .run("mkdir", "app")
                           .workDir("/app")
                           .run("curl", "-sSL", "https://install.python-poetry.org", "--output", "/app/poetry.py")
-                          .run("python3", "/app/poetry.py")
+                          // Version 1.8.5 of poetry is the last version to support python 3.8. Attempting to install a
+                          // newer version of poetry with python 3.8 will result in an error.
+                          .run("python3", "/app/poetry.py", "--version", "1.8.5")
                           .env("PATH", "${PATH}:/root/.local/bin")
                           .entryPoint("/bin/sh -c \"while true; do sleep 30; done;\"")
                   ).build()));
