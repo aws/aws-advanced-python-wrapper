@@ -114,7 +114,6 @@ class PluginServiceManagerContainer:
         self._plugin_manager = value
 
 
-T = TypeVar('T')
 StatusType = TypeVar('StatusType')
 UnwrapType = TypeVar('UnwrapType')
 
