@@ -381,7 +381,7 @@ class WrapperProperties:
         180_000)  # 3 minutes
     BG_SUSPEND_NEW_BLUE_CONNECTIONS = WrapperProperty(
         "bg_suspend_new_blue_connections",
-        "Enables Blue/Green Deployment switchover to suspend new blue connection requests  while the "
+        "Enables Blue/Green Deployment switchover to suspend new blue connection requests while the "
         "switchover process is in progress.",
         False)
 

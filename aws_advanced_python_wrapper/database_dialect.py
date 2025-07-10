@@ -324,7 +324,7 @@ class RdsPgDialect(PgDatabaseDialect, BlueGreenDialect):
     _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG, DialectCode.MULTI_AZ_PG)
 
     _BG_STATUS_QUERY = (f"SELECT version, endpoint, port, role, status "
-                        f"FROM rds_tools.show_topology('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')")
+                        f"FROM rds_tools.show_topology('aws_advanced_python_wrapper-{DriverInfo.DRIVER_VERSION}')")
     _BG_STATUS_EXISTS_QUERY = "SELECT 'rds_tools.show_topology'::regproc"
 
     def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
@@ -432,7 +432,7 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, BlueGreen
     _IS_READER_QUERY = "SELECT pg_is_in_recovery()"
 
     _BG_STATUS_QUERY = (f"SELECT version, endpoint, port, role, status "
-                        f"FROM get_blue_green_fast_switchover_metadata('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')")
+                        f"FROM get_blue_green_fast_switchover_metadata('aws_advanced_python_wrapper-{DriverInfo.DRIVER_VERSION}')")
     _BG_STATUS_EXISTS_QUERY = "SELECT 'get_blue_green_fast_switchover_metadata'::regproc"
 
     @property
