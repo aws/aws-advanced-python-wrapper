@@ -35,6 +35,7 @@ from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
     SlidingExpirationCacheWithCleanupThread
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryContext, TelemetryFactory, TelemetryTraceLevel)
+from aws_advanced_python_wrapper.utils.utils import LogUtils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -44,12 +45,16 @@ if TYPE_CHECKING:
 logger = Logger(__name__)
 
 
-class LimitlessConnectionPlugin(Plugin):
+class LimitlessPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"connect"}
 
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
         self._properties = props
+        self._limitless_router_service = LimitlessRouterService(
+            self._plugin_service,
+            LimitlessQueryHelper(self._plugin_service)
+        )
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -68,23 +73,16 @@ class LimitlessConnectionPlugin(Plugin):
 
         dialect: DatabaseDialect = self._plugin_service.database_dialect
         if not isinstance(dialect, AuroraLimitlessDialect):
-            connection = connect_func()
             refreshed_dialect = self._plugin_service.database_dialect
-
             if not isinstance(refreshed_dialect, AuroraLimitlessDialect):
                 raise UnsupportedOperationError(
-                    Messages.get_formatted("LimitlessConnectionPlugin.UnsupportedDialectOrDatabase",
+                    Messages.get_formatted("LimitlessPlugin.UnsupportedDialectOrDatabase",
                                            type(refreshed_dialect).__name__))
 
-        limitless_router_service = LimitlessRouterService(
-            self._plugin_service,
-            LimitlessQueryHelper(self._plugin_service)
-        )
-
         if is_initial_connection:
-            limitless_router_service.start_monitoring(host_info, props)
+            self._limitless_router_service.start_monitoring(host_info, props)
 
-        context: LimitlessConnectionContext = LimitlessConnectionContext(
+        self._context: LimitlessContext = LimitlessContext(
             host_info,
             props,
             connection,
@@ -92,18 +90,18 @@ class LimitlessConnectionPlugin(Plugin):
             [],
             self
         )
-        limitless_router_service.establish_connection(context)
-        connection = context.get_connection()
+        self._limitless_router_service.establish_connection(self._context)
+        connection = self._context.get_connection()
         if connection is not None and not self._plugin_service.driver_dialect.is_closed(connection):
-            return context.get_connection()
+            return connection
 
-        raise AwsWrapperError(Messages.get_formatted("LimitlessConnectionPlugin.FailedToConnectToHost", host_info.host))
+        raise AwsWrapperError(Messages.get_formatted("LimitlessPlugin.FailedToConnectToHost", host_info.host))
 
 
-class LimitlessConnectionPluginFactory:
+class LimitlessPluginFactory:
 
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return LimitlessConnectionPlugin(plugin_service, props)
+        return LimitlessPlugin(plugin_service, props)
 
 
 class LimitlessRouterMonitor:
@@ -172,6 +170,7 @@ class LimitlessRouterMonitor:
                                                                    lambda _: new_limitless_routers,
                                                                    WrapperProperties.LIMITLESS_MONITOR_DISPOSAL_TIME_MS.get(
                                                                        self._properties) * 1_000_000)
+                    logger.debug(LogUtils.log_topology(tuple(new_limitless_routers), "[limitlessRouterMonitor] Topology:"))
 
                 sleep(self._interval_ms / 1000)
 
@@ -257,7 +256,7 @@ class LimitlessQueryHelper:
         return HostInfo(host_name, host_port_to_map, weight=weight, host_id=host_name)
 
 
-class LimitlessConnectionContext:
+class LimitlessContext:
 
     def __init__(self,
                  host_info: HostInfo,
@@ -265,7 +264,7 @@ class LimitlessConnectionContext:
                  connection: Optional[Connection],
                  connect_func: Callable,
                  limitless_routers: List[HostInfo],
-                 connection_plugin: LimitlessConnectionPlugin) -> None:
+                 connection_plugin: LimitlessPlugin) -> None:
         self._host_info = host_info
         self._props = props
         self._connection = connection
@@ -326,23 +325,24 @@ class LimitlessRouterService:
         self._plugin_service = plugin_service
         self._query_helper = query_helper
 
-    def establish_connection(self, context: LimitlessConnectionContext) -> None:
+    def establish_connection(self, context: LimitlessContext) -> None:
         context.set_limitless_routers(self._get_limitless_routers(
             self._plugin_service.host_list_provider.get_cluster_id(), context.get_props()))
 
         if context.get_limitless_routers() is None or len(context.get_limitless_routers()) == 0:
-            logger.debug("LimitlessRouterServiceImpl.limitlessRouterCacheEmpty")
+            logger.debug("LimitlessRouterService.LimitlessRouterCacheEmpty")
 
             wait_for_router_info = WrapperProperties.WAIT_FOR_ROUTER_INFO.get(context.get_props())
             if wait_for_router_info:
                 self._synchronously_get_limitless_routers_with_retry(context)
             else:
-                logger.debug("LimitlessRouterServiceImpl.UsingProvidedConnectUrl")
+                logger.debug("LimitlessRouterService.UsingProvidedConnectUrl")
                 if context.get_connection() is None or self._plugin_service.driver_dialect.is_closed(context.get_connection()):
                     context.set_connection(context.get_connect_func()())
+                    return
 
-        if context.get_host_info in context.get_limitless_routers():
-            logger.debug("LimitlessRouterServiceImpl.ConnectWithHost")
+        if context.get_host_info() in context.get_limitless_routers():
+            logger.debug(Messages.get_formatted("LimitlessRouterService.ConnectWithHost", context.get_host_info().host))
             if context.get_connection() is None:
                 try:
                     context.set_connection(context.get_connect_func()())
@@ -356,7 +356,7 @@ class LimitlessRouterService:
         try:
             selected_host_info = self._plugin_service.get_host_info_by_strategy(
                 HostRole.WRITER, "weighted_random", context.get_limitless_routers())
-            logger.debug("LimitlessRouterServiceImpl.SelectedHost", "None" if selected_host_info is None else selected_host_info.host)
+            logger.debug("LimitlessRouterService.SelectedHost", "None" if selected_host_info is None else selected_host_info.host)
         except Exception as e:
             if self._is_login_exception(e) or isinstance(e, UnsupportedOperationError):
                 raise e
@@ -375,7 +375,7 @@ class LimitlessRouterService:
                 raise e
 
             if selected_host_info is not None:
-                logger.debug("LimitlessRouterServiceImpl.FailedToConnectToHost", selected_host_info.host)
+                logger.debug("LimitlessRouterService.FailedToConnectToHost", selected_host_info.host)
                 selected_host_info.set_availability(HostAvailability.UNAVAILABLE)
 
             self._retry_connection_with_least_loaded_routers(context)
@@ -389,7 +389,7 @@ class LimitlessRouterService:
             return []
         return routers
 
-    def _retry_connection_with_least_loaded_routers(self, context: LimitlessConnectionContext) -> None:
+    def _retry_connection_with_least_loaded_routers(self, context: LimitlessContext) -> None:
         retry_count = 0
         max_retries = WrapperProperties.MAX_RETRIES_MS.get_int(context.get_props())
         while retry_count < max_retries:
@@ -400,7 +400,7 @@ class LimitlessRouterService:
                 if (context.get_limitless_routers() is None
                         or len(context.get_limitless_routers()) == 0
                         or not context.is_any_router_available()):
-                    logger.debug("LimitlessRouterServiceImpl.NoRoutersAvailableForRetry")
+                    logger.debug("LimitlessRouterService.NoRoutersAvailableForRetry")
 
                     if context.get_connection() is not None and not self._plugin_service.driver_dialect.is_closed(context.get_connection()):
                         return
@@ -417,14 +417,14 @@ class LimitlessRouterService:
 
             try:
                 selected_host_info = self._plugin_service.get_host_info_by_strategy(
-                    HostRole.WRITER, "weighted_random", context.get_limitless_routers())
-                logger.debug("LimitlessRouterServiceImpl.SelectedHostForRetry",
+                    HostRole.WRITER, "highest_weight", context.get_limitless_routers())
+                logger.debug("LimitlessRouterService.SelectedHostForRetry",
                              "None" if selected_host_info is None else selected_host_info.host)
                 if selected_host_info is None:
                     continue
 
             except UnsupportedOperationError as e:
-                logger.error("LimitlessRouterServiceImpl.IncorrectConfiguration")
+                logger.error("LimitlessRouterService.IncorrectConfiguration")
                 raise e
             except AwsWrapperError:
                 continue
@@ -438,14 +438,14 @@ class LimitlessRouterService:
                 if self._is_login_exception(e):
                     raise e
                 selected_host_info.set_availability(HostAvailability.UNAVAILABLE)
-                logger.debug("LimitlessRouterServiceImpl.FailedToConnectToHost", selected_host_info.host)
+                logger.debug("LimitlessRouterService.FailedToConnectToHost", selected_host_info.host)
 
         raise AwsWrapperError(Messages.get("LimitlessRouterService.MaxRetriesExceeded"))
 
-    def _synchronously_get_limitless_routers_with_retry(self, context: LimitlessConnectionContext) -> None:
-        logger.debug("LimitlessRouterServiceImpl.SynchronouslyGetLimitlessRouters")
+    def _synchronously_get_limitless_routers_with_retry(self, context: LimitlessContext) -> None:
+        logger.debug("LimitlessRouterService.SynchronouslyGetLimitlessRouters")
         retry_count = -1
-        max_retries = WrapperProperties.MAX_RETRIES_MS.get_int(context.get_props())
+        max_retries = WrapperProperties.GET_ROUTER_MAX_RETRIES.get_int(context.get_props())
         retry_interval_ms = WrapperProperties.GET_ROUTER_RETRY_INTERVAL_MS.get_float(context.get_props())
         first_iteration = True
         while first_iteration or retry_count < max_retries:
@@ -467,7 +467,7 @@ class LimitlessRouterService:
 
         raise AwsWrapperError(Messages.get("LimitlessRouterService.NoRoutersAvailable"))
 
-    def _synchronously_get_limitless_routers(self, context: LimitlessConnectionContext) -> None:
+    def _synchronously_get_limitless_routers(self, context: LimitlessContext) -> None:
         cache_expiration_nano: int = WrapperProperties.LIMITLESS_MONITOR_DISPOSAL_TIME_MS.get_int(context.get_props()) * 1_000_000
 
         lock = LimitlessRouterService._force_get_limitless_routers_lock_map.compute_if_absent(

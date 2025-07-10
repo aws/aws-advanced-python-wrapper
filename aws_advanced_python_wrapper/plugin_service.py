@@ -24,8 +24,7 @@ from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
     FederatedAuthPluginFactory
-from aws_advanced_python_wrapper.limitless_connection_plugin import \
-    LimitlessConnectionPluginFactory
+from aws_advanced_python_wrapper.limitless_plugin import LimitlessPluginFactory
 from aws_advanced_python_wrapper.okta_plugin import OktaAuthPluginFactory
 from aws_advanced_python_wrapper.states.session_state_service import (
     SessionStateService, SessionStateServiceImpl)
@@ -731,7 +730,7 @@ class PluginManager(CanReleaseResources):
         "federated_auth": FederatedAuthPluginFactory,
         "okta": OktaAuthPluginFactory,
         "initial_connection": AuroraInitialConnectionStrategyPluginFactory,
-        "limitless": LimitlessConnectionPluginFactory,
+        "limitless": LimitlessPluginFactory,
     }
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
@@ -751,7 +750,7 @@ class PluginManager(CanReleaseResources):
         IamAuthPluginFactory: 700,
         AwsSecretsManagerPluginFactory: 800,
         FederatedAuthPluginFactory: 900,
-        LimitlessConnectionPluginFactory: 950,
+        LimitlessPluginFactory: 950,
         OktaAuthPluginFactory: 1000,
         ConnectTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
         ExecuteTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,

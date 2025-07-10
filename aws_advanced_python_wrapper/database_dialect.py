@@ -18,6 +18,7 @@ from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
                     Protocol, Tuple, runtime_checkable)
 
 from aws_advanced_python_wrapper.driver_info import DriverInfo
+from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -631,6 +632,11 @@ class DatabaseDialectManager(DatabaseDialectProvider):
 
         if target_driver_type is TargetDriverType.POSTGRES:
             rds_type = self._rds_helper.identify_rds_type(host)
+            if rds_type == RdsUrlType.RDS_AURORA_LIMITLESS_DB_SHARD_GROUP:
+                self._can_update = False
+                self._dialect_code = DialectCode.AURORA_PG
+                self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.AURORA_PG]
+                return self._dialect
             if rds_type.is_rds_cluster:
                 self._can_update = True
                 self._dialect_code = DialectCode.AURORA_PG

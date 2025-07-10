@@ -369,7 +369,7 @@ class WrapperProperties:
                                              "Max number of connection retries the Limitless Connection Plugin will attempt.",
                                              5)
 
-    MAX_RETRIES_MS = WrapperProperty("limitless_connection_max_retries_ms",
+    MAX_RETRIES_MS = WrapperProperty("limitless_max_retries_ms",
                                      "Interval in milliseconds between polling for Limitless Transaction Routers to the database.",
                                      7_500)
 
