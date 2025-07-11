@@ -295,16 +295,16 @@ class BaseRouting:
         self._bg_role = bg_role
 
     def delay(self, delay_ms: int, bg_status: Optional[BlueGreenStatus], plugin_service: PluginService, bg_id: str):
-        end_time_sec = time.time() + (delay_ms / 1_000)
+        end_time_sec = time.time() + (delay_ms // 1_000)
         min_delay_ms = min(delay_ms, BaseRouting._MIN_SLEEP_MS)
 
         if bg_status is None:
-            time.sleep(delay_ms / 1_000)
+            time.sleep(delay_ms // 1_000)
             return
 
         while bg_status is plugin_service.get_status(BlueGreenStatus, bg_id) and time.time() < end_time_sec:
             with bg_status.cv:
-                bg_status.cv.wait(min_delay_ms / 1_000)
+                bg_status.cv.wait(min_delay_ms // 1_000)
 
     def is_match(self, host_info: Optional[HostInfo], bg_role: BlueGreenRole) -> bool:
         if self._endpoint is None:
@@ -459,7 +459,7 @@ class SuspendConnectRouting(BaseRouting, ConnectRouting):
         bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
         start_time_sec = time.time()
-        end_time_sec = start_time_sec + timeout_ms / 1_000
+        end_time_sec = start_time_sec + timeout_ms // 1_000
 
         try:
             while time.time() < end_time_sec and \
@@ -475,7 +475,7 @@ class SuspendConnectRouting(BaseRouting, ConnectRouting):
             logger.debug(
                 Messages.get_formatted(
                     "SuspendConnectRouting.SwitchoverCompleteContinueWithConnect",
-                    (time.time() - start_time_sec) / 1000))
+                    (time.time() - start_time_sec) // 1000))
         finally:
             telemetry_context.close_context()
 
@@ -514,7 +514,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
 
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
         start_time_sec = time.time()
-        end_time_sec = start_time_sec + timeout_ms / 1_000
+        end_time_sec = start_time_sec + timeout_ms // 1_000
 
         try:
             while time.time() < end_time_sec and \
@@ -530,7 +530,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
             if bg_status is None or bg_status.phase == BlueGreenPhase.COMPLETED:
                 logger.debug(
                     "SuspendUntilCorrespondingHostFoundConnectRouting.CompletedContinueWithConnect",
-                    (time.time() - start_time_sec) / 1000)
+                    (time.time() - start_time_sec) // 1000)
                 return None
 
             if time.time() > end_time_sec:
@@ -538,13 +538,13 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
                     Messages.get_formatted(
                         "SuspendUntilCorrespondingHostFoundConnectRouting.CorrespondingHostNotFoundTryConnectLater",
                         host_info.host,
-                        (time.time() - start_time_sec) / 1000))
+                        (time.time() - start_time_sec) // 1000))
 
             logger.debug(
                 Messages.get_formatted(
                     "SuspendUntilCorrespondingHostFoundConnectRouting.CorrespondingHostFoundContinueWithConnect",
                     host_info.host,
-                    (time.time() - start_time_sec) / 1000))
+                    (time.time() - start_time_sec) // 1000))
         finally:
             telemetry_context.close_context()
 
@@ -600,7 +600,7 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
         bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
         start_time_sec = time.time()
-        end_time_sec = start_time_sec + timeout_ms / 1_000
+        end_time_sec = start_time_sec + timeout_ms // 1_000
 
         try:
             while time.time() < end_time_sec and \
@@ -619,7 +619,7 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
                 Messages.get_formatted(
                     "SuspendExecuteRouting.SwitchoverCompleteContinueWithMethod",
                     method_name,
-                    (time.time() - start_time_sec) / 1000))
+                    (time.time() - start_time_sec) // 1000))
         finally:
             telemetry_context.close_context()
 
@@ -896,6 +896,7 @@ class BlueGreenStatusMonitor:
 
     def _open_connection(self):
         conn = self._connection
+        # TODO: do we need to lock while we check the condition and start the thread if it we don't have a conn?
         if not self._is_connection_closed(conn):
             return
 
@@ -919,7 +920,7 @@ class BlueGreenStatusMonitor:
             host_info = self._initial_host_info
             self._connected_ip_address = None
             ip_address = None
-            self._is_host_info_correct = False
+            self._is_host_info_correct.clear()
 
         try:
             if self.use_ip_address.is_set() and ip_address is not None:
@@ -941,11 +942,15 @@ class BlueGreenStatusMonitor:
 
             self._panic_mode.clear()
             self._notify_changes()
-        except Exception:
+        except Exception as e:
             # Attempt to open connection failed.
-            self._connection = None
-            self._panic_mode.set()
-            self._notify_changes()
+            import traceback
+            print(traceback.format_exc(), flush=True)
+            raise e
+            # TODO: change back
+            # self._connection = None
+            # self._panic_mode.set()
+            # self._notify_changes()
 
     def _get_ip_address(self, host: str) -> ValueContainer[str]:
         try:
@@ -1030,7 +1035,7 @@ class BlueGreenStatusMonitor:
                                       self._rds_utils.is_not_old_instance(status.endpoint)}
                 self._host_names.update(current_host_names)
 
-            if not self._is_host_info_correct and status_info is not None:
+            if not self._is_host_info_correct.is_set() and status_info is not None:
                 # We connected to an initial host info that might not be the desired blue or green cluster. Let's check
                 # if we need to reconnect to the correct one.
                 status_info_ip_address = self._get_ip_address(status_info.endpoint)
@@ -1038,15 +1043,15 @@ class BlueGreenStatusMonitor:
                 if connected_ip_address is not None and connected_ip_address != status_info_ip_address:
                     # We are not connected to the desired blue or green cluster, we need to reconnect.
                     self._connection_host_info = HostInfo(host=status_info.endpoint, port=status_info.port)
-                    self._is_host_info_correct = True
+                    self._is_host_info_correct.set()
                     self._close_connection()
                     self._panic_mode.set()
                 else:
                     # We are already connected to the right host.
-                    self._is_host_info_correct = True
+                    self._is_host_info_correct.set()
                     self._panic_mode.clear()
 
-            if self._is_host_info_correct and self._host_list_provider is not None:
+            if self._is_host_info_correct.is_set() and self._host_list_provider is not None:
                 # A connection to the correct cluster (blue or green) has been stablished. Let's initialize the host
                 # list provider.
                 self._init_host_list_provider()
@@ -1068,7 +1073,7 @@ class BlueGreenStatusMonitor:
                 pass
 
     def _init_host_list_provider(self):
-        if self._host_list_provider is not None or not self._is_host_info_correct:
+        if self._host_list_provider is not None or not self._is_host_info_correct.is_set():
             return
 
         # We need to instantiate a separate HostListProvider with a special unique cluster ID to avoid interference with
@@ -1096,7 +1101,7 @@ class BlueGreenStatusMonitor:
         end_ns = start_ns + delay_ms * 1_000_000
         initial_interval_rate = self.interval_rate
         initial_panic_mode_val = self._panic_mode.is_set()
-        min_delay_sec = min(delay_ms, 50) / 1_000
+        min_delay_sec = min(delay_ms, 50) // 1_000
 
         while self.interval_rate == initial_interval_rate and \
                 perf_counter_ns() < end_ns and \
@@ -1114,11 +1119,11 @@ class BlueGreenStatusMonitor:
             return
 
         self._current_topology = self._host_list_provider.force_refresh(conn)
-        if self.should_collect_topology:
+        if self.should_collect_topology.is_set():
             self._start_topology = self._current_topology
 
         current_topology_copy = self._current_topology
-        if current_topology_copy is not None and self.should_collect_topology:
+        if current_topology_copy is not None and self.should_collect_topology.is_set():
             self._host_names.update({host_info.host for host_info in current_topology_copy})
 
     def _collect_ip_addresses(self):
@@ -1127,18 +1132,18 @@ class BlueGreenStatusMonitor:
             for host in self._host_names:
                 self._current_ip_addresses_by_host.put_if_absent(host, self._get_ip_address(host))
 
-        if self.should_collect_ip_addresses:
+        if self.should_collect_ip_addresses.is_set():
             self._start_ip_addresses_by_host.clear()
             self._start_ip_addresses_by_host.put_all(self._current_ip_addresses_by_host)
 
     def _update_ip_address_flags(self):
-        if self.should_collect_topology:
+        if self.should_collect_topology.is_set():
             self._all_start_topology_ip_changed = False
             self._all_start_topology_endpoints_removed = False
             self._all_topology_changed = False
             return
 
-        if not self.should_collect_ip_addresses:
+        if not self.should_collect_ip_addresses.is_set():
             # Check whether all hosts in start_topology resolve to new IP addresses
             self._all_start_topology_ip_changed = self._has_all_start_topology_ip_changed()
 
@@ -1153,7 +1158,7 @@ class BlueGreenStatusMonitor:
                 )
         )
 
-        if not self.should_collect_topology:
+        if not self.should_collect_topology.is_set():
             # Check whether all hosts in current_topology do not exist in start_topology
             start_topology_hosts = set() if self._start_topology is None else \
                 {host_info.host for host_info in self._start_topology}
@@ -1280,9 +1285,9 @@ class BlueGreenStatusProvider:
                 monitoring_props.pop(key, None)
 
         monitoring_props.put_if_absent(
-            WrapperProperties.CONNECT_TIMEOUT_SEC.name, BlueGreenStatusProvider._DEFAULT_CONNECT_TIMEOUT_MS / 1_000)
+            WrapperProperties.CONNECT_TIMEOUT_SEC.name, BlueGreenStatusProvider._DEFAULT_CONNECT_TIMEOUT_MS // 1_000)
         monitoring_props.put_if_absent(
-            WrapperProperties.SOCKET_TIMEOUT_SEC.name, BlueGreenStatusProvider._DEFAULT_SOCKET_TIMEOUT_MS / 1_000)
+            WrapperProperties.SOCKET_TIMEOUT_SEC.name, BlueGreenStatusProvider._DEFAULT_SOCKET_TIMEOUT_MS // 1_000)
         return monitoring_props
 
     def _process_interim_status(self, bg_role: BlueGreenRole, interim_status: BlueGreenInterimStatus):
@@ -1792,13 +1797,13 @@ class BlueGreenStatusProvider:
                 monitor.interval_rate = BlueGreenIntervalRate.BASELINE
                 monitor.should_collect_ip_addresses.clear()
                 monitor.should_collect_topology.clear()
-                monitor.use_ip_address = False
+                monitor.use_ip_address.clear()
         elif phase == BlueGreenPhase.CREATED:
             for monitor in self._monitors:
                 monitor.interval_rate = BlueGreenIntervalRate.INCREASED
                 monitor.should_collect_ip_addresses.set()
                 monitor.should_collect_topology.set()
-                monitor.use_ip_address = False
+                monitor.use_ip_address.clear()
                 if self._rollback:
                     monitor.reset_collected_data()
         elif phase == BlueGreenPhase.PREPARATION \
@@ -1808,18 +1813,18 @@ class BlueGreenStatusProvider:
                 monitor.interval_rate = BlueGreenIntervalRate.HIGH
                 monitor.should_collect_ip_addresses.clear()
                 monitor.should_collect_topology.clear()
-                monitor.use_ip_address = True
+                monitor.use_ip_address.set()
         elif phase == BlueGreenPhase.COMPLETED:
             for monitor in self._monitors:
                 monitor.interval_rate = BlueGreenIntervalRate.BASELINE
                 monitor.should_collect_ip_addresses.clear()
                 monitor.should_collect_topology.clear()
-                monitor.use_ip_address = False
+                monitor.use_ip_address.clear()
                 monitor.reset_collected_data()
 
             # Stop monitoring old1 cluster/instance.
             if not self._rollback and self._monitors[BlueGreenRole.SOURCE.value] is not None:
-                self._monitors[BlueGreenRole.SOURCE.value].stop = True
+                self._monitors[BlueGreenRole.SOURCE.value].stop.set()
         else:
             raise UnsupportedOperationError(
                 Messages.get_formatted(
