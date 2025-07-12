@@ -901,10 +901,11 @@ class PluginManager(CanReleaseResources):
             plugin_func: Callable,
             target_driver_func: Callable,
             plugin_to_skip: Optional[Plugin] = None):
-        pipeline_func: Optional[Callable] = self._function_cache.get(method_name)
+        cache_key = method_name if plugin_to_skip is None else method_name + plugin_to_skip.__class__.__name__
+        pipeline_func: Optional[Callable] = self._function_cache.get(cache_key)
         if pipeline_func is None:
             pipeline_func = self._make_pipeline(method_name, plugin_to_skip)
-            self._function_cache[method_name] = pipeline_func
+            self._function_cache[cache_key] = pipeline_func
 
         return pipeline_func(plugin_func, target_driver_func)
 
