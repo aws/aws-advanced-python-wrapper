@@ -942,15 +942,11 @@ class BlueGreenStatusMonitor:
 
             self._panic_mode.clear()
             self._notify_changes()
-        except Exception as e:
+        except Exception:
             # Attempt to open connection failed.
-            import traceback
-            print(traceback.format_exc(), flush=True)
-            raise e
-            # TODO: change back
-            # self._connection = None
-            # self._panic_mode.set()
-            # self._notify_changes()
+            self._connection = None
+            self._panic_mode.set()
+            self._notify_changes()
 
     def _get_ip_address(self, host: str) -> ValueContainer[str]:
         try:
