@@ -199,7 +199,7 @@ class BlueGreenInterimStatus:
         if host_tuple is None or len(host_tuple) == 0:
             tuple_str = ""
         else:
-            tuple_str = ",".join(sorted(x.url + x.role for x in host_tuple))
+            tuple_str = ",".join(sorted(f"{x.url}{x.role}" for x in host_tuple))
 
         return self.get_value_hash(current_hash, tuple_str)
 
@@ -890,6 +890,10 @@ class BlueGreenStatusMonitor:
                     self._delay(delay_ms)
                 except Exception as e:
                     logger.warning("BlueGreenStatusMonitor.MonitoringUnhandledException", self._bg_role, e)
+                    import traceback
+                    traceback.print_exc()
+                    print(e)
+
         finally:
             self._close_connection()
             logger.debug("BlueGreenStatusMonitor.ThreadCompleted", self._bg_role)
@@ -1238,10 +1242,9 @@ class BlueGreenStatusProvider:
 
         dialect = self._plugin_service.database_dialect
         if not isinstance(dialect, BlueGreenDialect):
-            # TODO: raise an error instead? Seems like we will encounter an error later if we don't raise one here.
-            logger.warning(
-                "BlueGreenStatusProvider.UnsupportedDialect", self._bg_id, dialect.__class__.__name__)
-            return
+            raise AwsWrapperError(
+                Messages.get_formatted(
+                    "BlueGreenStatusProvider.UnsupportedDialect", self._bg_id, dialect.__class__.__name__))
 
         current_host_info = self._plugin_service.current_host_info
         blue_monitor = BlueGreenStatusMonitor(
@@ -1854,25 +1857,28 @@ class BlueGreenStatusProvider:
         switchover_completed = (not self._rollback and self._summary_status.phase == BlueGreenPhase.COMPLETED) or \
                                (self._rollback and self._summary_status.phase == BlueGreenPhase.CREATED)
         has_active_switchover_phases = \
-            any(phase_info.phase is not None and phase_info.phase.is_active_switchover_completed()
+            any(phase_info.phase is not None and phase_info.phase.is_switchover_active_or_completed
                 for phase_info in self._phase_times_ns.values())
 
-        if not switchover_completed or not has_active_switchover_phases:
-            return
+        # if not switchover_completed or not has_active_switchover_phases:
+        #     return
 
         time_zero_phase = BlueGreenPhase.PREPARATION if self._rollback else BlueGreenPhase.IN_PROGRESS
         time_zero_key = f"{time_zero_phase.name} (rollback)" if self._rollback else time_zero_phase.name
         time_zero = self._phase_times_ns.get(time_zero_key)
         sorted_phase_entries = sorted(self._phase_times_ns.items(), key=lambda entry: entry[1].timestamp_ns)
-        phase_time_lines = [
-            f"{entry[1].date_time:>28s} "
-            f"{'' if time_zero is None else (entry[1].timestamp_ns - time_zero.timestamp_ns) / 1_000_000:>18s} ms "
-            f"{entry[0]:>31s}" for entry in sorted_phase_entries
+        formatted_phase_entries = [
+            "{:>28s} {:>18s} ms {:>31s}".format(
+                str(entry[1].date_time),
+                "" if time_zero is None else str((entry[1].timestamp_ns - time_zero.timestamp_ns) // 1_000_000),
+                entry[0]
+            ) for entry in sorted_phase_entries
         ]
-        phase_times_str = "\n".join(phase_time_lines)
+        phase_times_str = "\n".join(formatted_phase_entries)
         divider = "----------------------------------------------------------------------------------\n"
+        header = "{:<28s} {:>21s} {:>31s}\n".format("timestamp", "time offset (ms)", "event")
         log_message = (f"[bg_id: '{self._bg_id}']\n{divider}"
-                       f"{'timestamp':<28s} {'time offset (ms)':>21s} {'event':>31s}{divider}"
+                       f"{header}{divider}"
                        f"{phase_times_str}\n{divider}")
         logger.debug(log_message)
 
@@ -1880,7 +1886,7 @@ class BlueGreenStatusProvider:
         switchover_completed = (not self._rollback and self._summary_status.phase == BlueGreenPhase.COMPLETED) or \
                                (self._rollback and self._summary_status.phase == BlueGreenPhase.CREATED)
         has_active_switchover_phases = \
-            any(phase_info.phase is not None and phase_info.phase.is_active_switchover_completed()
+            any(phase_info.phase is not None and phase_info.phase.is_switchover_active_or_completed
                 for phase_info in self._phase_times_ns.values())
 
         if not switchover_completed or not has_active_switchover_phases:
