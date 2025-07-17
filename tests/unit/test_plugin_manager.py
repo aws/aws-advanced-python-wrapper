@@ -520,7 +520,7 @@ class TestPlugin(Plugin):
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         return False
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> HostInfo:
         return HostInfo(type(self).__name__ + ":host_info")
 
 

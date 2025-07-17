@@ -26,8 +26,8 @@ from threading import Lock
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import (
-    HostSelector, RandomHostSelector, RoundRobinHostSelector,
-    WeightedRandomHostSelector)
+    HighestWeightHostSelector, HostSelector, RandomHostSelector,
+    RoundRobinHostSelector, WeightedRandomHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -98,7 +98,8 @@ class ConnectionProvider(Protocol):
 class DriverConnectionProvider(ConnectionProvider):
     _accepted_strategies: Dict[str, HostSelector] = {"random": RandomHostSelector(),
                                                      "round_robin": RoundRobinHostSelector(),
-                                                     "weighted_random": WeightedRandomHostSelector()}
+                                                     "weighted_random": WeightedRandomHostSelector(),
+                                                     "highest_weight": HighestWeightHostSelector()}
 
     def accepts_host_info(self, host_info: HostInfo, props: Properties) -> bool:
         return True

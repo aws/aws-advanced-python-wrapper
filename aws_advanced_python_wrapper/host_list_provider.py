@@ -69,6 +69,9 @@ class HostListProvider(Protocol):
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
         ...
 
+    def get_cluster_id(self) -> str:
+        ...
+
 
 @runtime_checkable
 class DynamicHostListProvider(HostListProvider, Protocol):
@@ -519,6 +522,10 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             cursor.execute(self._dialect.host_id_query)
             return cursor.fetchone()
 
+    def get_cluster_id(self):
+        self._initialize()
+        return self._cluster_id
+
     @dataclass()
     class ClusterIdSuggestion:
         cluster_id: str
@@ -646,3 +653,6 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
         raise UnsupportedOperationError(
             Messages.get_formatted("ConnectionStringHostListProvider.UnsupportedMethod", "identify_connection"))
+
+    def get_cluster_id(self):
+        return "<none>"

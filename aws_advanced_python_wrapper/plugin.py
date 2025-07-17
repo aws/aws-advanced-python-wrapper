@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, runtime_checkable
+from typing import TYPE_CHECKING, List, Optional, runtime_checkable
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -113,7 +113,7 @@ class Plugin(ABC):
         """
         return False
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> HostInfo:
         """
         Selects a :py:class:`HostInfo` with the requested role from available hosts using the requested strategy.
         :py:method:`ConnectionPlugin.accepts_strategy` should be called first to evaluate if this py:class:`ConnectionPlugin` supports the selection
@@ -121,6 +121,7 @@ class Plugin(ABC):
 
         :param role: the desired role of the selected host - either a reader host or a writer host.
         :param strategy: the strategy that should be used to pick a host (eg "random").
+        :param host_list: Optional list to select host from given input.
         :return: a py:class:`HostInfo` with the requested role.
         """
         raise UnsupportedOperationError(Messages.get_formatted("Plugin.UnsupportedMethod", "get_host_info_by_strategy"))

@@ -37,7 +37,7 @@ def host_info():
 
 @pytest.fixture
 def props():
-    return Properties({WrapperProperties.RESPONSE_MEASUREMENT_INTERVAL_MILLIS.name: 30000, "frt-some_prop": "some_value"})
+    return Properties({WrapperProperties.RESPONSE_MEASUREMENT_INTERVAL_MS.name: 30000, "frt-some_prop": "some_value"})
 
 
 @pytest.fixture

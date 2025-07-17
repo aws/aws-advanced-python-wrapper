@@ -27,6 +27,7 @@ from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
     FederatedAuthPluginFactory
+from aws_advanced_python_wrapper.limitless_plugin import LimitlessPluginFactory
 from aws_advanced_python_wrapper.okta_plugin import OktaAuthPluginFactory
 from aws_advanced_python_wrapper.states.session_state_service import (
     SessionStateService, SessionStateServiceImpl)
@@ -227,7 +228,7 @@ class PluginService(ExceptionHandler, Protocol):
         """
         ...
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> Optional[HostInfo]:
         """
         Selects a :py:class:`HostInfo` with the requested role from available hosts using the requested strategy.
         :py:method:`PluginService.accepts_strategy` should be called first to evaluate if any of the configured :py:class:`ConnectionPlugin`
@@ -235,6 +236,7 @@ class PluginService(ExceptionHandler, Protocol):
 
         :param role: the desired role of the selected host - either a reader host or a writer host.
         :param strategy: the strategy that should be used to pick a host (eg "random").
+        :param host_list: Optional list to select host from given input.
         :return: a py:class:`HostInfo` with the requested role.
         """
         ...
@@ -542,9 +544,9 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.accepts_strategy(role, strategy)
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> Optional[HostInfo]:
         plugin_manager: PluginManager = self._container.plugin_manager
-        return plugin_manager.get_host_info_by_strategy(role, strategy)
+        return plugin_manager.get_host_info_by_strategy(role, strategy, host_list)
 
     def get_host_role(self, connection: Optional[Connection] = None) -> HostRole:
         connection = connection if connection is not None else self.current_connection
@@ -764,6 +766,7 @@ class PluginManager(CanReleaseResources):
         "federated_auth": FederatedAuthPluginFactory,
         "okta": OktaAuthPluginFactory,
         "initial_connection": AuroraInitialConnectionStrategyPluginFactory,
+        "limitless": LimitlessPluginFactory,
         "bg": BlueGreenPluginFactory
     }
 
@@ -785,6 +788,7 @@ class PluginManager(CanReleaseResources):
         IamAuthPluginFactory: 700,
         AwsSecretsManagerPluginFactory: 800,
         FederatedAuthPluginFactory: 900,
+        LimitlessPluginFactory: 950,
         OktaAuthPluginFactory: 1000,
         ConnectTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
         ExecuteTimePluginFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
@@ -1069,7 +1073,7 @@ class PluginManager(CanReleaseResources):
 
         return False
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> Optional[HostInfo]:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> Optional[HostInfo]:
         for plugin in self._plugins:
             plugin_subscribed_methods = plugin.subscribed_methods
             is_subscribed = \
@@ -1078,7 +1082,7 @@ class PluginManager(CanReleaseResources):
 
             if is_subscribed:
                 try:
-                    host: HostInfo = plugin.get_host_info_by_strategy(role, strategy)
+                    host: HostInfo = plugin.get_host_info_by_strategy(role, strategy, host_list)
                     if host is not None:
                         return host
                 except UnsupportedOperationError:
