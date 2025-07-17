@@ -35,8 +35,7 @@ from copy import copy
 from dataclasses import dataclass
 from enum import Enum, auto
 from threading import Condition, Event, RLock, Thread
-from typing import (Any, Callable, ClassVar, Dict, Optional, Set,
-                    Tuple)
+from typing import Any, Callable, ClassVar, Dict, Optional, Set, Tuple
 
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 UnsupportedOperationError)
