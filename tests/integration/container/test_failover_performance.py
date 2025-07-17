@@ -18,7 +18,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging import getLogger
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pytest
 
@@ -131,8 +131,9 @@ class TestPerformance:
 
         return props
 
+    @pytest.mark.parametrize("plugins", ["host_monitoring", "host_monitoring_v2"])
     def test_failure_detection_time_efm(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils,
-                                        props: Properties):
+                                        props: Properties, plugins):
         enhanced_failure_monitoring_perf_data_list: List[PerfStatBase] = []
         target_driver_connect_func = DriverHelper.get_connect_func(test_driver)
         try:
@@ -147,7 +148,7 @@ class TestPerformance:
                 WrapperProperties.FAILURE_DETECTION_TIME_MS.set(props, str(detection_time))
                 WrapperProperties.FAILURE_DETECTION_INTERVAL_MS.set(props, str(detection_interval))
                 WrapperProperties.FAILURE_DETECTION_COUNT.set(props, str(detection_count))
-                WrapperProperties.PLUGINS.set(props, "host_monitoring")
+                WrapperProperties.PLUGINS.set(props, plugins)
 
                 data: PerfStatMonitoring = PerfStatMonitoring()
                 self._measure_performance(test_environment, target_driver_connect_func, conn_utils, sleep_delay_sec, props, data)
@@ -159,11 +160,13 @@ class TestPerformance:
             PerformanceUtil.write_perf_data_to_file(
                 f"/app/tests/integration/container/reports/"
                 f"DbEngine_{test_environment.get_engine()}_"
+                f"Plugins_{plugins}_"
                 f"FailureDetectionPerformanceResults_EnhancedMonitoringEnabled.csv",
                 TestPerformance.PERF_STAT_MONITORING_HEADER, enhanced_failure_monitoring_perf_data_list)
 
+    @pytest.mark.parametrize("plugins", ["failover,host_monitoring", "failover,host_monitoring_v2"])
     def test_failure_detection_time_failover_and_efm(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils,
-                                                     props: Properties):
+                                                     props: Properties, plugins):
         enhanced_failure_monitoring_perf_data_list: List[PerfStatBase] = []
         try:
             for i in range(len(TestPerformance.failure_detection_time_params)):
@@ -177,7 +180,7 @@ class TestPerformance:
                 WrapperProperties.FAILURE_DETECTION_TIME_MS.set(props, str(detection_time))
                 WrapperProperties.FAILURE_DETECTION_INTERVAL_MS.set(props, str(detection_interval))
                 WrapperProperties.FAILURE_DETECTION_COUNT.set(props, str(detection_count))
-                WrapperProperties.PLUGINS.set(props, "failover,host_monitoring")
+                WrapperProperties.PLUGINS.set(props, plugins)
                 WrapperProperties.FAILOVER_TIMEOUT_SEC.set(props, TestPerformance.PERF_FAILOVER_TIMEOUT_SEC)
                 WrapperProperties.FAILOVER_MODE.set(props, "strict_reader")
 
@@ -191,6 +194,7 @@ class TestPerformance:
             PerformanceUtil.write_perf_data_to_file(
                 f"/app/tests/integration/container/reports/"
                 f"DbEngine_{test_environment.get_engine()}_"
+                f"Plugins_{plugins}_"
                 f"FailureDetectionPerformanceResults_FailoverAndEnhancedMonitoringEnabled.csv",
                 TestPerformance.PERF_STAT_MONITORING_HEADER, enhanced_failure_monitoring_perf_data_list)
 
@@ -205,12 +209,14 @@ class TestPerformance:
         query: str = "SELECT pg_sleep(600)"
         downtime: AtomicInt = AtomicInt()
         elapsed_times: List[int] = []
-        connection_str = conn_utils.get_proxy_conn_string(test_environment.get_proxy_writer().get_host())
 
         for _ in range(TestPerformance.REPEAT_TIMES):
             downtime.set(0)
 
-            with self._open_connect_with_retry(connect_func, connection_str, props) as aws_conn, ThreadPoolExecutor() as executor:
+            with self._open_connect_with_retry(connect_func,
+                                               conn_utils.get_proxy_connect_params(
+                                                   test_environment.get_proxy_writer().get_host()),
+                                               props) as aws_conn, ThreadPoolExecutor() as executor:
                 try:
                     futures = [
                         executor.submit(self._stop_network_thread, test_environment, sleep_delay_sec, downtime),
@@ -236,21 +242,21 @@ class TestPerformance:
         data.max_failure_detection_time_millis = PerformanceUtil.to_millis(max_val)
         data.avg_failure_detection_time_millis = PerformanceUtil.to_millis(avg_val)
 
-    def _open_connect_with_retry(self, connect_func, conn_str: str, props: Properties):
+    def _open_connect_with_retry(self, connect_func, connect_params: Dict[str, Any], props: Properties):
         connection_attempts: int = 0
         conn: Optional[Connection] = None
         while conn is None and connection_attempts < 10:
             try:
                 conn = AwsWrapperConnection.connect(
                     connect_func,
-                    conn_str,
+                    **connect_params,
                     **props)
             except Exception as e:
                 TestPerformance.logger.debug("OpenConnectionFailed", str(e))
             connection_attempts += 1
 
         if conn is None:
-            pytest.fail(f"Unable to connect to {conn_str}")
+            pytest.fail(f"Unable to connect to {connect_params}")
         return conn
 
     def _stop_network_thread(self, test_environment: TestEnvironment, sleep_delay_seconds: int, downtime: AtomicInt):

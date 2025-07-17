@@ -15,9 +15,12 @@
 from __future__ import annotations
 
 from contextlib import closing
+from threading import Thread
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 import botocore.exceptions
+
+from tests.integration.container.utils.proxy_helper import ProxyHelper
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -509,3 +512,32 @@ class RdsTestUtility:
                                  f"ID '{bg_id}'failed for an unspecified reason")
 
             raise Exception(error_message)
+
+    def simulate_temporary_failure(self, instance_name: str, delay_ms: int, failure_duration_ms: int) -> Thread:
+        def temporary_failure():
+            if delay_ms > 0:
+                sleep(delay_ms / 1_000)
+
+            if instance_name == "*":
+                ProxyHelper.disable_all_connectivity()
+            else:
+                ProxyHelper.disable_connectivity(instance_name)
+            sleep(failure_duration_ms / 1_000)
+
+            if instance_name == "*":
+                ProxyHelper.enable_all_connectivity()
+            else:
+                ProxyHelper.enable_connectivity(instance_name)
+
+        simulate_temporary_failure_thread: Thread = Thread(daemon=True, name="SimulateTemporaryFailureThread",
+                                                           target=temporary_failure)
+        return simulate_temporary_failure_thread
+
+    def get_sleep_sql(self, seconds: float) -> str:
+        engine = TestEnvironment.get_current().get_engine()
+        if engine == DatabaseEngine.PG:
+            return f"SELECT pg_sleep({seconds})"
+        elif engine == DatabaseEngine.MYSQL:
+            return f"SELECT SLEEP({seconds})"
+        else:
+            raise UnsupportedOperationError(Messages.get_formatted("RdsTestUtility.InvalidDatabaseEngine", engine.value))

@@ -75,6 +75,8 @@ from aws_advanced_python_wrapper.host_list_provider import (
     HostListProviderService, StaticHostListProvider)
 from aws_advanced_python_wrapper.host_monitoring_plugin import \
     HostMonitoringPluginFactory
+from aws_advanced_python_wrapper.host_monitoring_v2_plugin import \
+    HostMonitoringV2PluginFactory
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
@@ -755,6 +757,7 @@ class PluginManager(CanReleaseResources):
         "aws_secrets_manager": AwsSecretsManagerPluginFactory,
         "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
         "host_monitoring": HostMonitoringPluginFactory,
+        "host_monitoring_v2": HostMonitoringV2PluginFactory,
         "failover": FailoverPluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,
         "fastest_response_strategy": FastestResponseStrategyPluginFactory,
@@ -783,6 +786,7 @@ class PluginManager(CanReleaseResources):
         ReadWriteSplittingPluginFactory: 300,
         FailoverPluginFactory: 400,
         HostMonitoringPluginFactory: 500,
+        HostMonitoringV2PluginFactory: 510,
         BlueGreenPluginFactory: 550,
         FastestResponseStrategyPluginFactory: 600,
         IamAuthPluginFactory: 700,

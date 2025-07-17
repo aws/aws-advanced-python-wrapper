@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
+import copy
 from typing import Any, Dict, Optional
 from urllib.parse import unquote
 
@@ -73,7 +73,7 @@ class WrapperProperty:
 
 
 class WrapperProperties:
-    DEFAULT_PLUGINS = "aurora_connection_tracker,failover,host_monitoring"
+    DEFAULT_PLUGINS = "aurora_connection_tracker,failover,host_monitoring_v2"
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
 
     PROFILE_NAME = WrapperProperty("profile_name", "Driver configuration profile name", None)
@@ -464,6 +464,8 @@ class WrapperProperties:
 
 
 class PropertiesUtils:
+    _MONITORING_PROPERTY_PREFIX = "monitoring-"
+
     @staticmethod
     def parse_properties(conn_info: str, **kwargs: Any) -> Properties:
         if conn_info.startswith("postgresql://") or conn_info.startswith("postgres://"):
@@ -582,7 +584,7 @@ class PropertiesUtils:
                 if attr_val.name not in persisting_properties:
                     props.pop(attr_val.name, None)
 
-        monitor_prop_keys = [key for key in props if key.startswith("monitoring-")]
+        monitor_prop_keys = [key for key in props if key.startswith(PropertiesUtils._MONITORING_PROPERTY_PREFIX)]
         for key in monitor_prop_keys:
             props.pop(key, None)
 
@@ -610,3 +612,12 @@ class PropertiesUtils:
             masked_properties[WrapperProperties.PASSWORD.name] = "***"
 
         return masked_properties
+
+    @staticmethod
+    def create_monitoring_properties(props: Properties) -> Properties:
+        monitoring_properties = copy.deepcopy(props)
+        for property_key in list(monitoring_properties.keys()):
+            if property_key.startswith(PropertiesUtils._MONITORING_PROPERTY_PREFIX):
+                monitoring_properties[property_key[len(PropertiesUtils._MONITORING_PROPERTY_PREFIX):]] = \
+                    monitoring_properties.pop(property_key)
+        return monitoring_properties

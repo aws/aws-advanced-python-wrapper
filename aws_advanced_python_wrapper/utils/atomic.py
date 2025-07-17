@@ -13,6 +13,9 @@
 #  limitations under the License.
 
 from threading import Lock
+from typing import Generic, TypeVar
+
+T = TypeVar('T')
 
 
 class AtomicInt:
@@ -59,3 +62,31 @@ class AtomicInt:
                 self._value = new_value
                 return True
             return False
+
+
+class AtomicBoolean:
+    def __init__(self, initial_value: bool):
+        self._value: bool = initial_value
+        self._lock: Lock = Lock()
+
+    def get(self) -> bool:
+        with self._lock:
+            return self._value
+
+    def set(self, value: bool) -> None:
+        with self._lock:
+            self._value = value
+
+
+class AtomicReference(Generic[T]):
+    def __init__(self, initial_value: T):
+        self._value: T = initial_value
+        self._lock: Lock = Lock()
+
+    def get(self) -> T:
+        with self._lock:
+            return self._value
+
+    def set(self, new_value: T) -> None:
+        with self._lock:
+            self._value = new_value
