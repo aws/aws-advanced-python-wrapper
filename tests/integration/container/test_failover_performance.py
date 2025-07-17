@@ -131,8 +131,9 @@ class TestPerformance:
 
         return props
 
+    @pytest.mark.parametrize("plugins", ["host_monitoring", "host_monitoring_v2"])
     def test_failure_detection_time_efm(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils,
-                                        props: Properties):
+                                        props: Properties, plugins):
         enhanced_failure_monitoring_perf_data_list: List[PerfStatBase] = []
         target_driver_connect_func = DriverHelper.get_connect_func(test_driver)
         try:
@@ -147,7 +148,7 @@ class TestPerformance:
                 WrapperProperties.FAILURE_DETECTION_TIME_MS.set(props, str(detection_time))
                 WrapperProperties.FAILURE_DETECTION_INTERVAL_MS.set(props, str(detection_interval))
                 WrapperProperties.FAILURE_DETECTION_COUNT.set(props, str(detection_count))
-                WrapperProperties.PLUGINS.set(props, "host_monitoring")
+                WrapperProperties.PLUGINS.set(props, plugins)
 
                 data: PerfStatMonitoring = PerfStatMonitoring()
                 self._measure_performance(test_environment, target_driver_connect_func, conn_utils, sleep_delay_sec, props, data)
@@ -162,8 +163,9 @@ class TestPerformance:
                 f"FailureDetectionPerformanceResults_EnhancedMonitoringEnabled.csv",
                 TestPerformance.PERF_STAT_MONITORING_HEADER, enhanced_failure_monitoring_perf_data_list)
 
+    @pytest.mark.parametrize("plugins", ["failover,host_monitoring", "failover,host_monitoring_v2"])
     def test_failure_detection_time_failover_and_efm(self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils,
-                                                     props: Properties):
+                                                     props: Properties, plugins):
         enhanced_failure_monitoring_perf_data_list: List[PerfStatBase] = []
         try:
             for i in range(len(TestPerformance.failure_detection_time_params)):
@@ -177,7 +179,7 @@ class TestPerformance:
                 WrapperProperties.FAILURE_DETECTION_TIME_MS.set(props, str(detection_time))
                 WrapperProperties.FAILURE_DETECTION_INTERVAL_MS.set(props, str(detection_interval))
                 WrapperProperties.FAILURE_DETECTION_COUNT.set(props, str(detection_count))
-                WrapperProperties.PLUGINS.set(props, "failover,host_monitoring")
+                WrapperProperties.PLUGINS.set(props, plugins)
                 WrapperProperties.FAILOVER_TIMEOUT_SEC.set(props, TestPerformance.PERF_FAILOVER_TIMEOUT_SEC)
                 WrapperProperties.FAILOVER_MODE.set(props, "strict_reader")
 
