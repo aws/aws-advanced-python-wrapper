@@ -148,7 +148,7 @@ class PluginService(ExceptionHandler, Protocol):
 
     @property
     @abstractmethod
-    def current_host_info(self) -> Optional[HostInfo]:
+    def current_host_info(self) -> HostInfo:
         ...
 
     @property

@@ -35,7 +35,7 @@ from copy import copy
 from dataclasses import dataclass
 from enum import Enum, auto
 from threading import Condition, Event, RLock, Thread
-from typing import (Any, Callable, ClassVar, Dict, Optional, Protocol, Set,
+from typing import (Any, Callable, ClassVar, Dict, Optional, Set,
                     Tuple)
 
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
@@ -69,7 +69,7 @@ class BlueGreenPhase(Enum):
     CREATED = (1, False)
     PREPARATION = (2, True)  # hosts are accessible
     IN_PROGRESS = (3, True)  # active phase; hosts are not accessible
-    POST = (4, True)  # hosts are accessible; some change are still in progress
+    POST = (4, True)  # hosts are accessible; some changes are still in progress
     COMPLETED = (5, True)  # all changes are completed
 
     def __new__(cls, value: int, is_switchover_active_or_completed: bool):
@@ -396,7 +396,7 @@ class SubstituteConnectRouting(BaseRouting, ConnectRouting):
             raise AwsWrapperError(Messages.get("SubstituteConnectRouting.RequireIamHost"))
 
         for iam_host in self._iam_hosts:
-            rerouted_host_info = copy(host_info)
+            rerouted_host_info = copy(self._substitute_host_info)
             rerouted_host_info.host_id = iam_host.host_id
             rerouted_host_info.availability = HostAvailability.AVAILABLE
             rerouted_host_info.add_alias(iam_host.host)
@@ -423,11 +423,6 @@ class SubstituteConnectRouting(BaseRouting, ConnectRouting):
         raise AwsWrapperError(
             Messages.get_formatted(
                 "SubstituteConnectRouting.InProgressCantOpenConnection", self._substitute_host_info.url))
-
-
-class IamAuthSuccessHandler(Protocol):
-    def on_iam_success(self, iam_host: str):
-        ...
 
 
 class SuspendConnectRouting(BaseRouting, ConnectRouting):
@@ -462,7 +457,7 @@ class SuspendConnectRouting(BaseRouting, ConnectRouting):
         end_time_sec = start_time_sec + timeout_ms / 1_000
 
         try:
-            while time.time() < end_time_sec and \
+            while time.time() <= end_time_sec and \
                     bg_status is not None and \
                     bg_status.phase == BlueGreenPhase.IN_PROGRESS:
                 self.delay(SuspendConnectRouting._SLEEP_TIME_MS, bg_status, plugin_service, self._bg_id)
@@ -517,10 +512,10 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
         end_time_sec = start_time_sec + timeout_ms / 1_000
 
         try:
-            while time.time() < end_time_sec and \
+            while time.time() <= end_time_sec and \
                     bg_status is not None and \
                     bg_status.phase != BlueGreenPhase.COMPLETED and \
-                    (corresponding_pair is None or corresponding_pair[1] is None):
+                    (corresponding_pair is None or (len(corresponding_pair) > 1 and corresponding_pair[1] is None)):
                 # wait until the corresponding host is found, or until switchover is completed
                 self.delay(
                     SuspendUntilCorrespondingHostFoundConnectRouting._SLEEP_TIME_MS, bg_status, plugin_service, self._bg_id)
@@ -681,13 +676,16 @@ class BlueGreenPlugin(Plugin):
             conn: Optional[Connection] = None
             while routing is not None and conn is None:
                 conn = routing.apply(self, host_info, props, is_initial_connection, connect_func, self._plugin_service)
-                if conn is None:
-                    latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
-                    if latest_status is not None:
-                        self._bg_status = latest_status
+                if conn is not None:
+                    break
 
-                    routing = \
-                        next((r for r in self._bg_status.connect_routings if r.is_match(host_info, bg_role)), None)
+                latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
+                if latest_status is None:
+                    self._end_time_ns.set(perf_counter_ns())
+                    return self._open_direct_connection(connect_func, is_initial_connection)
+
+                routing = \
+                    next((r for r in self._bg_status.connect_routings if r.is_match(host_info, bg_role)), None)
 
             self._end_time_ns.set(perf_counter_ns())
             if conn is None:
@@ -740,7 +738,7 @@ class BlueGreenPlugin(Plugin):
 
             result: ValueContainer[Any] = ValueContainer.empty()
             self._start_time_ns.set(perf_counter_ns())
-            while routing is not None and result is None:
+            while routing is not None and not result.is_present():
                 result = routing.apply(
                     self,
                     self._plugin_service,
@@ -750,13 +748,16 @@ class BlueGreenPlugin(Plugin):
                     execute_func,
                     *args,
                     **kwargs)
-                if not result.is_present():
-                    latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
-                    if latest_status is not None:
-                        self._bg_status = latest_status
+                if result.is_present():
+                    break
 
-                    routing = \
-                        next((r for r in self._bg_status.execute_routings if r.is_match(host_info, bg_role)), None)
+                latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
+                if latest_status is None:
+                    self._end_time_ns.set(perf_counter_ns())
+                    return execute_func()
+
+                routing = \
+                    next((r for r in self._bg_status.execute_routings if r.is_match(host_info, bg_role)), None)
 
             self._end_time_ns.set(perf_counter_ns())
             if result.is_present():
@@ -838,6 +839,7 @@ class BlueGreenStatusMonitor:
         self._connected_ip_address: Optional[str] = None
         self._is_host_info_correct = Event()
         self._has_started = Event()
+        self._open_connection_lock = RLock()
 
         db_dialect = self._plugin_service.database_dialect
         if not isinstance(db_dialect, BlueGreenDialect):
@@ -895,22 +897,31 @@ class BlueGreenStatusMonitor:
             logger.debug("BlueGreenStatusMonitor.ThreadCompleted", self._bg_role)
 
     def _open_connection(self):
-        conn = self._connection
-        # TODO: do we need to lock while we check the condition and start the thread if it we don't have a conn?
-        if not self._is_connection_closed(conn):
+        if not self._is_new_conn_required():
             return
+
+        with self._open_connection_lock:
+            if not self._is_new_conn_required():
+                return
+
+            self._connection = None
+            self._panic_mode.set()
+            self._open_connection_thread = \
+                Thread(daemon=True, name="BlueGreenMonitorConnectionOpener", target=self._open_connection_task)
+            self._open_connection_thread.start()
+
+    def _is_new_conn_required(self) -> bool:
+        conn = self._connection
+        if not self._is_connection_closed(conn):
+            return False
 
         if self._open_connection_thread is not None:
             if self._open_connection_thread.is_alive():
-                return  # The task to open the connection is in progress, let's wait.
+                return False  # The task to open the connection is in progress, let's wait.
             elif not self._panic_mode.is_set():
-                return  # The connection should be open by now since the open connection task is not running.
+                return False  # The connection should be open by now since the open connection task is not running.
 
-        self._connection = None
-        self._panic_mode.set()
-        self._open_connection_thread = \
-            Thread(daemon=True, name="BlueGreenMonitorConnectionOpener", target=self._open_connection_task)
-        self._open_connection_thread.start()
+        return True
 
     def _open_connection_task(self):
         host_info = self._connection_host_info
@@ -998,7 +1009,6 @@ class BlueGreenStatusMonitor:
                     status_entries.append(BlueGreenDbStatusInfo(version, endpoint, port, phase, bg_role))
 
             # Attempt to find the writer cluster status info
-            # Attempt to find the writer cluster status info
             status_info = next((status for status in status_entries
                                 if self._rds_utils.is_writer_cluster_dns(status.endpoint) and
                                 self._rds_utils.is_not_old_instance(status.endpoint)),
@@ -1048,7 +1058,7 @@ class BlueGreenStatusMonitor:
                     self._is_host_info_correct.set()
                     self._panic_mode.clear()
 
-            if self._is_host_info_correct.is_set() and self._host_list_provider is not None:
+            if self._is_host_info_correct.is_set() and self._host_list_provider is None:
                 # A connection to the correct cluster (blue or green) has been established. Let's initialize the host
                 # list provider.
                 self._init_host_list_provider()
@@ -1171,7 +1181,7 @@ class BlueGreenStatusMonitor:
 
         for host_info in self._start_topology:
             start_ip = self._start_ip_addresses_by_host.get(host_info.host)
-            current_ip = self._start_ip_addresses_by_host.get(host_info.host)
+            current_ip = self._current_ip_addresses_by_host.get(host_info.host)
             if start_ip is None or not start_ip.is_present() or \
                     current_ip is None or not current_ip.is_present():
                 return False
@@ -1713,12 +1723,12 @@ class BlueGreenStatusProvider:
                     green_ip_host_info = copy(green_host_info)
                     green_ip_host_info.host = green_ip_container.get()
 
-                # Check whether the green host has already been connected a non-prefixed blue IAM host name.
+                # Check whether the green host has already been connected to a non-prefixed blue IAM host name.
                 if self._is_already_successfully_connected(green_host, blue_host):
                     # Green host has already changed its name, and it's not a new non-prefixed blue host.
                     iam_hosts: Optional[Tuple[HostInfo, ...]] = None if blue_host_info is None else (blue_host_info,)
                 else:
-                    # The green host has not yet changed ist name, so we need to try both possible IAM hosts.
+                    # The green host has not yet changed its name, so we need to try both possible IAM hosts.
                     iam_hosts = (green_host_info,) if blue_host_info is None else (green_host_info, blue_host_info)
 
                 iam_auth_success_handler = None if is_blue_host_instance \
@@ -1825,6 +1835,8 @@ class BlueGreenStatusProvider:
     def _update_status_cache(self):
         latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
         self._plugin_service.set_status(BlueGreenStatus, self._summary_status, self._bg_id)
+        phase = self._summary_status.phase
+        self._store_event_phase_time(phase.name, phase)
 
         if latest_status is not None:
             # Notify all waiting threads that the status has been updated.
@@ -1854,7 +1866,7 @@ class BlueGreenStatusProvider:
         switchover_completed = (not self._rollback and self._summary_status.phase == BlueGreenPhase.COMPLETED) or \
                                (self._rollback and self._summary_status.phase == BlueGreenPhase.CREATED)
         has_active_switchover_phases = \
-            any(phase_info.phase is not None and phase_info.phase.is_active_switchover_completed
+            any(phase_info.phase is not None and phase_info.phase.is_active_switchover_completed()
                 for phase_info in self._phase_times_ns.values())
 
         if not switchover_completed or not has_active_switchover_phases:
