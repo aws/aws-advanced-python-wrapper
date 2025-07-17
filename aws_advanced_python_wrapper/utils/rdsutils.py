@@ -108,6 +108,10 @@ class RdsUtils:
                                  r"(?P<dns>cluster-|cluster-ro-)+" \
                                  r"(?P<domain>[a-zA-Z0-9]+\.rds\.(?P<region>[a-zA-Z0-9\-]+)" \
                                  r"\.(amazonaws\.com|c2s\.ic\.gov|sc2s\.sgov\.gov))$"
+    AURORA_DSQL_CLUSTER_PATTERN = r"^(?P<instance>[^.]+)\." \
+                                  r"(?P<dns>dsql(?:-[^.]+)?)\."  \
+                                  r"(?P<domain>(?P<region>[a-zA-Z0-9\-]+)" \
+                                  r"\.on\.aws\.?)$"
     ELB_PATTERN = r"^(?<instance>.+)\.elb\.((?<region>[a-zA-Z0-9\-]+)\.amazonaws\.com)$"
 
     IP_V4 = r"^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){1}" \
@@ -148,6 +152,14 @@ class RdsUtils:
 
     def is_rds_instance(self, host: str) -> bool:
         return self._get_dns_group(host) is None and self.is_rds_dns(host)
+    
+    def is_dsql_cluster(self, host: str) -> bool:
+        if not host or not host.strip():
+            return False
+
+        pattern = self._find(host, [RdsUtils.AURORA_DSQL_CLUSTER_PATTERN])
+ 
+        return pattern is not None
 
     def is_rds_proxy_dns(self, host: str) -> bool:
         dns_group = self._get_dns_group(host)
@@ -257,6 +269,8 @@ class RdsUtils:
             return RdsUrlType.RDS_PROXY
         elif self.is_rds_instance(host):
             return RdsUrlType.RDS_INSTANCE
+        elif self.is_dsql_cluster(host):
+            return RdsUrlType.DSQL_CLUSTER
 
         return RdsUrlType.OTHER
 
