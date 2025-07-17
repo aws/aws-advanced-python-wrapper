@@ -295,16 +295,16 @@ class BaseRouting:
         self._bg_role = bg_role
 
     def delay(self, delay_ms: int, bg_status: Optional[BlueGreenStatus], plugin_service: PluginService, bg_id: str):
-        end_time_sec = time.time() + (delay_ms // 1_000)
+        end_time_sec = time.time() + (delay_ms / 1_000)
         min_delay_ms = min(delay_ms, BaseRouting._MIN_SLEEP_MS)
 
         if bg_status is None:
-            time.sleep(delay_ms // 1_000)
+            time.sleep(delay_ms / 1_000)
             return
 
         while bg_status is plugin_service.get_status(BlueGreenStatus, bg_id) and time.time() < end_time_sec:
             with bg_status.cv:
-                bg_status.cv.wait(min_delay_ms // 1_000)
+                bg_status.cv.wait(min_delay_ms / 1_000)
 
     def is_match(self, host_info: Optional[HostInfo], bg_role: BlueGreenRole) -> bool:
         if self._endpoint is None:
@@ -459,7 +459,7 @@ class SuspendConnectRouting(BaseRouting, ConnectRouting):
         bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
         start_time_sec = time.time()
-        end_time_sec = start_time_sec + timeout_ms // 1_000
+        end_time_sec = start_time_sec + timeout_ms / 1_000
 
         try:
             while time.time() < end_time_sec and \
@@ -475,7 +475,7 @@ class SuspendConnectRouting(BaseRouting, ConnectRouting):
             logger.debug(
                 Messages.get_formatted(
                     "SuspendConnectRouting.SwitchoverCompleteContinueWithConnect",
-                    (time.time() - start_time_sec) // 1000))
+                    (time.time() - start_time_sec) * 1000))
         finally:
             telemetry_context.close_context()
 
@@ -514,7 +514,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
 
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
         start_time_sec = time.time()
-        end_time_sec = start_time_sec + timeout_ms // 1_000
+        end_time_sec = start_time_sec + timeout_ms / 1_000
 
         try:
             while time.time() < end_time_sec and \
@@ -530,7 +530,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
             if bg_status is None or bg_status.phase == BlueGreenPhase.COMPLETED:
                 logger.debug(
                     "SuspendUntilCorrespondingHostFoundConnectRouting.CompletedContinueWithConnect",
-                    (time.time() - start_time_sec) // 1000)
+                    (time.time() - start_time_sec) * 1000)
                 return None
 
             if time.time() > end_time_sec:
@@ -538,13 +538,13 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
                     Messages.get_formatted(
                         "SuspendUntilCorrespondingHostFoundConnectRouting.CorrespondingHostNotFoundTryConnectLater",
                         host_info.host,
-                        (time.time() - start_time_sec) // 1000))
+                        (time.time() - start_time_sec) * 1000))
 
             logger.debug(
                 Messages.get_formatted(
                     "SuspendUntilCorrespondingHostFoundConnectRouting.CorrespondingHostFoundContinueWithConnect",
                     host_info.host,
-                    (time.time() - start_time_sec) // 1000))
+                    (time.time() - start_time_sec) * 1000))
         finally:
             telemetry_context.close_context()
 
@@ -600,7 +600,7 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
         bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
         start_time_sec = time.time()
-        end_time_sec = start_time_sec + timeout_ms // 1_000
+        end_time_sec = start_time_sec + timeout_ms / 1_000
 
         try:
             while time.time() < end_time_sec and \
@@ -619,7 +619,7 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
                 Messages.get_formatted(
                     "SuspendExecuteRouting.SwitchoverCompleteContinueWithMethod",
                     method_name,
-                    (time.time() - start_time_sec) // 1000))
+                    (time.time() - start_time_sec) * 1000))
         finally:
             telemetry_context.close_context()
 
@@ -976,6 +976,7 @@ class BlueGreenStatusMonitor:
                 return
 
             status_entries = []
+            conn.autocommit = True
             with conn.cursor() as cursor:
                 cursor.execute(self._bg_dialect.blue_green_status_query)
                 for record in cursor:
@@ -1048,7 +1049,7 @@ class BlueGreenStatusMonitor:
                     self._panic_mode.clear()
 
             if self._is_host_info_correct.is_set() and self._host_list_provider is not None:
-                # A connection to the correct cluster (blue or green) has been stablished. Let's initialize the host
+                # A connection to the correct cluster (blue or green) has been established. Let's initialize the host
                 # list provider.
                 self._init_host_list_provider()
         except Exception as e:
@@ -1097,7 +1098,7 @@ class BlueGreenStatusMonitor:
         end_ns = start_ns + delay_ms * 1_000_000
         initial_interval_rate = self.interval_rate
         initial_panic_mode_val = self._panic_mode.is_set()
-        min_delay_sec = min(delay_ms, 50) // 1_000
+        min_delay_sec = min(delay_ms, 50) / 1_000
 
         while self.interval_rate == initial_interval_rate and \
                 perf_counter_ns() < end_ns and \
@@ -1245,11 +1246,6 @@ class BlueGreenStatusProvider:
             return
 
         current_host_info = self._plugin_service.current_host_info
-        if current_host_info is None:
-            # TODO: raise an error instead?
-            logger.warning("BlueGreenStatusProvider.NoCurrentHostInfo", self._bg_id)
-            return
-
         blue_monitor = BlueGreenStatusMonitor(
             BlueGreenRole.SOURCE,
             self._bg_id,
@@ -1870,7 +1866,7 @@ class BlueGreenStatusProvider:
         sorted_phase_entries = sorted(self._phase_times_ns.items(), key=lambda entry: entry[1].timestamp_ns)
         phase_time_lines = [
             f"{entry[1].date_time:>28s} "
-            f"{'' if time_zero is None else (entry[1].timestamp_ns - time_zero.timestamp_ns) // 1_000_000:>18s} ms "
+            f"{'' if time_zero is None else (entry[1].timestamp_ns - time_zero.timestamp_ns) / 1_000_000:>18s} ms "
             f"{entry[0]:>31s}" for entry in sorted_phase_entries
         ]
         phase_times_str = "\n".join(phase_time_lines)

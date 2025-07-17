@@ -304,7 +304,7 @@ class PluginService(ExceptionHandler, Protocol):
 
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
-    _STATUS_CACHE_EXPIRATION_NANO = 60 * 1_000_000_000  # one hour
+    _STATUS_CACHE_EXPIRATION_NANO = 60 * 60 * 1_000_000_000  # one hour
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
     _status_cache: ClassVar[CacheMap[str, Any]] = CacheMap()
 
@@ -423,7 +423,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 self.session_state_service.complete()
 
     @property
-    def current_host_info(self) -> Optional[HostInfo]:
+    def current_host_info(self) -> HostInfo:
         if self._current_host_info is not None:
             return self._current_host_info
 
