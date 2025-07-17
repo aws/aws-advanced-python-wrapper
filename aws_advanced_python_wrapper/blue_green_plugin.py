@@ -302,7 +302,7 @@ class BaseRouting:
             time.sleep(delay_ms / 1_000)
             return
 
-        while bg_status is plugin_service.get_status(BlueGreenStatus, bg_id) and time.time() < end_time_sec:
+        while bg_status is plugin_service.get_status(BlueGreenStatus, bg_id) and time.time() <= end_time_sec:
             with bg_status.cv:
                 bg_status.cv.wait(min_delay_ms / 1_000)
 
@@ -515,7 +515,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
             while time.time() <= end_time_sec and \
                     bg_status is not None and \
                     bg_status.phase != BlueGreenPhase.COMPLETED and \
-                    (corresponding_pair is None or (len(corresponding_pair) > 1 and corresponding_pair[1] is None)):
+                    (corresponding_pair is None or corresponding_pair[1] is None):
                 # wait until the corresponding host is found, or until switchover is completed
                 self.delay(
                     SuspendUntilCorrespondingHostFoundConnectRouting._SLEEP_TIME_MS, bg_status, plugin_service, self._bg_id)
@@ -598,7 +598,7 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
         end_time_sec = start_time_sec + timeout_ms / 1_000
 
         try:
-            while time.time() < end_time_sec and \
+            while time.time() <= end_time_sec and \
                     bg_status is not None and \
                     bg_status.phase == BlueGreenPhase.IN_PROGRESS:
                 self.delay(SuspendExecuteRouting._SLEEP_TIME_MS, bg_status, plugin_service, self._bg_id)
@@ -1881,7 +1881,7 @@ class BlueGreenStatusProvider:
         switchover_completed = (not self._rollback and self._summary_status.phase == BlueGreenPhase.COMPLETED) or \
                                (self._rollback and self._summary_status.phase == BlueGreenPhase.CREATED)
         has_active_switchover_phases = \
-            any(phase_info.phase is not None and phase_info.phase.is_active_switchover_completed
+            any(phase_info.phase is not None and phase_info.phase.is_active_switchover_completed()
                 for phase_info in self._phase_times_ns.values())
 
         if not switchover_completed or not has_active_switchover_phases:
