@@ -1860,8 +1860,8 @@ class BlueGreenStatusProvider:
             any(phase_info.phase is not None and phase_info.phase.is_switchover_active_or_completed
                 for phase_info in self._phase_times_ns.values())
 
-        # if not switchover_completed or not has_active_switchover_phases:
-        #     return
+        if not switchover_completed or not has_active_switchover_phases:
+            return
 
         time_zero_phase = BlueGreenPhase.PREPARATION if self._rollback else BlueGreenPhase.IN_PROGRESS
         time_zero_key = f"{time_zero_phase.name} (rollback)" if self._rollback else time_zero_phase.name
