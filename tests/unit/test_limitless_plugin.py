@@ -72,7 +72,7 @@ def plugin(mock_plugin_service, props, mock_limitless_router_service):
 def test_connect(mocker, plugin, host_info, props, mock_conn, mock_limitless_router_service):
     def replace_context_connection(invocation):
         context = invocation._connection_plugin._context
-        context._connection = mock_conn
+        context._connection_to_abort = mock_conn
         return None
 
     mock_connect_func = mocker.MagicMock()
@@ -89,7 +89,7 @@ def test_connect(mocker, plugin, host_info, props, mock_conn, mock_limitless_rou
 def test_connect_none_connection(mocker, plugin, host_info, props, mock_conn, mock_limitless_router_service):
     def replace_context_connection_to_none(invocation):
         context = invocation._connection_plugin._context
-        context._connection = None
+        context._connection_to_abort = None
         return None
 
     mock_connect_func = mocker.MagicMock()
@@ -129,7 +129,7 @@ def test_connect_supported_dialect_after_refresh(
 
     def replace_context_connection(invocation):
         context = invocation._connection_plugin._context
-        context._connection = mock_conn
+        context._connection_to_abort = mock_conn
         return None
 
     mock_connect_func = mocker.MagicMock()

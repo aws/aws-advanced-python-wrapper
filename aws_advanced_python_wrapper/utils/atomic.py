@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 from threading import Lock
+from typing import Any
 
 
 class AtomicInt:
@@ -49,3 +50,31 @@ class AtomicInt:
         with self._lock:
             self._value -= 1
             return self._value
+
+
+class AtomicBoolean:
+    def __init__(self, initial_value: bool):
+        self._value = initial_value
+        self._lock: Lock = Lock()
+
+    def get(self) -> int:
+        with self._lock:
+            return self._value
+
+    def set(self, value: int) -> None:
+        with self._lock:
+            self._value = value
+
+
+class AtomicReference:
+    def __init__(self, initial_value):
+        self._value = initial_value
+        self._lock: Lock = Lock()
+
+    def get(self) -> Any:
+        with self._lock:
+            return self._value
+
+    def set(self, new_value: Any) -> None:
+        with self._lock:
+            self._value = new_value
