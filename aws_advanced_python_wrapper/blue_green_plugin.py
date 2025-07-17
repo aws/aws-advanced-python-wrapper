@@ -839,7 +839,6 @@ class BlueGreenStatusMonitor:
         self._connected_ip_address: Optional[str] = None
         self._is_host_info_correct = Event()
         self._has_started = Event()
-        self._open_connection_lock = RLock()
 
         db_dialect = self._plugin_service.database_dialect
         if not isinstance(db_dialect, BlueGreenDialect):
@@ -897,31 +896,21 @@ class BlueGreenStatusMonitor:
             logger.debug("BlueGreenStatusMonitor.ThreadCompleted", self._bg_role)
 
     def _open_connection(self):
-        if not self._is_new_conn_required():
-            return
-
-        with self._open_connection_lock:
-            if not self._is_new_conn_required():
-                return
-
-            self._connection = None
-            self._panic_mode.set()
-            self._open_connection_thread = \
-                Thread(daemon=True, name="BlueGreenMonitorConnectionOpener", target=self._open_connection_task)
-            self._open_connection_thread.start()
-
-    def _is_new_conn_required(self) -> bool:
         conn = self._connection
         if not self._is_connection_closed(conn):
-            return False
+            return
 
         if self._open_connection_thread is not None:
             if self._open_connection_thread.is_alive():
-                return False  # The task to open the connection is in progress, let's wait.
+                return  # The task to open the connection is in progress, let's wait.
             elif not self._panic_mode.is_set():
-                return False  # The connection should be open by now since the open connection task is not running.
+                return  # The connection should be open by now since the open connection task is not running.
 
-        return True
+        self._connection = None
+        self._panic_mode.set()
+        self._open_connection_thread = \
+            Thread(daemon=True, name="BlueGreenMonitorConnectionOpener", target=self._open_connection_task)
+        self._open_connection_thread.start()
 
     def _open_connection_task(self):
         host_info = self._connection_host_info
