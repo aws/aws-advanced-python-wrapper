@@ -70,53 +70,6 @@ class IamAuthUtils:
     def get_cache_key(user: Optional[str], hostname: Optional[str], port: int, region: Optional[str]) -> str:
         return f"{region}:{hostname}:{port}:{user}"
 
-    @staticmethod
-    def generate_authentication_token(
-            plugin_service: PluginService,
-            user: Optional[str],
-            host_name: Optional[str],
-            port: Optional[int],
-            region: Optional[str],
-            credentials: Optional[Dict[str, str]] = None,
-            client_session: Optional[Session] = None) -> str:
-        telemetry_factory = plugin_service.get_telemetry_factory()
-        context = telemetry_factory.open_telemetry_context("fetch authentication token", TelemetryTraceLevel.NESTED)
-
-        try:
-            session = client_session if client_session else boto3.Session()
-
-            if credentials is not None:
-                client = session.client(
-                    'rds',
-                    region_name=region,
-                    aws_access_key_id=credentials.get('AccessKeyId'),
-                    aws_secret_access_key=credentials.get('SecretAccessKey'),
-                    aws_session_token=credentials.get('SessionToken')
-                )
-            else:
-                client = session.client(
-                    'rds',
-                    region_name=region
-                )
-
-            token = client.generate_db_auth_token(
-                DBHostname=host_name,
-                Port=port,
-                DBUsername=user
-            )
-
-            client.close()
-
-            logger.debug("IamAuthUtils.GeneratedNewAuthToken", token)
-            return token
-        except Exception as ex:
-            context.set_success(False)
-            context.set_exception(ex)
-            raise ex
-        finally:
-            context.close_context()
-
-
 class TokenInfo:
     @property
     def token(self):
