@@ -32,7 +32,7 @@ china_alt_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.rds.cn-n
 china_alt_region_instance = "instance-test-name.XYZ.rds.cn-northwest-1.amazonaws.com.cn"
 china_alt_region_proxy = "proxy-test-name.proxy-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
 china_alt_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.cn-northwest-1.amazonaws.com.cn"
-china_alt_region_limitless_db_shard_group = "database-test-name.limitless-XYZ.cn-northwest-1.rds.amazonaws.com.cn"
+china_alt_region_limitless_db_shard_group = "database-test-name.shardgrp-XYZ.cn-northwest-1.rds.amazonaws.com.cn"
 extra_rds_china_path = "database-test-name.cluster-XYZ.rds.cn-northwest-1.rds.amazonaws.com.cn"
 missing_cn_china_path = "database-test-name.cluster-XYZ.rds.cn-northwest-1.amazonaws.com"
 missing_region_china_path = "database-test-name.cluster-XYZ.rds.amazonaws.com.cn"
@@ -43,7 +43,7 @@ us_isob_east_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.rds.u
 us_isob_east_region_instance = "instance-test-name.XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
 us_isob_east_region_proxy = "proxy-test-name.proxy-XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
 us_isob_east_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
-us_isob_east_region_limitless_db_shard_group = "database-test-name.limitless-XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
+us_isob_east_region_limitless_db_shard_group = "database-test-name.shardgrp-XYZ.rds.us-isob-east-1.sc2s.sgov.gov"
 us_gov_east_region_cluster = "database-test-name.cluster-XYZ.rds.us-gov-east-1.amazonaws.com"
 
 us_iso_east_region_cluster = "database-test-name.cluster-XYZ.rds.us-iso-east-1.c2s.ic.gov"
@@ -52,7 +52,7 @@ us_iso_east_region_instance = "instance-test-name.XYZ.rds.us-iso-east-1.c2s.ic.g
 us_iso_east_region_proxy = "proxy-test-name.proxy-XYZ.rds.us-iso-east-1.c2s.ic.gov"
 us_iso_east_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.us-iso-east-1.c2s.ic.gov"
 
-us_iso_east_region_limitless_db_shard_group = "database-test-name.limitless-XYZ.rds.us-iso-east-1.c2s.ic.gov"
+us_iso_east_region_limitless_db_shard_group = "database-test-name.shardgrp-XYZ.rds.us-iso-east-1.c2s.ic.gov"
 
 
 @pytest.mark.parametrize("test_value", [
@@ -266,14 +266,17 @@ def test_is_not_reader_cluster_dns(test_value):
 def test_get_rds_cluster_host_url():
     expected: str = "foo.cluster-xyz.us-west-1.rds.amazonaws.com"
     expected2: str = "foo-1.cluster-xyz.us-west-1.rds.amazonaws.com.cn"
+    expected_limitless: str = "foo.shardgrp-xyz.us-west-1.rds.amazonaws.com"
 
     ro_endpoint: str = "foo.cluster-ro-xyz.us-west-1.rds.amazonaws.com"
     china_ro_endpoint: str = "foo-1.cluster-ro-xyz.us-west-1.rds.amazonaws.com.cn"
+    limitless_endpoint: str = "foo.shardgrp-xyz.us-west-1.rds.amazonaws.com"
 
     target = RdsUtils()
 
     assert target.get_rds_cluster_host_url(ro_endpoint) == expected
     assert target.get_rds_cluster_host_url(china_ro_endpoint) == expected2
+    assert target.get_rds_cluster_host_url(limitless_endpoint) == expected_limitless
 
 
 @pytest.mark.parametrize(

@@ -18,6 +18,7 @@ from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
                     Protocol, Tuple, runtime_checkable)
 
 from aws_advanced_python_wrapper.driver_info import DriverInfo
+from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -96,6 +97,15 @@ class TopologyAwareDatabaseDialect(Protocol):
     @property
     def is_reader_query(self) -> str:
         return self._IS_READER_QUERY
+
+
+@runtime_checkable
+class AuroraLimitlessDialect(Protocol):
+    _LIMITLESS_ROUTER_ENDPOINT_QUERY: str
+
+    @property
+    def limitless_router_endpoint_query(self) -> str:
+        return self._LIMITLESS_ROUTER_ENDPOINT_QUERY
 
 
 class DatabaseDialect(Protocol):
@@ -342,7 +352,7 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
         return lambda provider_service, props: RdsHostListProvider(provider_service, props)
 
 
-class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
+class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLimitlessDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.MULTI_AZ_PG,)
 
     _EXTENSIONS_QUERY = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils " \
@@ -359,6 +369,7 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
 
     _HOST_ID_QUERY = "SELECT aurora_db_instance_identifier()"
     _IS_READER_QUERY = "SELECT pg_is_in_recovery()"
+    _LIMITLESS_ROUTER_ENDPOINT_QUERY = "SELECT router_endpoint, load FROM aurora_limitless_router_endpoints()"
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -621,6 +632,11 @@ class DatabaseDialectManager(DatabaseDialectProvider):
 
         if target_driver_type is TargetDriverType.POSTGRES:
             rds_type = self._rds_helper.identify_rds_type(host)
+            if rds_type == RdsUrlType.RDS_AURORA_LIMITLESS_DB_SHARD_GROUP:
+                self._can_update = False
+                self._dialect_code = DialectCode.AURORA_PG
+                self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.AURORA_PG]
+                return self._dialect
             if rds_type.is_rds_cluster:
                 self._can_update = True
                 self._dialect_code = DialectCode.AURORA_PG

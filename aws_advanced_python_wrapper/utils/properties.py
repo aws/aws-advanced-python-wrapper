@@ -340,9 +340,38 @@ class WrapperProperties:
     APP_ID = WrapperProperty("app_id", "The ID of the AWS application configured on Okta", None)
 
     # Fastest Response Strategy
-    RESPONSE_MEASUREMENT_INTERVAL_MILLIS = WrapperProperty("response_measurement_interval_ms",
-                                                           "Interval in milliseconds between measuring response time to a database host",
-                                                           30_000)
+    RESPONSE_MEASUREMENT_INTERVAL_MS = WrapperProperty("response_measurement_interval_ms",
+                                                       "Interval in milliseconds between measuring response time to a database host",
+                                                       30_000)
+
+    # Limitless
+    LIMITLESS_MONITOR_DISPOSAL_TIME_MS = WrapperProperty("limitless_transaction_router_monitor_disposal_time_ms",
+                                                         "Interval in milliseconds for an Limitless router monitor to be "
+                                                         "considered inactive and to be disposed.",
+                                                         600_000)
+
+    LIMITLESS_INTERVAL_MILLIS = WrapperProperty("limitless_transaction_router_monitor_interval_ms",
+                                                "Interval in millis between polling for Limitless Transaction Routers to the database.",
+                                                7_500)
+
+    WAIT_FOR_ROUTER_INFO = WrapperProperty("limitless_wait_for_transaction_router_info",
+                                           "If the cache of transaction router info is empty "
+                                           "and a new connection is made, this property toggles whether "
+                                           "the plugin will wait and synchronously fetch transaction router info before selecting a transaction "
+                                           "router to connect to, or to fall back to using the provided DB Shard Group endpoint URL.",
+                                           True)
+
+    GET_ROUTER_RETRY_INTERVAL_MS = WrapperProperty("limitless_get_transaction_router_retry_interval_ms",
+                                                   "Interval in milliseconds between retries fetching Limitless Transaction Router information.",
+                                                   300)
+
+    GET_ROUTER_MAX_RETRIES = WrapperProperty("limitless_get_transaction_router_max_retries",
+                                             "Max number of connection retries the Limitless Connection Plugin will attempt.",
+                                             5)
+
+    MAX_RETRIES_MS = WrapperProperty("limitless_max_retries_ms",
+                                     "Interval in milliseconds between polling for Limitless Transaction Routers to the database.",
+                                     7_500)
 
     # Telemetry
     ENABLE_TELEMETRY = WrapperProperty(

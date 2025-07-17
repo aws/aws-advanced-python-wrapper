@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.connection_provider import (ConnectionProvider,
@@ -118,7 +118,7 @@ class DefaultPlugin(Plugin):
             return False
         return self._connection_provider_manager.accepts_strategy(role, strategy)
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> HostInfo:
         if HostRole.UNKNOWN == role:
             raise AwsWrapperError(Messages.get("DefaultPlugin.UnknownHosts"))
 
@@ -127,7 +127,10 @@ class DefaultPlugin(Plugin):
         if len(hosts) < 1:
             raise AwsWrapperError(Messages.get("DefaultPlugin.EmptyHosts"))
 
-        return self._connection_provider_manager.get_host_info_by_strategy(hosts, role, strategy, self._plugin_service.props)
+        if host_list is None:
+            return self._connection_provider_manager.get_host_info_by_strategy(hosts, role, strategy, self._plugin_service.props)
+        else:
+            return self._connection_provider_manager.get_host_info_by_strategy(tuple(host_list), role, strategy, self._plugin_service.props)
 
     @property
     def subscribed_methods(self) -> Set[str]:

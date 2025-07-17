@@ -260,3 +260,15 @@ class WeightedRandomHostSelector(HostSelector):
                     except ValueError:
                         logger.error(message, pair)
                         raise AwsWrapperError(Messages.get_formatted(message, pair))
+
+
+class HighestWeightHostSelector(HostSelector):
+
+    def get_host(self, hosts: Tuple[HostInfo, ...], role: HostRole, props: Optional[Properties] = None) -> HostInfo:
+        eligible_hosts: List[HostInfo] = [host for host in hosts if
+                                          host.role == role and host.get_availability() == HostAvailability.AVAILABLE]
+
+        if len(eligible_hosts) == 0:
+            raise AwsWrapperError(Messages.get_formatted("HostSelector.NoHostsMatchingRole", role))
+
+        return max(eligible_hosts, key=lambda host: host.weight)

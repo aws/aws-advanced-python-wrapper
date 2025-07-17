@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -74,7 +74,7 @@ class BenchmarkPlugin(Plugin):
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         return False
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str) -> HostInfo:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> HostInfo:
         self.resources.append("get_host_info_by_strategy")
         return HostInfo("host", 1234, role)
 
