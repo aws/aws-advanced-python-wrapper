@@ -37,7 +37,7 @@ The Limitless Plugin is compatible with authentication type plugins such as the 
 
 > [!IMPORTANT]\
 > The Failover, Host Monitoring, and Read Write Splitting Plugins are also compatible with the Limitless Plugin.  
-However, we don't recommend using them with the Limitless Plugin because they're not designed to be used with Aurora LimitlessDatabase. 
+However, we don't recommend using them with the Limitless Plugin because they're not designed to be used with Aurora Limitless Database. 
 They don't provide any extra value, and add unnecessary computation and memory overhead.
 
 ### Use with Connection Pools
