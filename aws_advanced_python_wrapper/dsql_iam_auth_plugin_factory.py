@@ -22,7 +22,7 @@ from aws_advanced_python_wrapper.utils.dsql_token_utils import DSQLTokenUtils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
-    from aws_advanced_python_wrapper.utils.properties import (Properties)
+    from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 class DsqlIamAuthPluginFactory(PluginFactory):

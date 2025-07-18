@@ -18,8 +18,9 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
-    from aws_advanced_python_wrapper.plugin_service import PluginService
     from boto3 import Session
+
+    from aws_advanced_python_wrapper.plugin_service import PluginService
 
 
 class TokenUtils(ABC):

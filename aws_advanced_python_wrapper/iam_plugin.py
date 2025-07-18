@@ -17,8 +17,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.rds_token_utils import RDSTokenUtils
+from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 
 if TYPE_CHECKING:
@@ -38,7 +38,6 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-
 
 logger = Logger(__name__)
 

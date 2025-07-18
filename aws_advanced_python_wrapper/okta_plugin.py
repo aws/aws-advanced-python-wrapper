@@ -44,7 +44,6 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 from aws_advanced_python_wrapper.utils.rds_token_utils import RDSTokenUtils
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
-
 logger = Logger(__name__)
 
 
