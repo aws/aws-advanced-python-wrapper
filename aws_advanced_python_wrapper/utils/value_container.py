@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import Generic, TypeVar, Union, cast
+from typing import Generic, TypeVar, Union, cast, Optional
 
 V = TypeVar('V')
 
@@ -57,7 +57,7 @@ class ValueContainer(Generic[V]):
             raise ValueError("No value present")
         return cast('V', self._value)
 
-    def or_else(self, other: V) -> V:
+    def or_else(self, other: Optional[V]) -> V:
         """Returns the value if present, otherwise returns other."""
         return cast('V', self._value) if self.is_present() else other
 

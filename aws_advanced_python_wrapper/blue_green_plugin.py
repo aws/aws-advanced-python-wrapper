@@ -940,7 +940,7 @@ class BlueGreenStatusMonitor:
             else:
                 logger.debug("BlueGreenStatusMonitor.OpeningConnection", self._bg_role, host_info.host)
                 self._connection = self._plugin_service.force_connect(host_info, self._props)
-                self._connected_ip_address = self._get_ip_address(host_info.host)
+                self._connected_ip_address = self._get_ip_address(host_info.host).or_else(None)
                 logger.debug("BlueGreenStatusMonitor.OpenedConnection", self._bg_role, host_info.host)
 
             self._panic_mode.clear()
@@ -1037,7 +1037,7 @@ class BlueGreenStatusMonitor:
             if not self._is_host_info_correct.is_set() and status_info is not None:
                 # We connected to an initial host info that might not be the desired blue or green cluster. Let's check
                 # if we need to reconnect to the correct one.
-                status_info_ip_address = self._get_ip_address(status_info.endpoint)
+                status_info_ip_address = self._get_ip_address(status_info.endpoint).or_else(None)
                 connected_ip_address = self._connected_ip_address
                 if connected_ip_address is not None and connected_ip_address != status_info_ip_address:
                     # We are not connected to the desired blue or green cluster, we need to reconnect.
