@@ -17,9 +17,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
-from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
-from aws_advanced_python_wrapper.utils.token_utils import TokenUtils
+from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.rds_token_utils import RDSTokenUtils
+from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 
 if TYPE_CHECKING:
     from boto3 import Session
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
+    from aws_advanced_python_wrapper.utils.token_utils import TokenUtils
 
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Optional, Set
@@ -37,7 +38,7 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+
 
 logger = Logger(__name__)
 

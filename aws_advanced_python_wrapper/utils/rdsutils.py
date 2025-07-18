@@ -152,13 +152,13 @@ class RdsUtils:
 
     def is_rds_instance(self, host: str) -> bool:
         return self._get_dns_group(host) is None and self.is_rds_dns(host)
-    
+
     def is_dsql_cluster(self, host: str) -> bool:
         if not host or not host.strip():
             return False
 
         pattern = self._find(host, [RdsUtils.AURORA_DSQL_CLUSTER_PATTERN])
- 
+
         return pattern is not None
 
     def is_rds_proxy_dns(self, host: str) -> bool:

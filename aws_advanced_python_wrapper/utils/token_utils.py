@@ -10,7 +10,7 @@
 #  distributed under the License is distributed on an "AS IS" BASIS,
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
-#  limitations under the License.    
+#  limitations under the License.
 
 from __future__ import annotations
 
@@ -19,7 +19,8 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
-from boto3 import Session
+    from boto3 import Session
+
 
 class TokenUtils(ABC):
     @abstractmethod

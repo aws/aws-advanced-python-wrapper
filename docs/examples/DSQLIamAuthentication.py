@@ -36,4 +36,3 @@ if __name__ == "__main__":
         for record in res:
             print(record)
         awscursor.execute("DROP TABLE bank_test")
-

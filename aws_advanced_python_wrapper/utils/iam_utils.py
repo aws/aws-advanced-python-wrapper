@@ -15,22 +15,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Dict, Optional
-
-import boto3
+from typing import TYPE_CHECKING, Optional
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
-    TelemetryTraceLevel
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
-    from aws_advanced_python_wrapper.plugin_service import PluginService
-    from boto3 import Session
 
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -69,6 +63,7 @@ class IamAuthUtils:
     @staticmethod
     def get_cache_key(user: Optional[str], hostname: Optional[str], port: int, region: Optional[str]) -> str:
         return f"{region}:{hostname}:{port}:{user}"
+
 
 class TokenInfo:
     @property
