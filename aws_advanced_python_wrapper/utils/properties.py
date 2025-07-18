@@ -20,7 +20,9 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 
 
 class Properties(Dict[str, Any]):
-    pass
+    def put_if_absent(self, key: str, value: Any):
+        if self.get(key) is None:
+            self[key] = value
 
 
 class WrapperProperty:
@@ -29,10 +31,18 @@ class WrapperProperty:
         self.default_value = default_value
         self.description = description
 
+    def __str__(self):
+        return f"WrapperProperty(name={self.name}, default_value={self.default_value}"
+
     def get(self, props: Properties) -> Optional[str]:
         if self.default_value:
             return props.get(self.name, self.default_value)
         return props.get(self.name)
+
+    def get_or_default(self, props: Properties) -> str:
+        if not self.default_value:
+            raise ValueError(f"No default value found for property {self}")
+        return props.get(self.name, self.default_value)
 
     def get_int(self, props: Properties) -> int:
         if self.default_value:
@@ -372,6 +382,37 @@ class WrapperProperties:
     MAX_RETRIES_MS = WrapperProperty("limitless_max_retries_ms",
                                      "Interval in milliseconds between polling for Limitless Transaction Routers to the database.",
                                      7_500)
+
+    # Blue/Green
+    BG_CONNECT_TIMEOUT_MS = WrapperProperty(
+        "bg_connect_timeout_ms",
+        "Connect timeout (in msec) during Blue/Green Deployment switchover.",
+        30_000)
+    BG_ID = WrapperProperty(
+        "bg_id",
+        "Blue/Green Deployment identifier that helps the driver to distinguish different deployments.",
+        "1")
+    BG_INTERVAL_BASELINE_MS = WrapperProperty(
+        "bg_interval_baseline_ms",
+        "Baseline Blue/Green Deployment status checking interval (in msec).",
+        60_000)
+    BG_INTERVAL_INCREASED_MS = WrapperProperty(
+        "bg_interval_increased_ms",
+        "Increased Blue/Green Deployment status checking interval (in msec).",
+        1_000)
+    BG_INTERVAL_HIGH_MS = WrapperProperty(
+        "bg_interval_high_ms",
+        "High Blue/Green Deployment status checking interval (in msec).",
+        100)
+    BG_SWITCHOVER_TIMEOUT_MS = WrapperProperty(
+        "bg_switchover_timeout_ms",
+        "Blue/Green Deployment switchover timeout (in msec).",
+        180_000)  # 3 minutes
+    BG_SUSPEND_NEW_BLUE_CONNECTIONS = WrapperProperty(
+        "bg_suspend_new_blue_connections",
+        "Enables Blue/Green Deployment switchover to suspend new blue connection requests while the "
+        "switchover process is in progress.",
+        False)
 
     # Telemetry
     ENABLE_TELEMETRY = WrapperProperty(

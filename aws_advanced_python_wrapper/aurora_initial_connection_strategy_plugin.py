@@ -86,7 +86,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
                     self._plugin_service.force_refresh_host_list(writer_candidate_conn)
                     writer_candidate = self._plugin_service.identify_connection(writer_candidate_conn)
 
-                    if writer_candidate is not None and writer_candidate.role != HostRole.WRITER:
+                    if writer_candidate is None or writer_candidate.role != HostRole.WRITER:
                         self._close_connection(writer_candidate_conn)
                         self._delay(retry_delay_ms)
                         continue
@@ -132,6 +132,11 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
                     reader_candidate_conn = connect_func()
                     self._plugin_service.force_refresh_host_list(reader_candidate_conn)
                     reader_candidate = self._plugin_service.identify_connection(reader_candidate_conn)
+
+                    if reader_candidate is None:
+                        self._close_connection(reader_candidate_conn)
+                        self._delay(retry_delay_ms)
+                        continue
 
                     if reader_candidate is not None and reader_candidate.role != HostRole.READER:
                         if self._has_no_readers():

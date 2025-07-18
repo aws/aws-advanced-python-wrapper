@@ -27,7 +27,7 @@ def test_host_info_defaults():
     assert len(host_info.aliases) == 0
     assert len(host_info._all_aliases) == 1
     assert host_info.role == HostRole.WRITER
-    assert host_info._availability == HostAvailability.AVAILABLE
+    assert host_info.availability == HostAvailability.AVAILABLE
     assert list(host_info._all_aliases)[0] == "testhost"
 
 

@@ -26,28 +26,19 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from aws_advanced_python_wrapper.aws_secrets_manager_plugin import \
-    AwsSecretsManagerPlugin
-from aws_advanced_python_wrapper.utils.cache_map import CacheMap
-
-if TYPE_CHECKING:
-    from boto3 import Session, client
-    from aws_advanced_python_wrapper.pep249 import Connection
-    from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
-    from aws_advanced_python_wrapper.plugin_service import PluginService
-
 from types import SimpleNamespace
-from typing import Callable, Tuple
+from typing import Tuple
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError
 from parameterized import param, parameterized
 
+from aws_advanced_python_wrapper.aws_secrets_manager_plugin import \
+    AwsSecretsManagerPlugin
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import Properties
 
@@ -81,18 +72,14 @@ class TestAwsSecretsManagerPlugin(TestCase):
         },
         'ResponseMetadata': {
             'HTTPStatusCode': 400,
+            'RequestId': 'test-request-id',
+            'HostId': 'test-host-id',
+            'HTTPHeaders': {},
+            'RetryAttempts': 0
         }
     }, "some_operation")
 
     _secrets_cache: CacheMap[Tuple, SimpleNamespace] = CacheMap()
-
-    _mock_func: Callable
-    _mock_plugin_service: PluginService
-    _mock_dialect: DatabaseDialect
-    _mock_session: Session
-    _mock_client: client
-    _mock_connection: Connection
-    _pg_properties: Properties
 
     def setUp(self):
         self._mock_func = MagicMock()
