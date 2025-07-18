@@ -57,6 +57,8 @@ from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
 from aws_advanced_python_wrapper.developer_plugin import DeveloperPluginFactory
 from aws_advanced_python_wrapper.driver_configuration_profiles import \
     DriverConfigurationProfiles
+from aws_advanced_python_wrapper.dsql_iam_auth_plugin_factory import \
+    DsqlIamAuthPluginFactory
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError,
                                                 UnsupportedOperationError)
@@ -73,7 +75,6 @@ from aws_advanced_python_wrapper.host_monitoring_plugin import \
     HostMonitoringPluginFactory
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPluginFactory
-from aws_advanced_python_wrapper.dsql_iam_auth_plugin_factory import DsqlIamAuthPluginFactory
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.read_write_splitting_plugin import \
     ReadWriteSplittingPluginFactory

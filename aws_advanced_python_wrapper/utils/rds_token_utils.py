@@ -10,12 +10,12 @@
 #  distributed under the License is distributed on an "AS IS" BASIS,
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
-#  limitations under the License.    
+#  limitations under the License.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Dict, Optional
+
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
@@ -23,11 +23,12 @@ from aws_advanced_python_wrapper.utils.token_utils import TokenUtils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
-from boto3 import Session
+    from boto3 import Session
 
 import boto3
 
 logger = Logger(__name__)
+
 
 class RDSTokenUtils(TokenUtils):
     def generate_authentication_token(
@@ -39,7 +40,7 @@ class RDSTokenUtils(TokenUtils):
             region: Optional[str],
             credentials: Optional[Dict[str, str]] = None,
             client_session: Optional[Session] = None) -> str:
-        
+
         telemetry_factory = plugin_service.get_telemetry_factory()
         context = telemetry_factory.open_telemetry_context("fetch authentication token", TelemetryTraceLevel.NESTED)
 

@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
+    from aws_advanced_python_wrapper.utils.token_utils import TokenUtils
 
 import requests
 
@@ -40,9 +41,9 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.utils.token_utils import TokenUtils
 from aws_advanced_python_wrapper.utils.rds_token_utils import RDSTokenUtils
+from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+
 
 logger = Logger(__name__)
 
@@ -53,7 +54,10 @@ class OktaAuthPlugin(Plugin):
     _rds_utils: RdsUtils = RdsUtils()
     _token_cache: Dict[str, TokenInfo] = {}
 
-    def __init__(self, plugin_service: PluginService, credentials_provider_factory: CredentialsProviderFactory, token_utils: TokenUtils, session: Optional[Session] = None):
+    def __init__(self, plugin_service: PluginService,
+                 credentials_provider_factory: CredentialsProviderFactory,
+                 token_utils: TokenUtils,
+                 session: Optional[Session] = None):
         self._plugin_service = plugin_service
         self._credentials_provider_factory = credentials_provider_factory
         self._session = session

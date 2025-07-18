@@ -16,13 +16,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from aws_advanced_python_wrapper.utils.dsql_token_utils import DSQLTokenUtils
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
-from aws_advanced_python_wrapper.utils.properties import (Properties)
+from aws_advanced_python_wrapper.utils.dsql_token_utils import DSQLTokenUtils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
+    from aws_advanced_python_wrapper.utils.properties import (Properties)
+
 
 class DsqlIamAuthPluginFactory(PluginFactory):
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
