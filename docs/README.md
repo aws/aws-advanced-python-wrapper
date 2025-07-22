@@ -17,6 +17,7 @@
       - [Aurora Initial Connection Strategy Plugin](./using-the-python-driver/using-plugins/UsingTheAuroraInitialConnectionStrategyPlugin.md)
         - [Host Availability Strategy](./using-the-python-driver/HostAvailabilityStrategy.md)
       - [IAM Authentication Plugin](./using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md)
+      - [DSQL IAM Authentication Plugin](./using-the-python-driver/using-plugins/UsingTheDSQLIamAuthenticationPlugin.md)
       - [AWS Secrets Manager Plugin](./using-the-python-driver/using-plugins/UsingTheAwsSecretsManagerPlugin.md)
       - [Federated Authentication Plugin](./using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)
       - [Read Write Splitting Plugin](./using-the-python-driver/using-plugins/UsingTheReadWriteSplittingPlugin.md)
