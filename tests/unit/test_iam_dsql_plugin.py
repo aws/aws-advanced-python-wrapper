@@ -24,10 +24,10 @@ import pytest
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin, TokenInfo
+from aws_advanced_python_wrapper.utils.dsql_token_utils import DSQLTokenUtils
+from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils
-from aws_advanced_python_wrapper.utils.dsql_token_utils import DSQLTokenUtils
 
 _GENERATED_TOKEN = "generated_token admin"
 _GENERATED_TOKEN_NON_ADMIN = "generated_token non-admin"
