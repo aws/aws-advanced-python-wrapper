@@ -44,7 +44,20 @@ class DSQLTokenUtils(TokenUtils):
         context = telemetry_factory.open_telemetry_context("fetch authentication token", TelemetryTraceLevel.NESTED)
 
         try:
-            client = boto3.client("dsql", region_name=region)
+            session = client_session if client_session else boto3.Session()
+            if credentials is not None:
+                client = session.client(
+                    'dsql',
+                    region_name=region,
+                    aws_access_key_id=credentials.get('AccessKeyId'),
+                    aws_secret_access_key=credentials.get('SecretAccessKey'),
+                    aws_session_token=credentials.get('SessionToken')
+                )
+            else:
+                client = session.client(
+                    'dsql',
+                    region_name=region
+                )
 
             if user == "admin":
                 token = client.generate_db_connect_admin_auth_token(host_name, region)

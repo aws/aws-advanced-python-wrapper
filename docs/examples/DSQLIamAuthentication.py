@@ -24,7 +24,7 @@ if __name__ == "__main__":
             user="admin",
             plugins="iam_dsql",
             iam_region="us-east-1",
-            wrapper_dialect="aurora-pg",
+            wrapper_dialect="pg",
             autocommit=True
     ) as awsconn, awsconn.cursor() as awscursor:
         awscursor.execute("CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
