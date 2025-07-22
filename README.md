@@ -26,6 +26,12 @@ Since a database failover is usually identified by reaching a network or a conne
 
 Enhanced Failure Monitoring (EFM) is a feature available from the [Host Monitoring Connection Plugin](./docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md#enhanced-failure-monitoring) that periodically checks the connected database host's health and availability. If a database host is determined to be unhealthy, the connection is aborted (and potentially routed to another healthy host in the cluster).
 
+### Using the AWS Advanced Python Driver with AWS Aurora DSQL
+The AWS Advanced Python Driver is able to handle IAM authentication when working with AWS Aurora DSQL clusters.
+
+Please visit [this page](./docs/using-the-python-driver/using-plugins/UsingTheDSQLIamAuthenticationPlugin.md) for more information.
+
+
 ### Using the AWS Advanced Python Driver with plain RDS databases
 
 The AWS Advanced Python Driver also works with RDS provided databases that are not Aurora.
