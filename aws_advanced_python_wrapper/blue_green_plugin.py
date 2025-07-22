@@ -585,7 +585,7 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
             execute_func: Callable,
             *args: Any,
             **kwargs: Any) -> ValueContainer[Any]:
-        logger.debug("SuspendExecuteRouting.InProgressSuspendMethod")
+        logger.debug("SuspendExecuteRouting.InProgressSuspendMethod", method_name)
 
         telemetry_factory = plugin_service.get_telemetry_factory()
         telemetry_context = telemetry_factory.open_telemetry_context(
@@ -735,10 +735,10 @@ class BlueGreenPlugin(Plugin):
             if routing is None:
                 return execute_func()
 
-            result: ValueContainer[Any] = ValueContainer.empty()
+            result_container: ValueContainer[Any] = ValueContainer.empty()
             self._start_time_ns.set(perf_counter_ns())
-            while routing is not None and not result.is_present():
-                result = routing.apply(
+            while routing is not None and not result_container.is_present():
+                result_container = routing.apply(
                     self,
                     self._plugin_service,
                     self._props,
@@ -747,7 +747,7 @@ class BlueGreenPlugin(Plugin):
                     execute_func,
                     *args,
                     **kwargs)
-                if result.is_present():
+                if result_container.is_present():
                     break
 
                 latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
@@ -759,8 +759,8 @@ class BlueGreenPlugin(Plugin):
                     next((r for r in self._bg_status.execute_routings if r.is_match(host_info, bg_role)), None)
 
             self._end_time_ns.set(perf_counter_ns())
-            if result.is_present():
-                return result.get()
+            if result_container.is_present():
+                return result_container.get()
 
             return execute_func()
         finally:
@@ -890,9 +890,6 @@ class BlueGreenStatusMonitor:
                     self._delay(delay_ms)
                 except Exception as e:
                     logger.warning("BlueGreenStatusMonitor.MonitoringUnhandledException", self._bg_role, e)
-                    import traceback
-                    traceback.print_exc()
-                    print(e)
 
         finally:
             self._close_connection()
@@ -1148,14 +1145,7 @@ class BlueGreenStatusMonitor:
 
         # Check whether all hosts in start_topology no longer have IP addresses. This indicates that the start_topology
         # hosts can no longer be resolved because their DNS entries no longer exist.
-        self._all_start_topology_endpoints_removed = (
-                bool(self._start_topology) and
-                all(
-                    self._start_ip_addresses_by_host.get(host_info.host) is not None and
-                    self._current_ip_addresses_by_host.get(host_info.host) is None
-                    for host_info in self._start_topology
-                )
-        )
+        self._all_start_topology_endpoints_removed = self._are_all_start_endpoints_removed()
 
         if not self.should_collect_topology.is_set():
             # Check whether all hosts in current_topology do not exist in start_topology
@@ -1172,13 +1162,27 @@ class BlueGreenStatusMonitor:
             return False
 
         for host_info in self._start_topology:
-            start_ip = self._start_ip_addresses_by_host.get(host_info.host)
-            current_ip = self._current_ip_addresses_by_host.get(host_info.host)
-            if start_ip is None or not start_ip.is_present() or \
-                    current_ip is None or not current_ip.is_present():
+            start_ip_container = self._start_ip_addresses_by_host.get(host_info.host)
+            current_ip_container = self._current_ip_addresses_by_host.get(host_info.host)
+            if start_ip_container is None or not start_ip_container.is_present() or \
+                    current_ip_container is None or not current_ip_container.is_present():
                 return False
 
-            if start_ip.get() == current_ip.get():
+            if start_ip_container.get() == current_ip_container.get():
+                return False
+
+        return True
+
+    def _are_all_start_endpoints_removed(self) -> bool:
+        start_topology = self._start_topology
+        if not start_topology:
+            return False
+
+        for host_info in start_topology:
+            start_ip_container = self._start_ip_addresses_by_host.get(host_info.host)
+            current_ip_container = self._current_ip_addresses_by_host.get(host_info.host)
+            if start_ip_container is None or current_ip_container is None or \
+                    not start_ip_container.is_present() or current_ip_container.is_present():
                 return False
 
         return True
@@ -1474,21 +1478,21 @@ class BlueGreenStatusProvider:
             self._summary_status = self._get_status_of_completed()
 
         else:
-            raise ValueError(Messages.get_formatted("bgd.unknownPhase", self._bg_id, self._latest_phase))
+            raise ValueError(Messages.get_formatted("BlueGreenStatusProvider.UnknownPhase", self._bg_id, self._latest_phase))
 
     def _update_dns_flags(self, bg_role: BlueGreenRole, interim_status: BlueGreenInterimStatus):
         if bg_role == BlueGreenRole.SOURCE and not self._blue_dns_update_completed and interim_status.all_start_topology_ip_changed:
-            logger.debug("bgd.blueDnsCompleted", self._bg_id)
+            logger.debug("BlueGreenStatusProvider.BlueDnsCompleted", self._bg_id)
             self._blue_dns_update_completed = True
             self._store_event_phase_time("Blue DNS updated")
 
         if bg_role == BlueGreenRole.TARGET and not self._green_dns_removed and interim_status.all_start_topology_endpoints_removed:
-            logger.debug("bgd.greenDnsRemoved", self._bg_id)
+            logger.debug("BlueGreenStatusProvider.GreenDnsRemoved", self._bg_id)
             self._green_dns_removed = True
             self._store_event_phase_time("Green DNS removed")
 
         if bg_role == BlueGreenRole.TARGET and not self._green_topology_changed and interim_status.all_topology_changed:
-            logger.debug("bgd.greenTopologyChanged", self._bg_id)
+            logger.debug("BlueGreenStatusProvider.GreenTopologyChanged", self._bg_id)
             self._green_topology_changed = True
             self._store_event_phase_time("Green topology changed")
 
@@ -1552,12 +1556,12 @@ class BlueGreenStatusProvider:
                 continue
 
             blue_host_info = host_pair[0]
-            blue_ip = self._host_ip_addresses.get(blue_host_info.host)
-            if blue_ip is None or not blue_ip.is_present():
+            blue_ip_container = self._host_ip_addresses.get(blue_host_info.host)
+            if blue_ip_container is None or not blue_ip_container.is_present():
                 blue_ip_host_info = blue_host_info
             else:
                 blue_ip_host_info = copy(blue_host_info)
-                blue_host_info.host = blue_ip.get()
+                blue_host_info.host = blue_ip_container.get()
 
             host_routing = SubstituteConnectRouting(blue_ip_host_info, host, role, (blue_host_info,))
             interim_status = self._interim_statuses[role.value]

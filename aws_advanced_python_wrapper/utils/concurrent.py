@@ -40,6 +40,9 @@ class ConcurrentDict(Generic[K, V]):
     def __str__(self):
         return f"ConcurrentDict{str(self._dict)}"
 
+    def __repr__(self):
+        return f"ConcurrentDict{str(self._dict)}"
+
     def get(self, key: K, default_value: Optional[V] = None) -> Optional[V]:
         return self._dict.get(key, default_value)
 

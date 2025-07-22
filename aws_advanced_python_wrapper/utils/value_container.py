@@ -33,36 +33,29 @@ class ValueContainer(Generic[V]):
 
     @classmethod
     def of(cls, value: V) -> 'ValueContainer[V]':
-        """Returns a ValueContainer with the specified non-None value."""
         if value is None:
             raise ValueError("Value cannot be None")
         return cls(value)
 
     @classmethod
     def empty(cls) -> 'ValueContainer[V]':
-        """Returns an empty ValueContainer instance."""
         return cls()
 
     def is_present(self) -> bool:
-        """Returns true if a value is present."""
         return self._value is not self._EMPTY
 
     def is_empty(self) -> bool:
-        """Returns true if no value is present."""
         return self._value is self._EMPTY
 
     def get(self) -> V:
-        """Returns the value if present, otherwise raises ValueError."""
         if self._value is self._EMPTY:
             raise ValueError("No value present")
         return cast('V', self._value)
 
     def or_else(self, other: Optional[V]) -> V:
-        """Returns the value if present, otherwise returns other."""
         return cast('V', self._value) if self.is_present() else other
 
     def __eq__(self, other: object) -> bool:
-        """Checks if this ValueContainer is equal to another object."""
         if not isinstance(other, ValueContainer):
             return False
         if self.is_empty() and other.is_empty():
@@ -72,5 +65,7 @@ class ValueContainer(Generic[V]):
         return self._value == other._value
 
     def __str__(self) -> str:
-        """Returns a string representation of this ValueContainer."""
+        return "ValueContainer.empty" if self.is_empty() else f"ValueContainer[{self._value}]"
+
+    def __repr__(self) -> str:
         return "ValueContainer.empty" if self.is_empty() else f"ValueContainer[{self._value}]"

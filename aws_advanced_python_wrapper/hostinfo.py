@@ -72,6 +72,9 @@ class HostInfo:
     def __str__(self):
         return f"HostInfo({self.host}, {self.port}, {self.role}, {self.availability})"
 
+    def __repr__(self):
+        return f"HostInfo({self.host}, {self.port}, {self.role}, {self.availability})"
+
     def __copy__(self):
         return HostInfo(
             host=self.host,
