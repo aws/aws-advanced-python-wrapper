@@ -41,7 +41,7 @@ class DSQLTokenUtils(TokenUtils):
             credentials: Optional[Dict[str, str]] = None,
             client_session: Optional[Session] = None) -> str:
         telemetry_factory = plugin_service.get_telemetry_factory()
-        context = telemetry_factory.open_telemetry_context("fetch authentication token", TelemetryTraceLevel.NESTED)
+        context = telemetry_factory.open_telemetry_context("fetch DSQL authentication token", TelemetryTraceLevel.NESTED)
 
         try:
             session = client_session if client_session else boto3.Session()
@@ -64,7 +64,8 @@ class DSQLTokenUtils(TokenUtils):
             else:
                 token = client.generate_db_connect_auth_token(host_name, region)
 
-            logger.debug("IamAuthUtils.GeneratedNewAuthToken", token)
+            logger.debug("TokenUtils.GeneratedNewAuthTokenLength", len(token) if token else 0)
+            client.close()
             return token
         except Exception as ex:
             context.set_success(False)

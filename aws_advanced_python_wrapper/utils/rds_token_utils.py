@@ -69,7 +69,7 @@ class RDSTokenUtils(TokenUtils):
 
             client.close()
 
-            logger.debug("IamAuthUtils.GeneratedNewAuthToken", token)
+            logger.debug("TokenUtils.GeneratedNewAuthTokenLength", len(token) if token else 0)
             return token
         except Exception as ex:
             context.set_success(False)

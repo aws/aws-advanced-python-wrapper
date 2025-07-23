@@ -53,7 +53,8 @@ class OktaAuthPlugin(Plugin):
     _rds_utils: RdsUtils = RdsUtils()
     _token_cache: Dict[str, TokenInfo] = {}
 
-    def __init__(self, plugin_service: PluginService,
+    def __init__(self,
+                 plugin_service: PluginService,
                  credentials_provider_factory: CredentialsProviderFactory,
                  token_utils: TokenUtils,
                  session: Optional[Session] = None):
