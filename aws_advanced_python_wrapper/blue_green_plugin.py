@@ -1039,6 +1039,7 @@ class BlueGreenStatusMonitor:
                 if connected_ip_address is not None and connected_ip_address != status_info_ip_address:
                     # We are not connected to the desired blue or green cluster, we need to reconnect.
                     self._connection_host_info = HostInfo(host=status_info.endpoint, port=status_info.port)
+                    self._props["host"] = status_info.endpoint
                     self._is_host_info_correct.set()
                     self._close_connection()
                     self._panic_mode.set()
