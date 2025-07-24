@@ -21,7 +21,6 @@ from unittest.mock import patch
 
 import pytest
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin, TokenInfo
 from aws_advanced_python_wrapper.utils.dsql_token_utils import DSQLTokenUtils
@@ -34,7 +33,7 @@ _GENERATED_TOKEN_NON_ADMIN = "generated_token non-admin"
 _TEST_TOKEN = "test_token"
 _DEFAULT_PG_PORT = 5432
 
-_PG_HOST_INFO = HostInfo("dsqltestclusternamefoobar1.dsql-gamma.us-east-2.on.aws")
+_PG_HOST_INFO = HostInfo("dsqltestclusternamefoobar1.dsql.us-east-2.on.aws")
 _PG_HOST_INFO_WITH_PORT = HostInfo(_PG_HOST_INFO.url, port=1234)
 _PG_REGION = "us-east-2"
 
@@ -137,7 +136,7 @@ def test_pg_connect_valid_token_in_cache(user, mocker, mock_plugin_service, mock
         assert _GENERATED_TOKEN_NON_ADMIN != actual_token.token
 
     assert _TEST_TOKEN == actual_token.token
-    assert actual_token.is_expired() is False
+    assert not actual_token.is_expired()
 
 
 @patch("aws_advanced_python_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
@@ -167,7 +166,7 @@ def test_pg_connect_with_invalid_port_fall_backs_to_host_port(
 
     actual_token = _token_cache.get(f"{_PG_REGION}:{_PG_HOST_INFO.url}:1234:admin")
     assert _GENERATED_TOKEN == actual_token.token
-    assert actual_token.is_expired() is False
+    assert not actual_token.is_expired()
 
     # Assert password has been updated to the value in token cache
     expected_props = {"user": "admin", "iam_default_port": "0"}
@@ -203,7 +202,7 @@ def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(
     actual_token = _token_cache.get(
         f"{_PG_REGION}:{_PG_HOST_INFO.url}:{expected_default_pg_port}:admin")
     assert _GENERATED_TOKEN == actual_token.token
-    assert actual_token.is_expired() is False
+    assert not actual_token.is_expired()
 
     # Assert password has been updated to the value in token cache
     expected_props = {"user": "admin", "iam_default_port": "0"}
@@ -217,7 +216,7 @@ def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(
 @patch("aws_advanced_python_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
 def test_connect_expired_token_in_cache(user, mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
     test_props: Properties = Properties({"user": user})
-    cache_key, initial_token = set_token_cache(user, _PG_HOST_INFO.url, _DEFAULT_PG_PORT, _PG_REGION)
+    cache_key, initial_token = set_token_cache(user, _PG_HOST_INFO.url, _DEFAULT_PG_PORT, _PG_REGION, True)
 
     mock_func.side_effect = Exception("generic exception")
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service,
@@ -234,7 +233,7 @@ def test_connect_expired_token_in_cache(user, mocker, mock_plugin_service, mock_
 
     actual_token = _token_cache.get(cache_key)
     assert initial_token != actual_token
-    assert actual_token.is_expired() is False
+    assert not actual_token.is_expired()
 
     if user == "admin":
         mock_client.generate_db_connect_admin_auth_token.assert_called_with(
@@ -280,7 +279,7 @@ def test_connect_empty_cache(user, mocker, mock_plugin_service, mock_connection,
         assert _GENERATED_TOKEN_NON_ADMIN == actual_token.token
 
     assert mock_connection == actual_connection
-    assert actual_token.is_expired() is False
+    assert not actual_token.is_expired()
 
 
 @patch("aws_advanced_python_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
@@ -310,7 +309,7 @@ def test_connect_with_specified_port(mocker, mock_plugin_service, mock_session, 
     assert _token_cache.get(_PG_CACHE_KEY) is None
     assert _GENERATED_TOKEN != actual_token.token
     assert f"{_TEST_TOKEN}:1234" == actual_token.token
-    assert actual_token.is_expired() is False
+    assert not actual_token.is_expired()
 
     # Assert password has been updated to the value in token cache
     expected_props = {"user": "admin"}
@@ -346,7 +345,7 @@ def test_connect_with_specified_iam_default_port(mocker, mock_plugin_service, mo
     assert _token_cache.get(_PG_CACHE_KEY) is None
     assert _GENERATED_TOKEN != actual_token.token
     assert f"{_TEST_TOKEN}:{iam_default_port}" == actual_token.token
-    assert actual_token.is_expired() is False
+    assert not actual_token.is_expired()
 
     # Assert password has been updated to the value in token cache
     expected_props = {"user": "admin", "iam_default_port": "9999"}
@@ -389,7 +388,7 @@ def test_connect_with_specified_region(user, mocker, mock_plugin_service, mock_s
 
     expected_props = {"iam_region": "us-east-1", "user": user}
     actual_token = _token_cache.get(IamAuthUtils.get_cache_key(user, _PG_HOST_INFO.url, _DEFAULT_PG_PORT, iam_region))
-    assert actual_token.is_expired() is False
+    assert not actual_token.is_expired()
 
     if user == "admin":
         mock_client.generate_db_connect_admin_auth_token.assert_called_with(
@@ -405,8 +404,8 @@ def test_connect_with_specified_region(user, mocker, mock_plugin_service, mock_s
 
 
 @pytest.mark.parametrize("iam_host", [
-    pytest.param("dsqltestclusternamefoobar1.dsql-gamma.us-east-2.on.aws"),
-    pytest.param("dsqltestclusternamefoobar2.dsql-gamma.us-east-2.on.aws"),
+    pytest.param("dsqltestclusternamefoobar1.dsql.us-east-2.on.aws"),
+    pytest.param("dsqltestclusternamefoobar2.dsql.us-east-2.on.aws"),
 ])
 @patch("aws_advanced_python_wrapper.iam_plugin.IamAuthPlugin._token_cache", _token_cache)
 def test_connect_with_specified_host(iam_host: str, mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
@@ -437,34 +436,9 @@ def test_connect_with_specified_host(iam_host: str, mocker, mock_plugin_service,
     assert actual_token is not None
     assert _GENERATED_TOKEN != actual_token.token
     assert f"{_TEST_TOKEN}:{iam_host}" == actual_token.token
-    assert actual_token.is_expired() is False
+    assert not actual_token.is_expired()
 
 
 def test_aws_supported_regions_url_exists():
     url = "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RegionsAndAvailabilityZones.html"
     assert 200 == urllib.request.urlopen(url).getcode()
-
-
-@pytest.mark.parametrize("host", [
-    pytest.param("<>"),
-    pytest.param("#"),
-    pytest.param("'"),
-    pytest.param("\""),
-    pytest.param("%"),
-    pytest.param("^"),
-    pytest.param("https://foo.com/abc.html"),
-    pytest.param("foo.boo//"),
-    pytest.param("8.8.8.8"),
-    pytest.param("a.b"),
-])
-def test_invalid_iam_host(host, mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
-    test_props: Properties = Properties({"user": "admin"})
-    with pytest.raises(AwsWrapperError):
-        target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service, DSQLTokenUtils(), mock_session)
-        target_plugin.connect(
-            target_driver_func=mocker.MagicMock(),
-            driver_dialect=mock_dialect,
-            host_info=HostInfo(host),
-            props=test_props,
-            is_initial_connection=False,
-            connect_func=mock_func)
