@@ -53,12 +53,12 @@ logger = Logger(__name__)
 
 class DialectCode(Enum):
     # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/multi-az-db-clusters-concepts.html
-    MULTI_AZ_MYSQL = "multi-az-mysql"
+    MULTI_AZ_CLUSTER_MYSQL = "multi-az-mysql"
     AURORA_MYSQL = "aurora-mysql"
     RDS_MYSQL = "rds-mysql"
     MYSQL = "mysql"
 
-    MULTI_AZ_PG = "multi-az-pg"
+    MULTI_AZ_CLUSTER_PG = "multi-az-pg"
     AURORA_PG = "aurora-pg"
     RDS_PG = "rds-pg"
     PG = "pg"
@@ -168,7 +168,7 @@ class DatabaseDialectProvider(Protocol):
 
 class MysqlDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (
-        DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_MYSQL, DialectCode.RDS_MYSQL)
+        DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_CLUSTER_MYSQL, DialectCode.RDS_MYSQL)
     _exception_handler: Optional[ExceptionHandler] = None
 
     @property
@@ -219,7 +219,7 @@ class MysqlDatabaseDialect(DatabaseDialect):
 
 class PgDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (
-        DialectCode.AURORA_PG, DialectCode.MULTI_AZ_PG, DialectCode.RDS_PG)
+        DialectCode.AURORA_PG, DialectCode.MULTI_AZ_CLUSTER_PG, DialectCode.RDS_PG)
     _exception_handler: Optional[ExceptionHandler] = None
 
     @property
@@ -277,7 +277,7 @@ class BlueGreenDialect(ABC):
 
 
 class RdsMysqlDialect(MysqlDatabaseDialect, BlueGreenDialect):
-    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_MYSQL)
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_CLUSTER_MYSQL)
 
     _BG_STATUS_QUERY = "SELECT version, endpoint, port, role, status FROM mysql.rds_topology"
     _BG_STATUS_EXISTS_QUERY = \
@@ -331,7 +331,7 @@ class RdsPgDialect(PgDatabaseDialect, BlueGreenDialect):
                          "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
                          "FROM pg_settings "
                          "WHERE name='rds.extensions'")
-    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG, DialectCode.MULTI_AZ_PG)
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG, DialectCode.MULTI_AZ_CLUSTER_PG)
 
     _BG_STATUS_QUERY = (f"SELECT version, endpoint, port, role, status "
                         f"FROM rds_tools.show_topology('aws_advanced_python_wrapper-{DriverInfo.DRIVER_VERSION}')")
@@ -376,7 +376,7 @@ class RdsPgDialect(PgDatabaseDialect, BlueGreenDialect):
 
 
 class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, BlueGreenDialect):
-    _DIALECT_UPDATE_CANDIDATES = (DialectCode.MULTI_AZ_MYSQL,)
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.MULTI_AZ_CLUSTER_MYSQL,)
     _TOPOLOGY_QUERY = ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
                        "CPU, REPLICA_LAG_IN_MILLISECONDS, LAST_UPDATE_TIMESTAMP "
                        "FROM information_schema.replica_host_status "
@@ -424,7 +424,7 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, Blu
 
 
 class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLimitlessDialect, BlueGreenDialect):
-    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.MULTI_AZ_PG,)
+    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.MULTI_AZ_CLUSTER_PG,)
 
     _EXTENSIONS_QUERY = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils " \
                         "FROM pg_settings WHERE name='rds.extensions'"
@@ -495,7 +495,7 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLim
             return False
 
 
-class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
+class MultiAzClusterMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
     _TOPOLOGY_QUERY = "SELECT id, endpoint, port FROM mysql.rds_topology"
     _WRITER_HOST_QUERY = "SHOW REPLICA STATUS"
     _WRITER_HOST_COLUMN_INDEX = 39
@@ -510,7 +510,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
         initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
-                cursor.execute(MultiAzMysqlDialect._TOPOLOGY_QUERY)
+                cursor.execute(MultiAzClusterMysqlDialect._TOPOLOGY_QUERY)
                 records = cursor.fetchall()
                 if not records:
                     return False
@@ -552,7 +552,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
             props["conn_attrs"].update(extra_conn_attrs)
 
 
-class MultiAzPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
+class MultiAzClusterPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
     # The driver name passed to show_topology is used for RDS metrics purposes.
     # It is not required for functional correctness.
     _TOPOLOGY_QUERY = \
@@ -569,16 +569,16 @@ class MultiAzPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
-        if MultiAzPgDialect._exception_handler is None:
-            MultiAzPgDialect._exception_handler = Utils.initialize_class(
+        if MultiAzClusterPgDialect._exception_handler is None:
+            MultiAzClusterPgDialect._exception_handler = Utils.initialize_class(
                 "aws_advanced_python_wrapper.utils.pg_exception_handler.MultiAzPgExceptionHandler")
-        return MultiAzPgDialect._exception_handler
+        return MultiAzClusterPgDialect._exception_handler
 
     def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
         initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
-                cursor.execute(MultiAzPgDialect._WRITER_HOST_QUERY)
+                cursor.execute(MultiAzClusterPgDialect._WRITER_HOST_QUERY)
                 if cursor.fetchone() is not None:
                     return True
         except Exception:
@@ -605,8 +605,8 @@ class UnknownDatabaseDialect(DatabaseDialect):
          DialectCode.RDS_PG,
          DialectCode.AURORA_MYSQL,
          DialectCode.AURORA_PG,
-         DialectCode.MULTI_AZ_MYSQL,
-         DialectCode.MULTI_AZ_PG)
+         DialectCode.MULTI_AZ_CLUSTER_MYSQL,
+         DialectCode.MULTI_AZ_CLUSTER_PG)
 
     @property
     def default_port(self) -> int:
@@ -647,11 +647,11 @@ class DatabaseDialectManager(DatabaseDialectProvider):
         DialectCode.MYSQL: MysqlDatabaseDialect(),
         DialectCode.RDS_MYSQL: RdsMysqlDialect(),
         DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
-        DialectCode.MULTI_AZ_MYSQL: MultiAzMysqlDialect(),
+        DialectCode.MULTI_AZ_CLUSTER_MYSQL: MultiAzClusterMysqlDialect(),
         DialectCode.PG: PgDatabaseDialect(),
         DialectCode.RDS_PG: RdsPgDialect(),
         DialectCode.AURORA_PG: AuroraPgDialect(),
-        DialectCode.MULTI_AZ_PG: MultiAzPgDialect(),
+        DialectCode.MULTI_AZ_CLUSTER_PG: MultiAzClusterPgDialect(),
         DialectCode.UNKNOWN: UnknownDatabaseDialect()
     }
 

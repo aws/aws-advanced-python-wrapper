@@ -19,7 +19,7 @@ import pytest
 
 from aws_advanced_python_wrapper.database_dialect import (
     AuroraMysqlDialect, AuroraPgDialect, DatabaseDialectManager, DialectCode,
-    MultiAzMysqlDialect, MysqlDatabaseDialect, PgDatabaseDialect,
+    MultiAzClusterMysqlDialect, MysqlDatabaseDialect, PgDatabaseDialect,
     RdsMysqlDialect, RdsPgDialect, TargetDriverType, UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.driver_info import DriverInfo
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -216,7 +216,7 @@ def test_get_dialect_user_setting(mock_driver_dialect):
 
 
 def test_prepare_conn_props__multi_az_mysql():
-    dialect = MultiAzMysqlDialect()
+    dialect = MultiAzClusterMysqlDialect()
     props = Properties({"host": "some_host"})
     expected = Properties({
         "host": "some_host",
