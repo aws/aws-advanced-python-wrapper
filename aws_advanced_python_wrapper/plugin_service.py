@@ -57,6 +57,8 @@ from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
 from aws_advanced_python_wrapper.developer_plugin import DeveloperPluginFactory
 from aws_advanced_python_wrapper.driver_configuration_profiles import \
     DriverConfigurationProfiles
+from aws_advanced_python_wrapper.dsql_iam_auth_plugin_factory import \
+    DsqlIamAuthPluginFactory
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError,
                                                 UnsupportedOperationError)
@@ -716,6 +718,7 @@ class PluginManager(CanReleaseResources):
 
     PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
         "iam": IamAuthPluginFactory,
+        "iam_dsql": DsqlIamAuthPluginFactory,
         "aws_secrets_manager": AwsSecretsManagerPluginFactory,
         "aurora_connection_tracker": AuroraConnectionTrackerPluginFactory,
         "host_monitoring": HostMonitoringPluginFactory,
@@ -748,6 +751,7 @@ class PluginManager(CanReleaseResources):
         HostMonitoringPluginFactory: 500,
         FastestResponseStrategyPluginFactory: 600,
         IamAuthPluginFactory: 700,
+        DsqlIamAuthPluginFactory: 710,
         AwsSecretsManagerPluginFactory: 800,
         FederatedAuthPluginFactory: 900,
         LimitlessPluginFactory: 950,
