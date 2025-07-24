@@ -806,6 +806,9 @@ class BlueGreenStatusMonitor:
         self._bg_id = bg_id
         self._initial_host_info = initial_host_info
         self._plugin_service = plugin_service
+
+        # autocommit is False by default. When False, the BG status query may return stale data, so we set it to True.
+        props["autocommit"] = True
         self._props = props
         self._status_check_intervals_ms = status_check_intervals_ms
         self._interim_status_processor = interim_status_processor
@@ -976,7 +979,6 @@ class BlueGreenStatusMonitor:
                 return
 
             status_entries = []
-            conn.autocommit = True
             with conn.cursor() as cursor:
                 cursor.execute(self._bg_dialect.blue_green_status_query)
                 for record in cursor:
@@ -1562,7 +1564,7 @@ class BlueGreenStatusProvider:
                 blue_ip_host_info = blue_host_info
             else:
                 blue_ip_host_info = copy(blue_host_info)
-                blue_host_info.host = blue_ip_container.get()
+                blue_ip_host_info.host = blue_ip_container.get()
 
             host_routing = SubstituteConnectRouting(blue_ip_host_info, host, role, (blue_host_info,))
             interim_status = self._interim_statuses[role.value]
