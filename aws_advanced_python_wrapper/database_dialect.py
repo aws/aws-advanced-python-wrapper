@@ -579,7 +579,8 @@ class MultiAzClusterPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(MultiAzClusterPgDialect._WRITER_HOST_QUERY)
-                if cursor.fetchone() is not None:
+                record = cursor.fetchone()
+                if record is not None and len(record) > 0 and bool(record[0]):
                     return True
         except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
