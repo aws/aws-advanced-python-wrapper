@@ -34,12 +34,18 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import org.apache.logging.log4j.CloseableThreadContext.Instance;
 
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -48,6 +54,12 @@ import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.waiters.WaiterResponse;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.retries.api.BackoffStrategy;
+import software.amazon.awssdk.services.dsql.DsqlClient;
+import software.amazon.awssdk.services.dsql.model.CreateClusterRequest;
+import software.amazon.awssdk.services.dsql.model.CreateClusterResponse;
+import software.amazon.awssdk.services.dsql.model.GetClusterResponse;
+import software.amazon.awssdk.services.dsql.model.ResourceNotFoundException;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsResponse;
 import software.amazon.awssdk.services.ec2.model.Ec2Exception;
@@ -98,9 +110,18 @@ public class AuroraTestUtility {
 
   private final RdsClient rdsClient;
   private final Ec2Client ec2Client;
+   private final DsqlClient dsqlClient;
   private static final Random rand = new Random();
 
   private static final String DUPLICATE_IP_ERROR_CODE = "InvalidPermission.Duplicate";
+
+  private static final Pattern AURORA_DSQL_CLUSTER_PATTERN =
+      Pattern.compile(
+          "^(?<instance>[^.]+)\\."
+              + "(?<dns>dsql(?:-[^.]+)?)\\."
+              + "(?<domain>(?<region>[a-zA-Z0-9\\-]+)"
+              + "\\.on\\.aws\\.?)$",
+          Pattern.CASE_INSENSITIVE);
 
   public AuroraTestUtility(
           String region, String rdsEndpoint, String awsAccessKeyId, String awsSecretAccessKey, String awsSessionToken)
@@ -139,7 +160,11 @@ public class AuroraTestUtility {
             .region(dbRegion)
             .credentialsProvider(credentialsProvider)
             .build();
-  }
+    dsqlClient = DsqlClient.builder()
+            .region(dbRegion)
+            .credentialsProvider(credentialsProvider)
+            .build();
+      }
 
   protected static Region getRegionInternal(String rdsRegion) {
     Optional<Region> regionOptional =
@@ -340,6 +365,41 @@ public class AuroraTestUtility {
   }
 
   /**
+   * Create a DSQL cluster.
+   *
+   * @param name A human-readable name to tag the cluster with.
+   * @return The unique identifier of the created cluster.
+   */
+  public String createDsqlCluster(final String name) throws InterruptedException {
+    final Map<String, String> tagMap = new HashMap<>();
+    tagMap.put("Name", name);
+
+    final CreateClusterRequest request = CreateClusterRequest.builder()
+        .deletionProtectionEnabled(false)
+        .tags(tagMap)
+        .build();
+    final CreateClusterResponse cluster = dsqlClient.createCluster(request);
+
+    this.dbEngineDeployment = DatabaseEngineDeployment.DSQL;
+    this.dbIdentifier = cluster.identifier();
+
+    final WaiterResponse<GetClusterResponse> waiterResponse = dsqlClient.waiter().waitUntilClusterActive(
+        getCluster -> getCluster.identifier(cluster.identifier()),
+        config -> config.backoffStrategyV2(
+            BackoffStrategy.fixedDelayWithoutJitter(Duration.ofSeconds(10))
+        ).waitTimeout(Duration.ofMinutes(30))
+    );
+
+    if (waiterResponse.matched().exception().isPresent()) {
+      deleteCluster();
+      throw new InterruptedException(
+          "Unable to create DSQL cluster after waiting for 30 minutes");
+    }
+
+    return cluster.identifier();
+  }
+
+  /**
    * Gets public IP.
    *
    * @return public IP of user
@@ -435,13 +495,20 @@ public class AuroraTestUtility {
    * Destroys all instances and clusters. Removes IP from EC2 whitelist.
    */
   public void deleteCluster() {
+    final DatabaseEngineDeployment deployment = this.dbEngineDeployment;
+    if (deployment == null) {
+      throw new UnsupportedOperationException("DB engine deployment must be non-null");
+    }
 
-    switch (this.dbEngineDeployment) {
+    switch (deployment) {
       case AURORA:
         this.deleteAuroraCluster();
         break;
       case RDS_MULTI_AZ:
         this.deleteMultiAzCluster();
+        break;
+      case DSQL:
+        this.deleteDsqlCluster();
         break;
       default:
         throw new UnsupportedOperationException(this.dbEngineDeployment.toString());
@@ -509,6 +576,23 @@ public class AuroraTestUtility {
     }
   }
 
+  public void deleteDsqlCluster() {
+    dsqlClient.deleteCluster(r -> r.identifier(dbIdentifier));
+
+    WaiterResponse<GetClusterResponse> waiterResponse = dsqlClient.waiter().waitUntilClusterNotExists(
+        getCluster -> getCluster.identifier(dbIdentifier),
+        config -> config.backoffStrategyV2(
+            BackoffStrategy.fixedDelayWithoutJitter(Duration.ofSeconds(10))
+        ).waitTimeout(Duration.ofMinutes(30))
+    );
+
+    if (waiterResponse.matched().exception().isPresent()
+            && !(waiterResponse.matched().exception().get() instanceof ResourceNotFoundException)) {
+      throw new RuntimeException(
+              "Unable to delete DSQL cluster after waiting for 30 minutes");
+    }
+  }
+
   public boolean doesClusterExist(final String clusterId) {
     final DescribeDbClustersRequest request =
         DescribeDbClustersRequest.builder().dbClusterIdentifier(clusterId).build();
@@ -518,6 +602,28 @@ public class AuroraTestUtility {
       return false;
     }
     return true;
+  }
+
+  public boolean doesDsqlClusterExist(final String identifier) {
+    try {
+      final GetClusterResponse response = dsqlClient.getCluster(r -> r.identifier(identifier));
+      return response.sdkHttpResponse().isSuccessful();
+    } catch (ResourceNotFoundException ex) {
+      return false;
+    }
+  }
+
+  public String getDsqlInstanceId(final String host) {
+
+    if (StringUtils.isNullOrEmpty(host)) {
+      return null;
+    }
+
+    final Matcher matcher = AURORA_DSQL_CLUSTER_PATTERN.matcher(host);
+    if (!matcher.matches()) {
+      return null;
+    }
+    return matcher.group("instance");
   }
 
   public DBCluster getClusterInfo(final String clusterId) {

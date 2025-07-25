@@ -68,6 +68,9 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
       if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ && config.excludeMultiAz) {
         continue;
       }
+      if (deployment == DatabaseEngineDeployment.DSQL && config.excludeDsql) {
+        continue;
+      }
 
       for (DatabaseEngine engine : DatabaseEngine.values()) {
         if (engine == DatabaseEngine.PG && config.excludePgEngine) {
@@ -76,9 +79,12 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
         if (engine == DatabaseEngine.MYSQL && config.excludeMysqlEngine) {
           continue;
         }
+        if (engine != DatabaseEngine.PG && DatabaseEngineDeployment.DSQL == deployment) {
+          continue;
+        }
 
         for (DatabaseInstances instances : DatabaseInstances.values()) {
-          if (deployment == DatabaseEngineDeployment.DOCKER
+          if ((deployment == DatabaseEngineDeployment.DOCKER || deployment == DatabaseEngineDeployment.DSQL)
               && instances != DatabaseInstances.SINGLE_INSTANCE) {
             continue;
           }
@@ -141,6 +147,9 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                               || config.excludeIam
                               ? null
                               : TestEnvironmentFeatures.IAM,
+                          deployment == DatabaseEngineDeployment.DSQL
+                              ? TestEnvironmentFeatures.RUN_DSQL_TESTS_ONLY
+                              : null,
                           config.excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
                           config.excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
                           config.excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,

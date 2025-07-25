@@ -20,7 +20,7 @@ To enable the AWS Aurora DSQL IAM Authentication Plugin, add the plugin code `ia
 The AWS Python Driver supports Amazon AWS Identity and Access Management (IAM) authentication. When using AWS IAM database authentication, the host URL must be a valid AWS Aurora DSQL endpoint, and not a custom domain or an IP address.
 <br>i.e. `cluster-identifier.dsql.us-east-1.on.aws`
 
-Connections established by the `iamDsql` plugin are beholden to the [Cluster quotas and database limits in Amazon Aurora DSQL](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/CHAP_quotas.html). In particular, applications need to consider the maximum transaction duration, and maximum connection duration limits. Ensure connections are returned to the pool regularly, and not retained for long periods.
+Connections established by the `iam_dsql` plugin are beholden to the [Cluster quotas and database limits in Amazon Aurora DSQL](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/CHAP_quotas.html). In particular, applications need to consider the maximum transaction duration, and maximum connection duration limits. Ensure connections are returned to the pool regularly, and not retained for long periods.
 
 
 ## How do I use IAM with the AWS Python Driver?

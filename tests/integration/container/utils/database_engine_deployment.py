@@ -20,3 +20,4 @@ class DatabaseEngineDeployment(str, Enum):
     RDS = "RDS"
     RDS_MULTI_AZ = "RDS_MULTI_AZ"
     AURORA = "AURORA"
+    DSQL = "DSQL"

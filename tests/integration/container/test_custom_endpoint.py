@@ -45,7 +45,9 @@ from tests.integration.container.utils.test_environment_features import \
 
 @enable_on_num_instances(min_instances=3)
 @enable_on_deployments([DatabaseEngineDeployment.AURORA])
-@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY, TestEnvironmentFeatures.PERFORMANCE])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                      TestEnvironmentFeatures.PERFORMANCE,
+                      TestEnvironmentFeatures.RUN_DSQL_TESTS_ONLY])
 class TestCustomEndpoint:
     logger: ClassVar[Logger] = Logger(__name__)
     endpoint_id: ClassVar[str] = f"test-endpoint-1-{uuid4()}"
