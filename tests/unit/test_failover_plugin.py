@@ -240,7 +240,7 @@ def test_failover_writer(plugin_service_mock, host_list_provider_service_mock, i
 def test_failover_reader_with_valid_failed_host(plugin_service_mock, host_list_provider_service_mock,
                                                 init_host_provider_func_mock, conn_mock, reader_failover_handler_mock):
     host: HostInfo = HostInfo("host")
-    host._availability = HostAvailability.AVAILABLE
+    host.availability = HostAvailability.AVAILABLE
     host._aliases = ["alias1", "alias2"]
     hosts: Tuple[HostInfo, ...] = (host, )
     type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)
@@ -262,7 +262,7 @@ def test_failover_reader_with_valid_failed_host(plugin_service_mock, host_list_p
 def test_failover_reader_with_no_failed_host(plugin_service_mock, host_list_provider_service_mock,
                                              init_host_provider_func_mock, reader_failover_handler_mock):
     host: HostInfo = HostInfo("host")
-    host._availability = HostAvailability.AVAILABLE
+    host.availability = HostAvailability.AVAILABLE
     host._aliases = ["alias1", "alias2"]
     hosts: Tuple[HostInfo, ...] = (host, )
     type(plugin_service_mock).hosts = PropertyMock(return_value=hosts)

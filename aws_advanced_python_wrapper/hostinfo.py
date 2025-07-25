@@ -34,7 +34,7 @@ class HostRole(Enum):
 @dataclass(eq=False)
 class HostInfo:
     NO_PORT: ClassVar[int] = -1
-    DEFAULT_WEIGHT = 100
+    DEFAULT_WEIGHT: ClassVar[int] = 100
 
     def __init__(
             self,
@@ -49,9 +49,9 @@ class HostInfo:
         self.host = host
         self.port = port
         self.role = role
-        self._availability = availability
+        self.availability = availability
         self.host_availability_strategy = host_availability_strategy
-        self.weight = weight,
+        self.weight = weight
         self.host_id = host_id
         self.last_update_time = last_update_time
 
@@ -66,11 +66,25 @@ class HostInfo:
 
         return self.host == other.host \
             and self.port == other.port \
-            and self._availability == other._availability \
+            and self.availability == other.availability \
             and self.role == other.role
 
     def __str__(self):
-        return f"HostInfo({self.host}, {self.port}, {self.role}, {self._availability})"
+        return f"HostInfo({self.host}, {self.port}, {self.role}, {self.availability})"
+
+    def __repr__(self):
+        return f"HostInfo({self.host}, {self.port}, {self.role}, {self.availability})"
+
+    def __copy__(self):
+        return HostInfo(
+            host=self.host,
+            port=self.port,
+            role=self.role,
+            availability=self.availability,
+            weight=self.weight,
+            host_id=self.host_id,
+            last_update_time=self.last_update_time
+        )
 
     @property
     def url(self):
@@ -119,15 +133,15 @@ class HostInfo:
 
     def get_availability(self) -> HostAvailability:
         if self.host_availability_strategy is not None:
-            return self.host_availability_strategy.get_host_availability(self._availability)
+            return self.host_availability_strategy.get_host_availability(self.availability)
 
-        return self._availability
+        return self.availability
 
     def get_raw_availability(self) -> HostAvailability:
-        return self._availability
+        return self.availability
 
     def set_availability(self, availability: HostAvailability):
-        self._availability = availability
+        self.availability = availability
         if self.host_availability_strategy is not None:
             self.host_availability_strategy.set_host_availability(availability)
 

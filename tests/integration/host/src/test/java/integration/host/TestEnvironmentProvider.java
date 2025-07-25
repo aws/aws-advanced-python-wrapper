@@ -65,7 +65,10 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
         // Not in use.
         continue;
       }
-      if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ && config.excludeMultiAz) {
+      if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER && config.excludeMultiAzCluster) {
+        continue;
+      }
+      if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE && config.excludeMultiAzInstance) {
         continue;
       }
 
@@ -96,11 +99,18 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
             if (numOfInstances == 2 && config.excludeInstances2) {
               continue;
             }
+            if (numOfInstances == 3 && config.excludeInstances3) {
+              continue;
+            }
             if (numOfInstances == 5 && config.excludeInstances5) {
               continue;
             }
-            if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ && numOfInstances != 3) {
+            if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER && numOfInstances != 3) {
               // Multi-AZ clusters supports only 3 instances
+              continue;
+            }
+            if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE && numOfInstances != 1) {
+              // Multi-AZ Instances supports only 1 instance
               continue;
             }
             if (deployment == DatabaseEngineDeployment.AURORA && numOfInstances == 3) {
@@ -118,36 +128,55 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                 continue;
               }
 
-              resultContextList.add(
-                  getEnvironment(
-                      new TestEnvironmentRequest(
-                          engine,
-                          instances,
-                          instances == DatabaseInstances.SINGLE_INSTANCE ? 1 : numOfInstances,
-                          deployment,
-                          targetPythonVersion,
-                          TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
-                          engine == DatabaseEngine.PG ? TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED : null,
-                          deployment == DatabaseEngineDeployment.DOCKER
-                              && config.excludeTracesTelemetry
-                              && config.excludeMetricsTelemetry
-                              ? null
-                              : TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
-                          deployment == DatabaseEngineDeployment.DOCKER || config.excludeFailover
-                              ? null
-                              : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
-                          deployment == DatabaseEngineDeployment.DOCKER
-                              || deployment == DatabaseEngineDeployment.RDS_MULTI_AZ
-                              || config.excludeIam
-                              ? null
-                              : TestEnvironmentFeatures.IAM,
-                          config.excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
-                          config.excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
-                          config.excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
-                          config.excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
-                          config.testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null,
-                          config.excludeTracesTelemetry ? null : TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED,
-                          config.excludeMetricsTelemetry ? null : TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED)));
+              for (boolean withBlueGreenFeature : Arrays.asList(true, false)) {
+                if (!withBlueGreenFeature) {
+                  if (config.testBlueGreenOnly) {
+                    continue;
+                  }
+                }
+                if (withBlueGreenFeature) {
+                  if (config.excludeBlueGreen && !config.testBlueGreenOnly) {
+                    continue;
+                  }
+                  // Run BlueGreen test only for MultiAz Instances with 1 node or for Aurora
+                  if (deployment != DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE
+                      && deployment != DatabaseEngineDeployment.AURORA) {
+                    continue;
+                  }
+                }
+
+                resultContextList.add(
+                    getEnvironment(
+                        new TestEnvironmentRequest(
+                            engine,
+                            instances,
+                            instances == DatabaseInstances.SINGLE_INSTANCE ? 1 : numOfInstances,
+                            deployment,
+                            targetPythonVersion,
+                            TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
+                            engine == DatabaseEngine.PG ? TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED : null,
+                            deployment == DatabaseEngineDeployment.DOCKER
+                                && config.excludeTracesTelemetry
+                                && config.excludeMetricsTelemetry
+                                ? null
+                                : TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
+                            deployment == DatabaseEngineDeployment.DOCKER || config.excludeFailover
+                                ? null
+                                : TestEnvironmentFeatures.FAILOVER_SUPPORTED,
+                            deployment == DatabaseEngineDeployment.DOCKER
+                                || deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER
+                                || config.excludeIam
+                                ? null
+                                : TestEnvironmentFeatures.IAM,
+                            config.excludeSecretsManager ? null : TestEnvironmentFeatures.SECRETS_MANAGER,
+                            config.excludePerformance ? null : TestEnvironmentFeatures.PERFORMANCE,
+                            config.excludeMysqlDriver ? TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS : null,
+                            config.excludePgDriver ? TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS : null,
+                            config.testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null,
+                            config.excludeTracesTelemetry ? null : TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED,
+                            config.excludeMetricsTelemetry ? null : TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED,
+                            withBlueGreenFeature ? TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT : null)));
+              }
             }
           }
         }
