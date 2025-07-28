@@ -23,13 +23,13 @@ The AWS Python Driver leverages the Blue/Green Deployment approach by intelligen
 > Supported Aurora PostgreSQL Versions: Engine Release `17.5, 16.9, 15.13, 14.18, 13.21`.<br>
 > Supported Aurora MySQL Versions: Engine Release `3.07` and above.
 > 
-> For RDS Postgres, you will also need to manually install the `rds_tools` extension using the following DDL so that the metadata required by the driver is available:
+> For RDS Postgres, you will also need to manually install the `rds_tools` extension using the following DDL so that the metadata required by the wrapper is available:
 >
 > ```sql
 > CREATE EXTENSION rds_tools;
 > ```
 >
-> If your database version does **not** match the supported versions listed above, the driver will automatically fallback to its previous behaviour. In this fallback mode, Blue/Green handling is subject to the limitations listed below:
+> If your database version does **not** match the supported versions listed above, the wrapper will automatically fallback to its previous behaviour. In this fallback mode, Blue/Green handling is subject to the limitations listed below:
 > - After a Blue/Green switchover, the wrapper may not be able to properly detect the new topology and handle failover, as there are discrepancies between the metadata and the available endpoints.
 > - The specific database version requirements for different database deployments may vary, as the internal systems used by the wrapper can differ.
 > 
@@ -76,13 +76,11 @@ The plugin establishes dedicated monitoring connections to track Blue/Green Depl
 ```python
 props = Properties()
 props["connect_timeout"] = 30
-props["socket_timeout"] = 30
 props["blue-green-monitoring-connect_timeout"] = 10
-props["blue-green-monitoring-socket_timeout"] = 10
 ```
 
 > [!WARNING]\
-> **Always ensure you provide a non-zero socket timeout value or a connect timeout value to the Blue/Green Deployment Plugin**
+> **Always ensure you provide a non-zero connect timeout value to the Blue/Green Deployment Plugin**
 >
 
 
