@@ -146,35 +146,23 @@ To find all the documentation and concrete examples on how to use the AWS Advanc
 
 #### Amazon RDS Blue/Green Deployments
 
-Although the AWS Advanced Python Wrapper is not compatible with [AWS Blue/Green Deployments](https://docs.aws.amazon.com/whitepapers/latest/overview-deployment-options/bluegreen-deployments.html) and does not officially support them, the combination of the AWS Advanced Python Wrapper and the Failover Plugin has been validated for use with clusters that employ Blue/Green Deployments. While general basic connectivity to both Blue and Green clusters is always in place, some failover cases are not fully supported.
-The current limitations are:
+The AWS Advanced Python Wrapper **versions 1.3.0 and above** now include enhanced full support for Blue/Green Deployments. This support requires a minimum database version that includes a specific metadata table. This constraint **does not** apply to RDS MySQL.
+
+**No action is required** if your database does not include the new metadata table -- the driver will continue to operate as before with no special blue/green functionality. If you have questions or encounter issues, please open an issue in this repository.
+
+Supported RDS PostgreSQL Versions: `rds_tools v1.7 (17.1, 16.5, 15.9, 14.14, 13.17, 12.21)` and above.<br>
+Supported Aurora PostgreSQL Versions: Engine Release `17.5, 16.9, 15.13, 14.18, 13.21` and above.<br>
+Supported Aurora MySQL Versions: Engine Release `3.07` and above.
+
+If your database version does **not** support this table, the driver will automatically detect its absence and fallback to its previous behaviour in wrapper versions <1.3.0. In this fallback mode, Blue/Green handling is subject to the same limitations listed below.
+
+AWS Advanced Python Wrapper **versions earlier than 1.3.0** are not compatible with [AWS Blue/Green Deployments](https://docs.aws.amazon.com/whitepapers/latest/overview-deployment-options/bluegreen-deployments.html) and do not officially support them. However, the combination of the AWS Advanced Python Wrapper and the Failover Plugin has been validated for use with clusters that employ Blue/Green Deployments for these versions. While general basic connectivity to both Blue and Green clusters is always in place, some failover cases are not fully supported.
+
+The limitations for versions earlier than 1.3.0 are:
 - After a Blue/Green switchover, the wrapper may not be able to properly detect the new topology and handle failover, as there are discrepancies between the metadata and the available endpoints.
-- The specific database version requirements for different database deployments may vary, as the internal systems used by the wrapper can differ.
+- The specific version requirements for Aurora MySQL versus Aurora PostgreSQL may vary, as the internal systems used by the wrapper can differ[^1].
 
-The development team is aware of these limitations and is working to improve the wrapper's awareness and handling of Blue/Green switchovers.
-
-> [!WARNING]\
-> The AWS Advanced Python Wrapper now includes support for Blue/Green Deployments according to the description below:
->
-> Currently Supported Database Deployments:
-> - Aurora MySQL and PostgreSQL clusters
-> - RDS MySQL and PostgreSQL instances
->
-> Unsupported Database Deployments and Configurations:
-> - RDS MySQL and PostgreSQL Multi-AZ clusters
-> - Aurora Global Database for MySQL and PostgreSQL
-> 
-> Supported RDS PostgreSQL Versions: `rds_tools v1.7 (17.1, 16.5, 15.9, 14.14, 13.17, 12.21)`.<br>
-> Supported Aurora PostgreSQL Versions: Engine Release `17.5, 16.9, 15.13, 14.18, 13.21`.<br>
-> Supported Aurora MySQL Versions: Engine Release `3.07` and above.
-> 
-> For RDS Postgres, you will also need to manually install the `rds_tools` extension using the following DDL so that the metadata required by the driver is available:
->
-> ```sql
-> CREATE EXTENSION rds_tools;
-> ```
->
-> If your database version does **not** match the supported versions listed above, the driver will automatically fallback to its previous behaviour. In this fallback mode, Blue/Green handling is subject to the same limitations listed above. If you have questions or encounter issues, please open an issue in this repository.
+[^1]: Aurora MySQL requires v3.07 or later.
 
 #### MySQL Connector/Python C Extension
 
