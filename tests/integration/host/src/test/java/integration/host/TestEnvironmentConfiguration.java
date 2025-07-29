@@ -24,8 +24,10 @@ public class TestEnvironmentConfiguration {
       Boolean.parseBoolean(System.getProperty("exclude-docker", "false"));
   public boolean excludeAurora =
       Boolean.parseBoolean(System.getProperty("exclude-aurora", "false"));
-  public boolean excludeMultiAz =
-      Boolean.parseBoolean(System.getProperty("exclude-multi-az", "false"));
+  public boolean excludeMultiAzCluster =
+      Boolean.parseBoolean(System.getProperty("exclude-multi-az-cluster", "false"));
+  public boolean excludeMultiAzInstance =
+      Boolean.parseBoolean(System.getProperty("exclude-multi-az-instance", "false"));
   public boolean excludePerformance =
       Boolean.parseBoolean(System.getProperty("exclude-performance", "false"));
   public boolean excludeMysqlEngine =
@@ -60,27 +62,34 @@ public class TestEnvironmentConfiguration {
       Boolean.parseBoolean(System.getProperty("exclude-traces-telemetry", "false"));
   public boolean excludeMetricsTelemetry =
       Boolean.parseBoolean(System.getProperty("exclude-metrics-telemetry", "false"));
+  public boolean excludeBlueGreen =
+      Boolean.parseBoolean(System.getProperty("exclude-bg", "true"));
+  public boolean testBlueGreenOnly =
+      Boolean.parseBoolean(System.getProperty("test-bg-only", "false"));
 
   public boolean excludePython38 =
       Boolean.parseBoolean(System.getProperty("exclude-python-38", "false"));
   public boolean excludePython311 =
       Boolean.parseBoolean(System.getProperty("exclude-python-311", "false"));
 
-  public String testFilter = System.getProperty("FILTER");
+  public String testFilter = System.getenv("FILTER");
 
   public String rdsDbRegion = System.getenv("RDS_DB_REGION");
 
-  public boolean reuseRdsCluster = Boolean.parseBoolean(System.getenv("REUSE_RDS_CLUSTER"));
-  public String rdsClusterName = System.getenv("RDS_CLUSTER_NAME"); // "cluster-mysql"
-  public String rdsClusterDomain =
-      System.getenv("RDS_CLUSTER_DOMAIN"); // "XYZ.us-west-2.rds.amazonaws.com"
-  public String rdsEndpoint =
-          System.getenv("RDS_ENDPOINT"); // "https://rds-int.amazon.com"
+  public boolean reuseRdsDb = Boolean.parseBoolean(System.getenv("REUSE_RDS_DB"));
+  public String rdsDbName = System.getenv("RDS_DB_NAME"); // "cluster-mysql", "instance-name", "cluster-multi-az-name"
+  public String rdsDbDomain =
+      System.getenv("RDS_DB_DOMAIN"); // "XYZ.us-west-2.rds.amazonaws.com"
 
-  // Expected values: "latest", "lts", or engine version, for example, "15.4"
-  // If left as empty, will use LTS version
-  public String auroraMySqlDbEngineVersion = System.getenv("AURORA_MYSQL_DB_ENGINE_VERSION");
-  public String auroraPgDbEngineVersion = System.getenv("AURORA_PG_ENGINE_VERSION");
+  public String rdsEndpoint =
+      System.getenv("RDS_ENDPOINT"); // "https://rds-int.amazon.com"
+
+  // Expected values: "latest", "default", or engine version, for example, "15.4"
+  // If left as empty, will use default version
+  public String mysqlVersion =
+      System.getenv("MYSQL_VERSION");
+  public String pgVersion =
+      System.getenv("PG_VERSION");
 
   public String dbName = System.getenv("DB_DATABASE_NAME");
   public String dbUsername = System.getenv("DB_USERNAME");

@@ -16,8 +16,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, List, Type, TypeVar
 
+from aws_advanced_python_wrapper import LogUtils
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
     AuroraInitialConnectionStrategyPluginFactory
+from aws_advanced_python_wrapper.blue_green_plugin import \
+    BlueGreenPluginFactory
 from aws_advanced_python_wrapper.custom_endpoint_plugin import \
     CustomEndpointPluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
@@ -28,6 +31,7 @@ from aws_advanced_python_wrapper.limitless_plugin import LimitlessPluginFactory
 from aws_advanced_python_wrapper.okta_plugin import OktaAuthPluginFactory
 from aws_advanced_python_wrapper.states.session_state_service import (
     SessionStateService, SessionStateServiceImpl)
+from aws_advanced_python_wrapper.utils.utils import Utils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.allowed_and_blocked_hosts import AllowedAndBlockedHosts
@@ -113,7 +117,8 @@ class PluginServiceManagerContainer:
         self._plugin_manager = value
 
 
-T = TypeVar('T')
+StatusType = TypeVar('StatusType')
+UnwrapType = TypeVar('UnwrapType')
 
 
 class PluginService(ExceptionHandler, Protocol):
@@ -146,7 +151,7 @@ class PluginService(ExceptionHandler, Protocol):
 
     @property
     @abstractmethod
-    def current_host_info(self) -> Optional[HostInfo]:
+    def current_host_info(self) -> HostInfo:
         ...
 
     @property
@@ -294,16 +299,16 @@ class PluginService(ExceptionHandler, Protocol):
         ...
 
     @abstractmethod
-    def set_status(self, clazz: Type[T], status: Optional[T], key: str):
+    def set_status(self, clazz: Type[StatusType], status: Optional[StatusType], key: str):
         ...
 
     @abstractmethod
-    def get_status(self, clazz: Type[T], key: str) -> Optional[T]:
+    def get_status(self, clazz: Type[StatusType], key: str) -> Optional[StatusType]:
         ...
 
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
-    _STATUS_CACHE_EXPIRATION_NANO = 60 * 1_000_000_000  # one hour
+    _STATUS_CACHE_EXPIRATION_NANO = 60 * 60 * 1_000_000_000  # one hour
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
     _status_cache: ClassVar[CacheMap[str, Any]] = CacheMap()
 
@@ -422,7 +427,37 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 self.session_state_service.complete()
 
     @property
-    def current_host_info(self) -> Optional[HostInfo]:
+    def current_host_info(self) -> HostInfo:
+        if self._current_host_info is not None:
+            return self._current_host_info
+
+        self._current_host_info = self._initial_connection_host_info
+        if self._current_host_info is not None:
+            logger.debug("PluginServiceImpl.SetCurrentHostInfo", self._current_host_info)
+            return self._current_host_info
+
+        all_hosts = self.all_hosts
+        if not all_hosts:
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.HostListEmpty"))
+
+        self._current_host_info = (
+            next((host_info for host_info in all_hosts if host_info.role == HostRole.WRITER), None))
+        if self._current_host_info:
+            allowed_hosts = self.hosts
+            if not Utils.contains_url(allowed_hosts, self._current_host_info.url):
+                raise AwsWrapperError(
+                    Messages.get_formatted(
+                        "PluginServiceImpl.CurrentHostNotAllowed",
+                        self._current_host_info.url, LogUtils.log_topology(allowed_hosts)))
+        else:
+            allowed_hosts = self.hosts
+            if len(allowed_hosts) > 0:
+                self._current_host_info = self.hosts[0]
+
+        if self._current_host_info is None:
+            raise AwsWrapperError("PluginServiceImpl.CouldNotDetermineCurrentHost")
+
+        logger.debug("PluginServiceImpl.SetCurrentHostInfo", self._current_host_info)
         return self._current_host_info
 
     @property
@@ -501,6 +536,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if original_dialect != self._database_dialect:
             host_list_provider_init = self._database_dialect.get_host_list_provider_supplier()
             self.host_list_provider = host_list_provider_init(self, self._props)
+            self.refresh_host_list(connection)
 
     def update_driver_dialect(self, connection_provider: ConnectionProvider):
         self._driver_dialect = self._driver_dialect_manager.get_pool_connection_driver_dialect(
@@ -678,18 +714,18 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if host_list_provider is not None and isinstance(host_list_provider, CanReleaseResources):
             host_list_provider.release_resources()
 
-    def set_status(self, clazz: Type[T], status: Optional[T], key: str):
+    def set_status(self, clazz: Type[StatusType], status: Optional[StatusType], key: str):
         cache_key = self._get_status_cache_key(clazz, key)
         if status is None:
             self._status_cache.remove(cache_key)
         else:
             self._status_cache.put(cache_key, status, PluginServiceImpl._STATUS_CACHE_EXPIRATION_NANO)
 
-    def _get_status_cache_key(self, clazz: Type[T], key: str) -> str:
+    def _get_status_cache_key(self, clazz: Type[StatusType], key: str) -> str:
         key_str = "" if key is None else key.strip().lower()
         return f"{key_str}::{clazz.__name__}"
 
-    def get_status(self, clazz: Type[T], key: str) -> Optional[T]:
+    def get_status(self, clazz: Type[StatusType], key: str) -> Optional[StatusType]:
         cache_key = self._get_status_cache_key(clazz, key)
         status = PluginServiceImpl._status_cache.get(cache_key)
         if status is None:
@@ -734,6 +770,7 @@ class PluginManager(CanReleaseResources):
         "okta": OktaAuthPluginFactory,
         "initial_connection": AuroraInitialConnectionStrategyPluginFactory,
         "limitless": LimitlessPluginFactory,
+        "bg": BlueGreenPluginFactory
     }
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
@@ -749,6 +786,7 @@ class PluginManager(CanReleaseResources):
         ReadWriteSplittingPluginFactory: 300,
         FailoverPluginFactory: 400,
         HostMonitoringPluginFactory: 500,
+        BlueGreenPluginFactory: 550,
         FastestResponseStrategyPluginFactory: 600,
         IamAuthPluginFactory: 700,
         DsqlIamAuthPluginFactory: 710,
@@ -1076,6 +1114,17 @@ class PluginManager(CanReleaseResources):
                 return True
 
         return False
+
+    # For testing purposes only.
+    def _unwrap(self, unwrap_class: Type[UnwrapType]) -> Optional[UnwrapType]:
+        if len(self._plugins) < 1:
+            return None
+
+        for plugin in self._plugins:
+            if isinstance(plugin, unwrap_class):
+                return plugin
+
+        return None
 
     def release_resources(self):
         """

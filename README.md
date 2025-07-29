@@ -152,9 +152,35 @@ To find all the documentation and concrete examples on how to use the AWS Advanc
 
 #### Amazon RDS Blue/Green Deployments
 
-This driver currently does not support switchover in Amazon RDS Blue/Green Deployments. In order to execute a Blue/Green deployment with the driver,
-please ensure your application is coded to retry the database connection. Retry will allow the driver to re-establish a connection to an available
-database instance. Without a retry, the driver will not be able to identify an available database instance after  blue/green switchover has occurred.
+Although the AWS Advanced Python Wrapper is not compatible with [AWS Blue/Green Deployments](https://docs.aws.amazon.com/whitepapers/latest/overview-deployment-options/bluegreen-deployments.html) and does not officially support them, the combination of the AWS Advanced Python Wrapper and the Failover Plugin has been validated for use with clusters that employ Blue/Green Deployments. While general basic connectivity to both Blue and Green clusters is always in place, some failover cases are not fully supported.
+The current limitations are:
+- After a Blue/Green switchover, the wrapper may not be able to properly detect the new topology and handle failover, as there are discrepancies between the metadata and the available endpoints.
+- The specific database version requirements for different database deployments may vary, as the internal systems used by the wrapper can differ.
+
+The development team is aware of these limitations and is working to improve the wrapper's awareness and handling of Blue/Green switchovers.
+
+> [!WARNING]\
+> The AWS Advanced Python Wrapper now includes support for Blue/Green Deployments according to the description below:
+>
+> Currently Supported Database Deployments:
+> - Aurora MySQL and PostgreSQL clusters
+> - RDS MySQL and PostgreSQL instances
+>
+> Unsupported Database Deployments and Configurations:
+> - RDS MySQL and PostgreSQL Multi-AZ clusters
+> - Aurora Global Database for MySQL and PostgreSQL
+> 
+> Supported RDS PostgreSQL Versions: `rds_tools v1.7 (17.1, 16.5, 15.9, 14.14, 13.17, 12.21)`.<br>
+> Supported Aurora PostgreSQL Versions: Engine Release `17.5, 16.9, 15.13, 14.18, 13.21`.<br>
+> Supported Aurora MySQL Versions: Engine Release `3.07` and above.
+> 
+> For RDS Postgres, you will also need to manually install the `rds_tools` extension using the following DDL so that the metadata required by the driver is available:
+>
+> ```sql
+> CREATE EXTENSION rds_tools;
+> ```
+>
+> If your database version does **not** match the supported versions listed above, the driver will automatically fallback to its previous behaviour. In this fallback mode, Blue/Green handling is subject to the same limitations listed above. If you have questions or encounter issues, please open an issue in this repository.
 
 #### MySQL Connector/Python C Extension
 

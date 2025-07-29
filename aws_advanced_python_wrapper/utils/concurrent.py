@@ -14,12 +14,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Iterator, Set, Union, ValuesView
 
 if TYPE_CHECKING:
     from typing import ItemsView
 
-from threading import Lock
+from threading import Condition, Lock, RLock
 from typing import Callable, Generic, KeysView, List, Optional, TypeVar
 
 K = TypeVar('K')
@@ -33,6 +33,15 @@ class ConcurrentDict(Generic[K, V]):
 
     def __len__(self):
         return len(self._dict)
+
+    def __contains__(self, key):
+        return key in self._dict
+
+    def __str__(self):
+        return f"ConcurrentDict{str(self._dict)}"
+
+    def __repr__(self):
+        return f"ConcurrentDict{str(self._dict)}"
 
     def get(self, key: K, default_value: Optional[V] = None) -> Optional[V]:
         return self._dict.get(key, default_value)
@@ -63,6 +72,10 @@ class ConcurrentDict(Generic[K, V]):
                     return new_value
             return value
 
+    def put(self, key: K, value: V):
+        with self._lock:
+            self._dict[key] = value
+
     def put_if_absent(self, key: K, new_value: V) -> V:
         with self._lock:
             existing_value = self._dict.get(key)
@@ -70,6 +83,11 @@ class ConcurrentDict(Generic[K, V]):
                 self._dict[key] = new_value
                 return new_value
             return existing_value
+
+    def put_all(self, other_dict: Union[ConcurrentDict[K, V], Dict[K, V]]):
+        with self._lock:
+            for k, v in other_dict.items():
+                self._dict[k] = v
 
     def remove(self, key: K) -> V:
         with self._lock:
@@ -96,5 +114,56 @@ class ConcurrentDict(Generic[K, V]):
     def keys(self) -> KeysView:
         return self._dict.keys()
 
+    def values(self) -> ValuesView:
+        return self._dict.values()
+
     def items(self) -> ItemsView:
         return self._dict.items()
+
+
+class ConcurrentSet(Generic[V]):
+    def __init__(self):
+        self._set: Set[V] = set()
+        self._lock = RLock()
+
+    def __len__(self):
+        with self._lock:
+            return len(self._set)
+
+    def __contains__(self, item: V) -> bool:
+        with self._lock:
+            return item in self._set
+
+    def __iter__(self) -> Iterator[V]:
+        with self._lock:
+            return iter(set(self._set))
+
+    def add(self, item: V):
+        with self._lock:
+            self._set.add(item)
+
+    def remove(self, item: V):
+        with self._lock:
+            self._set.remove(item)
+
+
+class CountDownLatch:
+    def __init__(self, count=1):
+        self.count = count
+        self.condition = Condition()
+
+    def set_count(self, count: int):
+        self.count = count
+
+    def count_down(self):
+        with self.condition:
+            if self.count > 0:
+                self.count -= 1
+                if self.count == 0:
+                    self.condition.notify_all()
+
+    def wait_sec(self, timeout_sec=None):
+        with self.condition:
+            if self.count > 0:
+                return self.condition.wait(timeout_sec)
+            return True

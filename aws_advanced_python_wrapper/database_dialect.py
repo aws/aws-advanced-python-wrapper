@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from .driver_dialect import DriverDialect
     from .exception_handling import ExceptionHandler
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from contextlib import closing
 from enum import Enum, auto
@@ -53,12 +53,12 @@ logger = Logger(__name__)
 
 class DialectCode(Enum):
     # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/multi-az-db-clusters-concepts.html
-    MULTI_AZ_MYSQL = "multi-az-mysql"
+    MULTI_AZ_CLUSTER_MYSQL = "multi-az-mysql"
     AURORA_MYSQL = "aurora-mysql"
     RDS_MYSQL = "rds-mysql"
     MYSQL = "mysql"
 
-    MULTI_AZ_PG = "multi-az-pg"
+    MULTI_AZ_CLUSTER_PG = "multi-az-pg"
     AURORA_PG = "aurora-pg"
     RDS_PG = "rds-pg"
     PG = "pg"
@@ -168,7 +168,7 @@ class DatabaseDialectProvider(Protocol):
 
 class MysqlDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (
-        DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_MYSQL, DialectCode.RDS_MYSQL)
+        DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_CLUSTER_MYSQL, DialectCode.RDS_MYSQL)
     _exception_handler: Optional[ExceptionHandler] = None
 
     @property
@@ -200,9 +200,10 @@ class MysqlDatabaseDialect(DatabaseDialect):
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self.server_version_query)
                 for record in cursor:
-                    for column_value in record:
-                        if "mysql" in column_value.lower():
-                            return True
+                    if len(record) < 2:
+                        return False
+                    if "mysql" in record[1].lower():
+                        return True
         except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
@@ -218,7 +219,7 @@ class MysqlDatabaseDialect(DatabaseDialect):
 
 class PgDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (
-        DialectCode.AURORA_PG, DialectCode.MULTI_AZ_PG, DialectCode.RDS_PG)
+        DialectCode.AURORA_PG, DialectCode.MULTI_AZ_CLUSTER_PG, DialectCode.RDS_PG)
     _exception_handler: Optional[ExceptionHandler] = None
 
     @property
@@ -264,18 +265,44 @@ class PgDatabaseDialect(DatabaseDialect):
         pass
 
 
-class RdsMysqlDialect(MysqlDatabaseDialect):
-    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_MYSQL)
+class BlueGreenDialect(ABC):
+    @property
+    @abstractmethod
+    def blue_green_status_query(self) -> str:
+        ...
+
+    @abstractmethod
+    def is_blue_green_status_available(self, conn: Connection) -> bool:
+        ...
+
+
+class RdsMysqlDialect(MysqlDatabaseDialect, BlueGreenDialect):
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_MYSQL, DialectCode.MULTI_AZ_CLUSTER_MYSQL)
+
+    _BG_STATUS_QUERY = "SELECT version, endpoint, port, role, status FROM mysql.rds_topology"
+    _BG_STATUS_EXISTS_QUERY = \
+        "SELECT 1 AS tmp FROM information_schema.tables WHERE table_schema = 'mysql' AND table_name = 'rds_topology'"
 
     def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
         initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self.server_version_query)
-                for record in cursor:
-                    for column_value in record:
-                        if "source distribution" in column_value.lower():
-                            return True
+                record = cursor.fetchone()
+                if record is None or len(record) < 2:
+                    return False
+
+                if "source distribution" != record[1].lower():
+                    return False
+
+            with closing(conn.cursor()) as cursor:
+                cursor.execute("SHOW VARIABLES LIKE 'report_host'")
+                record = cursor.fetchone()
+                if record is None or len(record) < 2:
+                    return False
+
+                report_host = record[1]
+                return report_host is not None and report_host != ""
         except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
@@ -286,13 +313,29 @@ class RdsMysqlDialect(MysqlDatabaseDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return RdsMysqlDialect._DIALECT_UPDATE_CANDIDATES
 
+    @property
+    def blue_green_status_query(self) -> str:
+        return RdsMysqlDialect._BG_STATUS_QUERY
 
-class RdsPgDialect(PgDatabaseDialect):
+    def is_blue_green_status_available(self, conn: Connection) -> bool:
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(RdsMysqlDialect._BG_STATUS_EXISTS_QUERY)
+                return cursor.fetchone() is not None
+        except Exception:
+            return False
+
+
+class RdsPgDialect(PgDatabaseDialect, BlueGreenDialect):
     _EXTENSIONS_QUERY = ("SELECT (setting LIKE '%rds_tools%') AS rds_tools, "
                          "(setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils "
                          "FROM pg_settings "
                          "WHERE name='rds.extensions'")
-    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG, DialectCode.MULTI_AZ_PG)
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.AURORA_PG, DialectCode.MULTI_AZ_CLUSTER_PG)
+
+    _BG_STATUS_QUERY = (f"SELECT version, endpoint, port, role, status "
+                        f"FROM rds_tools.show_topology('aws_advanced_python_wrapper-{DriverInfo.DRIVER_VERSION}')")
+    _BG_STATUS_EXISTS_QUERY = "SELECT 'rds_tools.show_topology'::regproc"
 
     def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
         initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
@@ -319,9 +362,21 @@ class RdsPgDialect(PgDatabaseDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return RdsPgDialect._DIALECT_UPDATE_CANDIDATES
 
+    @property
+    def blue_green_status_query(self) -> str:
+        return RdsPgDialect._BG_STATUS_QUERY
 
-class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
-    _DIALECT_UPDATE_CANDIDATES = (DialectCode.MULTI_AZ_MYSQL,)
+    def is_blue_green_status_available(self, conn: Connection) -> bool:
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(RdsPgDialect._BG_STATUS_EXISTS_QUERY)
+                return cursor.fetchone() is not None
+        except Exception:
+            return False
+
+
+class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, BlueGreenDialect):
+    _DIALECT_UPDATE_CANDIDATES = (DialectCode.MULTI_AZ_CLUSTER_MYSQL,)
     _TOPOLOGY_QUERY = ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
                        "CPU, REPLICA_LAG_IN_MILLISECONDS, LAST_UPDATE_TIMESTAMP "
                        "FROM information_schema.replica_host_status "
@@ -329,6 +384,10 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
                        "OR SESSION_ID = 'MASTER_SESSION_ID' ")
     _HOST_ID_QUERY = "SELECT @@aurora_server_id"
     _IS_READER_QUERY = "SELECT @@innodb_read_only"
+
+    _BG_STATUS_QUERY = "SELECT version, endpoint, port, role, status FROM mysql.rds_topology"
+    _BG_STATUS_EXISTS_QUERY = \
+        "SELECT 1 AS tmp FROM information_schema.tables WHERE table_schema = 'mysql' AND table_name = 'rds_topology'"
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -351,9 +410,21 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
     def get_host_list_provider_supplier(self) -> Callable:
         return lambda provider_service, props: RdsHostListProvider(provider_service, props)
 
+    @property
+    def blue_green_status_query(self) -> str:
+        return AuroraMysqlDialect._BG_STATUS_QUERY
 
-class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLimitlessDialect):
-    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.MULTI_AZ_PG,)
+    def is_blue_green_status_available(self, conn: Connection) -> bool:
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(AuroraMysqlDialect._BG_STATUS_EXISTS_QUERY)
+                return cursor.fetchone() is not None
+        except Exception:
+            return False
+
+
+class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLimitlessDialect, BlueGreenDialect):
+    _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (DialectCode.MULTI_AZ_CLUSTER_PG,)
 
     _EXTENSIONS_QUERY = "SELECT (setting LIKE '%aurora_stat_utils%') AS aurora_stat_utils " \
                         "FROM pg_settings WHERE name='rds.extensions'"
@@ -370,6 +441,10 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLim
     _HOST_ID_QUERY = "SELECT aurora_db_instance_identifier()"
     _IS_READER_QUERY = "SELECT pg_is_in_recovery()"
     _LIMITLESS_ROUTER_ENDPOINT_QUERY = "SELECT router_endpoint, load FROM aurora_limitless_router_endpoints()"
+
+    _BG_STATUS_QUERY = (f"SELECT version, endpoint, port, role, status "
+                        f"FROM get_blue_green_fast_switchover_metadata('aws_advanced_python_wrapper-{DriverInfo.DRIVER_VERSION}')")
+    _BG_STATUS_EXISTS_QUERY = "SELECT 'get_blue_green_fast_switchover_metadata'::regproc"
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -407,8 +482,20 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLim
     def get_host_list_provider_supplier(self) -> Callable:
         return lambda provider_service, props: RdsHostListProvider(provider_service, props)
 
+    @property
+    def blue_green_status_query(self) -> str:
+        return AuroraPgDialect._BG_STATUS_QUERY
 
-class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
+    def is_blue_green_status_available(self, conn: Connection) -> bool:
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(AuroraPgDialect._BG_STATUS_EXISTS_QUERY)
+                return cursor.fetchone() is not None
+        except Exception:
+            return False
+
+
+class MultiAzClusterMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
     _TOPOLOGY_QUERY = "SELECT id, endpoint, port FROM mysql.rds_topology"
     _WRITER_HOST_QUERY = "SHOW REPLICA STATUS"
     _WRITER_HOST_COLUMN_INDEX = 39
@@ -423,10 +510,19 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
         initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
-                cursor.execute(MultiAzMysqlDialect._TOPOLOGY_QUERY)
+                cursor.execute(MultiAzClusterMysqlDialect._TOPOLOGY_QUERY)
                 records = cursor.fetchall()
-                if records is not None and len(records) > 0:
-                    return True
+                if not records:
+                    return False
+
+            with closing(conn.cursor()) as cursor:
+                cursor.execute("SHOW VARIABLES LIKE 'report_host'")
+                record = cursor.fetchone()
+                if record is None or len(record) < 2:
+                    return False
+
+                report_host = record[1]
+                return report_host is not None and report_host != ""
         except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
                 conn.rollback()
@@ -456,7 +552,7 @@ class MultiAzMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):
             props["conn_attrs"].update(extra_conn_attrs)
 
 
-class MultiAzPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
+class MultiAzClusterPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
     # The driver name passed to show_topology is used for RDS metrics purposes.
     # It is not required for functional correctness.
     _TOPOLOGY_QUERY = \
@@ -473,17 +569,18 @@ class MultiAzPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
 
     @property
     def exception_handler(self) -> Optional[ExceptionHandler]:
-        if MultiAzPgDialect._exception_handler is None:
-            MultiAzPgDialect._exception_handler = Utils.initialize_class(
+        if MultiAzClusterPgDialect._exception_handler is None:
+            MultiAzClusterPgDialect._exception_handler = Utils.initialize_class(
                 "aws_advanced_python_wrapper.utils.pg_exception_handler.MultiAzPgExceptionHandler")
-        return MultiAzPgDialect._exception_handler
+        return MultiAzClusterPgDialect._exception_handler
 
     def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
         initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
         try:
             with closing(conn.cursor()) as cursor:
-                cursor.execute(MultiAzPgDialect._WRITER_HOST_QUERY)
-                if cursor.fetchone() is not None:
+                cursor.execute(MultiAzClusterPgDialect._WRITER_HOST_QUERY)
+                record = cursor.fetchone()
+                if record is not None and len(record) > 0 and bool(record[0]):
                     return True
         except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
@@ -509,8 +606,8 @@ class UnknownDatabaseDialect(DatabaseDialect):
          DialectCode.RDS_PG,
          DialectCode.AURORA_MYSQL,
          DialectCode.AURORA_PG,
-         DialectCode.MULTI_AZ_MYSQL,
-         DialectCode.MULTI_AZ_PG)
+         DialectCode.MULTI_AZ_CLUSTER_MYSQL,
+         DialectCode.MULTI_AZ_CLUSTER_PG)
 
     @property
     def default_port(self) -> int:
@@ -551,11 +648,11 @@ class DatabaseDialectManager(DatabaseDialectProvider):
         DialectCode.MYSQL: MysqlDatabaseDialect(),
         DialectCode.RDS_MYSQL: RdsMysqlDialect(),
         DialectCode.AURORA_MYSQL: AuroraMysqlDialect(),
-        DialectCode.MULTI_AZ_MYSQL: MultiAzMysqlDialect(),
+        DialectCode.MULTI_AZ_CLUSTER_MYSQL: MultiAzClusterMysqlDialect(),
         DialectCode.PG: PgDatabaseDialect(),
         DialectCode.RDS_PG: RdsPgDialect(),
         DialectCode.AURORA_PG: AuroraPgDialect(),
-        DialectCode.MULTI_AZ_PG: MultiAzPgDialect(),
+        DialectCode.MULTI_AZ_CLUSTER_PG: MultiAzClusterPgDialect(),
         DialectCode.UNKNOWN: UnknownDatabaseDialect()
     }
 

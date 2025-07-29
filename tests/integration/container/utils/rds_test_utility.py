@@ -17,6 +17,8 @@ from __future__ import annotations
 from contextlib import closing
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
+import botocore.exceptions
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from .test_database_info import TestDatabaseInfo
@@ -28,7 +30,6 @@ from time import perf_counter_ns, sleep
 
 import boto3
 import pytest
-from botocore.config import Config
 
 from aws_advanced_python_wrapper.driver_info import DriverInfo
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
@@ -48,8 +49,15 @@ class RdsTestUtility:
     _client: Any
 
     def __init__(self, region: str, endpoint: Optional[str] = None):
-        config = Config(region_name=region, endpoint_url=endpoint) if endpoint else Config(region_name=region)
-        self._client = boto3.client('rds', config=config)
+        if endpoint:
+            self._client = boto3.client(service_name='rds', region_name=region, endpoint_url=endpoint)
+        else:
+            self._client = boto3.client(service_name='rds', region_name=region)
+
+    @staticmethod
+    def get_utility() -> RdsTestUtility:
+        test_info = TestEnvironment.get_current().get_info()
+        return RdsTestUtility(test_info.get_region(), test_info.get_rds_endpoint())
 
     def get_db_instance(self, instance_id: str) -> Optional[Dict[str, Any]]:
         filters = [{'Name': "db-instance-id", 'Values': [f"{instance_id}"]}]
@@ -59,6 +67,14 @@ class RdsTestUtility:
         if instances is None or len(instances) == 0:
             return None
         return instances[0]
+
+    def get_rds_client(self):
+        test_info = TestEnvironment.get_current().get_info()
+        endpoint = test_info.get_rds_endpoint()
+        if endpoint:
+            return boto3.client(service_name='rds', region_name=test_info.get_region(), endpoint_url=endpoint)
+        else:
+            return boto3.client(service_name='rds', region_name=test_info.get_region())
 
     def does_db_instance_exist(self, instance_id: str) -> bool:
         try:
@@ -78,7 +94,7 @@ class RdsTestUtility:
             self.delete_db_instance(instance_id)
 
         self._client.create_db_instance(
-            DBClusterIdentifier=environment.get_info().get_cluster_name(),
+            DBClusterIdentifier=environment.get_info().get_db_name(),
             DBInstanceIdentifier=instance_id,
             DBInstanceClass="db.r5.large",
             Engine=self.get_aurora_engine_name(environment.get_engine()),
@@ -133,12 +149,12 @@ class RdsTestUtility:
             cluster_id: Optional[str] = None,
             target_id: Optional[str] = None) -> None:
         deployment = TestEnvironment.get_current().get_deployment()
-        if DatabaseEngineDeployment.RDS_MULTI_AZ == deployment and target_id is not None:
+        if DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER == deployment and target_id is not None:
             raise Exception(Messages.get_formatted("RdsTestUtility.FailoverToTargetNotSupported", target_id, deployment))
 
         start = perf_counter_ns()
         if cluster_id is None:
-            cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
+            cluster_id = TestEnvironment.get_current().get_info().get_db_name()
 
         if initial_writer_id is None:
             initial_writer_id = self.get_cluster_writer_instance_id(cluster_id)
@@ -170,7 +186,7 @@ class RdsTestUtility:
 
     def failover_cluster(self, cluster_id: Optional[str] = None, target_id: Optional[str] = None) -> None:
         if cluster_id is None:
-            cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
+            cluster_id = TestEnvironment.get_current().get_info().get_db_name()
 
         self.wait_until_cluster_has_desired_status(cluster_id, "available")
 
@@ -227,7 +243,7 @@ class RdsTestUtility:
 
         if DatabaseEngineDeployment.AURORA == database_deployment:
             return self._query_aurora_instance_id(conn, database_engine)
-        elif DatabaseEngineDeployment.RDS_MULTI_AZ == database_deployment:
+        elif DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER == database_deployment:
             return self._query_multi_az_instance_id(conn, database_engine)
         else:
             raise RuntimeError(Messages.get_formatted(
@@ -268,7 +284,7 @@ class RdsTestUtility:
 
     def is_db_instance_writer(self, instance_id: str, cluster_id: Optional[str] = None) -> bool:
         if cluster_id is None:
-            cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
+            cluster_id = TestEnvironment.get_current().get_info().get_db_name()
         cluster_info = self.get_db_cluster(cluster_id)
         members = cluster_info.get("DBClusterMembers")
         for m in members:
@@ -278,7 +294,7 @@ class RdsTestUtility:
 
     def get_cluster_writer_instance_id(self, cluster_id: Optional[str] = None) -> str:
         if cluster_id is None:
-            cluster_id = TestEnvironment.get_current().get_info().get_cluster_name()
+            cluster_id = TestEnvironment.get_current().get_info().get_db_name()
         cluster_info = self.get_db_cluster(cluster_id)
         members = cluster_info.get("DBClusterMembers")
         for m in members:
@@ -286,23 +302,23 @@ class RdsTestUtility:
                 return cast('str', m.get("DBInstanceIdentifier"))
         raise Exception(Messages.get_formatted("RdsTestUtility.WriterInstanceNotFound", cluster_id))
 
-    def get_instance_ids(self) -> List[str]:
+    def get_instance_ids(self, host: Optional[str] = None) -> List[str]:
         test_environment: TestEnvironment = TestEnvironment.get_current()
         deployment: DatabaseEngineDeployment = test_environment.get_deployment()
         if DatabaseEngineDeployment.AURORA == deployment:
-            return self._get_aurora_instance_ids()
-        elif DatabaseEngineDeployment.RDS_MULTI_AZ == deployment:
-            return self._get_multi_az_instance_ids()
+            return self._get_aurora_instance_ids(host)
+        elif DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER == deployment:
+            return self._get_multi_az_instance_ids(host)
         else:
             raise RuntimeError("RdsTestUtility.MethodNotSupportedForDeployment", "get_instance_ids", deployment)
 
-    def _get_aurora_instance_ids(self) -> List[str]:
+    def _get_aurora_instance_ids(self, host: Optional[str] = None) -> List[str]:
         test_environment: TestEnvironment = TestEnvironment.get_current()
         engine: DatabaseEngine = test_environment.get_engine()
         instance_info: TestInstanceInfo = test_environment.get_writer()
 
         sql = self._get_aurora_topology_sql(engine)
-        with self._open_connection(instance_info) as conn, conn.cursor() as cursor:
+        with self._open_connection(instance_info, host) as conn, conn.cursor() as cursor:
             cursor.execute(sql)
             records = cursor.fetchall()
 
@@ -312,7 +328,7 @@ class RdsTestUtility:
 
             return result
 
-    def _get_multi_az_instance_ids(self) -> List[str]:
+    def _get_multi_az_instance_ids(self, host: Optional[str] = None) -> List[str]:
         test_environment: TestEnvironment = TestEnvironment.get_current()
         engine: DatabaseEngine = test_environment.get_engine()
         cluster_endpoint_instance_info: TestInstanceInfo = TestInstanceInfo({
@@ -322,7 +338,7 @@ class RdsTestUtility:
 
         self.logger.debug("Testing._get_multi_az_instance_ids_connecting", cluster_endpoint_instance_info.get_host())
 
-        conn = self._open_connection(cluster_endpoint_instance_info)
+        conn = self._open_connection(cluster_endpoint_instance_info, host)
         cursor = conn.cursor()
         get_writer_id_query = self._get_multi_az_writer_sql(engine)
         cursor.execute(get_writer_id_query)
@@ -350,7 +366,7 @@ class RdsTestUtility:
 
         return result
 
-    def _open_connection(self, instance_info: TestInstanceInfo) -> Any:
+    def _open_connection(self, instance_info: TestInstanceInfo, host: Optional[str] = None) -> Any:
 
         env: TestEnvironment = TestEnvironment.get_current()
         database_engine: DatabaseEngine = env.get_engine()
@@ -358,12 +374,12 @@ class RdsTestUtility:
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
 
+        host = host if host is not None else instance_info.get_host()
         user = env.get_database_info().get_username()
         password = env.get_database_info().get_password()
         db = env.get_database_info().get_default_db_name()
 
-        conn_params = DriverHelper.get_connect_params(
-            instance_info.get_host(), instance_info.get_port(), user, password, db, test_driver)
+        conn_params = DriverHelper.get_connect_params(host, instance_info.get_port(), user, password, db, test_driver)
 
         conn = target_driver_connect(**conn_params, connect_timeout=10)
         return conn
@@ -449,3 +465,47 @@ class RdsTestUtility:
             return "aurora-mysql"
 
         raise RuntimeError(Messages.get_formatted("RdsTestUtility.InvalidDatabaseEngine", engine.value))
+
+    def get_cluster_by_arn(self, cluster_arn: str) -> Optional[Any]:
+        response = self._client.describe_db_clusters(Filters=[{'Name': 'db-cluster-id', 'Values': [cluster_arn]}])
+        clusters = response["DBClusters"]
+        if len(clusters) < 1:
+            return None
+
+        return clusters[0]
+
+    def get_rds_instance_info_by_arn(self, instance_arn: str) -> Optional[Any]:
+        response = self._client.describe_db_instances(Filters=[{'Name': 'db-instance-id', 'Values': [instance_arn]}])
+        instances = response["DBInstances"]
+        if len(instances) < 1:
+            return None
+
+        return instances[0]
+
+    def get_blue_green_deployment(self, bg_id: str) -> Optional[Any]:
+        try:
+            response: Any = self._client.describe_blue_green_deployments(BlueGreenDeploymentIdentifier=bg_id)
+            deployments = response.get("BlueGreenDeployments")
+            if len(deployments) < 1:
+                return None
+
+            return deployments[0]
+        except self._client.exceptions.BlueGreenDeploymentNotFoundFault:
+            return None
+
+    def switchover_blue_green_deployment(self, bg_id: str):
+        try:
+            self._client.switchover_blue_green_deployment(BlueGreenDeploymentIdentifier=bg_id)
+            self.logger.debug("switchover_blue_green_deployment request is sent.")
+        except botocore.exceptions.ClientError as e:
+            error_info = e.response['Error']
+            self.logger.debug(
+                f"switchover_blue_green_deployment error: code={error_info['Code']}, message={error_info['Message']}")
+
+            if error_info['Message']:
+                error_message = error_info['Message']
+            else:
+                error_message = (f"The switchover_blue_green_deployment request for the blue/green deployment with "
+                                 f"ID '{bg_id}'failed for an unspecified reason")
+
+            raise Exception(error_message)
