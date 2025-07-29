@@ -33,7 +33,7 @@ to releases, so you should be able to upgrade to the latest minor version of tha
 software without encountering incompatible changes (e.g., 1.1.0 → 1.3.x).
 
 Sometimes an incompatible change is unavoidable. When this happens, the software’s maintainers will increment
-the major version number (e.g., increment from `aws-advanced-python-wrapper` 1.2.0 to `aws-advanced-python-wrapper` 2.0.0).
+the major version number (e.g., increment from `aws-advanced-python-wrapper` 1.3.0 to `aws-advanced-python-wrapper` 2.0.0).
 The last minor version of the previous major version of the software will then enter a maintenance window
 (e.g., 1.3.x). During the maintenance window, the software will continue to receive bug fixes and security patches,
 but no new features.
@@ -57,4 +57,4 @@ from the updated source after the PRs are merged.
 
 | Major Version | Latest Minor Version | Status  | Initial Release | Maintenance Window Start | Maintenance Window End |
 |---------------|----------------------|---------|-----------------|--------------------------|------------------------|
-| 1             | 1.2.0                | Current | May 16, 2024    | May 16, 2024             | N/A                    | 
+| 1             | 1.3.0                | Current | May 16, 2024    | May 16, 2024             | N/A                    | 
