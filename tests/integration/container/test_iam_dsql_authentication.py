@@ -107,9 +107,6 @@ class TestAwsIamDSQLAuthentication:
 
         self.validate_connection(target_driver_connect, **params, **props)
 
-    def get_ip_address(self, hostname: str):
-        return gethostbyname(hostname)
-
     def validate_connection(self, target_driver_connect: Callable, **connect_params):
         with AwsWrapperConnection.connect(target_driver_connect, **connect_params) as conn, \
                 conn.cursor() as cursor:
