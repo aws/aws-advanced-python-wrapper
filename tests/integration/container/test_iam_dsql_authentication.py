@@ -24,7 +24,6 @@ from tests.integration.container.utils.test_environment_features import \
 if TYPE_CHECKING:
     from tests.integration.container.utils.test_driver import TestDriver
 
-from socket import gethostbyname
 from typing import Callable
 
 import pytest
