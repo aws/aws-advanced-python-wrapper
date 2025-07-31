@@ -47,7 +47,7 @@ public class TestEnvironmentConfiguration {
   public boolean testAutoscalingOnly =
       Boolean.parseBoolean(System.getProperty("test-autoscaling", "false"));
   public boolean excludeDsql =
-      Boolean.parseBoolean(System.getProperty("exclude-dsql", "false"));
+      Boolean.parseBoolean(System.getProperty("exclude-dsql", "true"));
 
   public boolean excludeInstances1 =
       Boolean.parseBoolean(System.getProperty("exclude-instances-1", "false"));

@@ -991,15 +991,16 @@ public class TestEnvironment implements AutoCloseable {
     final TestEnvironmentRequest request = env.info.getRequest();
     final boolean isDsql = (request.getDatabaseEngineDeployment() == DatabaseEngineDeployment.DSQL);
     
-    final String dbName = isDsql
-              ? "postgres"
-              : !StringUtils.isNullOrEmpty(config.dbName)
-                ? config.dbName.trim()
+    final String dbName = !StringUtils.isNullOrEmpty(config.dbName)
+              ? config.dbName.trim()
+              : isDsql
+                ? "postgres"
                 : "test_database";
-    final String dbUsername = isDsql
-              ? "admin"
-              : !StringUtils.isNullOrEmpty(config.dbUsername)
-                ? config.dbUsername
+
+    final String dbUsername = !StringUtils.isNullOrEmpty(config.dbUsername)
+              ? config.dbUsername
+              : isDsql
+                ? "admin"
                 : "test_user";
             
     final String dbPassword =
