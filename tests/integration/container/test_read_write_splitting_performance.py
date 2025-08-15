@@ -196,13 +196,14 @@ class TestReadWriteSplittingPerformance:
             connect_func,
             conn_utils,
             read_write_plugin_props: Properties) -> Result:
-
         switch_to_reader_elapsed_times: List[int] = []
         switch_to_writer_elapsed_times: List[int] = []
-        conn_str = conn_utils.get_conn_string(test_environment.get_writer().get_host())
 
         for _ in range(TestReadWriteSplittingPerformance.REPEAT_TIMES):
-            with AwsWrapperConnection.connect(connect_func, conn_str, **read_write_plugin_props) as aws_conn:
+            with AwsWrapperConnection.connect(connect_func,
+                                              **conn_utils.get_connect_params(
+                                                  test_environment.get_writer().get_host()),
+                                              **read_write_plugin_props) as aws_conn:
                 ConnectTimePlugin.reset_connect_time()
                 ExecuteTimePlugin.reset_execute_time()
 

@@ -43,6 +43,7 @@ class TestEnvironmentRequest:
         self._num_of_instances = typing.cast('int', request.get("numOfInstances"))
         self._features = set()
         features: Iterable[str] = typing.cast('Iterable[str]', request.get("features"))
+
         if features is not None:
             for f in features:
                 self._features.add(getattr(TestEnvironmentFeatures, f))
