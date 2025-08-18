@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
+    from aws_advanced_python_wrapper.utils.token_utils import TokenUtils
 
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Optional, Set
@@ -43,6 +44,7 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
+from aws_advanced_python_wrapper.utils.rds_token_utils import RDSTokenUtils
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
 logger = Logger(__name__)
@@ -55,12 +57,17 @@ class FederatedAuthPlugin(Plugin):
     _rds_utils: RdsUtils = RdsUtils()
     _token_cache: Dict[str, TokenInfo] = {}
 
-    def __init__(self, plugin_service: PluginService, credentials_provider_factory: CredentialsProviderFactory, session: Optional[Session] = None):
+    def __init__(self,
+                 plugin_service: PluginService,
+                 credentials_provider_factory: CredentialsProviderFactory,
+                 token_utils: TokenUtils,
+                 session: Optional[Session] = None):
         self._plugin_service = plugin_service
         self._credentials_provider_factory = credentials_provider_factory
         self._session = session
 
         self._region_utils = RegionUtils()
+        self._token_utils = token_utils
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = telemetry_factory.create_counter("federated.fetch_token.count")
         self._cache_size_gauge = telemetry_factory.create_gauge("federated.token_cache.size", lambda: len(FederatedAuthPlugin._token_cache))
@@ -145,7 +152,7 @@ class FederatedAuthPlugin(Plugin):
         credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props)
 
         self._fetch_token_counter.inc()
-        token: str = IamAuthUtils.generate_authentication_token(
+        token: str = self._token_utils.generate_authentication_token(
             self._plugin_service,
             user,
             host_info.host,
@@ -159,7 +166,7 @@ class FederatedAuthPlugin(Plugin):
 
 class FederatedAuthPluginFactory(PluginFactory):
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return FederatedAuthPlugin(plugin_service, self.get_credentials_provider_factory(plugin_service, props))
+        return FederatedAuthPlugin(plugin_service, self.get_credentials_provider_factory(plugin_service, props), RDSTokenUtils())
 
     def get_credentials_provider_factory(self, plugin_service: PluginService, props: Properties) -> AdfsCredentialsProviderFactory:
         idp_name = WrapperProperties.IDP_NAME.get(props)

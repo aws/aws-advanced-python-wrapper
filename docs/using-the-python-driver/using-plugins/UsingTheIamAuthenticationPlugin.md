@@ -11,6 +11,9 @@ The IAM Authentication plugin requires authentication via AWS Credentials. These
 
 To enable the IAM Authentication Connection Plugin, add the plugin code `iam` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) parameter.
 
+> [!WARNING]\
+> The `iam` plugin must NOT be specified when using the `iam_dsql` plugin.
+
 ## AWS IAM Database Authentication
 The AWS Python Driver supports Amazon AWS Identity and Access Management (IAM) authentication. When using AWS IAM database authentication, the host URL must be a valid Amazon endpoint, and not a custom domain or an IP address.
 <br>i.e. `db-identifier.cluster-XYZ.us-east-2.rds.amazonaws.com`
