@@ -8,7 +8,7 @@ The Read/Write Splitting Plugin is not loaded by default. To load the plugin, in
 
 ```python
 params = {
-    "plugins": "read_write_splitting,failover,host_monitoring",
+    "plugins": "read_write_splitting,failover,host_monitoring_v2",
     # Add other connection properties below...
 }
 
