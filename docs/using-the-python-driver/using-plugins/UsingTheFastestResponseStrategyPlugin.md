@@ -13,7 +13,7 @@ The plugin can be loaded by adding the plugin code `fastest_response_strategy` t
 
 ```python
 params = {
-    "plugins": "read_write_splitting,fastest_response_strategy,failover,host_monitoring",
+    "plugins": "read_write_splitting,fastest_response_strategy,failover,host_monitoring_v2",
     "reader_response_strategy": "fastest_response"
     # Add other connection properties below...
 }

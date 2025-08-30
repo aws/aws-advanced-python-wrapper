@@ -73,7 +73,7 @@ class WrapperProperty:
 
 
 class WrapperProperties:
-    DEFAULT_PLUGINS = "aurora_connection_tracker,failover,host_monitoring"
+    DEFAULT_PLUGINS = "aurora_connection_tracker,failover,host_monitoring_v2"
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
 
     PROFILE_NAME = WrapperProperty("profile_name", "Driver configuration profile name", None)
