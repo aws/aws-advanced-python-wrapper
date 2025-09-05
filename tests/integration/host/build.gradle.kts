@@ -30,6 +30,7 @@ dependencies {
     testImplementation("software.amazon.awssdk:rds:2.20.49")
     testImplementation("software.amazon.awssdk:ec2:2.20.61")
     testImplementation("software.amazon.awssdk:secretsmanager:2.20.49")
+    testImplementation("software.amazon.awssdk:dsql:2.29.34")
     // Note: all org.testcontainers dependencies should have the same version
     testImplementation("org.testcontainers:testcontainers:1.21.2")
     testImplementation("org.testcontainers:mysql:1.21.2")
@@ -120,6 +121,48 @@ tasks.register<Test>("test-python-3.8-pg") {
         systemProperty("exclude-mysql-engine", "true")
         systemProperty("exclude-mariadb-driver", "true")
         systemProperty("exclude-mariadb-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.11-dsql") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-dsql", "false")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-autoscaling", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-bg", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.8-dsql") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-dsql", "false")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-python-311", "true")
+        systemProperty("exclude-autoscaling", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-bg", "true")
     }
 }
 
@@ -264,6 +307,26 @@ tasks.register<Test>("test-mysql-aurora-performance") {
     }
 }
 
+tasks.register<Test>("test-all-dsql") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-dsql", "false")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-autoscaling", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-bg", "true")
+    }
+}
+
 tasks.register<Test>("test-bgd-mysql-instance") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")
@@ -301,7 +364,6 @@ tasks.register<Test>("test-bgd-mysql-aurora") {
         systemProperty("exclude-instances-5", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("test-bg-only", "true")
-
     }
 }
 
@@ -342,7 +404,6 @@ tasks.register<Test>("test-bgd-pg-aurora") {
         systemProperty("exclude-instances-5", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("test-bg-only", "true")
-
     }
 }
 
@@ -493,6 +554,25 @@ tasks.register<Test>("debug-mysql-multi-az") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-pg-driver", "true")
         systemProperty("exclude-pg-engine", "true")
+        systemProperty("exclude-bg", "true")
+    }
+}
+
+tasks.register<Test>("debug-all-dsql") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.debugTests")
+    doFirst {
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-autoscaling", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-secrets-manager", "true")
         systemProperty("exclude-bg", "true")
     }
 }
