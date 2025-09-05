@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import gc
+
 import pytest
 from sqlalchemy import PoolProxiedConnection
 
@@ -62,7 +64,7 @@ class TestReadWriteSplitting:
 
     @pytest.fixture(scope='class')
     def props(self):
-        p: Properties = Properties({"plugins": "read_write_splitting", "connect_timeout": 10, "autocommit": True})
+        p: Properties = Properties({"plugins": "read_write_splitting", "connect_timeout": 30, "autocommit": True})
 
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
                 or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
@@ -101,63 +103,65 @@ class TestReadWriteSplitting:
         yield
         ConnectionProviderManager.release_resources()
         ConnectionProviderManager.reset_provider()
+        gc.collect()
+        ProxyHelper.enable_all_connectivity()
 
     def test_connect_to_writer__switch_read_only(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
-        writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
+            writer_id = rds_utils.query_instance_id(conn)
 
-        conn.read_only = True
-        reader_id = rds_utils.query_instance_id(conn)
-        assert writer_id != reader_id
+            conn.read_only = True
+            reader_id = rds_utils.query_instance_id(conn)
+            assert writer_id != reader_id
 
-        conn.read_only = True
-        current_id = rds_utils.query_instance_id(conn)
-        assert reader_id == current_id
+            conn.read_only = True
+            current_id = rds_utils.query_instance_id(conn)
+            assert reader_id == current_id
 
-        conn.read_only = False
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id == current_id
+            conn.read_only = False
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id == current_id
 
-        conn.read_only = False
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id == current_id
+            conn.read_only = False
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id == current_id
 
-        conn.read_only = True
-        current_id = rds_utils.query_instance_id(conn)
-        assert reader_id == current_id
+            conn.read_only = True
+            current_id = rds_utils.query_instance_id(conn)
+            assert reader_id == current_id
 
     def test_connect_to_reader__switch_read_only(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         reader_instance = test_environment.get_instances()[1]
-        conn = AwsWrapperConnection.connect(
-            target_driver_connect, **conn_utils.get_connect_params(reader_instance.get_host()), **props)
-        reader_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(
+                target_driver_connect, **conn_utils.get_connect_params(reader_instance.get_host()), **props) as conn:
+            reader_id = rds_utils.query_instance_id(conn)
 
-        conn.read_only = True
-        current_id = rds_utils.query_instance_id(conn)
-        assert reader_id == current_id
+            conn.read_only = True
+            current_id = rds_utils.query_instance_id(conn)
+            assert reader_id == current_id
 
-        conn.read_only = False
-        writer_id = rds_utils.query_instance_id(conn)
-        assert reader_id != writer_id
+            conn.read_only = False
+            writer_id = rds_utils.query_instance_id(conn)
+            assert reader_id != writer_id
 
     def test_connect_to_reader_cluster__switch_read_only(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(
-            target_driver_connect, **conn_utils.get_connect_params(conn_utils.reader_cluster_host), **props)
-        reader_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(
+                target_driver_connect, **conn_utils.get_connect_params(conn_utils.reader_cluster_host), **props) as conn:
+            reader_id = rds_utils.query_instance_id(conn)
 
-        conn.read_only = True
-        current_id = rds_utils.query_instance_id(conn)
-        assert reader_id == current_id
+            conn.read_only = True
+            current_id = rds_utils.query_instance_id(conn)
+            assert reader_id == current_id
 
-        conn.read_only = False
-        writer_id = rds_utils.query_instance_id(conn)
-        assert reader_id != writer_id
+            conn.read_only = False
+            writer_id = rds_utils.query_instance_id(conn)
+            assert reader_id != writer_id
 
     def test_set_read_only_false__read_only_transaction(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
@@ -214,23 +218,23 @@ class TestReadWriteSplitting:
     def test_set_read_only_true_in_transaction(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
-        writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
+            writer_id = rds_utils.query_instance_id(conn)
 
-        cursor = conn.cursor()
-        conn.autocommit = False
-        cursor.execute("START TRANSACTION")
+            cursor = conn.cursor()
+            conn.autocommit = False
+            cursor.execute("START TRANSACTION")
 
-        # MySQL allows users to change the read_only value during a transaction, Psycopg does not
-        if test_driver == TestDriver.MYSQL:
-            conn.read_only = True
-        elif test_driver == TestDriver.PG:
-            with pytest.raises(Exception):
+            # MySQL allows users to change the read_only value during a transaction, Psycopg does not
+            if test_driver == TestDriver.MYSQL:
                 conn.read_only = True
-            assert conn.read_only is False
+            elif test_driver == TestDriver.PG:
+                with pytest.raises(Exception):
+                    conn.read_only = True
+                assert conn.read_only is False
 
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id == current_id
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id == current_id
 
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
     @enable_on_num_instances(min_instances=3)
@@ -242,25 +246,25 @@ class TestReadWriteSplitting:
         # To prevent endless waiting while executing SQL queries
         WrapperProperties.SOCKET_TIMEOUT_SEC.set(connect_params, 10)
 
-        conn = AwsWrapperConnection.connect(target_driver_connect, **connect_params, **proxied_props)
-        writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(target_driver_connect, **connect_params, **proxied_props) as conn:
+            writer_id = rds_utils.query_instance_id(conn)
 
-        instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
-        for i in range(1, len(instance_ids)):
-            ProxyHelper.disable_connectivity(instance_ids[i])
+            instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
+            for i in range(1, len(instance_ids)):
+                ProxyHelper.disable_connectivity(instance_ids[i])
 
-        conn.read_only = True
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id == current_id
+            conn.read_only = True
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id == current_id
 
-        conn.read_only = False
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id == current_id
+            conn.read_only = False
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id == current_id
 
-        ProxyHelper.enable_all_connectivity()
-        conn.read_only = True
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id != current_id
+            ProxyHelper.enable_all_connectivity()
+            conn.read_only = True
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id != current_id
 
     def test_set_read_only_true__closed_connection(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
@@ -277,34 +281,33 @@ class TestReadWriteSplitting:
             self, test_environment: TestEnvironment, test_driver: TestDriver, proxied_props, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         reader = test_environment.get_proxy_instances()[1]
-        conn = AwsWrapperConnection.connect(
-            target_driver_connect, **conn_utils.get_proxy_connect_params(reader.get_host()), **proxied_props)
-
-        ProxyHelper.disable_all_connectivity()
-        with pytest.raises(AwsWrapperError):
-            conn.read_only = False
+        with AwsWrapperConnection.connect(
+                target_driver_connect, **conn_utils.get_proxy_connect_params(reader.get_host()), **proxied_props) as conn:
+            ProxyHelper.disable_all_connectivity()
+            with pytest.raises(AwsWrapperError):
+                conn.read_only = False
 
     def test_execute__old_connection(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
-        writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
+            writer_id = rds_utils.query_instance_id(conn)
 
-        old_cursor = conn.cursor()
-        old_cursor.execute("SELECT 1")
-        old_cursor.fetchone()
-        conn.read_only = True  # Switch connection internally
-        conn.autocommit = False
-
-        with pytest.raises(AwsWrapperError):
+            old_cursor = conn.cursor()
             old_cursor.execute("SELECT 1")
+            old_cursor.fetchone()
+            conn.read_only = True  # Switch connection internally
+            conn.autocommit = False
 
-        reader_id = rds_utils.query_instance_id(conn)
-        assert writer_id != reader_id
+            with pytest.raises(AwsWrapperError):
+                old_cursor.execute("SELECT 1")
 
-        old_cursor.close()
-        current_id = rds_utils.query_instance_id(conn)
-        assert reader_id == current_id
+            reader_id = rds_utils.query_instance_id(conn)
+            assert writer_id != reader_id
+
+            old_cursor.close()
+            current_id = rds_utils.query_instance_id(conn)
+            assert reader_id == current_id
 
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED, TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     @enable_on_num_instances(min_instances=3)
@@ -317,34 +320,34 @@ class TestReadWriteSplitting:
         # To prevent endless waiting while executing SQL queries
         WrapperProperties.SOCKET_TIMEOUT_SEC.set(connect_params, 10)
 
-        conn = AwsWrapperConnection.connect(target_driver_connect, **connect_params, **proxied_failover_props)
-        original_writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(target_driver_connect, **connect_params, **proxied_failover_props) as conn:
+            original_writer_id = rds_utils.query_instance_id(conn)
 
-        instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
-        for i in range(1, len(instance_ids)):
-            ProxyHelper.disable_connectivity(instance_ids[i])
+            instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
+            for i in range(1, len(instance_ids)):
+                ProxyHelper.disable_connectivity(instance_ids[i])
 
-        # Force internal reader connection to the writer instance
-        conn.read_only = True
-        current_id = rds_utils.query_instance_id(conn)
-        assert original_writer_id == current_id
-        conn.read_only = False
+            # Force internal reader connection to the writer instance
+            conn.read_only = True
+            current_id = rds_utils.query_instance_id(conn)
+            assert original_writer_id == current_id
+            conn.read_only = False
 
-        ProxyHelper.enable_all_connectivity()
-        rds_utils.failover_cluster_and_wait_until_writer_changed(original_writer_id)
-        rds_utils.assert_first_query_throws(conn, FailoverSuccessError)
+            ProxyHelper.enable_all_connectivity()
+            rds_utils.failover_cluster_and_wait_until_writer_changed(original_writer_id)
+            rds_utils.assert_first_query_throws(conn, FailoverSuccessError)
 
-        new_writer_id = rds_utils.query_instance_id(conn)
-        assert original_writer_id != new_writer_id
-        assert rds_utils.is_db_instance_writer(new_writer_id)
+            new_writer_id = rds_utils.query_instance_id(conn)
+            assert original_writer_id != new_writer_id
+            assert rds_utils.is_db_instance_writer(new_writer_id)
 
-        conn.read_only = True
-        current_id = rds_utils.query_instance_id(conn)
-        assert new_writer_id != current_id
+            conn.read_only = True
+            current_id = rds_utils.query_instance_id(conn)
+            assert new_writer_id != current_id
 
-        conn.read_only = False
-        current_id = rds_utils.query_instance_id(conn)
-        assert new_writer_id == current_id
+            conn.read_only = False
+            current_id = rds_utils.query_instance_id(conn)
+            assert new_writer_id == current_id
 
     @pytest.mark.parametrize("plugins", ["read_write_splitting,failover,host_monitoring_v2"])
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
@@ -358,42 +361,42 @@ class TestReadWriteSplitting:
         WrapperProperties.FAILOVER_MODE.set(proxied_failover_props, "reader-or-writer")
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(
-            target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props)
-        writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(
+                target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props) as conn:
+            writer_id = rds_utils.query_instance_id(conn)
 
-        conn.read_only = True
-        reader_id = rds_utils.query_instance_id(conn)
-        assert writer_id != reader_id
+            conn.read_only = True
+            reader_id = rds_utils.query_instance_id(conn)
+            assert writer_id != reader_id
 
-        instances = test_environment.get_instances()
-        other_reader_id = next((
-            instance.get_instance_id() for instance in instances[1:] if instance.get_instance_id() != reader_id), None)
-        if other_reader_id is None:
-            pytest.fail("Could not acquire alternate reader ID")
+            instances = test_environment.get_instances()
+            other_reader_id = next((
+                instance.get_instance_id() for instance in instances[1:] if instance.get_instance_id() != reader_id), None)
+            if other_reader_id is None:
+                pytest.fail("Could not acquire alternate reader ID")
 
-        # Kill all instances except for one other reader
-        for instance in instances:
-            instance_id = instance.get_instance_id()
-            if instance_id != other_reader_id:
-                ProxyHelper.disable_connectivity(instance_id)
+            # Kill all instances except for one other reader
+            for instance in instances:
+                instance_id = instance.get_instance_id()
+                if instance_id != other_reader_id:
+                    ProxyHelper.disable_connectivity(instance_id)
 
-        rds_utils.assert_first_query_throws(conn, FailoverSuccessError)
-        assert not conn.is_closed
-        current_id = rds_utils.query_instance_id(conn)
-        assert other_reader_id == current_id
-        assert reader_id != current_id
+            rds_utils.assert_first_query_throws(conn, FailoverSuccessError)
+            assert not conn.is_closed
+            current_id = rds_utils.query_instance_id(conn)
+            assert other_reader_id == current_id
+            assert reader_id != current_id
 
-        ProxyHelper.enable_all_connectivity()
-        conn.read_only = False
-        assert not conn.is_closed
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id == current_id
+            ProxyHelper.enable_all_connectivity()
+            conn.read_only = False
+            assert not conn.is_closed
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id == current_id
 
-        conn.read_only = True
-        assert not conn.is_closed
-        current_id = rds_utils.query_instance_id(conn)
-        assert other_reader_id == current_id
+            conn.read_only = True
+            assert not conn.is_closed
+            current_id = rds_utils.query_instance_id(conn)
+            assert other_reader_id == current_id
 
     @pytest.mark.parametrize("plugins", ["read_write_splitting,failover,host_monitoring",
                                          "read_write_splitting,failover,host_monitoring_v2"])
@@ -406,33 +409,33 @@ class TestReadWriteSplitting:
             proxied_failover_props, conn_utils, rds_utils, plugins):
         WrapperProperties.PLUGINS.set(proxied_failover_props, plugins)
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(
-            target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props)
-        writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(
+                target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props) as conn:
+            writer_id = rds_utils.query_instance_id(conn)
 
-        conn.read_only = True
-        reader_id = rds_utils.query_instance_id(conn)
-        assert writer_id != reader_id
+            conn.read_only = True
+            reader_id = rds_utils.query_instance_id(conn)
+            assert writer_id != reader_id
 
-        # Kill all instances except the writer
-        for instance in test_environment.get_instances():
-            instance_id = instance.get_instance_id()
-            if instance_id != writer_id:
-                ProxyHelper.disable_connectivity(instance_id)
+            # Kill all instances except the writer
+            for instance in test_environment.get_instances():
+                instance_id = instance.get_instance_id()
+                if instance_id != writer_id:
+                    ProxyHelper.disable_connectivity(instance_id)
 
-        rds_utils.assert_first_query_throws(conn, FailoverSuccessError)
-        assert not conn.is_closed
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id == current_id
+            rds_utils.assert_first_query_throws(conn, FailoverSuccessError)
+            assert not conn.is_closed
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id == current_id
 
-        ProxyHelper.enable_all_connectivity()
-        conn.read_only = True
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id != current_id
+            ProxyHelper.enable_all_connectivity()
+            conn.read_only = True
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id != current_id
 
-        conn.read_only = False
-        current_id = rds_utils.query_instance_id(conn)
-        assert writer_id == current_id
+            conn.read_only = False
+            current_id = rds_utils.query_instance_id(conn)
+            assert writer_id == current_id
 
     def test_pooled_connection__reuses_cached_connection(
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils, props):
@@ -460,32 +463,32 @@ class TestReadWriteSplitting:
         ConnectionProviderManager.set_connection_provider(provider)
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **failover_props)
-        assert isinstance(conn.target_connection, PoolProxiedConnection)
-        initial_driver_conn = conn.target_connection.driver_connection
-        initial_writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **failover_props) as conn:
+            assert isinstance(conn.target_connection, PoolProxiedConnection)
+            initial_driver_conn = conn.target_connection.driver_connection
+            initial_writer_id = rds_utils.query_instance_id(conn)
 
-        rds_utils.failover_cluster_and_wait_until_writer_changed()
-        with pytest.raises(FailoverSuccessError):
-            rds_utils.query_instance_id(conn)
+            rds_utils.failover_cluster_and_wait_until_writer_changed()
+            with pytest.raises(FailoverSuccessError):
+                rds_utils.query_instance_id(conn)
 
-        new_writer_id = rds_utils.query_instance_id(conn)
-        assert initial_writer_id != new_writer_id
+            new_writer_id = rds_utils.query_instance_id(conn)
+            assert initial_writer_id != new_writer_id
 
-        assert not isinstance(conn.target_connection, PoolProxiedConnection)
-        new_driver_conn = conn.target_connection
-        assert initial_driver_conn is not new_driver_conn
+            assert not isinstance(conn.target_connection, PoolProxiedConnection)
+            new_driver_conn = conn.target_connection
+            assert initial_driver_conn is not new_driver_conn
 
         # New connection to the original writer (now a reader)
-        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **failover_props)
-        current_id = rds_utils.query_instance_id(conn)
-        assert initial_writer_id == current_id
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **failover_props) as conn:
+            current_id = rds_utils.query_instance_id(conn)
+            assert initial_writer_id == current_id
 
-        assert isinstance(conn.target_connection, PoolProxiedConnection)
-        current_driver_conn = conn.target_connection.driver_connection
-        # The initial connection should have been evicted from the pool when failover occurred,
-        # so this should be a new connection even though it is connected to the same instance.
-        assert initial_driver_conn is not current_driver_conn
+            assert isinstance(conn.target_connection, PoolProxiedConnection)
+            current_driver_conn = conn.target_connection.driver_connection
+            # The initial connection should have been evicted from the pool when failover occurred,
+            # so this should be a new connection even though it is connected to the same instance.
+            assert initial_driver_conn is not current_driver_conn
 
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_pooled_connection__cluster_url_failover(
@@ -494,27 +497,27 @@ class TestReadWriteSplitting:
         ConnectionProviderManager.set_connection_provider(provider)
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(target_driver_connect,
-                                            **conn_utils.get_connect_params(conn_utils.writer_cluster_host),
-                                            **failover_props)
-        # The internal connection pool should not be used if the connection is established via a cluster URL.
-        assert 0 == len(SqlAlchemyPooledConnectionProvider._database_pools)
+        with AwsWrapperConnection.connect(target_driver_connect,
+                                          **conn_utils.get_connect_params(conn_utils.writer_cluster_host),
+                                          **failover_props) as conn:
+            # The internal connection pool should not be used if the connection is established via a cluster URL.
+            assert 0 == len(SqlAlchemyPooledConnectionProvider._database_pools)
 
-        initial_writer_id = rds_utils.query_instance_id(conn)
-        assert not isinstance(conn.target_connection, PoolProxiedConnection)
-        initial_driver_conn = conn.target_connection
+            initial_writer_id = rds_utils.query_instance_id(conn)
+            assert not isinstance(conn.target_connection, PoolProxiedConnection)
+            initial_driver_conn = conn.target_connection
 
-        rds_utils.failover_cluster_and_wait_until_writer_changed()
-        with pytest.raises(FailoverSuccessError):
-            rds_utils.query_instance_id(conn)
+            rds_utils.failover_cluster_and_wait_until_writer_changed()
+            with pytest.raises(FailoverSuccessError):
+                rds_utils.query_instance_id(conn)
 
-        new_writer_id = rds_utils.query_instance_id(conn)
-        assert initial_writer_id != new_writer_id
-        assert 0 == len(SqlAlchemyPooledConnectionProvider._database_pools)
+            new_writer_id = rds_utils.query_instance_id(conn)
+            assert initial_writer_id != new_writer_id
+            assert 0 == len(SqlAlchemyPooledConnectionProvider._database_pools)
 
-        assert not isinstance(conn.target_connection, PoolProxiedConnection)
-        new_driver_conn = conn.target_connection
-        assert initial_driver_conn is not new_driver_conn
+            assert not isinstance(conn.target_connection, PoolProxiedConnection)
+            new_driver_conn = conn.target_connection
+            assert initial_driver_conn is not new_driver_conn
 
     @pytest.mark.parametrize("plugins", ["read_write_splitting,failover,host_monitoring",
                                          "read_write_splitting,failover,host_monitoring_v2"])
@@ -534,28 +537,28 @@ class TestReadWriteSplitting:
         WrapperProperties.FAILURE_DETECTION_COUNT.set(proxied_failover_props, "1")
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(
-            target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props)
-        assert isinstance(conn.target_connection, PoolProxiedConnection)
-        initial_driver_conn = conn.target_connection.driver_connection
-        writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(
+                target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props) as conn:
+            assert isinstance(conn.target_connection, PoolProxiedConnection)
+            initial_driver_conn = conn.target_connection.driver_connection
+            writer_id = rds_utils.query_instance_id(conn)
 
-        ProxyHelper.disable_all_connectivity()
-        with pytest.raises(FailoverFailedError):
-            rds_utils.query_instance_id(conn)
+            ProxyHelper.disable_all_connectivity()
+            with pytest.raises(FailoverFailedError):
+                rds_utils.query_instance_id(conn)
 
-        ProxyHelper.enable_all_connectivity()
-        conn = AwsWrapperConnection.connect(
-            target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props)
+            ProxyHelper.enable_all_connectivity()
+            conn = AwsWrapperConnection.connect(
+                target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props)
 
-        current_writer_id = rds_utils.query_instance_id(conn)
-        assert writer_id == current_writer_id
+            current_writer_id = rds_utils.query_instance_id(conn)
+            assert writer_id == current_writer_id
 
-        assert isinstance(conn.target_connection, PoolProxiedConnection)
-        current_driver_conn = conn.target_connection.driver_connection
-        # The initial connection should have been evicted from the pool when failover occurred,
-        # so this should be a new connection even though it is connected to the same instance.
-        assert initial_driver_conn is not current_driver_conn
+            assert isinstance(conn.target_connection, PoolProxiedConnection)
+            current_driver_conn = conn.target_connection.driver_connection
+            # The initial connection should have been evicted from the pool when failover occurred,
+            # so this should be a new connection even though it is connected to the same instance.
+            assert initial_driver_conn is not current_driver_conn
 
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_pooled_connection__failover_in_transaction(
@@ -564,35 +567,35 @@ class TestReadWriteSplitting:
         ConnectionProviderManager.set_connection_provider(provider)
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **failover_props)
-        assert isinstance(conn.target_connection, PoolProxiedConnection)
-        initial_driver_conn = conn.target_connection.driver_connection
-        initial_writer_id = rds_utils.query_instance_id(conn)
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **failover_props) as conn:
+            assert isinstance(conn.target_connection, PoolProxiedConnection)
+            initial_driver_conn = conn.target_connection.driver_connection
+            initial_writer_id = rds_utils.query_instance_id(conn)
 
-        conn.autocommit = False
-        cursor = conn.cursor()
-        cursor.execute("START TRANSACTION")
+            conn.autocommit = False
+            cursor = conn.cursor()
+            cursor.execute("START TRANSACTION")
 
-        rds_utils.failover_cluster_and_wait_until_writer_changed()
-        with pytest.raises(TransactionResolutionUnknownError):
-            rds_utils.query_instance_id(conn)
+            rds_utils.failover_cluster_and_wait_until_writer_changed()
+            with pytest.raises(TransactionResolutionUnknownError):
+                rds_utils.query_instance_id(conn)
 
-        new_writer_id = rds_utils.query_instance_id(conn)
-        assert initial_writer_id != new_writer_id
+            new_writer_id = rds_utils.query_instance_id(conn)
+            assert initial_writer_id != new_writer_id
 
-        assert not isinstance(conn.target_connection, PoolProxiedConnection)
-        new_driver_conn = conn.target_connection
-        assert initial_driver_conn is not new_driver_conn
+            assert not isinstance(conn.target_connection, PoolProxiedConnection)
+            new_driver_conn = conn.target_connection
+            assert initial_driver_conn is not new_driver_conn
 
-        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **failover_props)
-        current_id = rds_utils.query_instance_id(conn)
-        assert initial_writer_id == current_id
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **failover_props) as conn:
+            current_id = rds_utils.query_instance_id(conn)
+            assert initial_writer_id == current_id
 
-        assert isinstance(conn.target_connection, PoolProxiedConnection)
-        current_driver_conn = conn.target_connection.driver_connection
-        # The initial connection should have been evicted from the pool when failover occurred,
-        # so this should be a new connection even though it is connected to the same instance.
-        assert initial_driver_conn is not current_driver_conn
+            assert isinstance(conn.target_connection, PoolProxiedConnection)
+            current_driver_conn = conn.target_connection.driver_connection
+            # The initial connection should have been evicted from the pool when failover occurred,
+            # so this should be a new connection even though it is connected to the same instance.
+            assert initial_driver_conn is not current_driver_conn
 
     def test_pooled_connection__different_users(
             self, test_environment: TestEnvironment, test_driver: TestDriver, rds_utils, conn_utils, props):

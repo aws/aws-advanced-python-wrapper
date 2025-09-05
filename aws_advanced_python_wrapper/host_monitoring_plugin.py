@@ -58,7 +58,7 @@ class HostMonitoringPluginFactory(PluginFactory):
 
 
 class HostMonitoringPlugin(Plugin, CanReleaseResources):
-    _SUBSCRIBED_METHODS: Set[str] = {"*"}
+    _SUBSCRIBED_METHODS: Set[str] = {"connect", "notify_host_list_changed", "notify_connection_changed"}
 
     def __init__(self, plugin_service, props):
         dialect: DriverDialect = plugin_service.driver_dialect
@@ -73,6 +73,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
         self._rds_utils: RdsUtils = RdsUtils()
         self._monitor_service: MonitorService = MonitorService(plugin_service)
         self._lock: Lock = Lock()
+        HostMonitoringPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
     @property
     def subscribed_methods(self) -> Set[str]:
