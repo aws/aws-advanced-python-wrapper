@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 
 from concurrent.futures import (Executor, Future, ThreadPoolExecutor,
                                 TimeoutError)
-from copy import copy
 from dataclasses import dataclass
 from queue import Queue
 from threading import Event, Lock, RLock
@@ -43,6 +42,7 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
     ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
 from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          PropertiesUtils,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
@@ -336,7 +336,6 @@ class Monitor:
     _DEFAULT_CONNECT_TIMEOUT_SEC = 10
     _INACTIVE_SLEEP_MS = 100
     _MIN_HOST_CHECK_TIMEOUT_MS = 3000
-    _MONITORING_PROPERTY_PREFIX = "monitoring-"
     _QUERY = "SELECT 1"
 
     def __init__(
@@ -512,19 +511,15 @@ class Monitor:
         try:
             driver_dialect = self._plugin_service.driver_dialect
             if self._monitoring_conn is None or driver_dialect.is_closed(self._monitoring_conn):
-                props_copy: Properties = copy(self._props)
-                for key, value in self._props.items():
-                    if key.startswith(Monitor._MONITORING_PROPERTY_PREFIX):
-                        props_copy[key[len(Monitor._MONITORING_PROPERTY_PREFIX):len(key)]] = value
-                        props_copy.pop(key, None)
+                monitoring_properties: Properties = PropertiesUtils.create_monitoring_properties(self._props)
 
                 # Set a default connect timeout if the user hasn't configured one
-                if props_copy.get(WrapperProperties.CONNECT_TIMEOUT_SEC.name, None) is None:
-                    props_copy[WrapperProperties.CONNECT_TIMEOUT_SEC.name] = Monitor._DEFAULT_CONNECT_TIMEOUT_SEC
+                if monitoring_properties.get(WrapperProperties.CONNECT_TIMEOUT_SEC.name, None) is None:
+                    monitoring_properties[WrapperProperties.CONNECT_TIMEOUT_SEC.name] = Monitor._DEFAULT_CONNECT_TIMEOUT_SEC
 
                 logger.debug("Monitor.OpeningMonitorConnection", self._host_info.url)
                 start_ns = perf_counter_ns()
-                self._monitoring_conn = self._plugin_service.force_connect(self._host_info, props_copy, None)
+                self._monitoring_conn = self._plugin_service.force_connect(self._host_info, monitoring_properties, None)
                 logger.debug("Monitor.OpenedMonitorConnection", self._host_info.url)
                 return Monitor.HostStatus(True, perf_counter_ns() - start_ns)
 

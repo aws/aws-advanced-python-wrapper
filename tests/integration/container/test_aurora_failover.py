@@ -116,6 +116,7 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
+    @pytest.mark.parametrize("plugins", ["failover,host_monitoring", "failover,host_monitoring_v2"])
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                          TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_fail_from_reader_to_writer(
@@ -124,12 +125,13 @@ class TestAuroraFailover:
             test_driver: TestDriver,
             conn_utils,
             proxied_props,
-            aurora_utility):
+            aurora_utility,
+            plugins):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         reader: TestInstanceInfo = test_environment.get_proxy_instances()[1]
         writer_id: str = test_environment.get_proxy_writer().get_instance_id()
 
-        proxied_props["plugins"] = "failover,host_monitoring"
+        proxied_props["plugins"] = plugins
         with AwsWrapperConnection.connect(
                 target_driver_connect,
                 **conn_utils.get_proxy_connect_params(reader.get_host()),
