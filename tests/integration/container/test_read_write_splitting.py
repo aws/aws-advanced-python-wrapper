@@ -349,14 +349,15 @@ class TestReadWriteSplitting:
             current_id = rds_utils.query_instance_id(conn)
             assert new_writer_id == current_id
 
+    @pytest.mark.parametrize("plugins", ["read_write_splitting,failover,host_monitoring_v2"])
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                          TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     @enable_on_num_instances(min_instances=3)
     @disable_on_engines([DatabaseEngine.MYSQL])
     def test_failover_to_new_reader__switch_read_only(
             self, test_environment: TestEnvironment, test_driver: TestDriver,
-            proxied_failover_props, conn_utils, rds_utils):
-        WrapperProperties.PLUGINS.set(proxied_failover_props, "read_write_splitting,failover,host_monitoring")
+            proxied_failover_props, conn_utils, rds_utils, plugins):
+        WrapperProperties.PLUGINS.set(proxied_failover_props, plugins)
         WrapperProperties.FAILOVER_MODE.set(proxied_failover_props, "reader-or-writer")
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -397,14 +398,16 @@ class TestReadWriteSplitting:
             current_id = rds_utils.query_instance_id(conn)
             assert other_reader_id == current_id
 
+    @pytest.mark.parametrize("plugins", ["read_write_splitting,failover,host_monitoring",
+                                         "read_write_splitting,failover,host_monitoring_v2"])
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                          TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     @enable_on_num_instances(min_instances=3)
     @disable_on_engines([DatabaseEngine.MYSQL])
     def test_failover_reader_to_writer__switch_read_only(
             self, test_environment: TestEnvironment, test_driver: TestDriver,
-            proxied_failover_props, conn_utils, rds_utils):
-        WrapperProperties.PLUGINS.set(proxied_failover_props, "read_write_splitting,failover,host_monitoring")
+            proxied_failover_props, conn_utils, rds_utils, plugins):
+        WrapperProperties.PLUGINS.set(proxied_failover_props, plugins)
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         with AwsWrapperConnection.connect(
                 target_driver_connect, **conn_utils.get_proxy_connect_params(), **proxied_failover_props) as conn:
@@ -516,17 +519,19 @@ class TestReadWriteSplitting:
             new_driver_conn = conn.target_connection
             assert initial_driver_conn is not new_driver_conn
 
+    @pytest.mark.parametrize("plugins", ["read_write_splitting,failover,host_monitoring",
+                                         "read_write_splitting,failover,host_monitoring_v2"])
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                          TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     @disable_on_engines([DatabaseEngine.MYSQL])
     def test_pooled_connection__failover_failed(
             self, test_environment: TestEnvironment, test_driver: TestDriver,
-            rds_utils, conn_utils, proxied_failover_props):
+            rds_utils, conn_utils, proxied_failover_props, plugins):
         writer_host = test_environment.get_writer().get_host()
         provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1}, None, lambda host_info, props: writer_host in host_info.host)
         ConnectionProviderManager.set_connection_provider(provider)
 
-        WrapperProperties.PLUGINS.set(proxied_failover_props, "read_write_splitting,failover,host_monitoring")
+        WrapperProperties.PLUGINS.set(proxied_failover_props, plugins)
         WrapperProperties.FAILOVER_TIMEOUT_SEC.set(proxied_failover_props, "1")
         WrapperProperties.FAILURE_DETECTION_TIME_MS.set(proxied_failover_props, "1000")
         WrapperProperties.FAILURE_DETECTION_COUNT.set(proxied_failover_props, "1")

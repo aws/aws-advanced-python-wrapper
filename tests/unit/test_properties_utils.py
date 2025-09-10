@@ -80,3 +80,16 @@ def test_masked_props(expected, test_props):
     props_copy = test_props.copy()
     props_copy = PropertiesUtils.mask_properties(props_copy)
     assert expected == props_copy
+
+
+@pytest.mark.parametrize("expected, test_props",
+                         [pytest.param(Properties({"user": "postgres",
+                                                   "test_property": 1}),
+                                       Properties({"user": "postgres",
+                                                   "monitoring-test_property": 1,
+                                                   "test_property": 2})),
+                          pytest.param(Properties(), Properties())])
+def test_create_monitoring_properties(expected, test_props):
+    props_copy = test_props.copy()
+    props_copy = PropertiesUtils.create_monitoring_properties(props_copy)
+    assert expected == props_copy
