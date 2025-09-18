@@ -34,4 +34,5 @@ class RdsUrlType(Enum):
     RDS_PROXY = True, False,
     RDS_INSTANCE = True, False,
     RDS_AURORA_LIMITLESS_DB_SHARD_GROUP = True, False,
+    DSQL_CLUSTER = False, False,
     OTHER = False, False

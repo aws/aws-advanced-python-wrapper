@@ -42,7 +42,8 @@ from tests.integration.container.utils.test_environment_features import \
 
 
 @enable_on_num_instances(min_instances=5)
-@enable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY])
+@enable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                     TestEnvironmentFeatures.RUN_DSQL_TESTS_ONLY])
 class TestAutoScaling:
     @pytest.fixture
     def rds_utils(self):
