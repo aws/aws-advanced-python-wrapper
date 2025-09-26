@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import time
 from contextlib import closing
 from threading import Event, RLock, Thread
@@ -248,7 +249,7 @@ class LimitlessQueryHelper:
         host_name: str = result[0]
         cpu: float = float(result[1])
 
-        weight: int = round(10 - (cpu * 10))
+        weight: int = 10 - math.floor(cpu * 10)
         if weight < 1 or weight > 10:
             weight = 1
             logger.debug("LimitlessRouterMonitor.InvalidRouterLoad", host_name, cpu)
