@@ -1689,14 +1689,14 @@ files = [
 
 [[package]]
 name = "types-boto3"
-version = "1.40.38"
-description = "Type annotations for boto3 1.40.38 generated with mypy-boto3-builder 8.11.0"
+version = "1.40.39"
+description = "Type annotations for boto3 1.40.39 generated with mypy-boto3-builder 8.11.0"
 optional = false
 python-versions = ">=3.8"
 groups = ["test"]
 files = [
-    {file = "types_boto3-1.40.38-py3-none-any.whl", hash = "sha256:9b2d543c41706a1302cfbc48a130c754191fca7745658f5d1f520faaeac2a1b5"},
-    {file = "types_boto3-1.40.38.tar.gz", hash = "sha256:07735d37f47717bd04441c1751113d66379aeaa743f3e230d3415a4fd564031e"},
+    {file = "types_boto3-1.40.39-py3-none-any.whl", hash = "sha256:cdaf0ed4438adfde094fee9347063cf1117c3fe1d7623cff80163bcf8ac55289"},
+    {file = "types_boto3-1.40.39.tar.gz", hash = "sha256:be326c95bfd25c8173fb92cc083cc3714aa35148c2894a83bdc1a42f1238e57a"},
 ]
 
 [package.dependencies]
@@ -1758,7 +1758,7 @@ bedrock-data-automation-runtime = ["types-boto3-bedrock-data-automation-runtime 
 bedrock-runtime = ["types-boto3-bedrock-runtime (>=1.40.0,<1.41.0)"]
 billing = ["types-boto3-billing (>=1.40.0,<1.41.0)"]
 billingconductor = ["types-boto3-billingconductor (>=1.40.0,<1.41.0)"]
-boto3 = ["boto3 (==1.40.38)"]
+boto3 = ["boto3 (==1.40.39)"]
 braket = ["types-boto3-braket (>=1.40.0,<1.41.0)"]
 budgets = ["types-boto3-budgets (>=1.40.0,<1.41.0)"]
 ce = ["types-boto3-ce (>=1.40.0,<1.41.0)"]
