@@ -8,32 +8,40 @@ The AWS Python Driver leverages the Blue/Green Deployment approach by intelligen
 
 
 ## Prerequisites
+
 > [!WARNING]\
-> **Blue/Green Support Behaviour and Version Compatibility**
-> 
 > Currently Supported Database Deployments:
+>
 > - Aurora MySQL and PostgreSQL clusters
 > - RDS MySQL and PostgreSQL instances
 >
 > Unsupported Database Deployments and Configurations:
+>
 > - RDS MySQL and PostgreSQL Multi-AZ clusters
 > - Aurora Global Database for MySQL and PostgreSQL
-> 
-> Supported RDS PostgreSQL Versions: `rds_tools v1.7 (17.1, 16.5, 15.9, 14.14, 13.17, 12.21)`.<br>
-> Supported Aurora PostgreSQL Versions: Engine Release `17.5, 16.9, 15.13, 14.18, 13.21`.<br>
-> Supported Aurora MySQL Versions: Engine Release `3.07` and above.
-> 
+>
+> Additional Requirements:
+>
+> - AWS cluster and instance endpoints must be directly accessible from the client side
+> - Connecting to database nodes using CNAME aliases is not supported
+>
+> **Blue/Green Support Behaviour and Version Compatibility:**
+>
+> The AWS Advanced Python Driver now includes enhanced full support for Blue/Green Deployments. This support requires a minimum database version that includes a specific metadata table. The metadata will be accessible provided the green deployment satisfies the minimum version compatibility requirements. This constraint **does not** apply to RDS MySQL.
+>
 > For RDS Postgres, you will also need to manually install the `rds_tools` extension using the following DDL so that the metadata required by the wrapper is available:
 >
 > ```sql
 > CREATE EXTENSION rds_tools;
 > ```
 >
-> If your database version does **not** match the supported versions listed above, the wrapper will automatically fallback to its previous behaviour. In this fallback mode, Blue/Green handling is subject to the limitations listed below:
-> - After a Blue/Green switchover, the wrapper may not be able to properly detect the new topology and handle failover, as there are discrepancies between the metadata and the available endpoints.
-> - The specific database version requirements for different database deployments may vary, as the internal systems used by the wrapper can differ.
-> 
-> If you have questions or encounter issues, please open an issue in this repository.
+> If your database version does **not** support this table, the driver will automatically detect its absence and fallback to its previous behaviour. In this fallback mode, Blue/Green handling is subject to the same limitations listed above.
+>
+> **No action is required** if your database does not include the new metadata table -- the driver will continue to operate as before. If you have questions or encounter issues, please open an issue in this repository.
+>
+> Supported RDS PostgreSQL Versions: `rds_tools v1.7 (17.1, 16.5, 15.9, 14.14, 13.17, 12.21)` and above.<br>
+> Supported Aurora PostgreSQL Versions: Engine Release `17.5, 16.9, 15.13, 14.18, 13.21` and above.<br>
+> Supported Aurora MySQL Versions: Engine Release `3.07` and above.
 
 
 ## What is the Blue/Green Deployment Plugin?
