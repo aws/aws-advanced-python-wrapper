@@ -256,7 +256,7 @@ class RdsTestUtility:
         if engine == DatabaseEngine.MYSQL:
             sql = "SELECT @@aurora_server_id"
         elif engine == DatabaseEngine.PG:
-            sql = "SELECT aurora_db_instance_identifier()"
+            sql = "SELECT pg_catalog.aurora_db_instance_identifier()"
         else:
             raise UnsupportedOperationError(engine.value)
 
@@ -392,18 +392,18 @@ class RdsTestUtility:
             return ("SELECT SERVER_ID, SESSION_ID FROM information_schema.replica_host_status "
                     "ORDER BY IF(SESSION_ID = 'MASTER_SESSION_ID', 0, 1)")
         elif engine == DatabaseEngine.PG:
-            return ("SELECT SERVER_ID, SESSION_ID FROM aurora_replica_status() "
-                    "ORDER BY CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN 0 ELSE 1 END")
+            return ("SELECT SERVER_ID, SESSION_ID FROM pg_catalog.aurora_replica_status() "
+                    "ORDER BY CASE WHEN SESSION_ID OPERATOR(pg_catalog.=) 'MASTER_SESSION_ID' THEN 0 ELSE 1 END")
         else:
             raise UnsupportedOperationError(engine.value)
 
     def _get_multi_az_topology_sql(self, engine: DatabaseEngine, writer_id) -> str:
         if engine == DatabaseEngine.MYSQL:
-            return f"SELECT id, endpoint, port FROM mysql.rds_topology ORDER BY id='{writer_id}' DESC"
+            return f"SELECT id, endpoint, port FROM mysql.rds_topology ORDER BY id = '{writer_id}' DESC"
         elif engine == DatabaseEngine.PG:
             return (f"SELECT id, endpoint, port "
                     f"FROM rds_tools.show_topology('aws_python_driver-{DriverInfo.DRIVER_VERSION}')"
-                    f"ORDER BY id='{writer_id}' DESC")
+                    f"ORDER BY id OPERATOR(pg_catalog.=) '{writer_id}' DESC")
         else:
             raise UnsupportedOperationError(engine.value)
 
@@ -536,7 +536,7 @@ class RdsTestUtility:
     def get_sleep_sql(self, seconds: float) -> str:
         engine = TestEnvironment.get_current().get_engine()
         if engine == DatabaseEngine.PG:
-            return f"SELECT pg_sleep({seconds})"
+            return f"SELECT pg_catalog.pg_sleep({seconds})"
         elif engine == DatabaseEngine.MYSQL:
             return f"SELECT SLEEP({seconds})"
         else:

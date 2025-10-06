@@ -206,7 +206,7 @@ class TestPerformance:
             sleep_delay_sec: int,
             props: Properties,
             data: PerfStatMonitoring):
-        query: str = "SELECT pg_sleep(600)"
+        query: str = "SELECT pg_catalog.pg_sleep(600)"
         downtime: AtomicInt = AtomicInt()
         elapsed_times: List[int] = []
 

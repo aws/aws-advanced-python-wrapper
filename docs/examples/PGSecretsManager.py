@@ -27,6 +27,6 @@ if __name__ == "__main__":
             secrets_manager_region="us-east-2",
             plugins="aws_secrets_manager"
     ) as awsconn, awsconn.cursor() as cursor:
-        cursor.execute("SELECT aurora_db_instance_identifier()")
+        cursor.execute("SELECT pg_catalog.aurora_db_instance_identifier()")
         for record in cursor.fetchone():
             print(record)

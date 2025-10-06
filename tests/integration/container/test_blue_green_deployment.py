@@ -84,10 +84,10 @@ class TestBlueGreenDeployment:
          "FROM mysql.rds_topology")
     PG_AURORA_BG_STATUS_QUERY = \
         ("SELECT id, SPLIT_PART(endpoint, '.', 1) as hostId, endpoint, port, role, status, version "
-         "FROM get_blue_green_fast_switchover_metadata('aws_jdbc_driver')")
+         "FROM pg_catalog.get_blue_green_fast_switchover_metadata('aws_python_driver')")
     PG_RDS_BG_STATUS_QUERY = \
         (f"SELECT id, SPLIT_PART(endpoint, '.', 1) as hostId, endpoint, port, role, status, version "
-         f"FROM rds_tools.show_topology('aws_jdbc_driver-{DriverInfo.DRIVER_VERSION}')")
+         f"FROM rds_tools.show_topology('aws_python_driver-{DriverInfo.DRIVER_VERSION}')")
     results: ConcurrentDict[str, BlueGreenResults] = ConcurrentDict()
     unhandled_exceptions: Deque[Exception] = deque()
     mysql_dialect = MySQLDriverDialect(Properties())
@@ -686,7 +686,7 @@ class TestBlueGreenDeployment:
         if engine == DatabaseEngine.MYSQL:
             query = "SELECT sleep(5)"
         elif engine == DatabaseEngine.PG:
-            query = "SELECT pg_sleep(5)"
+            query = "SELECT pg_catalog.pg_sleep(5)"
         else:
             pytest.fail(f"Unsupported database engine: {engine}")
 

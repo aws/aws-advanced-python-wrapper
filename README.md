@@ -48,7 +48,7 @@ with AwsWrapperConnection.connect(
         autocommit=True
 ) as awsconn:
     awscursor = awsconn.cursor()
-    awscursor.execute("SELECT aurora_db_instance_identifier()")
+    awscursor.execute("SELECT pg_catalog.aurora_db_instance_identifier()")
     row = awscursor.fetchone()
     print(row)
 ```
