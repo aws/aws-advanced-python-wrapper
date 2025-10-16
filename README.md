@@ -154,11 +154,6 @@ Support for Blue/Green deployments using the AWS Advanced Python Driver requires
 
 Please note that Aurora Global Database and RDS Multi-AZ clusters with Blue/Green deployments is currently not supported. For detailed information on supported database versions, refer to the [Blue/Green Deployment Plugin Documentation](./docs/using-the-python-driver/using-plugins/UsingTheBlueGreenPlugin.md).
 
-In addition:
-- **Post-switchover failures:** After a Blue/Green switchover, the wrapper may not properly detect the new cluster topology, leading to failed failover attempts.
-- **Metadata inconsistencies:** Discrepancies between topology metadata and actual available endpoints prevent reliable operation.
-- **Version-specific issues:** Requirements vary between Aurora MySQL and Aurora PostgreSQL due to different internal systems.
-
 #### MySQL Connector/Python C Extension
 
 When connecting to Aurora MySQL clusters, it is recommended to use the Python implementation of the MySQL Connector/Python driver by setting the `use_pure` connection argument to `True`.
