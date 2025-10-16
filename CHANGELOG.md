@@ -3,6 +3,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/#semantic-versioning-200).
 
+## [1.4.0] - 2025-10-17
+### :magic_wand: Added
+* [EFM v2](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md#host-monitoring-plugin-v2), an improved alternate version of the `efm` plugin which addresses issues such as garbage collection and monitoring stability, is now live!
+
+### :bug: Fixed
+* Update subscribed methods to explicit methods ([PR #960](https://github.com/aws/aws-advanced-python-wrapper/pull/960))
+* Limitless Connection Plugin to properly round the load metric values for Limitless transaction routers ([PR #988](https://github.com/aws/aws-advanced-python-wrapper/pull/988)).
+
+### :crab: Changed
+* Update documentation for Limitless Plugin ([PR #914](https://github.com/aws/aws-advanced-python-wrapper/pull/914)).
+* Update documentation for Blue/Green Support ([PR #995](https://github.com/aws/aws-advanced-python-wrapper/pull/995)).
+* Add qualifiers to PostgreSQL SQL statements ([PR #1007](https://github.com/aws/aws-advanced-python-wrapper/pull/1007)).
+
 ## [1.3.0] - 2025-07-28
 ### :magic_wand: Added
 * [Blue/Green Plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheBlueGreenPlugin.md), which adds support for blue/green deployments ([PR #911](https://github.com/aws/aws-advanced-python-wrapper/pull/911)).
@@ -46,6 +59,7 @@ The Amazon Web Services (AWS) Advanced Python Wrapper allows an application to t
 * Support for PostgreSQL
 * Support for MySQL
 
+[1.4.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.3.0...1.4.0
 [1.3.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.2.0...1.3.0
 [1.2.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.1.1...1.2.0
 [1.1.1]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.1.0...1.1.1

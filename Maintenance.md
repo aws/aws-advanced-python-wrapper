@@ -1,10 +1,13 @@
 # Release Schedule
 
-| Release Date     | Release                                                                                    |
-|------------------|--------------------------------------------------------------------------------------------|
-| May 16, 2024     | [Release 1.0.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.0.0) |
-| July 31, 2024    | [Release 1.1.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.1.0) |
-| October 18, 2024 | [Release 1.1.1](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.1.1) |
+| Release Date      | Release                                                                                    |
+|-------------------|--------------------------------------------------------------------------------------------|
+| May 16, 2024      | [Release 1.0.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.0.0) |
+| July 31, 2024     | [Release 1.1.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.1.0) |
+| October 18, 2024  | [Release 1.1.1](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.1.1) |
+| December 12, 2024 | [Release 1.2.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.2.0) |
+| July 28, 2025     | [Release 1.3.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.3.0) |
+| October 17, 2025  | [Release 1.4.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.4.0) |
 
 `aws-advanced-python-wrapper` [follows semver](https://semver.org/#semantic-versioning-200) which means we will only
 release breaking changes in major versions. Generally speaking patches will be released to fix existing problems without
@@ -30,12 +33,12 @@ and log all changes in the changelog at the bottom of this page.
 For `aws-advanced-python-wrapper` new features and active development always takes place against the newest version.
 The `aws-advanced-python-wrapper` project follows the semantic versioning specification for assigning version numbers
 to releases, so you should be able to upgrade to the latest minor version of that same major version of the
-software without encountering incompatible changes (e.g., 1.1.0 → 1.3.x).
+software without encountering incompatible changes (e.g., 1.1.0 → 1.4.x).
 
 Sometimes an incompatible change is unavoidable. When this happens, the software’s maintainers will increment
-the major version number (e.g., increment from `aws-advanced-python-wrapper` 1.3.0 to `aws-advanced-python-wrapper` 2.0.0).
+the major version number (e.g., increment from `aws-advanced-python-wrapper` 1.4.0 to `aws-advanced-python-wrapper` 2.0.0).
 The last minor version of the previous major version of the software will then enter a maintenance window
-(e.g., 1.3.x). During the maintenance window, the software will continue to receive bug fixes and security patches,
+(e.g., 1.4.x). During the maintenance window, the software will continue to receive bug fixes and security patches,
 but no new features.
 
 We follow OpenSSF’s best practices for patching publicly known vulnerabilities, and we make sure that there are
@@ -57,4 +60,4 @@ from the updated source after the PRs are merged.
 
 | Major Version | Latest Minor Version | Status  | Initial Release | Maintenance Window Start | Maintenance Window End |
 |---------------|----------------------|---------|-----------------|--------------------------|------------------------|
-| 1             | 1.3.0                | Current | May 16, 2024    | May 16, 2024             | N/A                    | 
+| 1             | 1.4.0                | Current | May 16, 2024    | May 16, 2024             | N/A                    | 
