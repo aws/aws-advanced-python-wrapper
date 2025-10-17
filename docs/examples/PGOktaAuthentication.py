@@ -32,7 +32,7 @@ if __name__ == "__main__":
             db_user="john",
             autocommit=True
     ) as awsconn, awsconn.cursor() as awscursor:
-        awscursor.execute("SELECT * FROM aurora_db_instance_identifier()")
+        awscursor.execute("SELECT * FROM pg_catalog.aurora_db_instance_identifier()")
 
         res = awscursor.fetchone()
         print(res)
