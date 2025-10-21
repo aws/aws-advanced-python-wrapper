@@ -16,6 +16,9 @@ on:
       - 'ISSUE_TEMPLATE/**'
       - '**/remove-old-artifacts.yml'
 
+permissions:
+  contents: read
+
 jobs:
   markdown-link-check:
     runs-on: ubuntu-latest
