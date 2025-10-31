@@ -21,3 +21,4 @@ class DatabaseEngineDeployment(str, Enum):
     RDS_MULTI_AZ_CLUSTER = "RDS_MULTI_AZ_CLUSTER"
     RDS_MULTI_AZ_INSTANCE = "RDS_MULTI_AZ_INSTANCE"
     AURORA = "AURORA"
+    DSQL = "DSQL"
