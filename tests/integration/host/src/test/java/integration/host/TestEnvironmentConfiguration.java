@@ -71,6 +71,10 @@ public class TestEnvironmentConfiguration {
 
   public boolean excludePython311 =
       Boolean.parseBoolean(System.getProperty("exclude-python-311", "false"));
+  public boolean excludePython312 =
+      Boolean.parseBoolean(System.getProperty("exclude-python-312", "false"));
+  public boolean excludePython313 =
+      Boolean.parseBoolean(System.getProperty("exclude-python-313", "false"));
 
   public String testFilter = System.getenv("FILTER");
 
