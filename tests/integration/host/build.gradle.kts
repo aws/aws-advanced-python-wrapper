@@ -69,6 +69,8 @@ tasks.register<Test>("test-python-3.11-mysql") {
     doFirst {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-python-312", "true")
+        systemProperty("exclude-python-313", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
@@ -83,6 +85,8 @@ tasks.register<Test>("test-python-3.8-mysql") {
     doFirst {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-311", "true")
+        systemProperty("exclude-python-312", "true")
+        systemProperty("exclude-python-313", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
@@ -97,6 +101,8 @@ tasks.register<Test>("test-python-3.11-pg") {
     doFirst {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-python-312", "true")
+        systemProperty("exclude-python-313", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
@@ -113,6 +119,76 @@ tasks.register<Test>("test-python-3.8-pg") {
     doFirst {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-311", "true")
+        systemProperty("exclude-python-312", "true")
+        systemProperty("exclude-python-313", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-bg", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.12-mysql") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-python-311", "true")
+        systemProperty("exclude-python-313", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-bg", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.12-pg") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-python-311", "true")
+        systemProperty("exclude-python-313", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-bg", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.13-mysql") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-python-311", "true")
+        systemProperty("exclude-python-312", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-bg", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.13-pg") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-python-38", "true")
+        systemProperty("exclude-python-311", "true")
+        systemProperty("exclude-python-312", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
