@@ -73,8 +73,6 @@ tasks.register<Test>("test-python-3.11-mysql") {
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
-        systemProperty("exclude-traces-telemetry", "true")
-        systemProperty("exclude-metrics-telemetry", "true")
         systemProperty("exclude-pg-driver", "true")
         systemProperty("exclude-pg-engine", "true")
     }
@@ -106,8 +104,6 @@ tasks.register<Test>("test-python-3.12-mysql") {
         systemProperty("exclude-python-3-13", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
-        systemProperty("exclude-traces-telemetry", "true")
-        systemProperty("exclude-metrics-telemetry", "true")
         systemProperty("exclude-bg", "true")
         systemProperty("exclude-pg-driver", "true")
         systemProperty("exclude-pg-engine", "true")
@@ -141,8 +137,6 @@ tasks.register<Test>("test-python-3.13-mysql") {
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
-        systemProperty("exclude-traces-telemetry", "true")
-        systemProperty("exclude-metrics-telemetry", "true")
         systemProperty("exclude-pg-driver", "true")
         systemProperty("exclude-pg-engine", "true")
     }

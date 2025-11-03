@@ -18,6 +18,5 @@ package integration;
 
 public enum TargetPythonVersion {
   PYTHON_3_11,
-  PYTHON_3_12,
-  PYTHON_3_13
+  PYTHON_3_8
 }
