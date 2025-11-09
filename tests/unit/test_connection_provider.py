@@ -33,7 +33,31 @@ def default_provider_mock(mocker):
 
 @pytest.fixture
 def set_provider_mock(mocker):
-    return mocker.MagicMock()
+    # In Python 3.12+, isinstance checks with Protocols are stricter
+    # Create a real instance that implements the protocol, then wrap release_resources
+    # with a mock to allow method call tracking
+    class MockConnectionProviderWithRelease:
+        """Mock connection provider that implements CanReleaseResources protocol."""
+        def accepts_host_info(self, host_info, props):
+            return True
+        
+        def accepts_strategy(self, role, strategy):
+            return True
+        
+        def get_host_info_by_strategy(self, hosts, role, strategy, props):
+            return hosts[0] if hosts else None
+        
+        def connect(self, target_func, driver_dialect, database_dialect, host_info, props):
+            return None
+        
+        def release_resources(self):
+            pass
+    
+    # Create a real instance
+    provider = MockConnectionProviderWithRelease()
+    # Replace release_resources with a MagicMock so we can assert it was called
+    provider.release_resources = mocker.MagicMock()
+    return provider
 
 
 @pytest.fixture
@@ -177,4 +201,4 @@ def test_release_resources(connection_mock, default_provider_mock, set_provider_
     ConnectionProviderManager.set_connection_provider(set_provider_mock)
     ConnectionProviderManager.release_resources()
 
-    connection_provider_manager._conn_provider.release_resources.assert_called_once()
+    set_provider_mock.release_resources.assert_called_once()

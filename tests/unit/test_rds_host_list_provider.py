@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 import psycopg
 import pytest
 
+from aws_advanced_python_wrapper.database_dialect import AuroraPgDialect
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
@@ -58,7 +59,10 @@ def mock_cursor(mocker):
 
 @pytest.fixture
 def mock_provider_service(mocker):
-    return mocker.MagicMock()
+    service_mock = mocker.MagicMock()
+    # Use a real AuroraPgDialect to pass isinstance checks in Python 3.12+
+    service_mock.database_dialect = AuroraPgDialect()
+    return service_mock
 
 
 @pytest.fixture
