@@ -17,6 +17,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
+from aws_advanced_python_wrapper.utils.rds_token_utils import RDSTokenUtils
+from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 
 if TYPE_CHECKING:
@@ -25,6 +27,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
+    from aws_advanced_python_wrapper.utils.token_utils import TokenUtils
 
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Optional, Set
@@ -35,7 +38,6 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
 logger = Logger(__name__)
 
@@ -48,11 +50,12 @@ class IamAuthPlugin(Plugin):
     _rds_utils: RdsUtils = RdsUtils()
     _token_cache: Dict[str, TokenInfo] = {}
 
-    def __init__(self, plugin_service: PluginService, session: Optional[Session] = None):
+    def __init__(self, plugin_service: PluginService, token_utils: TokenUtils, session: Optional[Session] = None):
         self._plugin_service = plugin_service
         self._session = session
 
         self._region_utils = RegionUtils()
+        self._token_utils = token_utils
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = telemetry_factory.create_counter("iam.fetch_token.count")
         self._cache_size_gauge = telemetry_factory.create_gauge(
@@ -102,7 +105,7 @@ class IamAuthPlugin(Plugin):
         else:
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
             self._fetch_token_counter.inc()
-            token: str = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
+            token: str = self._token_utils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
@@ -120,7 +123,7 @@ class IamAuthPlugin(Plugin):
             # Try to generate a new token and try to connect again
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
             self._fetch_token_counter.inc()
-            token = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
+            token = self._token_utils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
@@ -142,4 +145,4 @@ class IamAuthPlugin(Plugin):
 
 class IamAuthPluginFactory(PluginFactory):
     def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return IamAuthPlugin(plugin_service)
+        return IamAuthPlugin(plugin_service, RDSTokenUtils())
