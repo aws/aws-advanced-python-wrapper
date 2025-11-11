@@ -14,7 +14,8 @@ from unittest.mock import PropertyMock
 import psycopg
 import pytest
 
-from aws_advanced_python_wrapper.database_dialect import (DatabaseDialect,
+from aws_advanced_python_wrapper.database_dialect import (AuroraPgDialect,
+                                                          DatabaseDialect,
                                                           MysqlDatabaseDialect)
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 UnsupportedOperationError)
@@ -36,6 +37,8 @@ def mock_plugin_service(mocker, mock_driver_dialect, mock_conn, host_info):
     service_mock = mocker.MagicMock()
     service_mock.current_connection = mock_conn
     service_mock.current_host_info = host_info
+    # Use a real AuroraPgDialect to pass isinstance checks in Python 3.12+
+    service_mock.database_dialect = AuroraPgDialect()
 
     type(service_mock).driver_dialect = mocker.PropertyMock(return_value=mock_driver_dialect)
     return service_mock
@@ -125,7 +128,8 @@ def test_connect_supported_dialect_after_refresh(
     mocker, plugin, host_info, props, mock_conn, mock_plugin_service, mock_limitless_router_service, mock_driver_dialect
 ):
     unsupported_dialect: DatabaseDialect = MysqlDatabaseDialect()
-    type(mock_plugin_service).database_dialect = PropertyMock(side_effect=[unsupported_dialect, mock_driver_dialect])
+    supported_dialect: DatabaseDialect = AuroraPgDialect()
+    type(mock_plugin_service).database_dialect = PropertyMock(side_effect=[unsupported_dialect, supported_dialect])
 
     def replace_context_connection(invocation):
         context = invocation._connection_plugin._context

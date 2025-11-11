@@ -14,14 +14,23 @@
 
 import psycopg
 import pytest
-from mysql.connector import CMySQLConnection
-from mysql.connector.cursor_cext import CMySQLCursor
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
+
+try:
+    from mysql.connector import CMySQLConnection
+    from mysql.connector.cursor_cext import CMySQLCursor
+except ImportError:
+    # CMySQLConnection not available (e.g., Python 3.13 with mysql-connector-python 9.0.0)
+    # Skip all tests in this module if C extension is not available
+    pytest.skip(
+        "CMySQLConnection not available (C extension not supported on this Python version)",
+        allow_module_level=True
+    )
 
 
 @pytest.fixture
