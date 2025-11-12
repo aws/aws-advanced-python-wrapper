@@ -23,9 +23,20 @@ if TYPE_CHECKING:
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from inspect import signature
 
-from mysql.connector import CMySQLConnection, MySQLConnection
+CMYSQL_ENABLED = False
+
+from mysql.connector import MySQLConnection
 from mysql.connector.cursor import MySQLCursor
-from mysql.connector.cursor_cext import CMySQLCursor
+
+try:
+    from mysql.connector import CMySQLConnection
+    from mysql.connector.cursor_cext import CMySQLCursor
+
+    CMYSQL_ENABLED = True
+
+except ImportError as exc:
+    # Do nothing
+    pass
 
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
@@ -62,13 +73,21 @@ class MySQLDriverDialect(DriverDialect):
         "Cursor.fetchall"
     }
 
+    @staticmethod
+    def _is_mysql_connection(conn: Connection | object) -> bool:
+        return isinstance(conn, MySQLConnection) or (CMYSQL_ENABLED and isinstance(conn, CMySQLConnection))
+
+    @staticmethod
+    def _is_cmysql_cursor(obj: object) -> bool:
+        return CMYSQL_ENABLED and isinstance(obj, CMySQLCursor)
+
     def is_dialect(self, connect_func: Callable) -> bool:
         if MySQLDriverDialect.TARGET_DRIVER_CODE not in str(signature(connect_func)):
             return MySQLDriverDialect.TARGET_DRIVER_CODE.lower() in (connect_func.__module__ + connect_func.__qualname__).lower()
         return True
 
     def is_closed(self, conn: Connection) -> bool:
-        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
+        if MySQLDriverDialect._is_mysql_connection(conn):
 
             # is_connected validates the connection using a ping().
             # If there are any unread results from previous executions an error will be thrown.
@@ -86,14 +105,14 @@ class MySQLDriverDialect(DriverDialect):
         raise UnsupportedOperationError(Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "is_connected"))
 
     def get_autocommit(self, conn: Connection) -> bool:
-        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
+        if MySQLDriverDialect._is_mysql_connection(conn):
             return conn.autocommit
 
         raise UnsupportedOperationError(
             Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
     def set_autocommit(self, conn: Connection, autocommit: bool):
-        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
+        if MySQLDriverDialect._is_mysql_connection(conn):
             conn.autocommit = autocommit
             return
 
@@ -112,13 +131,13 @@ class MySQLDriverDialect(DriverDialect):
                 "abort_connection"))
 
     def can_execute_query(self, conn: Connection) -> bool:
-        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
+        if MySQLDriverDialect._is_mysql_connection(conn):
             if conn.unread_result:
                 return conn.can_consume_results
         return True
 
     def is_in_transaction(self, conn: Connection) -> bool:
-        if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
+        if MySQLDriverDialect._is_mysql_connection(conn):
             return bool(conn.in_transaction)
 
         raise UnsupportedOperationError(
@@ -126,10 +145,10 @@ class MySQLDriverDialect(DriverDialect):
                                    "in_transaction"))
 
     def get_connection_from_obj(self, obj: object) -> Any:
-        if isinstance(obj, CMySQLConnection) or isinstance(obj, MySQLConnection):
+        if MySQLDriverDialect._is_mysql_connection(obj):
             return obj
 
-        if isinstance(obj, CMySQLCursor):
+        if MySQLDriverDialect._is_cmysql_cursor(obj):
             try:
                 conn = None
 
@@ -140,7 +159,7 @@ class MySQLDriverDialect(DriverDialect):
                 if conn is None:
                     return None
 
-                if isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
+                if MySQLDriverDialect._is_mysql_connection(conn):
                     return conn
 
             except ReferenceError:
@@ -148,7 +167,7 @@ class MySQLDriverDialect(DriverDialect):
 
         if isinstance(obj, MySQLCursor):
             try:
-                if isinstance(obj._connection, CMySQLConnection) or isinstance(obj._connection, MySQLConnection):
+                if MySQLDriverDialect._is_mysql_connection(obj._connection):
                     return obj._connection
             except ReferenceError:
                 return None
