@@ -23,21 +23,6 @@ if TYPE_CHECKING:
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from inspect import signature
 
-CMYSQL_ENABLED = False
-
-from mysql.connector import MySQLConnection
-from mysql.connector.cursor import MySQLCursor
-
-try:
-    from mysql.connector import CMySQLConnection
-    from mysql.connector.cursor_cext import CMySQLCursor
-
-    CMYSQL_ENABLED = True
-
-except ImportError:
-    # Do nothing
-    pass
-
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
@@ -46,6 +31,21 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
                                                           WrapperProperties)
+
+CMYSQL_ENABLED = False
+
+from mysql.connector import MySQLConnection  # noqa: E402
+from mysql.connector.cursor import MySQLCursor  # noqa: E402
+
+try:
+    from mysql.connector import CMySQLConnection  # noqa: E402
+    from mysql.connector.cursor_cext import CMySQLCursor  # noqa: E402
+
+    CMYSQL_ENABLED = True
+
+except ImportError:
+    # Do nothing
+    pass
 
 
 class MySQLDriverDialect(DriverDialect):
@@ -94,7 +94,7 @@ class MySQLDriverDialect(DriverDialect):
             if self.can_execute_query(conn):
                 socket_timeout = WrapperProperties.SOCKET_TIMEOUT_SEC.get_float(self._props)
                 timeout_sec = socket_timeout if socket_timeout > 0 else MySQLDriverDialect.IS_CLOSED_TIMEOUT_SEC
-                is_connected_with_timeout = timeout(MySQLDriverDialect._executor, timeout_sec)(conn.is_connected) # type: ignore
+                is_connected_with_timeout = timeout(MySQLDriverDialect._executor, timeout_sec)(conn.is_connected)  # type: ignore
 
                 try:
                     return not is_connected_with_timeout()
@@ -106,14 +106,14 @@ class MySQLDriverDialect(DriverDialect):
 
     def get_autocommit(self, conn: Connection) -> bool:
         if MySQLDriverDialect._is_mysql_connection(conn):
-            return conn.autocommit # type: ignore
+            return conn.autocommit  # type: ignore
 
         raise UnsupportedOperationError(
             Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
     def set_autocommit(self, conn: Connection, autocommit: bool):
         if MySQLDriverDialect._is_mysql_connection(conn):
-            conn.autocommit = autocommit # type: ignore
+            conn.autocommit = autocommit  # type: ignore
             return
 
         raise UnsupportedOperationError(
@@ -132,13 +132,13 @@ class MySQLDriverDialect(DriverDialect):
 
     def can_execute_query(self, conn: Connection) -> bool:
         if MySQLDriverDialect._is_mysql_connection(conn):
-            if conn.unread_result: # type: ignore
-                return conn.can_consume_results # type: ignore
+            if conn.unread_result:  # type: ignore
+                return conn.can_consume_results  # type: ignore
         return True
 
     def is_in_transaction(self, conn: Connection) -> bool:
         if MySQLDriverDialect._is_mysql_connection(conn):
-            return bool(conn.in_transaction) # type: ignore
+            return bool(conn.in_transaction)  # type: ignore
 
         raise UnsupportedOperationError(
             Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name,
@@ -176,7 +176,7 @@ class MySQLDriverDialect(DriverDialect):
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         if MySQLDriverDialect._is_mysql_connection(from_conn) and MySQLDriverDialect._is_mysql_connection(to_conn):
-            to_conn.autocommit = from_conn.autocommit # type: ignore
+            to_conn.autocommit = from_conn.autocommit  # type: ignore
 
     def ping(self, conn: Connection) -> bool:
         return not self.is_closed(conn)
