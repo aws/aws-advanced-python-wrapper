@@ -34,7 +34,7 @@ try:
 
     CMYSQL_ENABLED = True
 
-except ImportError as exc:
+except ImportError:
     # Do nothing
     pass
 
@@ -175,8 +175,7 @@ class MySQLDriverDialect(DriverDialect):
         return None
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
-        if (isinstance(from_conn, CMySQLConnection) or isinstance(from_conn, MySQLConnection)) and (
-                isinstance(to_conn, CMySQLConnection) or isinstance(to_conn, MySQLConnection)):
+        if MySQLDriverDialect._is_mysql_connection(from_conn) and MySQLDriverDialect._is_mysql_connection(to_conn):
             to_conn.autocommit = from_conn.autocommit
 
     def ping(self, conn: Connection) -> bool:
