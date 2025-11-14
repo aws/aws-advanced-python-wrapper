@@ -43,6 +43,8 @@ logger = getLogger(__name__)
                         DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE])
 @disable_on_features([TestEnvironmentFeatures.PERFORMANCE,
                       TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                      TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS,
+                      TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS,
                       TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT])
 class TestHostMonitoringV2:
     @pytest.fixture(scope='class')
