@@ -462,6 +462,37 @@ class WrapperProperties:
         1000
     )
 
+    # Simple Read/Write Splitting
+    SRW_READ_ENDPOINT = WrapperProperty(
+        "srw_read_endpoint",
+        "The read-only endpoint that should be used to connect to a reader.",
+        None)
+    
+    SRW_WRITE_ENDPOINT = WrapperProperty(
+        "srw_write_endpoint",
+        "The read-write/cluster endpoint that should be used to connect to the writer.",
+        None)
+    
+    SRW_VERIFY_NEW_CONNECTIONS = WrapperProperty(
+        "srw_verify_new_connections",
+        "Enables role-verification for new connections made by the Simple Read/Write Splitting Plugin..",
+        True)
+    
+    SRW_VERIFY_OPENED_CONNECTION_TYPE = WrapperProperty(
+        "srw_verify_opened_connection_type",
+        "Force to verify an opened connection to be either a writer or a reader.",
+        None)
+    
+    SRW_CONNECT_RETRY_TIMEOUT_MS = WrapperProperty(
+        "srw_connect_retry_timeout_ms",
+        "Maximum allowed time in milliseconds for the plugin to retry opening a connection.",
+        60000)
+    
+    SRW_CONNECT_RETRY_INTERVAL_MS = WrapperProperty(
+        "srw_connect_retry_interval_ms",
+        "Time in milliseconds between each retry of opening a connection.",
+        1000)
+
 
 class PropertiesUtils:
     _MONITORING_PROPERTY_PREFIX = "monitoring-"
