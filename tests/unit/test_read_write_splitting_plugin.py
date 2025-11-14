@@ -14,8 +14,8 @@
 
 from typing import List
 
-import psycopg
-import pytest
+import psycopg # type: ignore
+import pytest # type: ignore
 
 from aws_advanced_python_wrapper.errors import FailoverSuccessError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
@@ -36,7 +36,6 @@ reader_host3 = HostInfo(host="instance3", role=HostRole.READER)
 
 default_hosts: List[HostInfo] = [writer_host, reader_host1, reader_host2, reader_host3]
 single_reader_topology: List[HostInfo] = [writer_host, reader_host1]
-
 
 @pytest.fixture
 def host_list_provider_service_mock(mocker):
@@ -97,12 +96,13 @@ def plugin_service_mock(mocker, driver_dialect_mock):
 
 def test_set_read_only_true(plugin_service_mock):
     plugin_service_mock.current_connection = writer_conn_mock
+    plugin_service_mock.current_host_info = writer_host
     plugin_service_mock.get_host_info_by_strategy.return_value = reader_host1
     plugin_service_mock.hosts = single_reader_topology
     plugin_service_mock.connect.return_value = reader_conn_mock
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._reader_connection = None
 
     plugin._switch_connection_if_required(True)
@@ -119,8 +119,9 @@ def test_set_read_only_false(plugin_service_mock):
     plugin_service_mock.hosts = single_reader_topology
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = writer_conn_mock
+    plugin._writer_host_info = writer_host
 
     plugin._switch_connection_if_required(False)
 
@@ -135,7 +136,7 @@ def test_set_read_only_true_already_on_reader(plugin_service_mock):
     plugin_service_mock.current_host_info = reader_host1
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = None
     plugin._reader_connection = reader_conn_mock
 
@@ -152,8 +153,9 @@ def test_set_read_only_false_already_on_writer(plugin_service_mock):
     plugin_service_mock.current_host_info = writer_host
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = writer_conn_mock
+    plugin._writer_host_info = writer_host
     plugin._reader_connection = None
 
     plugin._switch_connection_if_required(False)
@@ -170,7 +172,7 @@ def test_set_read_only_false_in_transaction(plugin_service_mock):
     plugin_service_mock.is_in_transaction = True
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = None
     plugin._reader_connection = reader_conn_mock
 
@@ -186,8 +188,9 @@ def test_set_read_only_true_one_host(plugin_service_mock):
     plugin_service_mock.hosts = [writer_host]
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = writer_conn_mock
+    plugin._writer_host_info = writer_host
 
     plugin._switch_connection_if_required(True)
 
@@ -198,7 +201,7 @@ def test_set_read_only_true_one_host(plugin_service_mock):
 
 
 def test_set_read_only_false_writer_connection_fails(plugin_service_mock):
-    def connect_side_effect(host_info: HostInfo, props: Properties):
+    def connect_side_effect(host_info: HostInfo, props: Properties, plugin):
         if host_info == writer_host and props == default_props:
             raise Error("Connection Error")
 
@@ -208,7 +211,7 @@ def test_set_read_only_false_writer_connection_fails(plugin_service_mock):
     plugin_service_mock.hosts = single_reader_topology
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = None
     plugin._reader_connection = reader_conn_mock
 
@@ -219,7 +222,7 @@ def test_set_read_only_false_writer_connection_fails(plugin_service_mock):
 
 
 def test_set_read_only_true_reader_connection_failed(plugin_service_mock):
-    def connect_side_effect(host_info: HostInfo, props: Properties):
+    def connect_side_effect(host_info: HostInfo, props: Properties, plugin):
         if ((host_info == reader_host1 or host_info == reader_host2 or host_info == reader_host3)
                 and props == default_props):
             raise Error("Connection Error")
@@ -227,8 +230,9 @@ def test_set_read_only_true_reader_connection_failed(plugin_service_mock):
     plugin_service_mock.connect.side_effect = connect_side_effect
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = writer_conn_mock
+    plugin._writer_host_info = writer_host
     plugin._reader_connection = None
 
     plugin._switch_connection_if_required(True)
@@ -242,7 +246,7 @@ def test_set_read_only_on_closed_connection(plugin_service_mock):
     plugin_service_mock.current_connection = closed_writer_conn_mock
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = closed_writer_conn_mock
     plugin._reader_connection = None
 
@@ -261,8 +265,9 @@ def test_execute_failover_to_new_writer(plugin_service_mock, writer_conn_mock):
     plugin_service_mock.current_connection = new_writer_conn_mock
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = writer_conn_mock
+    plugin._writer_host_info = writer_host
     plugin._reader_connection = None
 
     with pytest.raises(Error):
@@ -276,7 +281,7 @@ def test_notify_connection_change(plugin_service_mock):
     plugin_service_mock.current_host_info = writer_host
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
 
     suggestion = plugin.notify_connection_changed(changes_mock)
 
@@ -287,8 +292,9 @@ def test_notify_connection_change(plugin_service_mock):
 def test_connect_non_initial_connection(
         mocker, plugin_service_mock, connect_func_mock, host_list_provider_service_mock):
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
     plugin._writer_connection = writer_conn_mock
+    plugin._writer_host_info = writer_host
     plugin._reader_connection = None
 
     connect_func_mock.return_value = writer_conn_mock
@@ -314,7 +320,7 @@ def test_connect_incorrect_host_role(mocker, plugin_service_mock, connect_func_m
     host_list_provider_service_mock.is_static_host_list_provider.return_value = False
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
 
     connect_func_mock.return_value = reader_conn_mock
     conn = plugin.connect(
@@ -339,7 +345,7 @@ def test_connect_error_updating_host(mocker, plugin_service_mock, connect_func_m
     host_list_provider_service_mock.is_static_host_list_provider.return_value = False
 
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, default_props)
-    plugin._host_list_provider_service = host_list_provider_service_mock
+    plugin._connection_handler.host_list_provider_service = host_list_provider_service_mock
 
     connect_func_mock.return_value = reader_conn_mock
 
