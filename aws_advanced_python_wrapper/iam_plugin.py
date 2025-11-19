@@ -78,7 +78,7 @@ class IamAuthPlugin(Plugin):
             raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.IsNoneOrEmpty", WrapperProperties.USER.name))
 
         host = IamAuthUtils.get_iam_host(props, host_info)
-        region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host, self._session)
+        region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host)
         if not region:
             error_message = "RdsUtils.UnsupportedHostname"
             logger.debug(error_message, host)

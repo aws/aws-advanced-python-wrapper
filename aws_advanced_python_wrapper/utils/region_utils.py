@@ -19,11 +19,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.utils.properties import Properties
 
-from boto3 import Session
-
-from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
 logger = Logger(__name__)
@@ -36,23 +32,12 @@ class RegionUtils:
     def get_region(self,
                    props: Properties,
                    prop_key: str,
-                   hostname: Optional[str] = None,
-                   session: Optional[Session] = None) -> Optional[str]:
+                   hostname: Optional[str] = None) -> Optional[str]:
         region = props.get(prop_key)
         if region:
-            return self.verify_region(region, session)
+            return region
 
-        return self.get_region_from_hostname(hostname, session)
+        return self.get_region_from_hostname(hostname)
 
-    def get_region_from_hostname(self, hostname: Optional[str], session: Optional[Session] = None) -> Optional[str]:
-        region = self._rds_utils.get_rds_region(hostname)
-        return self.verify_region(region, session) if region else None
-
-    def verify_region(self, region: str, session: Optional[Session] = None) -> str:
-        session = session if session is not None else Session()
-        if region not in session.get_available_regions("rds"):
-            error_message = "AwsSdk.UnsupportedRegion"
-            logger.debug(error_message, region)
-            raise AwsWrapperError(Messages.get_formatted(error_message, region))
-
-        return region
+    def get_region_from_hostname(self, hostname: Optional[str]) -> Optional[str]:
+        return self._rds_utils.get_rds_region(hostname)
