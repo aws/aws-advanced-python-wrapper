@@ -14,8 +14,8 @@
 
 import time
 
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
-    SlidingExpirationCache
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache import (
+    SlidingExpirationCache, SlidingExpirationCacheWithCleanupThread)
 
 
 def test_compute_if_absent():
@@ -86,6 +86,34 @@ def test_clear():
     assert cache.get(1) is None
     assert cache.get(2) is None
     assert item1.disposed is True
+    assert item2.disposed is True
+
+
+def test_cleanup_thread_continuous_removal():
+    # Use very short cleanup interval for testing (100ms)
+    cache = SlidingExpirationCacheWithCleanupThread(
+        cleanup_interval_ns=100_000_000,  # 100ms
+        item_disposal_func=lambda item: item.dispose()
+    )
+
+    # First cycle: insert item that expires quickly
+    item1 = DisposableItem(True)
+    cache.compute_if_absent("key1", lambda _: item1, 50_000_000)  # 50ms expiration
+    assert cache.get("key1") == item1
+
+    # Wait for cleanup thread to remove expired item
+    time.sleep(0.2)  # Wait 200ms for cleanup
+    assert cache.get("key1") is None
+    assert item1.disposed is True
+
+    # Second cycle: insert another item that expires quickly
+    item2 = DisposableItem(True)
+    cache.compute_if_absent("key2", lambda _: item2, 50_000_000)  # 50ms expiration
+    assert cache.get("key2") == item2
+
+    # Wait for cleanup thread to remove second expired item
+    time.sleep(0.2)  # Wait 200ms for cleanup
+    assert cache.get("key2") is None
     assert item2.disposed is True
 
 
