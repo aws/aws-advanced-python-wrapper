@@ -40,12 +40,15 @@ logger = Logger(__name__)
 
 class ReadWriteSplittingConnectionManager(Plugin):
     """Base class that manages connection switching logic."""
+    _POOL_PROVIDER_CLASS_NAME = "aws_advanced_python_wrapper.sql_alchemy_connection_provider.SqlAlchemyPooledConnectionProvider"
+
     _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
                                      "connect",
                                      "notify_connection_changed",
                                      "Connection.set_read_only"}
     def __init__(self, plugin_service: PluginService, props, connection_handler: ConnectionHandler):
         self._plugin_service = plugin_service
+        self._conn_provider_manager: ConnectionProviderManager = self._plugin_service.get_connection_provider_manager()
         self._properties = props
         self._connection_handler = connection_handler
         self._writer_connection: Optional[Connection] = None
@@ -53,6 +56,8 @@ class ReadWriteSplittingConnectionManager(Plugin):
         self._writer_host_info: Optional[HostInfo] = None
         self._reader_host_info: Optional[HostInfo] = None
         self._in_read_write_split: bool = False
+        self._is_reader_conn_from_internal_pool: bool = False
+        self._is_writer_conn_from_internal_pool: bool = False
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -63,7 +68,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             props: Properties,
             host_list_provider_service: HostListProviderService,
             init_host_provider_func: Callable):
-        self._connection_handler.host_list_provider_service = host_list_provider_service
+        self._connection_handler.set_host_list_provider_service(host_list_provider_service)
         init_host_provider_func()
 
     def connect(
@@ -113,10 +118,10 @@ class ReadWriteSplittingConnectionManager(Plugin):
             return
 
         if self._connection_handler.should_update_writer_with_current_conn(current_conn, current_host, self._writer_connection):
-            self._close_connection(self._writer_connection)
+            self.close_connection(self._writer_connection)
             self._set_writer_connection(current_conn, current_host)
         elif self._connection_handler.should_update_reader_with_current_conn(current_conn, current_host, self._reader_connection):
-            self._close_connection(self._reader_connection)
+            self.close_connection(self._reader_connection)
             self._set_reader_connection(current_conn, current_host)
 
     def _set_writer_connection(self, writer_conn: Connection, writer_host_info: HostInfo):
@@ -129,12 +134,15 @@ class ReadWriteSplittingConnectionManager(Plugin):
         self._reader_host_info = reader_host_info
         logger.debug("ReadWriteSplittingPlugin.SetReaderConnection", reader_host_info.url)
 
-    def _get_new_writer_connection(self):
-        conn, writer_host = self._connection_handler.get_new_writer_connection()
+    def _initialize_writer_connection(self):
+        conn, writer_host = self._connection_handler.open_new_writer_connection()
 
         if conn is None:
-            self._log_and_raise_exception("ReadWriteSplittingPlugin.WriterUnavailable")
+            self.log_and_raise_exception("ReadWriteSplittingPlugin.WriterUnavailable")
             return
+        
+        provider = self._conn_provider_manager.get_connection_provider(writer_host, self._properties)
+        self._is_writer_conn_from_internal_pool = (ReadWriteSplittingConnectionManager._POOL_PROVIDER_CLASS_NAME in str(type(provider)))
 
         self._set_writer_connection(conn, writer_host)
         self._switch_current_connection_to(conn, writer_host)
@@ -145,12 +153,12 @@ class ReadWriteSplittingConnectionManager(Plugin):
 
         if (current_conn is not None and
                 driver_dialect is not None and driver_dialect.is_closed(current_conn)):
-            self._log_and_raise_exception("ReadWriteSplittingPlugin.SetReadOnlyOnClosedConnection")
+            self.log_and_raise_exception("ReadWriteSplittingPlugin.SetReadOnlyOnClosedConnection")
 
         self._connection_handler.refresh_and_store_host_list(current_conn, driver_dialect)
         current_host = self._plugin_service.current_host_info
         if current_host is None:
-            self._log_and_raise_exception("ReadWriteSplittingPlugin.UnavailableHostInfo")
+            self.log_and_raise_exception("ReadWriteSplittingPlugin.UnavailableHostInfo")
             return
 
         if read_only:
@@ -162,18 +170,18 @@ class ReadWriteSplittingConnectionManager(Plugin):
                         # do this 
                         ex = None
                     if not self._is_connection_usable(current_conn, driver_dialect):
-                        self._log_and_raise_exception("ReadWriteSplittingPlugin.ErrorSwitchingToReader")
+                        self.log_and_raise_exception("ReadWriteSplittingPlugin.ErrorSwitchingToReader")
                         return
 
                     logger.warning("ReadWriteSplittingPlugin.FallbackToWriter", current_host.url)
         elif not self._connection_handler.is_writer_host(current_host):
             if self._plugin_service.is_in_transaction:
-                self._log_and_raise_exception("ReadWriteSplittingPlugin.SetReadOnlyFalseInTransaction")
+                self.log_and_raise_exception("ReadWriteSplittingPlugin.SetReadOnlyFalseInTransaction")
 
             try:
                 self._switch_to_writer_connection()
             except Exception:
-                self._log_and_raise_exception("ReadWriteSplittingPlugin.ErrorSwitchingToWriter")
+                self.log_and_raise_exception("ReadWriteSplittingPlugin.ErrorSwitchingToWriter")
 
     def _switch_current_connection_to(self, new_conn: Connection, new_conn_host: HostInfo):
         current_conn = self._plugin_service.current_connection
@@ -195,11 +203,11 @@ class ReadWriteSplittingConnectionManager(Plugin):
 
         self._in_read_write_split = True
         if not self._is_connection_usable(self._writer_connection, driver_dialect):
-            self._get_new_writer_connection()
+            self._initialize_writer_connection()
         elif self._writer_connection is not None and self._writer_host_info is not None:
             self._switch_current_connection_to(self._writer_connection, self._writer_host_info)
 
-        if self._connection_handler.should_close_reader_after_switch_to_writer():
+        if self._is_reader_conn_from_internal_pool:
             self._close_connection_if_idle(self._reader_connection)
 
         logger.debug("ReadWriteSplittingPlugin.SwitchedFromReaderToWriter", self._writer_host_info.url)
@@ -230,23 +238,26 @@ class ReadWriteSplittingConnectionManager(Plugin):
                 self._close_connection_if_idle(self._reader_connection)
                 self._initialize_reader_connection()
 
-        if self._connection_handler.should_close_writer_after_switch_to_reader():
+        if self._is_writer_conn_from_internal_pool:
             self._close_connection_if_idle(self._writer_connection)
 
     def _initialize_reader_connection(self):
         if self._connection_handler.need_connect_to_writer():
             if not self._is_connection_usable(self._writer_connection, self._plugin_service.driver_dialect):
-                self._get_new_writer_connection()
+                self._initialize_writer_connection()
             logger.warning("ReadWriteSplittingPlugin.NoReadersFound", self._writer_host_info.url)
             return
     
-        conn, reader_host = self._connection_handler.get_new_reader_connection()
+        conn, reader_host = self._connection_handler.open_new_reader_connection()
 
         if conn is None or reader_host is None:
-            self._log_and_raise_exception("ReadWriteSplittingPlugin.NoReadersAvailable")
+            self.log_and_raise_exception("ReadWriteSplittingPlugin.NoReadersAvailable")
             return
 
         logger.debug("ReadWriteSplittingPlugin.SuccessfullyConnectedToReader", reader_host.url)
+
+        provider = self._conn_provider_manager.get_connection_provider(reader_host, self._properties)
+        self._is_reader_conn_from_internal_pool = (ReadWriteSplittingConnectionManager._POOL_PROVIDER_CLASS_NAME in str(type(provider)))
 
         self._set_reader_connection(conn, reader_host)
         self._switch_current_connection_to(conn, reader_host)
@@ -254,15 +265,27 @@ class ReadWriteSplittingConnectionManager(Plugin):
         logger.debug("ReadWriteSplittingPlugin.SwitchedFromWriterToReader", reader_host.url)
 
     def _close_connection_if_idle(self, internal_conn: Optional[Connection]):
+        if internal_conn is None:
+            return
+            
         current_conn = self._plugin_service.current_connection
         driver_dialect = self._plugin_service.driver_dialect
-
-        if (internal_conn is not None and internal_conn != current_conn and self._is_connection_usable(internal_conn, driver_dialect)):
-            self._close_connection(internal_conn)
+        
+        try:
+            if (internal_conn != current_conn and 
+                self._is_connection_usable(internal_conn, driver_dialect)):
+                internal_conn.close()
+        except Exception:
+            # Ignore exceptions during cleanup - connection might already be dead
+            pass
+        finally:
+            # Always clear cached references to prevent reuse of dead connections
             if internal_conn == self._writer_connection:
                 self._writer_connection = None
+                self._writer_host_info = None
             if internal_conn == self._reader_connection:
                 self._reader_connection = None
+                self._reader_host_info = None
 
     def _close_idle_connections(self):
         logger.debug("ReadWriteSplittingPlugin.ClosingInternalConnections")
@@ -270,13 +293,13 @@ class ReadWriteSplittingConnectionManager(Plugin):
         self._close_connection_if_idle(self._writer_connection)
 
     @staticmethod
-    def _log_and_raise_exception(log_msg: str):
+    def log_and_raise_exception(log_msg: str):
         logger.error(log_msg)
         raise ReadWriteSplittingError(Messages.get(log_msg))
 
     @staticmethod
     def _is_connection_usable(conn: Optional[Connection], driver_dialect: Optional[DriverDialect]):
-        if conn is not None or driver_dialect is None:
+        if conn is None or driver_dialect is None:
             return False
         try:
             return not driver_dialect.is_closed(conn)
@@ -285,7 +308,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             return False
     
     @staticmethod
-    def _close_connection(connection: Connection):
+    def close_connection(connection: Connection):
         if connection is not None:
             try:
                 connection.close()
@@ -295,17 +318,15 @@ class ReadWriteSplittingConnectionManager(Plugin):
 
 class ConnectionHandler(Protocol):
     """Protocol for handling writer/reader connection logic."""
-    @property
-    @abstractmethod
-    def host_list_provider_service(self) -> HostListProviderService:
+    def set_host_list_provider_service(self, value: HostListProviderService):
+        self._host_list_provider_service = value
+    
+    def open_new_writer_connection(self) -> Optional[tuple[Connection, HostInfo]]:
+        """Open a writer connection."""
         ...
     
-    def get_new_writer_connection(self) -> Optional[tuple[Connection, HostInfo]]:
-        """Get or create a writer connection."""
-        ...
-    
-    def get_new_reader_connection(self) -> Optional[tuple[Connection, HostInfo]]:
-        """Get or create a reader connection."""
+    def open_new_reader_connection(self) -> Optional[tuple[Connection, HostInfo]]:
+        """Open a reader connection."""
         ...
 
     def get_verified_initial_connection(self, host_info: HostInfo, props: Properties, is_initial_connection: bool, connect_func: Callable) -> Optional[Connection]:
@@ -332,14 +353,6 @@ class ConnectionHandler(Protocol):
         """Return true if the current host can be used to switch connection to."""
         ...    
 
-    def should_close_writer_after_switch_to_reader(self) -> bool:
-        """Return true if the cached writer should be closed upon switch to reader."""
-        ...    
-
-    def should_close_reader_after_switch_to_writer(self) -> bool:
-        """Return true if the cached reader should be closed upon switch to writer."""
-        ...    
-
     def need_connect_to_writer(self) -> bool:
         """Return true if switching to reader should instead connect to writer."""
         ...    
@@ -349,16 +362,11 @@ class ConnectionHandler(Protocol):
         ... 
 
 class TopologyBasedConnectionHandler(ConnectionHandler):
-    """Topology based implementation of connection handling logic."""
-    _POOL_PROVIDER_CLASS_NAME = "aws_advanced_python_wrapper.sql_alchemy_connection_provider.SqlAlchemyPooledConnectionProvider"
-    
+    """Topology based implementation of connection handling logic."""    
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
         self._properties = props
         self._host_list_provider_service: Optional[HostListProviderService] = None        
-        self._conn_provider_manager: ConnectionProviderManager = self._plugin_service.get_connection_provider_manager()
-        self._is_reader_conn_from_internal_pool: bool = False
-        self._is_writer_conn_from_internal_pool: bool = False
         strategy = WrapperProperties.READER_HOST_SELECTOR_STRATEGY.get(self._properties)
         if strategy is not None:
             self._reader_selector_strategy = strategy
@@ -368,26 +376,16 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
                 self._reader_selector_strategy = default_strategy
         self._hosts = None
 
-    @property
-    def host_list_provider_service(self) -> HostListProviderService:
-        return self._host_list_provider_service
-
-    @host_list_provider_service.setter
-    def host_list_provider_service(self, value: HostListProviderService):
-        self._host_list_provider_service = value
-
-    def get_new_writer_connection(self) -> Optional[tuple[Connection, HostInfo]]: 
-        writer_host = self._get_writer(self._hosts)
+    def open_new_writer_connection(self) -> Optional[tuple[Connection, HostInfo]]: 
+        writer_host = self._get_writer()
         if writer_host is None:
             return
         
         conn = self._plugin_service.connect(writer_host, self._properties, self)
-        provider = self._conn_provider_manager.get_connection_provider(writer_host, self._properties)
-        self._is_writer_conn_from_internal_pool = (TopologyBasedConnectionHandler._POOL_PROVIDER_CLASS_NAME in str(type(provider)))
 
         return conn, writer_host
     
-    def get_new_reader_connection(self) -> Optional[tuple[Connection, HostInfo]]:
+    def open_new_reader_connection(self) -> Optional[tuple[Connection, HostInfo]]:
         conn: Optional[Connection] = None
         reader_host: Optional[HostInfo] = None
 
@@ -398,8 +396,6 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
                 try:
                     conn = self._plugin_service.connect(host, self._properties, self)
                     reader_host = host
-                    provider = self._conn_provider_manager.get_connection_provider(host, self._properties)
-                    self._is_reader_conn_from_internal_pool = (TopologyBasedConnectionHandler._POOL_PROVIDER_CLASS_NAME in str(type(provider)))
                     break
                 except Exception:
                     logger.warning("ReadWriteSplittingPlugin.FailedToConnectToReader", host.url)
@@ -419,7 +415,7 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
 
         current_role = self._plugin_service.get_host_role(current_conn)
         if current_role is None or current_role == HostRole.UNKNOWN:
-            ReadWriteSplittingConnectionManager._log_and_raise_exception("ReadWriteSplittingPlugin.ErrorVerifyingInitialHostSpecRole")
+            ReadWriteSplittingConnectionManager.log_and_raise_exception("ReadWriteSplittingPlugin.ErrorVerifyingInitialHostSpecRole")
 
         current_host = self._plugin_service.initial_connection_host_info
         if current_host is not None:
@@ -437,15 +433,9 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
         hostnames = [host_info.host for host_info in self._hosts]
         return reader_host_info is not None and reader_host_info.host in hostnames
 
-    def should_close_writer_after_switch_to_reader(self) -> bool:
-        return self._is_writer_conn_from_internal_pool
-
-    def should_close_reader_after_switch_to_writer(self) -> bool:
-        return self._is_reader_conn_from_internal_pool
-
     def need_connect_to_writer(self) -> bool:
         if self._hosts is not None and len(self._hosts) == 1:
-            return self._get_writer(self._hosts) is not None
+            return self._get_writer() is not None
         return False
 
     def refresh_and_store_host_list(self, current_conn: Connection, driver_dialect: DriverDialect):
@@ -457,7 +447,7 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
 
         hosts = self._plugin_service.hosts
         if hosts is None or len(hosts) == 0:
-            ReadWriteSplittingConnectionManager._log_and_raise_exception("ReadWriteSplittingPlugin.EmptyHostList")
+            ReadWriteSplittingConnectionManager.log_and_raise_exception("ReadWriteSplittingPlugin.EmptyHostList")
         
         self._hosts = hosts
 
@@ -473,12 +463,12 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
     def is_reader_host(self, current_host) -> bool:
         return current_host.role == HostRole.READER
 
-    def _get_writer(hosts: Tuple[HostInfo, ...]) -> Optional[HostInfo]:
-        for host in hosts:
+    def _get_writer(self) -> Optional[HostInfo]:
+        for host in self._hosts:
             if host.role == HostRole.WRITER:
                 return host
 
-        ReadWriteSplittingConnectionManager._log_and_raise_exception("ReadWriteSplittingPlugin.NoWriterFound")
+        ReadWriteSplittingConnectionManager.log_and_raise_exception("ReadWriteSplittingPlugin.NoWriterFound")
 
         return None
     

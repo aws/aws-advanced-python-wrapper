@@ -478,9 +478,9 @@ class WrapperProperties:
         "Enables role-verification for new connections made by the Simple Read/Write Splitting Plugin..",
         True)
     
-    SRW_VERIFY_OPENED_CONNECTION_TYPE = WrapperProperty(
-        "srw_verify_opened_connection_type",
-        "Force to verify an opened connection to be either a writer or a reader.",
+    SRW_VERIFY_INITIAL_CONNECTION_TYPE = WrapperProperty(
+        "srw_verify_initial_connection_type",
+        "Force to verify an initial connection to be either a writer or a reader.",
         None)
     
     SRW_CONNECT_RETRY_TIMEOUT_MS = WrapperProperty(
