@@ -44,6 +44,8 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
 @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
                       TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
+                      TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS,
+                      TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS,
                       TestEnvironmentFeatures.PERFORMANCE])
 class TestAuroraFailover:
     IDLE_CONNECTIONS_NUM: int = 5

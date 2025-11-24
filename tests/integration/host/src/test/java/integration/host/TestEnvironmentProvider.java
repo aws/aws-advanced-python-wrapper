@@ -86,19 +86,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
             continue;
           }
 
-          for (int numOfInstances : Arrays.asList(1, 2, 3, 5)) {
-            if (instances == DatabaseInstances.SINGLE_INSTANCE && numOfInstances > 1) {
-              continue;
-            }
-            if (instances == DatabaseInstances.MULTI_INSTANCE && numOfInstances == 1) {
-              continue;
-            }
-            if (numOfInstances == 1 && config.excludeInstances1) {
-              continue;
-            }
-            if (numOfInstances == 2 && config.excludeInstances2) {
-              continue;
-            }
+          for (int numOfInstances : Arrays.asList(3,5)) {
             if (numOfInstances == 3 && config.excludeInstances3) {
               continue;
             }
@@ -109,7 +97,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
               // Multi-AZ clusters supports only 3 instances
               continue;
             }
-            if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE && numOfInstances != 1) {
+            if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE) {
               // Multi-AZ Instances supports only 1 instance
               continue;
             }
