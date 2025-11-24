@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Executor, ThreadPoolExecutor
+from threading import Thread
 from time import perf_counter_ns, sleep
 from typing import Callable, Generic, ItemsView, KeysView, Optional, TypeVar
 
@@ -119,28 +119,26 @@ class SlidingExpirationCacheWithCleanupThread(SlidingExpirationCache, Generic[K,
             should_dispose_func: Optional[Callable] = None,
             item_disposal_func: Optional[Callable] = None):
         super().__init__(cleanup_interval_ns, should_dispose_func, item_disposal_func)
-        self._executor: Executor = ThreadPoolExecutor(thread_name_prefix="SlidingExpirationCacheWithCleanupThreadExecutor")
-        self.init_cleanup_thread()
-
-    def init_cleanup_thread(self) -> None:
-        self._executor.submit(self._cleanup_thread_internal)
+        self._cleanup_thread = Thread(target=self._cleanup_thread_internal, daemon=True)
+        self._cleanup_thread.start()
 
     def _cleanup_thread_internal(self):
-        logger.debug("SlidingExpirationCache.CleaningUp")
-        current_time = perf_counter_ns()
-        sleep(self._cleanup_interval_ns / 1_000_000_000)
-        self._cleanup_time_ns.set(current_time + self._cleanup_interval_ns)
-        keys = [key for key, _ in self._cdict.items()]
-        for key in keys:
+        while True:
             try:
-                self._remove_if_expired(key)
+                sleep(self._cleanup_interval_ns / 1_000_000_000)
+                logger.debug("SlidingExpirationCache.CleaningUp")
+                self._cleanup_time_ns.set(perf_counter_ns() + self._cleanup_interval_ns)
+                keys = [key for key, _ in self._cdict.items()]
+                for key in keys:
+                    try:
+                        self._remove_if_expired(key)
+                    except Exception:
+                        pass  # ignore
             except Exception:
-                pass  # ignore
-
-        self._executor.shutdown()
+                break
 
     def _cleanup(self):
-        pass  # do nothing, cleanup thread does the job
+        pass  # cleanup thread handles this
 
 
 class CacheItem(Generic[V]):
