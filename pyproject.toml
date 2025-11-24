@@ -32,6 +32,8 @@ types_aws_xray_sdk = "^2.13.0"
 opentelemetry-api = "^1.22.0"
 opentelemetry-sdk = "^1.22.0"
 requests = "^2.32.2"
+tortoise-orm = "^0.25.1"
+sqlparse = "^0.4.4"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.9.0"
@@ -63,6 +65,7 @@ mysql-connector-python = "^9.5.0"
 opentelemetry-exporter-otlp = "^1.22.0"
 opentelemetry-exporter-otlp-proto-grpc = "^1.22.0"
 opentelemetry-sdk-extension-aws = "^2.0.1"
+pytest-asyncio = "^0.21.0"
 
 [tool.isort]
 sections = "FUTURE,STDLIB,THIRDPARTY,FIRSTPARTY,LOCALFOLDER"
@@ -77,4 +80,3 @@ filterwarnings = [
     'ignore:cache could not write path',
     'ignore:could not create cache path'
 ]
-
