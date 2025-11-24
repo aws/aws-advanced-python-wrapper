@@ -61,6 +61,8 @@ def plugin_props(plugin_config):
     if plugin_name == "srw":
         props[WrapperProperties.SRW_WRITE_ENDPOINT.name] = WRITE_ENDPOINT
         props[WrapperProperties.SRW_READ_ENDPOINT.name] = READ_ENDPOINT
+        props[WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS.name] = "600"
+        props[WrapperProperties.SRW_CONNECT_RETRY_INTERVAL_MS.name] = "10"
     return props
 
 @pytest.fixture
