@@ -210,8 +210,7 @@ class AwsSecretsManagerPlugin(Plugin):
             WrapperProperties.PASSWORD.set(properties, password_value)
 
     def _get_rds_region(self, secret_id: str, props: Properties) -> str:
-        session = self._session if self._session else boto3.Session()
-        region = self._region_utils.get_region(props, WrapperProperties.SECRETS_MANAGER_REGION.name, session=session)
+        region = self._region_utils.get_region(props, WrapperProperties.SECRETS_MANAGER_REGION.name)
 
         if region:
             return region
@@ -221,7 +220,7 @@ class AwsSecretsManagerPlugin(Plugin):
             region = match.group("region")
 
         if region:
-            return self._region_utils.verify_region(region)
+            return region
         else:
             raise AwsWrapperError(
                 Messages.get_formatted("AwsSecretsManagerPlugin.MissingRequiredConfigParameter",
