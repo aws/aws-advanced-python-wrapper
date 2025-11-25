@@ -14,7 +14,6 @@
 
 import psycopg
 import pytest
-from mysql.connector import CMySQLConnection
 from sqlalchemy import PoolProxiedConnection
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -22,6 +21,14 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
+
+try:
+    from mysql.connector import CMySQLConnection
+    HAS_C_MYSQL_CONNECTION = True
+except ImportError:
+    # CMySQLConnection not available (e.g., Python 3.13 with mysql-connector-python 9.0.0)
+    HAS_C_MYSQL_CONNECTION = False
+    CMySQLConnection = None
 
 
 @pytest.fixture
@@ -40,7 +47,12 @@ def mock_pool_conn(mocker, mock_conn):
 
 @pytest.fixture
 def mock_invalid_conn(mocker):
-    return mocker.MagicMock(spec=CMySQLConnection)
+    if HAS_C_MYSQL_CONNECTION:
+        return mocker.MagicMock(spec=CMySQLConnection)
+    else:
+        # Use a different invalid connection type when CMySQLConnection is not available
+        # This simulates an invalid connection type for error testing
+        return mocker.MagicMock(spec=object)
 
 
 @pytest.fixture
