@@ -234,6 +234,8 @@ class ReadWriteSplittingConnectionManager(Plugin):
                 logger.debug("ReadWriteSplittingPlugin.ErrorSwitchingToCachedReader", self._reader_host_info.url)
 
                 ReadWriteSplittingConnectionManager.close_connection(self._reader_connection)
+                self._reader_connection = None
+                self._reader_host_info = None
                 self._initialize_reader_connection()
 
         if self._is_writer_conn_from_internal_pool:

@@ -186,6 +186,9 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
                 
                 actual_role = self._plugin_service.get_host_role(candidate_conn)
                 logger.debug(f"Connection role verification: expected={role}, actual={actual_role}")
+
+                instance_connected_to = self._plugin_service.identify_connection(candidate_conn)
+                logger.debug(f"Connection to the instance: expected={role}, instance={instance_connected_to}")
                 
                 if actual_role != role:
                     logger.debug(f"Role mismatch, closing connection and retrying")

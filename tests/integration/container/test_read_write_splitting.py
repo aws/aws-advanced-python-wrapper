@@ -348,7 +348,7 @@ class TestReadWriteSplitting:
             self, test_driver: TestDriver, props: Properties, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         WrapperProperties.SRW_VERIFY_NEW_CONNECTIONS.set(props, "False")
-        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(conn_utils.writer_cluster_host), **props) as conn:
             writer_id = rds_utils.query_instance_id(conn)
 
             old_cursor = conn.cursor()
