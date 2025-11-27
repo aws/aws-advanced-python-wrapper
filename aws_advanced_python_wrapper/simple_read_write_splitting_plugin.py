@@ -81,7 +81,7 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
         if self.verify_new_connections:
             conn = self._get_verified_connection(self._properties, self._write_endpoint_host_info, HostRole.WRITER)
         else:
-            conn = self._plugin_service.connect(self._write_endpoint_host_info, self._properties, self)
+            conn = self._plugin_service.connect(self._write_endpoint_host_info, self._properties, None)
 
         return conn, self._write_endpoint_host_info
     
@@ -93,71 +93,115 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
         if self.verify_new_connections:
             conn = self._get_verified_connection(self._properties, self._read_endpoint_host_info, HostRole.READER)
         else:
-            conn = self._plugin_service.connect(self._read_endpoint_host_info, self._properties, self)
+            conn = self._plugin_service.connect(self._read_endpoint_host_info, self._properties, None)
 
         return conn, self._read_endpoint_host_info
 
     def get_verified_initial_connection(self, host_info: HostInfo, props: Properties, is_initial_connection: bool, connect_func: Callable) -> Optional[Connection]:
+        logger.debug(f"get_verified_initial_connection called: host={host_info.host if host_info else None}, is_initial={is_initial_connection}, verify_enabled={self.verify_new_connections}")
+        
         if not is_initial_connection or not self.verify_new_connections:
-            # No verification required, continue with normal workflow.
+            logger.debug("No verification required, using normal workflow")
             return connect_func()
         
+        logger.debug(f"Starting connection verification for host: {host_info.host}")
         url_type: RdsUrlType = self._rds_utils.identify_rds_type(host_info.host)
+        logger.debug(f"Identified URL type: {url_type}")
+        
         conn: Optional[Connection] = None
 
         if url_type == RdsUrlType.RDS_WRITER_CLUSTER or (self.verify_opened_connection_type is not None and self.verify_opened_connection_type == HostRole.WRITER):
+            logger.debug("Attempting to get verified WRITER connection")
             conn = self._get_verified_connection(props, host_info, HostRole.WRITER, connect_func)
         elif url_type == RdsUrlType.RDS_READER_CLUSTER or (self.verify_opened_connection_type is not None and self.verify_opened_connection_type == HostRole.READER):
+            logger.debug("Attempting to get verified READER connection")
             conn = self._get_verified_connection(props, host_info, HostRole.READER, connect_func)
+        else:
+            logger.debug(f"No specific verification needed for URL type: {url_type}")
 
         if conn is None:
-            # Can't get verified reader connection, continue with normal workflow.
+            logger.debug("Could not get verified connection, falling back to normal workflow")
             conn = connect_func()
+        else:
+            logger.debug("Successfully obtained verified connection")
         
+        logger.debug("Setting initial connection host info")
         self._set_initial_connection_host_info(conn, host_info)
+        logger.debug("get_verified_initial_connection completed")
         return conn
 
     def _set_initial_connection_host_info(self, conn: Connection, host_info: HostInfo):
+        logger.debug(f"_set_initial_connection_host_info called: host_info={host_info.host if host_info else None}")
+        
         if self.set_host_list_provider_service is None:
+            logger.debug("set_host_list_provider_service is None, returning early")
             return
         
         if host_info is None:
+            logger.debug("host_info is None, attempting to identify connection")
             try: 
                 host_info = self._plugin_service.identify_connection(conn)
-            except Exception:
+                logger.debug(f"Identified connection host_info: {host_info.host if host_info else None}")
+            except Exception as e:
+                logger.debug(f"Failed to identify connection: {e}")
                 return
             
         if host_info is not None and self._host_list_provider_service is not None:
+            logger.debug(f"Setting initial_connection_host_info to: {host_info.host}")
             self._host_list_provider_service.initial_connection_host_info = host_info
+        else:
+            logger.debug(f"Cannot set host info: host_info={host_info is not None}, provider_service={self._host_list_provider_service is not None}")
     
     def _get_verified_connection(self, props: Properties, host_info: HostInfo, role: HostRole, connect_func: Callable = None) -> Connection:
+        logger.debug(f"_get_verified_connection called: host={host_info.host if host_info else None}, role={role}, timeout_ms={self.connect_retry_timeout_ms}")
+        
         end_time_nano = perf_counter_ns() + (self.connect_retry_timeout_ms * 1000000)
+        logger.debug(f"Connection retry will timeout at: {end_time_nano}")
 
         candidate_conn: Optional[Connection]
+        attempt = 0
 
         while perf_counter_ns() < end_time_nano:
+            attempt += 1
+            logger.debug(f"Connection verification attempt #{attempt}")
             candidate_conn = None
 
             try:
                 if connect_func is not None:
+                    logger.debug("Using provided connect_func to establish connection")
                     candidate_conn = connect_func()
                 elif host_info is not None:
-                    candidate_conn = self._plugin_service.connect(host_info, props, self)
+                    logger.debug(f"Using plugin_service.connect to connect to {host_info.host}")
+                    candidate_conn = self._plugin_service.connect(host_info, props, None)
                 else:
-                    # Unable to connect to verify role.
-                    break
+                    logger.debug("No connect_func or host_info provided, cannot verify role")
+                    return None
 
-                if candidate_conn is None or self._plugin_service.get_host_role(candidate_conn) != role:
+                logger.debug(f"Connection established: {candidate_conn is not None}")
+                
+                if candidate_conn is None:
+                    logger.debug("Connection is None, retrying")
+                    self._delay()
+                    continue
+                
+                actual_role = self._plugin_service.get_host_role(candidate_conn)
+                logger.debug(f"Connection role verification: expected={role}, actual={actual_role}")
+                
+                if actual_role != role:
+                    logger.debug(f"Role mismatch, closing connection and retrying")
                     ReadWriteSplittingConnectionManager.close_connection(candidate_conn)
                     self._delay()
                     continue
 
-                # Connection valid and verified.
+                logger.debug("Connection verified successfully")
                 return candidate_conn
+                
             except Exception as e:
+                logger.debug(f"Exception during connection attempt #{attempt}: {e}")
                 ReadWriteSplittingConnectionManager.close_connection(candidate_conn)
                 self._delay()
 
+        logger.debug(f"Connection verification timed out after {attempt} attempts")
         return None
 
     def old_reader_can_be_used(self, reader_host_info: HostInfo) -> bool:

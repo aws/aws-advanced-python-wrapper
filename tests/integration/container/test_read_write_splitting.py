@@ -70,9 +70,14 @@ class TestReadWriteSplitting:
 
     @pytest.fixture(autouse=True)
     def clear_caches(self):
+        # Clear wrapper caches
         RdsHostListProvider._topology_cache.clear()
         RdsHostListProvider._is_primary_cluster_id_cache.clear()
         RdsHostListProvider._cluster_ids_to_update.clear()
+        
+        # Force DNS refresh by clearing any internal connection pools
+        ConnectionProviderManager.release_resources()
+        ConnectionProviderManager.reset_provider()
 
     @pytest.fixture
     def props(self, plugin_config, conn_utils):
@@ -83,6 +88,8 @@ class TestReadWriteSplitting:
         if plugin_name == "srw":
             WrapperProperties.SRW_WRITE_ENDPOINT.set(p, conn_utils.writer_cluster_host)
             WrapperProperties.SRW_READ_ENDPOINT.set(p, conn_utils.reader_cluster_host)
+            WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS.set(p, "30000")
+            WrapperProperties.SRW_CONNECT_RETRY_INTERVAL_MS.set(p, "1000")
 
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
                 or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
@@ -110,15 +117,29 @@ class TestReadWriteSplitting:
         return props
 
     @pytest.fixture
-    def proxied_props(self, props, conn_utils):
+    def proxied_props(self, props, plugin_config, conn_utils):
+        plugin_name, _ = plugin_config
         props_copy = props.copy()
+
+        # Add simple plugin specific configuration
+        if plugin_name == "srw":
+            WrapperProperties.SRW_WRITE_ENDPOINT.set(props_copy, f"{conn_utils.proxy_writer_cluster_host}:{conn_utils.proxy_port}")
+            WrapperProperties.SRW_READ_ENDPOINT.set(props_copy, f"{conn_utils.proxy_reader_cluster_host}:{conn_utils.proxy_port}")
+
         endpoint_suffix = TestEnvironment.get_current().get_proxy_database_info().get_instance_endpoint_suffix()
         WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.set(props_copy, f"?.{endpoint_suffix}:{conn_utils.proxy_port}")
         return props_copy
 
     @pytest.fixture
-    def proxied_failover_props(self, failover_props, conn_utils):
+    def proxied_failover_props(self, failover_props, plugin_config, conn_utils):
+        plugin_name, _ = plugin_config
         props_copy = failover_props.copy()
+
+        # Add simple plugin specific configuration
+        if plugin_name == "srw":
+            WrapperProperties.SRW_WRITE_ENDPOINT.set(props_copy, f"{conn_utils.proxy_writer_cluster_host}:{conn_utils.proxy_port}")
+            WrapperProperties.SRW_READ_ENDPOINT.set(props_copy, f"{conn_utils.proxy_reader_cluster_host}:{conn_utils.proxy_port}")
+            
         endpoint_suffix = TestEnvironment.get_current().get_proxy_database_info().get_instance_endpoint_suffix()
         WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.set(props_copy, f"?.{endpoint_suffix}:{conn_utils.proxy_port}")
         return props_copy
@@ -132,14 +153,14 @@ class TestReadWriteSplitting:
         ProxyHelper.enable_all_connectivity()
 
     def test_connect_to_writer__switch_read_only(
-            self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
+            self, test_driver: TestDriver, props, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
             writer_id = rds_utils.query_instance_id(conn)
 
             conn.read_only = True
             reader_id = rds_utils.query_instance_id(conn)
-            assert writer_id != reader_id
+            assert writer_id != reader_id # srw fails here
 
             conn.read_only = True
             current_id = rds_utils.query_instance_id(conn)
@@ -283,9 +304,11 @@ class TestReadWriteSplitting:
         with AwsWrapperConnection.connect(target_driver_connect, **connect_params, **proxied_props) as conn:
             writer_id = rds_utils.query_instance_id(conn)
 
+            # Disable all reader instance ids and reader cluster endpoint.
             instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
             for i in range(1, len(instance_ids)):
                 ProxyHelper.disable_connectivity(instance_ids[i])
+            ProxyHelper.disable_connectivity(test_environment.get_proxy_database_info().get_cluster_read_only_endpoint())
 
             conn.read_only = True
             current_id = rds_utils.query_instance_id(conn)
@@ -301,7 +324,7 @@ class TestReadWriteSplitting:
             assert writer_id != current_id
 
     def test_set_read_only_true__closed_connection(
-            self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
+            self, test_driver: TestDriver, props, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props)
         conn.close()
@@ -322,8 +345,9 @@ class TestReadWriteSplitting:
                 conn.read_only = False
 
     def test_execute__old_connection(
-            self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, rds_utils):
+            self, test_driver: TestDriver, props: Properties, conn_utils, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        WrapperProperties.SRW_VERIFY_NEW_CONNECTIONS.set(props, "False")
         with AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(), **props) as conn:
             writer_id = rds_utils.query_instance_id(conn)
 
@@ -365,6 +389,7 @@ class TestReadWriteSplitting:
             instance_ids = [instance.get_instance_id() for instance in test_environment.get_instances()]
             for i in range(1, len(instance_ids)):
                 ProxyHelper.disable_connectivity(instance_ids[i])
+            ProxyHelper.disable_connectivity(test_environment.get_proxy_database_info().get_cluster_read_only_endpoint())
 
             # Force internal reader connection to the writer instance
             conn.read_only = True
@@ -793,11 +818,10 @@ class TestReadWriteSplitting:
             final_writer_connection_id = rds_utils.query_instance_id(conn)
             assert writer_connection_id == final_writer_connection_id
 
-    """Tests custom pool mapping together with internal connection pools and the leastConnections
+    """ Tests custom pool mapping together with internal connection pools and the leastConnections
     host selection strategy. This test overloads one reader with connections and then verifies
     that new connections are sent to the other readers until their connection count equals that of
-    the overloaded reader.
-    """
+    the overloaded reader. """
 
     @enable_on_num_instances(min_instances=5)
     def test_pooled_connection__least_connections__pool_mapping(

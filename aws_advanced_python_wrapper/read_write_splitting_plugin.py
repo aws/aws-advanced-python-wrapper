@@ -118,10 +118,8 @@ class ReadWriteSplittingConnectionManager(Plugin):
             return
 
         if self._connection_handler.should_update_writer_with_current_conn(current_conn, current_host, self._writer_connection):
-            self.close_connection(self._writer_connection)
             self._set_writer_connection(current_conn, current_host)
         elif self._connection_handler.should_update_reader_with_current_conn(current_conn, current_host, self._reader_connection):
-            self.close_connection(self._reader_connection)
             self._set_reader_connection(current_conn, current_host)
 
     def _set_writer_connection(self, writer_conn: Connection, writer_host_info: HostInfo):
@@ -138,7 +136,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
         conn, writer_host = self._connection_handler.open_new_writer_connection()
 
         if conn is None:
-            self.log_and_raise_exception("ReadWriteSplittingPlugin.WriterUnavailable")
+            self.log_and_raise_exception("ReadWriteSplittingPlugin.FailedToConnectToWriter")
             return
         
         provider = self._conn_provider_manager.get_connection_provider(writer_host, self._properties)
@@ -235,7 +233,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             except Exception:
                 logger.debug("ReadWriteSplittingPlugin.ErrorSwitchingToCachedReader", self._reader_host_info.url)
 
-                self._close_connection_if_idle(self._reader_connection)
+                ReadWriteSplittingConnectionManager.close_connection(self._reader_connection)
                 self._initialize_reader_connection()
 
         if self._is_writer_conn_from_internal_pool:
@@ -275,22 +273,24 @@ class ReadWriteSplittingConnectionManager(Plugin):
             if (internal_conn != current_conn and 
                 self._is_connection_usable(internal_conn, driver_dialect)):
                 internal_conn.close()
+                if internal_conn == self._writer_connection:
+                    self._writer_connection = None
+                    self._writer_host_info = None
+                if internal_conn == self._reader_connection:
+                    self._reader_connection = None
+                    self._reader_host_info = None
         except Exception:
             # Ignore exceptions during cleanup - connection might already be dead
             pass
-        finally:
-            # Always clear cached references to prevent reuse of dead connections
-            if internal_conn == self._writer_connection:
-                self._writer_connection = None
-                self._writer_host_info = None
-            if internal_conn == self._reader_connection:
-                self._reader_connection = None
-                self._reader_host_info = None
 
     def _close_idle_connections(self):
         logger.debug("ReadWriteSplittingPlugin.ClosingInternalConnections")
         self._close_connection_if_idle(self._reader_connection)
         self._close_connection_if_idle(self._writer_connection)
+
+        # Always clear cached references
+        self.readerConnection = None
+        self.writerConnection = None
 
     @staticmethod
     def log_and_raise_exception(log_msg: str):
@@ -424,6 +424,7 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
 
             updated_host = deepcopy(current_host)
             updated_host.role = current_role
+            self._plugin_service.initial_connection_host_info = updated_host
             if self._host_list_provider_service is not None:
                 self._host_list_provider_service.initial_connection_host_info = updated_host
 
@@ -452,10 +453,10 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
         self._hosts = hosts
 
     def should_update_writer_with_current_conn(self, current_conn, current_host: HostInfo, writer_conn: Connection) -> bool:
-        return self.is_writer_host(current_host) and current_conn != writer_conn
+        return self.is_writer_host(current_host)
 
     def should_update_reader_with_current_conn(self, current_conn, current_host, reader_conn: Connection) -> bool:
-        return current_conn != reader_conn
+        return True
     
     def is_writer_host(self, current_host: HostInfo) -> bool:
         return current_host.role == HostRole.WRITER
