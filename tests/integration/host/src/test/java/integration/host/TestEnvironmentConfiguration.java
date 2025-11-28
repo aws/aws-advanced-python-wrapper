@@ -18,6 +18,10 @@ package integration.host;
 
 import integration.DebugEnv;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
 public class TestEnvironmentConfiguration {
 
   public boolean excludeDocker =
@@ -98,6 +102,9 @@ public class TestEnvironmentConfiguration {
   public String awsSessionToken = System.getenv("AWS_SESSION_TOKEN");
 
   public String iamUser = System.getenv("IAM_USER");
+
+  final String numInstancesVar = System.getenv("NUM_INSTANCES");
+  final Integer numInstances = numInstancesVar == null ? null : Integer.parseInt(numInstancesVar);
 
   public DebugEnv debugEnv = DebugEnv.fromEnv();
 }

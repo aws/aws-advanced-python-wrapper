@@ -132,10 +132,13 @@ class RdsTestUtility:
             "RdsTestUtility.InstanceDescriptionTimeout", instance_id, desired_status, wait_time_mins))
 
     def wait_until_cluster_has_desired_status(self, cluster_id: str, desired_status: str) -> None:
+        stop_time = datetime.now() + timedelta(minutes=10)
         cluster_info = self.get_db_cluster(cluster_id)
         status = cluster_info.get("Status")
         while status != desired_status:
-            sleep(1)
+            if datetime.now() > stop_time:
+                raise TimeoutError(f"Cluster {cluster_id} did not reach status '{desired_status}' within 10 minutes.")
+            sleep(10)
             cluster_info = self.get_db_cluster(cluster_id)
             status = cluster_info.get("Status")
 

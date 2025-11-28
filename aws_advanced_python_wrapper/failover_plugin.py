@@ -351,21 +351,25 @@ class FailoverPlugin(Plugin):
         """
         conn = self._plugin_service.current_connection
         if conn is None:
-            return
+            return None
+
+        driver_dialect = self._plugin_service.driver_dialect
 
         if self._plugin_service.is_in_transaction:
             self._plugin_service.update_in_transaction(True)
             try:
+                driver_dialect.execute("Connection.rollback", lambda: conn.rollback())
                 conn.rollback()
             except Exception:
                 pass
 
-        driver_dialect = self._plugin_service.driver_dialect
-        if driver_dialect is not None and not driver_dialect.is_closed(conn):
+        if not driver_dialect.is_closed(conn):
             try:
-                conn.close()
+                return driver_dialect.execute("Connection.close", lambda: conn.close())
             except Exception:
                 pass
+
+        return None
 
     def _invalid_invocation_on_closed_connection(self):
         if not self._closed_explicitly:

@@ -67,7 +67,7 @@ class SqlAlchemyDriverDialect(DriverDialect):
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
             if conn is None:
-                return
+                return None
 
         return self._underlying_driver.abort_connection(conn)
 
@@ -122,6 +122,6 @@ class SqlAlchemyDriverDialect(DriverDialect):
             to_driver_conn = to_conn.driver_connection
 
         if from_driver_conn is None or to_driver_conn is None:
-            return
+            return None
 
         return self._underlying_driver.transfer_session_state(from_driver_conn, to_driver_conn)
