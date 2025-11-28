@@ -27,9 +27,19 @@ class PgExceptionHandler(ExceptionHandler):
     _PAM_AUTHENTICATION_FAILED_MSG = "PAM authentication failed"
     _CONNECTION_FAILED = "connection failed"
     _CONSUMING_INPUT_FAILED = "consuming input failed"
+    _CONNECTION_SOCKET_CLOSED = "connection socket closed"
 
-    _NETWORK_ERRORS: List[str]
-    _ACCESS_ERRORS: List[str]
+    _NETWORK_ERROR_MESSAGES: List[str] = [
+        _CONNECTION_FAILED,
+        _CONSUMING_INPUT_FAILED,
+        _CONNECTION_SOCKET_CLOSED
+    ]
+    _ACCESS_ERROR_MESSAGES: List[str] = [
+        _PASSWORD_AUTHENTICATION_FAILED_MSG,
+        _PAM_AUTHENTICATION_FAILED_MSG
+    ]
+    _NETWORK_ERROR_CODES: List[str]
+    _ACCESS_ERROR_CODES: List[str]
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
@@ -43,7 +53,7 @@ class PgExceptionHandler(ExceptionHandler):
                 # getattr may throw an AttributeError if the error does not have a `sqlstate` attribute
                 pass
 
-        if sql_state is not None and sql_state in self._NETWORK_ERRORS:
+        if sql_state is not None and sql_state in self._NETWORK_ERROR_CODES:
             return True
 
         if isinstance(error, OperationalError):
@@ -51,7 +61,7 @@ class PgExceptionHandler(ExceptionHandler):
                 return False
             # Check the error message if this is a generic error
             error_msg: str = error.args[0]
-            return self._CONNECTION_FAILED in error_msg or self._CONSUMING_INPUT_FAILED in error_msg
+            return any(msg in error_msg for msg in self._NETWORK_ERROR_MESSAGES)
 
         return False
 
@@ -63,7 +73,7 @@ class PgExceptionHandler(ExceptionHandler):
             if sql_state is None and hasattr(error, "sqlstate") and error.sqlstate is not None:
                 sql_state = error.sqlstate
 
-            if sql_state is not None and sql_state in self._ACCESS_ERRORS:
+            if sql_state is not None and sql_state in self._ACCESS_ERROR_CODES:
                 return True
 
             if isinstance(error, OperationalError):
@@ -72,15 +82,14 @@ class PgExceptionHandler(ExceptionHandler):
 
                 # Check the error message if this is a generic error
                 error_msg: str = error.args[0]
-                if self._PASSWORD_AUTHENTICATION_FAILED_MSG in error_msg \
-                        or self._PAM_AUTHENTICATION_FAILED_MSG in error_msg:
+                if any(msg in error_msg for msg in self._ACCESS_ERROR_MESSAGES):
                     return True
 
         return False
 
 
 class SingleAzPgExceptionHandler(PgExceptionHandler):
-    _NETWORK_ERRORS: List[str] = [
+    _NETWORK_ERROR_CODES: List[str] = [
         "53",  # insufficient resources
         "57P01",  # admin shutdown
         "57P02",  # crash shutdown
@@ -92,14 +101,14 @@ class SingleAzPgExceptionHandler(PgExceptionHandler):
         "XX"  # internal error(backend)
     ]
 
-    _ACCESS_ERRORS: List[str] = [
+    _ACCESS_ERROR_CODES: List[str] = [
         "28000",  # PAM authentication errors
         "28P01"
     ]
 
 
 class MultiAzPgExceptionHandler(PgExceptionHandler):
-    _NETWORK_ERRORS: List[str] = [
+    _NETWORK_ERROR_CODES: List[str] = [
         "28000",  # access denied during reboot, this should be considered a temporary failure
         "53",  # insufficient resources
         "57P01",  # admin shutdown
@@ -112,4 +121,4 @@ class MultiAzPgExceptionHandler(PgExceptionHandler):
         "XX"  # internal error(backend)
     ]
 
-    _ACCESS_ERRORS: List[str] = ["28P01"]
+    _ACCESS_ERROR_CODES: List[str] = ["28P01"]

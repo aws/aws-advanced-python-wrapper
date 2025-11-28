@@ -22,7 +22,8 @@ from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from tests.integration.container.utils.conditions import (
-    disable_on_features, enable_on_deployments)
+    disable_on_engines, disable_on_features, enable_on_deployments)
+from tests.integration.container.utils.database_engine import DatabaseEngine
 from tests.integration.container.utils.database_engine_deployment import \
     DatabaseEngineDeployment
 from tests.integration.container.utils.driver_helper import DriverHelper
@@ -44,6 +45,7 @@ logger = getLogger(__name__)
 @disable_on_features([TestEnvironmentFeatures.PERFORMANCE,
                       TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
                       TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT])
+@disable_on_engines([DatabaseEngine.MYSQL])
 class TestHostMonitoringV2:
     @pytest.fixture(scope='class')
     def rds_utils(self):
@@ -55,6 +57,8 @@ class TestHostMonitoringV2:
         p: Properties = Properties({"plugins": "host_monitoring_v2",
                                     "socket_timeout": 30,
                                     "connect_timeout": 10,
+                                    "monitoring-connect_timeout": 5,
+                                    "monitoring-socket_timeout": 5,
                                     "failure_detection_time_ms": 5_000,
                                     "failure_detection_interval_ms": 5_000,
                                     "failure_detection_count": 1,
