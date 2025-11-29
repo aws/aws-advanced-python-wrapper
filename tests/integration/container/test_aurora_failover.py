@@ -77,8 +77,8 @@ class TestAuroraFailover:
         features = TestEnvironment.get_current().get_features()
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in features \
                 or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in features:
-            WrapperProperties.ENABLE_TELEMETRY.set(p, False)
-            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(p, False)
+            WrapperProperties.ENABLE_TELEMETRY.set(p, True)
+            WrapperProperties.TELEMETRY_SUBMIT_TOPLEVEL.set(p, True)
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in features:
             WrapperProperties.TELEMETRY_TRACES_BACKEND.set(p, "XRAY")
         if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in features:

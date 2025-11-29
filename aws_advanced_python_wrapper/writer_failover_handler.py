@@ -188,7 +188,6 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 else:
                     success = self.is_current_host_writer(latest_topology, initial_writer_host)
 
-            logger.debug("[TaskA] success: " + str(success))
             self._plugin_service.set_availability(initial_writer_host.as_aliases(), HostAvailability.AVAILABLE)
             return WriterFailoverResult(success, False, latest_topology, conn if success else None, "TaskA", None)
 
