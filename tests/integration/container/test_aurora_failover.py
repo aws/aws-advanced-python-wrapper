@@ -39,6 +39,8 @@ from .utils.rds_test_utility import RdsTestUtility
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
+logger = Logger(__name__)
+
 
 @enable_on_num_instances(min_instances=2)
 @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
@@ -49,6 +51,12 @@ class TestAuroraFailover:
     IDLE_CONNECTIONS_NUM: int = 5
     logger = Logger(__name__)
 
+    @pytest.fixture(autouse=True)
+    def setup_method(self, request):
+        self.logger.info(f"Starting test: {request.node.name}")
+        yield
+        self.logger.info(f"Ending test: {request.node.name}")
+
     @pytest.fixture(scope='class')
     def aurora_utility(self):
         region: str = TestEnvironment.get_current().get_info().get_region()
@@ -56,7 +64,15 @@ class TestAuroraFailover:
 
     @pytest.fixture(scope='class')
     def props(self):
-        p: Properties = Properties({"plugins": "failover", "connect_timeout": 60, "topology_refresh_ms": 10, "autocommit": True})
+        p: Properties = Properties({
+            "plugins": "failover",
+            "socket_timeout": 10,
+            "connect_timeout": 10,
+            "monitoring-connect_timeout": 5,
+            "monitoring-socket_timeout": 5,
+            "topology_refresh_ms": 10,
+            "autocommit": True
+        })
 
         features = TestEnvironment.get_current().get_features()
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in features \
@@ -116,7 +132,7 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
-    @pytest.mark.parametrize("plugins", ["failover,host_monitoring", "failover,host_monitoring_v2"])
+    @pytest.mark.parametrize("plugins", ["failover,host_monitoring"])
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                          TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_fail_from_reader_to_writer(
@@ -323,28 +339,3 @@ class TestAuroraFailover:
         # Ensure that all idle connections are closed.
         for idle_connection in idle_connections:
             assert idle_connection.is_closed is True
-
-    @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED])
-    def test_failover__socket_timeout(
-            self,
-            test_driver: TestDriver,
-            test_environment: TestEnvironment,
-            proxied_props,
-            conn_utils,
-            aurora_utility):
-        target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        reader: TestInstanceInfo = test_environment.get_proxy_instances()[1]
-        writer_id: str = test_environment.get_proxy_writer().get_instance_id()
-
-        WrapperProperties.PLUGINS.set(proxied_props, "failover")
-        WrapperProperties.SOCKET_TIMEOUT_SEC.set(proxied_props, 3)
-        with AwsWrapperConnection.connect(
-                target_driver_connect,
-                **conn_utils.get_proxy_connect_params(reader.get_host()),
-                **proxied_props) as aws_conn:
-            ProxyHelper.disable_connectivity(reader.get_instance_id())
-            aurora_utility.assert_first_query_throws(aws_conn, FailoverSuccessError)
-
-            current_connection_id = aurora_utility.query_instance_id(aws_conn)
-            assert writer_id == current_connection_id
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True

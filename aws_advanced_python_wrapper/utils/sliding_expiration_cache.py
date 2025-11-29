@@ -126,7 +126,6 @@ class SlidingExpirationCacheWithCleanupThread(SlidingExpirationCache, Generic[K,
         while True:
             try:
                 sleep(self._cleanup_interval_ns / 1_000_000_000)
-                logger.debug("SlidingExpirationCache.CleaningUp")
                 self._cleanup_time_ns.set(perf_counter_ns() + self._cleanup_interval_ns)
                 keys = [key for key, _ in self._cdict.items()]
                 for key in keys:

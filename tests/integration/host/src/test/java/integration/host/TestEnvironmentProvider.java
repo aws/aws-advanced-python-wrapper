@@ -26,7 +26,9 @@ import integration.TestEnvironmentRequest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
@@ -53,6 +55,23 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
     ArrayList<TestTemplateInvocationContext> resultContextList = new ArrayList<>();
 
     TestEnvironmentConfiguration config = new TestEnvironmentConfiguration();
+
+    final List<Integer> validNumInstances = Arrays.asList(1, 2, 3, 5);
+    final List<Integer> instancesToTest;
+    if (config.numInstances != null) {
+      System.out.printf(
+              "The NUM_INSTANCES environment variable was set to %d. All test configurations for different cluster sizes will be skipped.%n",
+              config.numInstances);
+      if (!validNumInstances.contains(config.numInstances)) {
+        throw new RuntimeException(
+                String.format(
+                        "The NUM_INSTANCES environment variable was set to an invalid value: %d. Valid values are: %s.",
+                        config.numInstances, validNumInstances));
+      }
+      instancesToTest = Arrays.asList(config.numInstances);
+    } else {
+      instancesToTest =  validNumInstances;
+    }
 
     for (DatabaseEngineDeployment deployment : DatabaseEngineDeployment.values()) {
       if (deployment == DatabaseEngineDeployment.DOCKER && config.excludeDocker) {
@@ -86,7 +105,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
             continue;
           }
 
-          for (int numOfInstances : Arrays.asList(1, 2, 3, 5)) {
+          for (int numOfInstances : instancesToTest) {
             if (instances == DatabaseInstances.SINGLE_INSTANCE && numOfInstances > 1) {
               continue;
             }

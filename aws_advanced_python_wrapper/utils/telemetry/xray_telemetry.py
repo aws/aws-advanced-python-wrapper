@@ -78,7 +78,7 @@ def post_copy(context: XRayTelemetryContext, trace_level: TelemetryTraceLevel):
         return
 
     if trace_level in [TelemetryTraceLevel.FORCE_TOP_LEVEL, TelemetryTraceLevel.TOP_LEVEL]:
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(thread_name_prefix=context.get_name()) as executor:
             future = executor.submit(_clone_and_close_context, context, trace_level)
             future.result()
     else:

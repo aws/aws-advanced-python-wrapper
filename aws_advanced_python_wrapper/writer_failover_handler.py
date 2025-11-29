@@ -120,9 +120,9 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
             executor = ThreadPoolExecutor(thread_name_prefix="WriterFailoverHandlerExecutor")
             try:
+                futures = [executor.submit(self.reconnect_to_writer, writer_host),
+                           executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
                 try:
-                    futures = [executor.submit(self.reconnect_to_writer, writer_host),
-                               executor.submit(self.wait_for_new_writer, current_topology, writer_host)]
                     for future in as_completed(futures, timeout=self._max_failover_timeout_sec):
                         result = future.result()
                         if result.is_connected:
@@ -132,9 +132,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                             return result
                 except TimeoutError:
                     self._timeout_event.set()
-                finally:
-                    self._timeout_event.set()
+                    for future in futures:
+                        future.cancel()
             finally:
+                self._timeout_event.set()
                 executor.shutdown(wait=False)
 
         return WriterFailoverHandlerImpl.failed_writer_failover_result

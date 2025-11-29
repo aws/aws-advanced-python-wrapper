@@ -410,7 +410,7 @@ def test_invalidate_current_connection_with_open_connection(plugin_service_mock,
 
     plugin = FailoverPlugin(plugin_service_mock, Properties())
 
-    with mock.patch.object(conn_mock, "close") as close_mock:
+    with mock.patch.object(driver_dialect_mock, "execute") as close_mock:
         with mock.patch.object(driver_dialect_mock, "is_closed") as is_closed_mock:
             driver_dialect_mock.is_closed.return_value = False
 

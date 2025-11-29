@@ -28,6 +28,8 @@ from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
 from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    MonitoringThreadContainer
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
@@ -67,6 +69,8 @@ def pytest_runtest_setup(item):
     else:
         TestEnvironment.get_current().set_current_driver(None)
 
+    logger.info("Starting test preparation for: " + test_name)
+
     segment: Optional[Segment] = None
     if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
         segment = xray_recorder.begin_segment("test: setup")
@@ -92,7 +96,7 @@ def pytest_runtest_setup(item):
         # Wait up to 5min
         instances: List[str] = list()
         start_time = timeit.default_timer()
-        while (len(instances) != request.get_num_of_instances()
+        while (len(instances) < request.get_num_of_instances()
                or len(instances) == 0
                or not rds_utility.is_db_instance_writer(instances[0])) and (
                 timeit.default_timer() - start_time) < 300:  # 5 min
@@ -135,6 +139,7 @@ def pytest_runtest_setup(item):
         DatabaseDialectManager._known_endpoint_dialects.clear()
         CustomEndpointPlugin._monitors.clear()
         CustomEndpointMonitor._custom_endpoint_info_cache.clear()
+        MonitoringThreadContainer.clean_up()
 
         ConnectionProviderManager.reset_provider()
         DatabaseDialectManager.reset_custom_dialect()

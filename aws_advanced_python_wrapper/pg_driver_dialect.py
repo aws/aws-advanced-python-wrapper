@@ -48,6 +48,7 @@ class PgDriverDialect(DriverDialect):
         "Connection.is_read_only",
         "Connection.set_read_only",
         "Connection.rollback",
+        "Connection.close",
         "Connection.cursor",
         "Cursor.close",
         "Cursor.callproc",
