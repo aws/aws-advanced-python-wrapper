@@ -14,36 +14,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 if TYPE_CHECKING:
-    from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
 
 import psycopg # type: ignore
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
-from aws_advanced_python_wrapper.connection_provider import \
-    ConnectionProviderManager
 from aws_advanced_python_wrapper.errors import (
     FailoverFailedError, FailoverSuccessError,
     TransactionResolutionUnknownError)
-from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
-    SqlAlchemyPooledConnectionProvider
-
-
-def configure_pool(host_info: HostInfo, props: Dict[str, Any]) -> Dict[str, Any]:
-    return {"pool_size": 5}
-
-
-def get_pool_key(host_info: HostInfo, props: Dict[str, Any]) -> str:
-    # Include the URL, user, and database in the connection pool key so that a new
-    # connection pool will be opened for each different instance-user-database combination.
-    url = host_info.url
-    user = props["user"]
-    db = props["dbname"]
-    return f"{url}{user}{db}"
-
+from aws_advanced_python_wrapper.host_monitoring_plugin import MonitoringThreadContainer
 
 def configure_initial_session_states(conn: Connection):
     awscursor = conn.cursor()
@@ -84,18 +66,13 @@ if __name__ == "__main__":
         "dbname": "postgres",
         "user": "john",
         "password": "pwd",
-        "plugins": "read_write_splitting,failover,host_monitoring",
+        "plugins": "srw,failover",
+        "srw_write_endpoint": "database.cluster-xyz.us-east-1.rds.amazonaws.com",  # Replace with write endpoint
+        "srw_read_endpoint": "database.cluster-ro-xyz.us-east-1.rds.amazonaws.com",  # Replace with read endpoint
+        "srw_verify_new_connections": "True", # Enables role-verification for new endpoints
         "wrapper_dialect": "aurora-pg",
         "autocommit": True
     }
-
-    """
-    Optional: configure read/write splitting to use internal connection pools.
-    The arguments passed to SqlAlchemyConnectionProvider are optional, see  UsingTheReadWriteSplittingPlugin.md
-    for more info.
-    """
-    provider = SqlAlchemyPooledConnectionProvider(configure_pool, get_pool_key)
-    ConnectionProviderManager.set_connection_provider(provider)
 
     """ Setup step: open connection and create tables """
     with AwsWrapperConnection.connect(psycopg.Connection.connect, **params) as conn:
@@ -124,10 +101,7 @@ if __name__ == "__main__":
                 results = cursor.fetchall()
                 for record in results:
                     print(record)
-
+            
     finally:
         with AwsWrapperConnection.connect(psycopg.Connection.connect, **params) as conn:
             execute_queries_with_failover_handling(conn, "DROP TABLE bank_test")
-
-        """ If connection pools were enabled, close them here """
-        ConnectionProviderManager.release_resources()
