@@ -92,3 +92,6 @@ class SessionState:
         new_session_state.readonly = self.readonly.copy()
 
         return new_session_state
+
+    def __str__(self):
+        return f"autocommit: {self.auto_commit}, readonly: {self.readonly}"

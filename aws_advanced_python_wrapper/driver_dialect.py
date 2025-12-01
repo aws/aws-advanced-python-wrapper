@@ -38,10 +38,11 @@ class DriverDialect(ABC):
     Driver dialects help the driver-agnostic AWS Python Driver interface with the driver-specific functionality of the underlying Python Driver.
     """
     _QUERY = "SELECT 1"
+    _ALL_METHODS = "*"
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor()
+    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DriverDialectExecutor")
     _dialect_code: str = DriverDialectCodes.GENERIC
-    _network_bound_methods: Set[str] = {"*"}
+    _network_bound_methods: Set[str] = {_ALL_METHODS}
     _read_only: bool = False
     _autocommit: bool = False
     _driver_name: str = "Generic"
@@ -127,7 +128,7 @@ class DriverDialect(ABC):
             *args: Any,
             exec_timeout: Optional[float] = None,
             **kwargs: Any) -> Cursor:
-        if method_name not in self._network_bound_methods:
+        if DriverDialect._ALL_METHODS not in self.network_bound_methods and method_name not in self.network_bound_methods:
             return exec_func()
 
         if exec_timeout is None:

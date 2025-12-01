@@ -126,16 +126,19 @@ class TestBasicConnectivity:
             # That is expected exception. Test pass.
             assert True
 
-    @pytest.mark.parametrize("plugins", ["host_monitoring", "host_monitoring_v2"])
     @enable_on_num_instances(min_instances=2)
     @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
     @enable_on_features([TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_wrapper_connection_reader_cluster_with_efm_enabled(self, test_driver: TestDriver, conn_utils, plugins):
+        props: Properties = Properties({
+            WrapperProperties.PLUGINS.name: "host_monitoring",
+            "socket_timeout": 5,
+            "connect_timeout": 5,
+            "monitoring-connect_timeout": 3,
+            "monitoring-socket_timeout": 3,
+            "autocommit": True})
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        conn = AwsWrapperConnection.connect(
-            target_driver_connect,
-            **conn_utils.get_connect_params(conn_utils.reader_cluster_host),
-            plugins=plugins, connect_timeout=10)
+        conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(conn_utils.reader_cluster_host), **props)
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         result = cursor.fetchone()
