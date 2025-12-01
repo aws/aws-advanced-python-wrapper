@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
 
-import mysql.connector
+import mysql.connector # type: ignore
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.connection_provider import \
