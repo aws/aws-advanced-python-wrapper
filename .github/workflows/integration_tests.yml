@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - test/efm2-tests
 
 permissions:
   id-token: write   # This is required for requesting the JWT

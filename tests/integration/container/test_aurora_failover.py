@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import gc
 from time import sleep
 from typing import TYPE_CHECKING, List
 
@@ -21,6 +22,8 @@ import pytest
 
 from aws_advanced_python_wrapper.errors import (
     FailoverSuccessError, TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    MonitoringThreadContainer
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from .utils.conditions import (disable_on_features, enable_on_deployments,
@@ -56,6 +59,8 @@ class TestAuroraFailover:
         self.logger.info(f"Starting test: {request.node.name}")
         yield
         self.logger.info(f"Ending test: {request.node.name}")
+        MonitoringThreadContainer.clean_up()
+        gc.collect()
 
     @pytest.fixture(scope='class')
     def aurora_utility(self):
@@ -132,6 +137,7 @@ class TestAuroraFailover:
             assert aurora_utility.is_db_instance_writer(current_connection_id) is True
             assert current_connection_id != initial_writer_id
 
+    @pytest.mark.parametrize("plugins", ["failover,host_monitoring", "failover,host_monitoring_v2"])
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                          TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_fail_from_reader_to_writer(
@@ -140,12 +146,13 @@ class TestAuroraFailover:
             test_driver: TestDriver,
             conn_utils,
             proxied_props,
-            aurora_utility):
+            aurora_utility,
+            plugins):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         reader: TestInstanceInfo = test_environment.get_proxy_instances()[1]
         writer_id: str = test_environment.get_proxy_writer().get_instance_id()
 
-        proxied_props["plugins"] = "failover,host_monitoring"
+        proxied_props["plugins"] = plugins
         with AwsWrapperConnection.connect(
                 target_driver_connect,
                 **conn_utils.get_proxy_connect_params(reader.get_host()),
