@@ -30,7 +30,6 @@ from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Tuple
 
 import mysql.connector
 import psycopg
-from mysql.connector import CMySQLConnection, MySQLConnection
 
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
@@ -458,7 +457,7 @@ class TestBlueGreenDeployment:
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
             return self.pg_dialect.is_closed(conn)
-        elif isinstance(conn, CMySQLConnection) or isinstance(conn, MySQLConnection):
+        elif MySQLDriverDialect._is_mysql_connection(conn):
             return self.mysql_dialect.is_closed(conn)
         elif isinstance(conn, AwsWrapperConnection):
             return conn.is_closed
