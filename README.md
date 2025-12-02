@@ -30,7 +30,7 @@ Enhanced Failure Monitoring (EFM) is a feature available from the [Host Monitori
 
 The AWS Advanced Python Driver also works with RDS provided databases that are not Aurora.
 
-Please visit [this page](./docs/using-the-python-driver/UsingThePythonDriver.md#using-the-aws-python-driver-with-plain-rds-databases) for more information.
+Please visit [this page](./docs/using-the-python-driver/UsingThePythonDriver.md#using-the-aws-advanced-python-driver-with-plain-rds-databases) for more information.
 
 ## Getting Started
 
@@ -195,11 +195,11 @@ Psycopg and MySQL Connector/Python do not provide client-side query timeouts. Wh
 ## Getting Help and Opening Issues
 
 If you encounter a bug with the AWS Advanced Python Driver, we would like to hear about it.
-Please search the [existing issues](https://github.com/awslabs/aws-advanced-python-wrapper/issues) to see if others are also experiencing the issue before reporting the problem in a new issue. GitHub issues are intended for bug reports and feature requests. 
+Please search the [existing issues](https://github.com/aws/aws-advanced-python-wrapper/issues) to see if others are also experiencing the issue before reporting the problem in a new issue. GitHub issues are intended for bug reports and feature requests. 
 
 When opening a new issue, please fill in all required fields in the issue template to help expedite the investigation process.
 
-For all other questions, please use [GitHub discussions](https://github.com/awslabs/aws-advanced-python-wrapper/discussions).
+For all other questions, please use [GitHub discussions](https://github.com/aws/aws-advanced-python-wrapper/discussions).
 
 ## How to Contribute
 

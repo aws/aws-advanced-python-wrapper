@@ -11,7 +11,7 @@ The benchmarks do not measure the performance of target Python drivers nor the p
 
 ## Benchmark Results
 
-Tests ran on commit [3d473f6c12f495762d3b7436a97a0e6bd76361d7](https://github.com/awslabs/aws-advanced-python-wrapper/commit/3d473f6c12f495762d3b7436a97a0e6bd76361d7)
+Tests ran on commit [3d473f6c12f495762d3b7436a97a0e6bd76361d7](https://github.com/aws/aws-advanced-python-wrapper/commit/3d473f6c12f495762d3b7436a97a0e6bd76361d7)
 
 ## Summary
 | Benchmark                                                                                                                   | Overhead |
