@@ -1,13 +1,13 @@
 # Release Schedule
 
-| Release Date      | Release                                                                                    |
-|-------------------|--------------------------------------------------------------------------------------------|
-| May 16, 2024      | [Release 1.0.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.0.0) |
-| July 31, 2024     | [Release 1.1.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.1.0) |
-| October 18, 2024  | [Release 1.1.1](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.1.1) |
-| December 12, 2024 | [Release 1.2.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.2.0) |
-| July 28, 2025     | [Release 1.3.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.3.0) |
-| October 17, 2025  | [Release 1.4.0](https://github.com/awslabs/aws-advanced-python-wrapper/releases/tag/1.4.0) |
+| Release Date      | Release                                                                                |
+|-------------------|----------------------------------------------------------------------------------------|
+| May 16, 2024      | [Release 1.0.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.0.0) |
+| July 31, 2024     | [Release 1.1.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.1.0) |
+| October 18, 2024  | [Release 1.1.1](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.1.1) |
+| December 12, 2024 | [Release 1.2.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.2.0) |
+| July 28, 2025     | [Release 1.3.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.3.0) |
+| October 17, 2025  | [Release 1.4.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.4.0) |
 
 `aws-advanced-python-wrapper` [follows semver](https://semver.org/#semantic-versioning-200) which means we will only
 release breaking changes in major versions. Generally speaking patches will be released to fix existing problems without
