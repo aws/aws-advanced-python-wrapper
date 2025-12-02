@@ -156,7 +156,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
     # Pool Management
     def _configure_pool(self, host_info: HostInfo, props: Dict[str, Any]) -> Dict[str, Any]:
         """Configure connection pool settings."""
-        return {"pool_size": self.pool_maxsize}
+        return {"pool_size": self.pool_maxsize, "max_overflow": -1}
     
     @staticmethod
     def _get_pool_key(host_info: HostInfo, props: Dict[str, Any]) -> str:
@@ -195,7 +195,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
         # Set template based on database requirement
         self._template = self._template_with_db if with_db else self._template_no_db
 
-        logger.debug("Created connection %s pool with params: %s", self._pool, self._template)
+        logger.debug(f"Created connection pool {self._pool} with params: {self._template}")
 
     async def close(self) -> None:
         """Close connections - AWS wrapper handles cleanup internally."""
@@ -229,7 +229,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
     async def execute_insert(self, query: str, values: list) -> int:
         """Execute an INSERT query and return the last inserted row ID."""
         async with self.acquire_connection() as connection:
-            logger.debug("%s: %s", query, values)
+            logger.debug(f"{query}: {values}")
             async with connection.cursor() as cursor:
                 await cursor.execute(query, values)
                 return cursor.lastrowid
@@ -238,7 +238,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
     async def execute_many(self, query: str, values: list[list]) -> None:
         """Execute a query with multiple parameter sets."""
         async with self.acquire_connection() as connection:
-            logger.debug("%s: %s", query, values)
+            logger.debug(f"{query}: {values}")
             async with connection.cursor() as cursor:
                 if self.capabilities.supports_transactions:
                     await self._execute_many_with_transaction(cursor, connection, query, values)
@@ -263,7 +263,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
     async def execute_query(self, query: str, values: list | None = None) -> tuple[int, list[dict]]:
         """Execute a query and return row count and results."""
         async with self.acquire_connection() as connection:
-            logger.debug("%s: %s", query, values)
+            logger.debug(f"{query}: {values}")
             async with connection.cursor() as cursor:
                 await cursor.execute(query, values)
                 rows = await cursor.fetchall()
@@ -284,7 +284,8 @@ class AwsMySQLClient(BaseDBAsyncClient):
     async def _execute_script(self, query: str, with_db: bool) -> None:
         """Execute a multi-statement query by parsing and running statements sequentially."""
         async with self._acquire_connection(with_db) as connection:
-            logger.debug(query)
+            logger.debug(f"Executing script: {query}")
+            print(f"Executing script: {query}")
             async with connection.cursor() as cursor:
                 # Parse multi-statement queries since MySQL Connector doesn't handle them well
                 statements = sqlparse.split(query)
@@ -375,7 +376,7 @@ class TransactionWrapper(AwsMySQLClient, TransactionalDBClient):
     async def execute_many(self, query: str, values: list[list]) -> None:
         """Execute many queries without autocommit handling (already in transaction)."""
         async with self.acquire_connection() as connection:
-            logger.debug("%s: %s", query, values)
+            logger.debug(f"{query}: {values}")
             async with connection.cursor() as cursor:
                 await cursor.executemany(query, values)
 
