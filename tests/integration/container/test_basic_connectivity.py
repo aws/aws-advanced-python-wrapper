@@ -16,6 +16,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    MonitoringThreadContainer
+
 if TYPE_CHECKING:
     from .utils.test_instance_info import TestInstanceInfo
     from .utils.test_driver import TestDriver
@@ -126,12 +129,13 @@ class TestBasicConnectivity:
             # That is expected exception. Test pass.
             assert True
 
+    @pytest.mark.parametrize("plugins", ["failover,host_monitoring", "failover,host_monitoring_v2"])
     @enable_on_num_instances(min_instances=2)
     @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
     @enable_on_features([TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     def test_wrapper_connection_reader_cluster_with_efm_enabled(self, test_driver: TestDriver, conn_utils, plugins):
         props: Properties = Properties({
-            WrapperProperties.PLUGINS.name: "host_monitoring",
+            WrapperProperties.PLUGINS.name: plugins,
             "socket_timeout": 5,
             "connect_timeout": 5,
             "monitoring-connect_timeout": 3,
@@ -145,3 +149,5 @@ class TestBasicConnectivity:
         assert 1 == result[0]
 
         conn.close()
+
+        MonitoringThreadContainer.clean_up()
