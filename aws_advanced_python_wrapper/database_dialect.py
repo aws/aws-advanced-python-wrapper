@@ -177,7 +177,7 @@ class MysqlDatabaseDialect(DatabaseDialect):
 
     @property
     def host_alias_query(self) -> str:
-        return "SELECT pg_catalog.CONCAT(@@hostname, ':', @@port)"
+        return "SELECT CONCAT(@@hostname, ':', @@port)"
 
     @property
     def server_version_query(self) -> str:
