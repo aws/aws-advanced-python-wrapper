@@ -16,7 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from aws_advanced_python_wrapper.host_monitoring_plugin import MonitoringThreadContainer
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    MonitoringThreadContainer
 
 if TYPE_CHECKING:
     from .utils.test_instance_info import TestInstanceInfo
