@@ -29,7 +29,7 @@ class AwsWrapperAsyncConnector:
     """Factory class for creating AWS wrapper connections."""
     
     _executor: ThreadPoolExecutor = ThreadPoolExecutor(
-        thread_name_prefix="AwsWrapperConnectorExecutor"
+        thread_name_prefix="AwsWrapperAsyncExecutor"
     )
     
     @staticmethod
@@ -141,19 +141,17 @@ class AwsConnectionAsyncWrapper(AwsWrapperConnection):
 class TortoiseAwsClientConnectionWrapper(Generic[T_conn]):
     """Manages acquiring from and releasing connections to a pool."""
 
-    __slots__ = ("client", "connection", "_pool_init_lock", "connect_func", "with_db")
+    __slots__ = ("client", "connection", "connect_func", "with_db")
 
     def __init__(
         self, 
         client: BaseDBAsyncClient, 
-        pool_init_lock: asyncio.Lock, 
         connect_func: Callable, 
         with_db: bool = True
     ) -> None:
         self.connect_func = connect_func
         self.client = client
         self.connection: T_conn | None = None
-        self._pool_init_lock = pool_init_lock
         self.with_db = with_db
 
     async def ensure_connection(self) -> None:
@@ -175,12 +173,11 @@ class TortoiseAwsClientConnectionWrapper(Generic[T_conn]):
 class TortoiseAwsClientTransactionContext(TransactionContext):
     """Transaction context that uses a pool to acquire connections."""
 
-    __slots__ = ("client", "connection_name", "token", "_pool_init_lock")
+    __slots__ = ("client", "connection_name", "token")
 
-    def __init__(self, client: TransactionalDBClient, pool_init_lock: asyncio.Lock) -> None:
+    def __init__(self, client: TransactionalDBClient) -> None:
         self.client = client
         self.connection_name = client.connection_name
-        self._pool_init_lock = pool_init_lock
 
     async def ensure_connection(self) -> None:
         """Ensure the connection pool is initialized."""

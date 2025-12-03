@@ -69,7 +69,7 @@ def pytest_runtest_setup(item):
     else:
         TestEnvironment.get_current().set_current_driver(None)
 
-    logger.info("Starting test preparation for: " + test_name)
+    logger.info(f"Starting test preparation for: {test_name}")
 
     segment: Optional[Segment] = None
     if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
@@ -107,7 +107,11 @@ def pytest_runtest_setup(item):
                 logger.warning("conftest.ExceptionWhileObtainingInstanceIDs", ex)
                 instances = list()
 
-            sleep(5)
+            # Only sleep if we still need to retry
+            if (len(instances) < request.get_num_of_instances()
+                or len(instances) == 0
+                or not rds_utility.is_db_instance_writer(instances[0])):
+                sleep(5)
 
         assert len(instances) > 0
         current_writer = instances[0]
