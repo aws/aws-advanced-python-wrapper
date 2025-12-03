@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
+    from types import ModuleType
 
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from inspect import signature
@@ -28,12 +29,11 @@ from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.properties import (Properties,
-                                                          PropertiesUtils,
-                                                          WrapperProperties)
+from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesUtils, WrapperProperties
 
 CMYSQL_ENABLED = False
 
+import mysql.connector
 from mysql.connector import MySQLConnection  # noqa: E402
 from mysql.connector.cursor import MySQLCursor  # noqa: E402
 
@@ -201,3 +201,6 @@ class MySQLDriverDialect(DriverDialect):
 
     def supports_connect_timeout(self) -> bool:
         return True
+
+    def get_driver_module(self) -> ModuleType:
+        return mysql.connector
