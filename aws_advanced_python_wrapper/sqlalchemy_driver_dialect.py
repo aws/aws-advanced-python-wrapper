@@ -16,16 +16,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from aws_advanced_python_wrapper.driver_dialect import DriverDialect
-from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.utils.messages import Messages
-
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.utils.properties import Properties
+    from types import ModuleType
 
 from sqlalchemy import PoolProxiedConnection
+
+from aws_advanced_python_wrapper.driver_dialect import DriverDialect
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.utils.messages import Messages
 
 
 class SqlAlchemyDriverDialect(DriverDialect):
@@ -125,3 +126,6 @@ class SqlAlchemyDriverDialect(DriverDialect):
             return None
 
         return self._underlying_driver.transfer_session_state(from_driver_conn, to_driver_conn)
+    
+    def get_driver_module(self) -> ModuleType:
+        return self._underlying_driver.get_driver_module()

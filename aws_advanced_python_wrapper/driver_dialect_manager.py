@@ -24,8 +24,7 @@ from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.properties import (Properties,
-                                                          WrapperProperties)
+from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperties
 from aws_advanced_python_wrapper.utils.utils import Utils
 
 logger = Logger(__name__)
@@ -52,7 +51,8 @@ class DriverDialectManager(DriverDialectProvider):
     }
 
     pool_connection_driver_dialect: Dict[str, str] = {
-        "SqlAlchemyPooledConnectionProvider": "aws_advanced_python_wrapper.sqlalchemy_driver_dialect.SqlAlchemyDriverDialect"
+        "SqlAlchemyPooledConnectionProvider": "aws_advanced_python_wrapper.sqlalchemy_driver_dialect.SqlAlchemyDriverDialect",
+        "SqlAlchemyTortoisePooledConnectionProvider": "aws_advanced_python_wrapper.sqlalchemy_driver_dialect.SqlAlchemyDriverDialect",
     }
 
     @staticmethod

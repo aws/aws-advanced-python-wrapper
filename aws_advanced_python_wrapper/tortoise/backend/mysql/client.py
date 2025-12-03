@@ -22,7 +22,6 @@ import sqlparse
 from mysql.connector import errors
 from mysql.connector.charsets import MYSQL_CHARACTER_SETS
 from pypika_tortoise import MySQLQuery
-from tortoise import timezone
 from tortoise.backends.base.client import (
     BaseDBAsyncClient,
     Capabilities,
@@ -39,16 +38,16 @@ from tortoise.exceptions import (
 )
 
 from aws_advanced_python_wrapper.connection_provider import ConnectionProviderManager
+from aws_advanced_python_wrapper.errors import AwsWrapperError, FailoverError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
-from aws_advanced_python_wrapper.sql_alchemy_connection_provider import SqlAlchemyPooledConnectionProvider
 from aws_advanced_python_wrapper.tortoise.backend.base.client import (
     TortoiseAwsClientConnectionWrapper,
     TortoiseAwsClientTransactionContext,
 )
 from aws_advanced_python_wrapper.tortoise.backend.mysql.executor import AwsMySQLExecutor
 from aws_advanced_python_wrapper.tortoise.backend.mysql.schema_generator import AwsMySQLSchemaGenerator
+from aws_advanced_python_wrapper.tortoise.sql_alchemy_tortoise_connection_provider import SqlAlchemyTortoisePooledConnectionProvider
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.errors import AwsWrapperError
 
 logger = Logger(__name__)
 T = TypeVar("T")
@@ -62,10 +61,12 @@ def translate_exceptions(func: FuncType) -> FuncType:
         try:
             try:
                 return await func(self, *args)
-            except AwsWrapperError as aws_err:
+            except AwsWrapperError as aws_err: # Unwrap any AwsWrappedErrors
                 if aws_err.__cause__:
                     raise aws_err.__cause__
                 raise
+        except FailoverError as exc: # Raise any failover errors
+            raise
         except errors.IntegrityError as exc:
             raise IntegrityError(exc)
         except (
@@ -127,16 +128,16 @@ class AwsMySQLClient(BaseDBAsyncClient):
         self.extra.pop("connection_name", None)
         self.extra.pop("fetch_inserted", None)
         self.extra.pop("db", None)
-        self.extra.pop("autocommit", None)
+        self.extra.pop("autocommit", None) # We need this to be true
         self.extra.setdefault("sql_mode", "STRICT_TRANS_TABLES")
         
         # Initialize connection templates
         self._init_connection_templates()
-        
+
         # Initialize state
         self._template = {}
         self._connection = None
-        self._pool = None
+        self._pool: SqlAlchemyTortoisePooledConnectionProvider = None
         self._pool_init_lock = asyncio.Lock()
 
     def _init_connection_templates(self) -> None:
@@ -158,20 +159,19 @@ class AwsMySQLClient(BaseDBAsyncClient):
         """Configure connection pool settings."""
         return {"pool_size": self.pool_maxsize, "max_overflow": -1}
     
-    @staticmethod
-    def _get_pool_key(host_info: HostInfo, props: Dict[str, Any]) -> str:
+    def _get_pool_key(self, host_info: HostInfo, props: Dict[str, Any]) -> str:
         """Generate unique pool key for connection pooling."""
         url = host_info.url
         user = props["user"]
         db = props["database"]
-        return f"{url}{user}{db}"
+        return f"{url}{user}{db}{self.connection_name}"
     
     async def _init_pool_if_needed(self) -> None:
         """Initialize connection pool only once across all instances."""
         if not AwsMySQLClient._pool_initialized:
             async with AwsMySQLClient._pool_init_class_lock:
                 if not AwsMySQLClient._pool_initialized:
-                    self._pool = SqlAlchemyPooledConnectionProvider(
+                    self._pool = SqlAlchemyTortoisePooledConnectionProvider(
                         pool_configurator=self._configure_pool,
                         pool_mapping=self._get_pool_key,
                     )
