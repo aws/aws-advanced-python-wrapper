@@ -12,12 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 from types import ModuleType
-from typing import Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from sqlalchemy import Dialect
 from sqlalchemy.dialects.mysql import mysqlconnector
 from sqlalchemy.dialects.postgresql import psycopg
 
+from aws_advanced_python_wrapper.connection_provider import ConnectionProviderManager
 from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -83,3 +84,34 @@ class SqlAlchemyTortoisePooledConnectionProvider(SqlAlchemyPooledConnectionProvi
         dialect.dbapi = driver_dialect.get_driver_module()
 
         return dialect
+
+
+def setup_tortoise_connection_provider(
+        pool_configurator: Optional[Callable[[HostInfo, Properties], Dict[str, Any]]] = None,
+        pool_mapping: Optional[Callable[[HostInfo, Properties], str]] = None
+) -> SqlAlchemyTortoisePooledConnectionProvider:
+    """
+    Helper function to set up and configure the Tortoise connection provider.
+    
+    Args:
+        pool_configurator: Optional function to configure pool settings.
+                          Defaults to basic pool configuration.
+        pool_mapping: Optional function to generate pool keys.
+                     Defaults to basic pool key generation.
+    
+    Returns:
+        Configured SqlAlchemyTortoisePooledConnectionProvider instance.
+    """
+    def default_pool_configurator(host_info: HostInfo, props: Properties) -> Dict[str, Any]:
+        return {"pool_size": 5, "max_overflow": -1}
+    
+    def default_pool_mapping(host_info: HostInfo, props: Properties) -> str:
+        return f"{host_info.url}{props.get('user', '')}{props.get('database', '')}"
+    
+    provider = SqlAlchemyTortoisePooledConnectionProvider(
+        pool_configurator=pool_configurator or default_pool_configurator,
+        pool_mapping=pool_mapping or default_pool_mapping
+    )
+    
+    ConnectionProviderManager.set_connection_provider(provider)
+    return provider

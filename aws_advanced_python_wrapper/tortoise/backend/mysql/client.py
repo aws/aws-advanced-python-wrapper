@@ -15,7 +15,7 @@
 import asyncio
 from functools import wraps
 from itertools import count
-from typing import Any, Callable, Coroutine, Dict, SupportsInt, TypeVar
+from typing import Any, Callable, Coroutine, Dict, List, Optional, SupportsInt, Tuple, TypeVar
 
 import mysql.connector
 import sqlparse
@@ -37,7 +37,7 @@ from tortoise.exceptions import (
     TransactionManagementError,
 )
 
-from aws_advanced_python_wrapper.connection_provider import ConnectionProviderManager
+from aws_advanced_python_wrapper.connection_provider import ConnectionProviderManager, ConnectionProvider
 from aws_advanced_python_wrapper.errors import AwsWrapperError, FailoverError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.tortoise.backend.base.client import (
@@ -94,7 +94,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
         support_for_posix_regex_queries=True,
         support_json_attributes=True,
     )
-    _pool_initialized = False
+    _provider: Optional[ConnectionProvider] = None
     _pool_init_class_lock = asyncio.Lock()
 
     def __init__(
@@ -121,24 +121,19 @@ class AwsMySQLClient(BaseDBAsyncClient):
         # Extract MySQL-specific settings
         self.storage_engine = self.extra.pop("storage_engine", "innodb")
         self.charset = self.extra.pop("charset", "utf8mb4")
-        self.pool_minsize = int(self.extra.pop("minsize", 1))
-        self.pool_maxsize = int(self.extra.pop("maxsize", 5))
         
         # Remove Tortoise-specific parameters
         self.extra.pop("connection_name", None)
         self.extra.pop("fetch_inserted", None)
-        self.extra.pop("db", None)
-        self.extra.pop("autocommit", None) # We need this to be true
+        self.extra.pop("autocommit", None)
         self.extra.setdefault("sql_mode", "STRICT_TRANS_TABLES")
         
         # Initialize connection templates
         self._init_connection_templates()
 
         # Initialize state
-        self._template = {}
-        self._connection = None
-        self._pool: SqlAlchemyTortoisePooledConnectionProvider = None
-        self._pool_init_lock = asyncio.Lock()
+        self._template: Dict[str, Any] = {}
+        self._connection: Optional[Any] = None
 
     def _init_connection_templates(self) -> None:
         """Initialize connection templates for with/without database."""
@@ -154,39 +149,12 @@ class AwsMySQLClient(BaseDBAsyncClient):
         self._template_with_db = {**base_template, "database": self.database}
         self._template_no_db = {**base_template, "database": None}
 
-    # Pool Management
-    def _configure_pool(self, host_info: HostInfo, props: Dict[str, Any]) -> Dict[str, Any]:
-        """Configure connection pool settings."""
-        return {"pool_size": self.pool_maxsize, "max_overflow": -1}
-    
-    def _get_pool_key(self, host_info: HostInfo, props: Dict[str, Any]) -> str:
-        """Generate unique pool key for connection pooling."""
-        url = host_info.url
-        user = props["user"]
-        db = props["database"]
-        return f"{url}{user}{db}{self.connection_name}"
-    
-    async def _init_pool_if_needed(self) -> None:
-        """Initialize connection pool only once across all instances."""
-        if not AwsMySQLClient._pool_initialized:
-            async with AwsMySQLClient._pool_init_class_lock:
-                if not AwsMySQLClient._pool_initialized:
-                    self._pool = SqlAlchemyTortoisePooledConnectionProvider(
-                        pool_configurator=self._configure_pool,
-                        pool_mapping=self._get_pool_key,
-                    )
-                    ConnectionProviderManager.set_connection_provider(self._pool)
-                    AwsMySQLClient._pool_initialized = True
-
     # Connection Management
     async def create_connection(self, with_db: bool) -> None:
         """Initialize connection pool and configure database settings."""
         # Validate charset
         if self.charset.lower() not in [cs[0] for cs in MYSQL_CHARACTER_SETS if cs is not None]:
             raise DBConnectionError(f"Unknown character set: {self.charset}")
-        
-        # Initialize connection pool only once
-        await self._init_pool_if_needed()
 
         # Set transaction support based on storage engine
         if self.storage_engine.lower() != "innodb":
@@ -194,8 +162,6 @@ class AwsMySQLClient(BaseDBAsyncClient):
         
         # Set template based on database requirement
         self._template = self._template_with_db if with_db else self._template_no_db
-
-        logger.debug(f"Created connection pool {self._pool} with params: {self._template}")
 
     async def close(self) -> None:
         """Close connections - AWS wrapper handles cleanup internally."""
@@ -205,10 +171,10 @@ class AwsMySQLClient(BaseDBAsyncClient):
         """Acquire a connection from the pool."""
         return self._acquire_connection(with_db=True)
 
-    def _acquire_connection(self, with_db: bool):
+    def _acquire_connection(self, with_db: bool) -> TortoiseAwsClientConnectionWrapper:
         """Create connection wrapper for specified database mode."""
         return TortoiseAwsClientConnectionWrapper(
-            self, self._pool_init_lock, mysql.connector.Connect, with_db=with_db
+            self, mysql.connector.Connect, with_db=with_db
         )
 
     # Database Operations
@@ -226,7 +192,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
 
     # Query Execution Methods
     @translate_exceptions
-    async def execute_insert(self, query: str, values: list) -> int:
+    async def execute_insert(self, query: str, values: List[Any]) -> int:
         """Execute an INSERT query and return the last inserted row ID."""
         async with self.acquire_connection() as connection:
             logger.debug(f"{query}: {values}")
@@ -235,7 +201,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
                 return cursor.lastrowid
 
     @translate_exceptions
-    async def execute_many(self, query: str, values: list[list]) -> None:
+    async def execute_many(self, query: str, values: List[List[Any]]) -> None:
         """Execute a query with multiple parameter sets."""
         async with self.acquire_connection() as connection:
             logger.debug(f"{query}: {values}")
@@ -245,7 +211,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
                 else:
                     await cursor.executemany(query, values)
 
-    async def _execute_many_with_transaction(self, cursor, connection, query: str, values: list[list]) -> None:
+    async def _execute_many_with_transaction(self, cursor: Any, connection: Any, query: str, values: List[List[Any]]) -> None:
         """Execute many queries within a transaction."""
         try:
             await connection.set_autocommit(False)
@@ -260,7 +226,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
             await connection.set_autocommit(True)
 
     @translate_exceptions
-    async def execute_query(self, query: str, values: list | None = None) -> tuple[int, list[dict]]:
+    async def execute_query(self, query: str, values: Optional[List[Any]] = None) -> Tuple[int, List[Dict[str, Any]]]:
         """Execute a query and return row count and results."""
         async with self.acquire_connection() as connection:
             logger.debug(f"{query}: {values}")
@@ -272,7 +238,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
                     return cursor.rowcount, [dict(zip(fields, row)) for row in rows]
                 return cursor.rowcount, []
             
-    async def execute_query_dict(self, query: str, values: list | None = None) -> list[dict]:
+    async def execute_query_dict(self, query: str, values: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
         """Execute a query and return only the results as dictionaries."""
         return (await self.execute_query(query, values))[1]
     
@@ -297,7 +263,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
     # Transaction Support
     def _in_transaction(self) -> TransactionContext:
         """Create a new transaction context."""
-        return TortoiseAwsClientTransactionContext(TransactionWrapper(self), self._pool_init_lock)
+        return TortoiseAwsClientTransactionContext(TransactionWrapper(self))
 
 
 class TransactionWrapper(AwsMySQLClient, TransactionalDBClient):
@@ -307,7 +273,7 @@ class TransactionWrapper(AwsMySQLClient, TransactionalDBClient):
         self.connection_name = connection.connection_name
         self._connection = connection._connection
         self._lock = asyncio.Lock()
-        self._savepoint: str | None = None
+        self._savepoint: Optional[str] = None
         self._finalized: bool = False
         self._parent = connection
 
@@ -373,7 +339,7 @@ class TransactionWrapper(AwsMySQLClient, TransactionalDBClient):
         self._finalized = True
 
     @translate_exceptions
-    async def execute_many(self, query: str, values: list[list]) -> None:
+    async def execute_many(self, query: str, values: List[List[Any]]) -> None:
         """Execute many queries without autocommit handling (already in transaction)."""
         async with self.acquire_connection() as connection:
             logger.debug(f"{query}: {values}")
@@ -381,6 +347,6 @@ class TransactionWrapper(AwsMySQLClient, TransactionalDBClient):
                 await cursor.executemany(query, values)
 
 
-def _gen_savepoint_name(_c=count()) -> str:
+def _gen_savepoint_name(_c: count = count()) -> str:
     """Generate a unique savepoint name."""
     return f"tortoise_savepoint_{next(_c)}"
