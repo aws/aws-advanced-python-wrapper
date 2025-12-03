@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import signal
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 import copy
 from typing import Any, Callable, Set
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import AwsWrapperError, SegfaultOnConnectError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin
@@ -40,10 +41,17 @@ from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
 class DefaultPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"*"}
     _CLOSE_METHOD = "Connection.close"
+    _in_connect = False
 
     def __init__(self, plugin_service: PluginService, connection_provider_manager: ConnectionProviderManager):
         self._plugin_service: PluginService = plugin_service
         self._connection_provider_manager = connection_provider_manager
+        signal.signal(signal.SIGSEGV, self._segfault_handler)
+
+    def _segfault_handler(self, signum, frame):
+        if DefaultPlugin._in_connect:
+            raise SegfaultOnConnectError(Messages.get("DefaultPlugin.SegFault"))
+        signal.default_int_handler(signum, frame)
 
     def connect(
             self,
@@ -71,9 +79,11 @@ class DefaultPlugin(Plugin):
 
         conn: Connection
         try:
+            DefaultPlugin._in_connect = True
             database_dialect = self._plugin_service.database_dialect
             conn = conn_provider.connect(target_func, driver_dialect, database_dialect, host_info, props)
         finally:
+            DefaultPlugin._in_connect = False
             context.close_context()
 
         self._plugin_service.set_availability(host_info.all_aliases, HostAvailability.AVAILABLE)

@@ -16,7 +16,7 @@ from typing import List, Optional
 
 from mysql.connector import DatabaseError, InterfaceError
 
-from aws_advanced_python_wrapper.errors import QueryTimeoutError
+from aws_advanced_python_wrapper.errors import QueryTimeoutError, SegfaultOnConnectError
 from aws_advanced_python_wrapper.exception_handling import ExceptionHandler
 
 
@@ -37,6 +37,9 @@ class MySQLExceptionHandler(ExceptionHandler):
     ]
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        if isinstance(error, SegfaultOnConnectError):
+            return True
+
         if isinstance(error, QueryTimeoutError):
             return True
 

@@ -18,7 +18,7 @@ from psycopg.errors import (ConnectionTimeout,
                             InvalidAuthorizationSpecification, InvalidPassword,
                             OperationalError)
 
-from aws_advanced_python_wrapper.errors import QueryTimeoutError
+from aws_advanced_python_wrapper.errors import QueryTimeoutError, SegfaultOnConnectError
 from aws_advanced_python_wrapper.exception_handling import ExceptionHandler
 
 
@@ -42,6 +42,9 @@ class PgExceptionHandler(ExceptionHandler):
     _ACCESS_ERROR_CODES: List[str]
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        if isinstance(error, SegfaultOnConnectError):
+            return True
+
         if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
             return True
         if sql_state is None:

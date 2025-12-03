@@ -45,3 +45,7 @@ class FailoverSuccessError(FailoverError):
 
 class ReadWriteSplittingError(AwsWrapperError):
     __module__ = "aws_advanced_python_wrapper"
+
+
+class SegfaultOnConnectError(AwsWrapperError):
+    __module__ = "aws_advanced_python_wrapper"
