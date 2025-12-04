@@ -4,7 +4,7 @@
 
 Before using the AWS Advanced Python Driver, you must install:
 
-- Python 3.8 - 3.13 (inclusive).
+- Python 3.10 - 3.13 (inclusive).
 - The AWS Advanced Python Driver.
 - Your choice of underlying Python driver. 
   - To use the wrapper with Aurora with PostgreSQL compatibility, install [Psycopg](https://github.com/psycopg/psycopg).
