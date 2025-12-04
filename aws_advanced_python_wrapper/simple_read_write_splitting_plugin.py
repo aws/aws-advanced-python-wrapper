@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional, TypeVar, Type
 
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.read_write_splitting_plugin import (
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
-    from aws_advanced_python_wrapper.utils.properties import Properties
+    from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperty
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
@@ -48,15 +48,15 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
             WrapperProperties.SRW_WRITE_ENDPOINT, props, str, required=True
         )
 
-        self._verify_new_connections: bool = self._verify_parameter(
+        self._verify_new_connections: bool = EndpointBasedConnectionHandler._verify_parameter(
             WrapperProperties.SRW_VERIFY_NEW_CONNECTIONS, props, bool
         )
 
         if self._verify_new_connections:
-            self._connect_retry_timeout_ms: int = self._verify_parameter(
+            self._connect_retry_timeout_ms: int = EndpointBasedConnectionHandler._verify_parameter(
                 WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS, props, int, lambda x: x > 0
             )
-            self._connect_retry_interval_ms: int = self._verify_parameter(
+            self._connect_retry_interval_ms: int = EndpointBasedConnectionHandler._verify_parameter(
                 WrapperProperties.SRW_CONNECT_RETRY_INTERVAL_MS, props, int, lambda x: x > 0
             )
 
@@ -276,8 +276,10 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
             host=host, port=port, role=role, availability=HostAvailability.AVAILABLE
         )
 
+    T = TypeVar('T')
+
     @staticmethod
-    def _verify_parameter(prop, props, expected_type, validator=None, required=False):
+    def _verify_parameter(prop: WrapperProperty, props: Properties, expected_type: Type[T], validator=None, required=False):
         value = prop.get_type(props, expected_type)
         if required:
             if value is None:

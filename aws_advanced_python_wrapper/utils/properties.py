@@ -28,6 +28,7 @@ class Properties(Dict[str, Any]):
 
 T = TypeVar('T')
 
+
 class WrapperProperty:
     def __init__(
         self, name: str, description: str, default_value: Optional[Any] = None
@@ -37,22 +38,29 @@ class WrapperProperty:
         self.description = description
 
     def __str__(self):
-        return f"WrapperProperty(name={self.name}, default_value={self.default_value}"
+        return f"WrapperProperty(name={self.name}, default_value={self.default_value})"
 
     def get(self, props: Properties) -> Optional[str]:
         if self.default_value:
             return props.get(self.name, self.default_value)
         return props.get(self.name)
 
-    def get_typed(self, props: Properties, type_class: Type[T]) -> T:
+    def get_type(self, props: Properties, type_class: Type[T]) -> T:
         value = props.get(self.name, self.default_value) if self.default_value else props.get(self.name)
         if value is None:
-            return -1 if type_class in (int, float) else None
+            if type_class == int:
+                return -1  # type: ignore
+            elif type_class == float:
+                return -1.0  # type: ignore
+            elif type_class == bool:
+                return False  # type: ignore
+            else:
+                return None  # type: ignore
         if type_class == bool:
             if isinstance(value, bool):
-                return value
-            return value.lower() == "true" if isinstance(value, str) else bool(value)
-        return type_class(value)
+                return value  # type: ignore
+            return value.lower() == "true" if isinstance(value, str) else bool(value)  # type: ignore
+        return type_class(value)  # type: ignore
 
     def get_or_default(self, props: Properties) -> str:
         if not self.default_value:
@@ -60,13 +68,13 @@ class WrapperProperty:
         return props.get(self.name, self.default_value)
 
     def get_int(self, props: Properties) -> int:
-        return self.get_typed(props, int)
+        return self.get_type(props, int)
 
     def get_float(self, props: Properties) -> float:
-        return self.get_typed(props, float)
+        return self.get_type(props, float)
 
     def get_bool(self, props: Properties) -> bool:
-        return self.get_typed(props, bool)
+        return self.get_type(props, bool)
 
     def set(self, props: Properties, value: Any):
         props[self.name] = value
