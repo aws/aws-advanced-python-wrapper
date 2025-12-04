@@ -20,12 +20,26 @@ import pytest_asyncio
 from boto3 import client
 from botocore.exceptions import ClientError
 
+from tests.integration.container.tortoise.models.test_models import User
 from tests.integration.container.tortoise.test_tortoise_common import (
     run_basic_read_operations, run_basic_write_operations, setup_tortoise)
-from tests.integration.container.tortoise.test_tortoise_models import User
+from tests.integration.container.utils.conditions import (
+    disable_on_engines, disable_on_features, enable_on_deployments,
+    enable_on_num_instances)
+from tests.integration.container.utils.database_engine import DatabaseEngine
+from tests.integration.container.utils.database_engine_deployment import \
+    DatabaseEngineDeployment
 from tests.integration.container.utils.test_environment import TestEnvironment
+from tests.integration.container.utils.test_environment_features import \
+    TestEnvironmentFeatures
 
 
+@disable_on_engines([DatabaseEngine.PG])
+@enable_on_num_instances(min_instances=2)
+@enable_on_deployments([DatabaseEngineDeployment.AURORA])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                      TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
+                      TestEnvironmentFeatures.PERFORMANCE])
 class TestTortoiseCustomEndpoint:
     """Test class for Tortoise ORM with custom endpoint plugin."""
     endpoint_id = f"test-tortoise-endpoint-{uuid4()}"

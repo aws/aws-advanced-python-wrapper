@@ -13,22 +13,30 @@
 #  limitations under the License.
 
 import asyncio
-import time
 
 import pytest
 import pytest_asyncio
 from tortoise.transactions import atomic, in_transaction
 
+from tests.integration.container.tortoise.models.test_models import (
+    UniqueName, User)
 from tests.integration.container.tortoise.test_tortoise_common import \
     setup_tortoise
-from tests.integration.container.tortoise.test_tortoise_models import (
-    UniqueName, User)
+from tests.integration.container.utils.conditions import (disable_on_engines,
+                                                          disable_on_features)
+from tests.integration.container.utils.database_engine import DatabaseEngine
+from tests.integration.container.utils.test_environment_features import \
+    TestEnvironmentFeatures
 
 
+@disable_on_engines([DatabaseEngine.PG])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                      TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
+                      TestEnvironmentFeatures.PERFORMANCE])
 class TestTortoiseBasic:
     """
     Test class for Tortoise ORM integration with AWS Advanced Python Wrapper.
-    Contains tests related to tortoise operations
+    Contains tests related to basic test operations.
     """
     
     @pytest_asyncio.fixture
@@ -95,8 +103,8 @@ class TestTortoiseBasic:
     async def test_transaction_support(self, setup_tortoise_basic):
         """Test transaction handling with AWS wrapper."""
         async with in_transaction() as conn:
-            user1 = await User.create(name="User 1", email="user1@example.com", using_db=conn)
-            user2 = await User.create(name="User 2", email="user2@example.com", using_db=conn)
+            await User.create(name="User 1", email="user1@example.com", using_db=conn)
+            await User.create(name="User 2", email="user2@example.com", using_db=conn)
             
             # Verify users exist within transaction
             users = await User.filter(name__in=["User 1", "User 2"]).using_db(conn)

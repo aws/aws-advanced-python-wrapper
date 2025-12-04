@@ -57,18 +57,17 @@ class TestTranslateExceptions:
 
 class TestAwsMySQLClient:
     def test_init(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            charset="utf8mb4",
-            storage_engine="InnoDB",
-            minsize=2,
-            maxsize=10,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                charset="utf8mb4",
+                storage_engine="InnoDB",
+                connection_name="test_conn"
+            )
         
         assert client.user == "test_user"
         assert client.password == "test_pass"
@@ -77,124 +76,97 @@ class TestAwsMySQLClient:
         assert client.port == 3306
         assert client.charset == "utf8mb4"
         assert client.storage_engine == "InnoDB"
-        assert client.pool_minsize == 2
-        assert client.pool_maxsize == 10
 
     def test_init_defaults(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         assert client.charset == "utf8mb4"
         assert client.storage_engine == "innodb"
-        assert client.pool_minsize == 1
-        assert client.pool_maxsize == 5
-
-    def test_configure_pool(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            maxsize=15,
-            connection_name="test_conn"
-        )
-        
-        mock_host_info = MagicMock()
-        mock_props = {}
-        
-        result = client._configure_pool(mock_host_info, mock_props)
-        assert result == {"pool_size": 15}
-
-    def test_get_pool_key(self):
-        mock_host_info = MagicMock()
-        mock_host_info.url = "mysql://localhost:3306"
-        mock_props = {"user": "testuser", "database": "testdb"}
-        
-        result = AwsMySQLClient._get_pool_key(mock_host_info, mock_props)
-        assert result == "mysql://localhost:3306testusertestdb"
 
     @pytest.mark.asyncio
     async def test_create_connection_invalid_charset(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            charset="invalid_charset",
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                charset="invalid_charset",
+                connection_name="test_conn"
+            )
         
         with pytest.raises(DBConnectionError, match="Unknown character set"):
             await client.create_connection(with_db=True)
 
     @pytest.mark.asyncio
     async def test_create_connection_success(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
-        with patch.object(client, '_init_pool_if_needed') as mock_init_pool:
-            mock_init_pool.return_value = None
-            
-            with patch('aws_advanced_python_wrapper.tortoise.backend.mysql.client.logger'):
-                await client.create_connection(with_db=True)
-            
-            assert client._template["user"] == "test_user"
-            assert client._template["database"] == "test_db"
-            assert client._template["autocommit"] is True
-            mock_init_pool.assert_called_once()
+        with patch('aws_advanced_python_wrapper.tortoise.backend.mysql.client.logger'):
+            await client.create_connection(with_db=True)
+        
+        assert client._template["user"] == "test_user"
+        assert client._template["database"] == "test_db"
+        assert client._template["autocommit"] is True
 
     @pytest.mark.asyncio
     async def test_close(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         # close() method now does nothing (AWS wrapper handles cleanup)
         await client.close()
         # No assertions needed since method is a no-op
 
     def test_acquire_connection(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         connection_wrapper = client.acquire_connection()
         assert connection_wrapper.client == client
 
     @pytest.mark.asyncio
     async def test_execute_insert(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         mock_connection = MagicMock()
         mock_cursor = MagicMock()
@@ -215,15 +187,16 @@ class TestAwsMySQLClient:
 
     @pytest.mark.asyncio
     async def test_execute_many_with_transactions(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn",
-            storage_engine="innodb"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn",
+                storage_engine="innodb"
+            )
         
         mock_connection = MagicMock()
         mock_cursor = MagicMock()
@@ -246,14 +219,15 @@ class TestAwsMySQLClient:
 
     @pytest.mark.asyncio
     async def test_execute_query(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         mock_connection = MagicMock()
         mock_cursor = MagicMock()
@@ -277,14 +251,15 @@ class TestAwsMySQLClient:
 
     @pytest.mark.asyncio
     async def test_execute_query_dict(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         with patch.object(client, 'execute_query') as mock_execute_query:
             mock_execute_query.return_value = (2, [{"id": 1}, {"id": 2}])
@@ -294,14 +269,15 @@ class TestAwsMySQLClient:
             assert results == [{"id": 1}, {"id": 2}]
 
     def test_in_transaction(self):
-        client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         transaction_context = client._in_transaction()
         assert transaction_context is not None
@@ -309,14 +285,15 @@ class TestAwsMySQLClient:
 
 class TestTransactionWrapper:
     def test_init(self):
-        parent_client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            parent_client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         wrapper = TransactionWrapper(parent_client)
         
@@ -327,14 +304,15 @@ class TestTransactionWrapper:
 
     @pytest.mark.asyncio
     async def test_begin(self):
-        parent_client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            parent_client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         wrapper = TransactionWrapper(parent_client)
         mock_connection = MagicMock()
@@ -348,14 +326,15 @@ class TestTransactionWrapper:
 
     @pytest.mark.asyncio
     async def test_commit(self):
-        parent_client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            parent_client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         wrapper = TransactionWrapper(parent_client)
         mock_connection = MagicMock()
@@ -371,14 +350,15 @@ class TestTransactionWrapper:
 
     @pytest.mark.asyncio
     async def test_commit_already_finalized(self):
-        parent_client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            parent_client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         wrapper = TransactionWrapper(parent_client)
         wrapper._finalized = True
@@ -388,35 +368,39 @@ class TestTransactionWrapper:
 
     @pytest.mark.asyncio
     async def test_rollback(self):
-        parent_client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            parent_client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         wrapper = TransactionWrapper(parent_client)
         mock_connection = MagicMock()
         mock_connection.rollback = AsyncMock()
+        mock_connection.set_autocommit = AsyncMock()
         wrapper._connection = mock_connection
         
         await wrapper.rollback()
         
         mock_connection.rollback.assert_called_once()
+        mock_connection.set_autocommit.assert_called_once_with(True)
         assert wrapper._finalized is True
 
     @pytest.mark.asyncio
     async def test_savepoint(self):
-        parent_client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            parent_client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         wrapper = TransactionWrapper(parent_client)
         mock_connection = MagicMock()
@@ -435,14 +419,15 @@ class TestTransactionWrapper:
 
     @pytest.mark.asyncio
     async def test_savepoint_rollback(self):
-        parent_client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            parent_client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         wrapper = TransactionWrapper(parent_client)
         wrapper._savepoint = "test_savepoint"
@@ -462,14 +447,15 @@ class TestTransactionWrapper:
 
     @pytest.mark.asyncio
     async def test_savepoint_rollback_no_savepoint(self):
-        parent_client = AwsMySQLClient(
-            user="test_user",
-            password="test_pass",
-            database="test_db",
-            host="localhost",
-            port=3306,
-            connection_name="test_conn"
-        )
+        with patch('builtins.print'):  # Mock the print statement
+            parent_client = AwsMySQLClient(
+                user="test_user",
+                password="test_pass",
+                database="test_db",
+                host="localhost",
+                port=3306,
+                connection_name="test_conn"
+            )
         
         wrapper = TransactionWrapper(parent_client)
         wrapper._savepoint = None

@@ -15,6 +15,7 @@
 import asyncio
 import threading
 import time
+from time import perf_counter_ns, sleep
 from uuid import uuid4
 
 import pytest
@@ -24,13 +25,30 @@ from botocore.exceptions import ClientError
 from tortoise import connections
 
 from aws_advanced_python_wrapper.errors import FailoverSuccessError
-from tests.integration.container.tortoise.test_tortoise_common import setup_tortoise, run_basic_read_operations, run_basic_write_operations
-from tests.integration.container.tortoise.test_tortoise_models import TableWithSleepTrigger
+from tests.integration.container.tortoise.models.test_models import \
+    TableWithSleepTrigger
+from tests.integration.container.tortoise.test_tortoise_common import (
+    run_basic_read_operations, run_basic_write_operations, setup_tortoise)
+from tests.integration.container.utils.conditions import (
+    disable_on_engines, disable_on_features, enable_on_deployments,
+    enable_on_features, enable_on_num_instances)
+from tests.integration.container.utils.database_engine import DatabaseEngine
+from tests.integration.container.utils.database_engine_deployment import \
+    DatabaseEngineDeployment
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
+from tests.integration.container.utils.test_environment_features import \
+    TestEnvironmentFeatures
 from tests.integration.container.utils.test_utils import get_sleep_trigger_sql
 
 
+@disable_on_engines([DatabaseEngine.PG])
+@enable_on_num_instances(min_instances=2)
+@enable_on_features([TestEnvironmentFeatures.IAM])
+@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                      TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
+                      TestEnvironmentFeatures.PERFORMANCE])
 class TestTortoiseMultiPlugins:
     """Test class for Tortoise ORM with multiple AWS wrapper plugins."""
     endpoint_id = f"test-multi-endpoint-{uuid4()}"
@@ -71,7 +89,6 @@ class TestTortoiseMultiPlugins:
     
     def _wait_until_endpoint_available(self, rds_client):
         """Wait for the custom endpoint to become available."""
-        from time import perf_counter_ns, sleep
         end_ns = perf_counter_ns() + 5 * 60 * 1_000_000_000  # 5 minutes
         available = False
         
@@ -175,7 +192,7 @@ class TestTortoiseMultiPlugins:
         """Test concurrent queries with failover during long-running operation."""
         connection = connections.get("default")
         
-        # Step 1: Run 15 concurrent select queries
+        # Run 15 concurrent select queries
         async def run_select_query(query_id):
             return await connection.execute_query(f"SELECT {query_id} as query_id")
         
@@ -183,7 +200,7 @@ class TestTortoiseMultiPlugins:
         initial_results = await asyncio.gather(*initial_tasks)
         assert len(initial_results) == 15
         
-        # Step 2: Run sleep query with failover
+        # Run sleep query with failover
         sleep_exception = None
         
         def sleep_query_thread():
@@ -216,7 +233,7 @@ class TestTortoiseMultiPlugins:
         assert sleep_exception is not None
         assert isinstance(sleep_exception, FailoverSuccessError)
         
-        # Step 3: Run another 15 concurrent select queries after failover
+        # Run another 15 concurrent select queries after failover
         post_failover_tasks = [run_select_query(i + 100) for i in range(15)]
         post_failover_results = await asyncio.gather(*post_failover_tasks)
         assert len(post_failover_results) == 15

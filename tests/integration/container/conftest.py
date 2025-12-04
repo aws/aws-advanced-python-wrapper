@@ -68,6 +68,8 @@ def pytest_runtest_setup(item):
         test_name = item.callspec.id
     else:
         TestEnvironment.get_current().set_current_driver(None)
+        # Fallback to item.name if no callspec (for non-parameterized tests)
+        test_name = getattr(item, 'name', None) or str(item)
 
     logger.info(f"Starting test preparation for: {test_name}")
 

@@ -23,27 +23,38 @@ from tortoise.transactions import in_transaction
 
 from aws_advanced_python_wrapper.errors import (
     FailoverSuccessError, TransactionResolutionUnknownError)
+from tests.integration.container.tortoise.models.test_models import \
+    TableWithSleepTrigger
 from tests.integration.container.tortoise.test_tortoise_common import \
     setup_tortoise
-from tests.integration.container.tortoise.test_tortoise_models import \
-    TableWithSleepTrigger
+from tests.integration.container.utils.conditions import (
+    disable_on_engines, disable_on_features, enable_on_deployments,
+    enable_on_engines, enable_on_num_instances)
+from tests.integration.container.utils.database_engine import DatabaseEngine
+from tests.integration.container.utils.database_engine_deployment import \
+    DatabaseEngineDeployment
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
+from tests.integration.container.utils.test_environment_features import \
+    TestEnvironmentFeatures
 from tests.integration.container.utils.test_utils import get_sleep_trigger_sql
 
 
+@disable_on_engines([DatabaseEngine.PG])
+@enable_on_num_instances(min_instances=2)
+@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
+@disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                      TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
+                      TestEnvironmentFeatures.PERFORMANCE])
 class TestTortoiseFailover:
-    """Test class for Tortoise ORM with AWS wrapper plugins."""
+    """Test class for Tortoise ORM with Failover."""
     @pytest.fixture(scope='class')
     def aurora_utility(self):
         region: str = TestEnvironment.get_current().get_info().get_region()
         return RdsTestUtility(region)
     
     async def _create_sleep_trigger_record(self, name_prefix="Plugin Test", value="test_value", using_db=None):
-        """Create 3 TableWithSleepTrigger records."""
         await TableWithSleepTrigger.create(name=f"{name_prefix}", value=value, using_db=using_db)
-        # await TableWithSleepTrigger.create(name=f"{name_prefix}2", value=value, using_db=using_db)
-        # await TableWithSleepTrigger.create(name=f"{name_prefix}3", value=value, using_db=using_db)
     
     @pytest_asyncio.fixture
     async def sleep_trigger_setup(self):
@@ -61,6 +72,9 @@ class TestTortoiseFailover:
         """Setup Tortoise with failover plugins."""
         kwargs = {
             "topology_refresh_ms": 10000,
+            "connect_timeout": 10,
+            "monitoring-connect_timeout": 5,
+            "use_pure": True, # MySQL specific
         }
         async for result in setup_tortoise(conn_utils, plugins="failover", **kwargs):
             yield result
@@ -68,7 +82,7 @@ class TestTortoiseFailover:
 
     @pytest.mark.asyncio
     async def test_basic_operations_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
-        """Test basic operations work with AWS wrapper plugins enabled."""
+        """Test failover when inserting to a single table"""
         insert_exception = None
         
         def insert_thread():
@@ -81,7 +95,7 @@ class TestTortoiseFailover:
                 insert_exception = e
         
         def failover_thread():
-            time.sleep(5)  # Wait for insert to start
+            time.sleep(3)  # Wait for insert to start
             aurora_utility.failover_cluster_and_wait_until_writer_changed()
         
         # Start both threads
@@ -160,7 +174,7 @@ class TestTortoiseFailover:
         """Test concurrent queries with failover during long-running operation."""
         connection = connections.get("default")
         
-        # Step 1: Run 15 concurrent select queries
+        # Run 15 concurrent select queries
         async def run_select_query(query_id):
             return await connection.execute_query(f"SELECT {query_id} as query_id")
         
@@ -168,10 +182,10 @@ class TestTortoiseFailover:
         initial_results = await asyncio.gather(*initial_tasks)
         assert len(initial_results) == 15
         
-        # Step 2: Run sleep query with failover
+        # Run insert query with failover
         sleep_exception = None
         
-        def sleep_query_thread():
+        def insert_query_thread():
             nonlocal sleep_exception
             for attempt in range(3):
                 try:
@@ -188,7 +202,7 @@ class TestTortoiseFailover:
             time.sleep(5)  # Wait for sleep query to start
             aurora_utility.failover_cluster_and_wait_until_writer_changed()
         
-        sleep_t = threading.Thread(target=sleep_query_thread)
+        sleep_t = threading.Thread(target=insert_query_thread)
         failover_t = threading.Thread(target=failover_thread)
         
         sleep_t.start()
@@ -201,7 +215,7 @@ class TestTortoiseFailover:
         assert sleep_exception is not None
         assert isinstance(sleep_exception, (FailoverSuccessError, TransactionResolutionUnknownError))
         
-        # Step 3: Run another 15 concurrent select queries after failover
+        # Run another 15 concurrent select queries after failover to verify that we can still make connections
         post_failover_tasks = [run_select_query(i + 100) for i in range(15)]
         post_failover_results = await asyncio.gather(*post_failover_tasks)
         assert len(post_failover_results) == 15

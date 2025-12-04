@@ -14,11 +14,11 @@
 
 import pytest
 import pytest_asyncio
-from tortoise import Tortoise
+from tortoise import Tortoise, connections
 
 # Import to register the aws-mysql backend
 import aws_advanced_python_wrapper.tortoise
-from tests.integration.container.tortoise.test_tortoise_models import *
+from tests.integration.container.tortoise.models.test_models import *
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
 
@@ -27,7 +27,7 @@ async def clear_test_models():
     """Clear all test models by calling .all().delete() on each."""
     from tortoise.models import Model
 
-    import tests.integration.container.tortoise.test_tortoise_models as models_module
+    import tests.integration.container.tortoise.models.test_models as models_module
     
     for attr_name in dir(models_module):
         attr = getattr(models_module, attr_name)
@@ -48,7 +48,7 @@ async def setup_tortoise(conn_utils, plugins="aurora_connection_tracker", **kwar
         },
         "apps": {
             "models": {
-                "models": ["tests.integration.container.tortoise.test_tortoise_models"],
+                "models": ["tests.integration.container.tortoise.models.test_models"],
                 "default_connection": "default",
             }
         }
@@ -65,7 +65,7 @@ async def setup_tortoise(conn_utils, plugins="aurora_connection_tracker", **kwar
     yield
     
     await clear_test_models()
-    await Tortoise.close_connections()
+    await reset_tortoise()
 
 
 async def run_basic_read_operations(name_prefix="Test", email_prefix="test"):
@@ -96,3 +96,10 @@ async def run_basic_write_operations(name_prefix="Write", email_prefix="write"):
     
     with pytest.raises(Exception):
         await User.get(id=user.id)
+
+async def reset_tortoise():
+    await Tortoise.close_connections()
+    await Tortoise._reset_apps()
+    Tortoise._inited = False
+    Tortoise.apps = {}
+    connections._db_config = {}
