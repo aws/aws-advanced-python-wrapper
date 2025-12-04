@@ -11,8 +11,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 import copy
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TypeVar, Type
 from urllib.parse import unquote
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -24,6 +25,8 @@ class Properties(Dict[str, Any]):
         if self.get(key) is None:
             self[key] = value
 
+
+T = TypeVar('T')
 
 class WrapperProperty:
     def __init__(
@@ -41,34 +44,29 @@ class WrapperProperty:
             return props.get(self.name, self.default_value)
         return props.get(self.name)
 
+    def get_typed(self, props: Properties, type_class: Type[T]) -> T:
+        value = props.get(self.name, self.default_value) if self.default_value else props.get(self.name)
+        if value is None:
+            return -1 if type_class in (int, float) else None
+        if type_class == bool:
+            if isinstance(value, bool):
+                return value
+            return value.lower() == "true" if isinstance(value, str) else bool(value)
+        return type_class(value)
+
     def get_or_default(self, props: Properties) -> str:
         if not self.default_value:
             raise ValueError(f"No default value found for property {self}")
         return props.get(self.name, self.default_value)
 
     def get_int(self, props: Properties) -> int:
-        if self.default_value:
-            return int(props.get(self.name, self.default_value))
-
-        val = props.get(self.name)
-        return int(val) if val else -1
+        return self.get_typed(props, int)
 
     def get_float(self, props: Properties) -> float:
-        if self.default_value:
-            return float(props.get(self.name, self.default_value))
-
-        val = props.get(self.name)
-        return float(val) if val else -1
+        return self.get_typed(props, float)
 
     def get_bool(self, props: Properties) -> bool:
-        if not self.default_value:
-            value = props.get(self.name)
-        else:
-            value = props.get(self.name, self.default_value)
-        if isinstance(value, bool):
-            return value
-        else:
-            return value is not None and value.lower() == "true"
+        return self.get_typed(props, bool)
 
     def set(self, props: Properties, value: Any):
         props[self.name] = value
