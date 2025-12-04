@@ -14,7 +14,6 @@
 
 import asyncio
 import mysql.connector
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Any, Callable, Generic
 
@@ -26,66 +25,47 @@ from aws_advanced_python_wrapper import AwsWrapperConnection
 
 
 class AwsWrapperAsyncConnector:
-    """Factory class for creating AWS wrapper connections."""
-    
-    _executor: ThreadPoolExecutor = ThreadPoolExecutor(
-        thread_name_prefix="AwsWrapperAsyncExecutor"
-    )
+    """Class for creating and closing AWS wrapper connections."""
     
     @staticmethod
     async def ConnectWithAwsWrapper(connect_func: Callable, **kwargs) -> AwsWrapperConnection:
         """Create an AWS wrapper connection with async cursor support."""
-        loop = asyncio.get_event_loop()
-        connection = await loop.run_in_executor(
-            AwsWrapperAsyncConnector._executor,
-            lambda: AwsWrapperConnection.connect(connect_func, **kwargs)
+        connection = await asyncio.to_thread(
+            AwsWrapperConnection.connect, connect_func, **kwargs
         )
         return AwsConnectionAsyncWrapper(connection)
     
     @staticmethod
     async def CloseAwsWrapper(connection: AwsWrapperConnection) -> None:
         """Close an AWS wrapper connection asynchronously."""
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            AwsWrapperAsyncConnector._executor,
-            connection.close
-        )
+        await asyncio.to_thread(connection.close)
 
 
 class AwsCursorAsyncWrapper:
-    """Wraps a sync cursor to provide async interface."""
-    
-    _executor: ThreadPoolExecutor = ThreadPoolExecutor(
-        thread_name_prefix="AwsCursorAsyncWrapperExecutor"
-    )
+    """Wraps sync AwsCursor cursor with async support."""
     
     def __init__(self, sync_cursor):
         self._cursor = sync_cursor
     
     async def execute(self, query, params=None):
         """Execute a query asynchronously."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self._cursor.execute, query, params)
+        return await asyncio.to_thread(self._cursor.execute, query, params)
     
     async def executemany(self, query, params_list):
         """Execute multiple queries asynchronously."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self._cursor.executemany, query, params_list)
+        return await asyncio.to_thread(self._cursor.executemany, query, params_list)
     
     async def fetchall(self):
         """Fetch all results asynchronously."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self._cursor.fetchall)
+        return await asyncio.to_thread(self._cursor.fetchall)
     
     async def fetchone(self):
         """Fetch one result asynchronously."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self._cursor.fetchone)
+        return await asyncio.to_thread(self._cursor.fetchone)
     
     async def close(self):
         """Close cursor asynchronously."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self._cursor.close)
+        return await asyncio.to_thread(self._cursor.close)
     
     def __getattr__(self, name):
         """Delegate non-async attributes to the wrapped cursor."""
@@ -93,11 +73,7 @@ class AwsCursorAsyncWrapper:
 
 
 class AwsConnectionAsyncWrapper(AwsWrapperConnection):
-    """AWS wrapper connection with async cursor support."""
-    
-    _executor: ThreadPoolExecutor = ThreadPoolExecutor(
-        thread_name_prefix="AwsConnectionAsyncWrapperExecutor"
-    )
+    """Wraps sync AwsConnection with async cursor support."""
     
     def __init__(self, connection: AwsWrapperConnection):
         self._wrapped_connection = connection
@@ -105,27 +81,23 @@ class AwsConnectionAsyncWrapper(AwsWrapperConnection):
     @asynccontextmanager
     async def cursor(self):
         """Create an async cursor context manager."""
-        loop = asyncio.get_event_loop()
-        cursor_obj = await loop.run_in_executor(self._executor, self._wrapped_connection.cursor)
+        cursor_obj = await asyncio.to_thread(self._wrapped_connection.cursor)
         try:
             yield AwsCursorAsyncWrapper(cursor_obj)
         finally:
-            await loop.run_in_executor(self._executor, cursor_obj.close)
+            await asyncio.to_thread(cursor_obj.close)
 
     async def rollback(self):
         """Rollback the current transaction."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self._wrapped_connection.rollback)
+        return await asyncio.to_thread(self._wrapped_connection.rollback)
     
     async def commit(self):
         """Commit the current transaction."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self._wrapped_connection.commit)
+        return await asyncio.to_thread(self._wrapped_connection.commit)
     
     async def set_autocommit(self, value: bool):
         """Set autocommit mode."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, lambda: setattr(self._wrapped_connection, 'autocommit', value))
+        return await asyncio.to_thread(setattr, self._wrapped_connection, 'autocommit', value)
 
     def __getattr__(self, name):
         """Delegate all other attributes/methods to the wrapped connection."""
@@ -209,5 +181,5 @@ class TortoiseAwsClientTransactionContext(TransactionContext):
                 else:
                     await self.client.commit()
         finally:
-            connections.reset(self.token)
             await AwsWrapperAsyncConnector.CloseAwsWrapper(self.client._connection)
+            connections.reset(self.token)

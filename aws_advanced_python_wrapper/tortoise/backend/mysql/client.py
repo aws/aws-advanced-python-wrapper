@@ -117,7 +117,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
         self.host = host
         self.port = int(port)
         self.extra = kwargs.copy()
-        
+
         # Extract MySQL-specific settings
         self.storage_engine = self.extra.pop("storage_engine", "innodb")
         self.charset = self.extra.pop("charset", "utf8mb4")
@@ -127,6 +127,12 @@ class AwsMySQLClient(BaseDBAsyncClient):
         self.extra.pop("fetch_inserted", None)
         self.extra.pop("autocommit", None)
         self.extra.setdefault("sql_mode", "STRICT_TRANS_TABLES")
+        
+        # Ensure that timeouts are integers
+        timeout_params = ["connect_timeout", "monitoring-connect_timeout",]
+        for param in timeout_params:
+            if param in self.extra and self.extra[param] is not None:
+                self.extra[param] = int(self.extra[param])
         
         # Initialize connection templates
         self._init_connection_templates()
@@ -251,7 +257,6 @@ class AwsMySQLClient(BaseDBAsyncClient):
         """Execute a multi-statement query by parsing and running statements sequentially."""
         async with self._acquire_connection(with_db) as connection:
             logger.debug(f"Executing script: {query}")
-            print(f"Executing script: {query}")
             async with connection.cursor() as cursor:
                 # Parse multi-statement queries since MySQL Connector doesn't handle them well
                 statements = sqlparse.split(query)

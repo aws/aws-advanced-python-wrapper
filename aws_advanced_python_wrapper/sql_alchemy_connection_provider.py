@@ -137,7 +137,6 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
 
         if queue_pool is None:
             raise AwsWrapperError(Messages.get_formatted("SqlAlchemyPooledConnectionProvider.PoolNone", host_info.url))
-
         return queue_pool.connect()
 
     # The pool key should always be retrieved using this method, because the username
