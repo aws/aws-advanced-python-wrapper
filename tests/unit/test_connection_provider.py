@@ -18,6 +18,8 @@ import pytest
 from aws_advanced_python_wrapper.connection_provider import (
     ConnectionProviderManager, DriverConnectionProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
+    SqlAlchemyPooledConnectionProvider
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
@@ -28,36 +30,12 @@ def connection_mock(mocker):
 
 @pytest.fixture
 def default_provider_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=DriverConnectionProvider)
 
 
 @pytest.fixture
 def set_provider_mock(mocker):
-    # In Python 3.12+, isinstance checks with Protocols are stricter
-    # Create a real instance that implements the protocol, then wrap release_resources
-    # with a mock to allow method call tracking
-    class MockConnectionProviderWithRelease:
-        """Mock connection provider that implements CanReleaseResources protocol."""
-        def accepts_host_info(self, host_info, props):
-            return True
-        
-        def accepts_strategy(self, role, strategy):
-            return True
-        
-        def get_host_info_by_strategy(self, hosts, role, strategy, props):
-            return hosts[0] if hosts else None
-        
-        def connect(self, target_func, driver_dialect, database_dialect, host_info, props):
-            return None
-        
-        def release_resources(self):
-            pass
-    
-    # Create a real instance
-    provider = MockConnectionProviderWithRelease()
-    # Replace release_resources with a MagicMock so we can assert it was called
-    provider.release_resources = mocker.MagicMock()
-    return provider
+    return mocker.MagicMock(spec=SqlAlchemyPooledConnectionProvider)
 
 
 @pytest.fixture
@@ -196,8 +174,7 @@ def test_manager_get_host_info_by_strategy(connection_mock, default_provider_moc
     assert host_info.host == "other"
 
 
-def test_release_resources(connection_mock, default_provider_mock, set_provider_mock):
-    connection_provider_manager = ConnectionProviderManager(default_provider_mock)
+def test_release_resources(connection_mock, set_provider_mock):
     ConnectionProviderManager.set_connection_provider(set_provider_mock)
     ConnectionProviderManager.release_resources()
 

@@ -14,23 +14,14 @@
 
 import psycopg
 import pytest
+from mysql.connector import MySQLConnection
+from mysql.connector.cursor import MySQLCursor
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-
-try:
-    from mysql.connector import CMySQLConnection
-    from mysql.connector.cursor_cext import CMySQLCursor
-except ImportError:
-    # CMySQLConnection not available (e.g., Python 3.13 with mysql-connector-python 9.0.0)
-    # Skip all tests in this module if C extension is not available
-    pytest.skip(
-        "CMySQLConnection not available (C extension not supported on this Python version)",
-        allow_module_level=True
-    )
 
 
 @pytest.fixture
@@ -40,7 +31,7 @@ def dialect():
 
 @pytest.fixture
 def mock_conn(mocker):
-    return mocker.MagicMock(spec=CMySQLConnection)
+    return mocker.MagicMock(spec=MySQLConnection)
 
 
 @pytest.fixture
@@ -93,7 +84,7 @@ def test_autocommit(dialect, mock_conn, mock_invalid_conn):
 
 def test_transfer_session_state(dialect, mocker, mock_conn):
     mock_conn.autocommit = False
-    new_conn = mocker.MagicMock(spec=CMySQLConnection)
+    new_conn = mocker.MagicMock(spec=MySQLConnection)
 
     new_conn.autocommit = True
     dialect.transfer_session_state(mock_conn, new_conn)
@@ -104,8 +95,8 @@ def test_transfer_session_state(dialect, mocker, mock_conn):
 def test_get_connection_from_obj(dialect, mocker, mock_conn, mock_invalid_conn):
     assert dialect.get_connection_from_obj(mock_conn) == mock_conn
 
-    mock_cursor = mocker.MagicMock(spec=CMySQLCursor)
-    mock_cursor._cnx = mock_conn
+    mock_cursor = mocker.MagicMock(spec=MySQLCursor)
+    mock_cursor._connection = mock_conn
     assert dialect.get_connection_from_obj(mock_cursor) == mock_conn
 
     assert dialect.get_connection_from_obj(mock_invalid_conn) is None
