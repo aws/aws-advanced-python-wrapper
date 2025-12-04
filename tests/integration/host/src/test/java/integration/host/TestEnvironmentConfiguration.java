@@ -69,8 +69,6 @@ public class TestEnvironmentConfiguration {
   public boolean testBlueGreenOnly =
       Boolean.parseBoolean(System.getProperty("test-bg-only", "false"));
 
-  public boolean excludePython38 =
-      Boolean.parseBoolean(System.getProperty("exclude-python-38", "false"));
   public boolean excludePython311 =
       Boolean.parseBoolean(System.getProperty("exclude-python-311", "false"));
 

@@ -17,4 +17,3 @@ from enum import Enum
 
 class TargetPythonVersion(Enum):
     PYTHON_3_11 = "PYTHON_3_11"
-    PYTHON_3_8 = "PYTHON_3_8"
