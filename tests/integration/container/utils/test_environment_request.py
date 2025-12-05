@@ -40,7 +40,7 @@ class TestEnvironmentRequest:
         self._instances = getattr(DatabaseInstances, typing.cast('str', request.get("instances")))
         self._deployment = getattr(DatabaseEngineDeployment, typing.cast('str', request.get("deployment")))
         self._target_python_version = getattr(TargetPythonVersion, typing.cast('str', request.get("targetPythonVersion")))
-        self._num_of_instances = typing.cast('int', 2)
+        self._num_of_instances = request.get("numOfInstances")
         self._features = set()
         features: Iterable[str] = typing.cast('Iterable[str]', request.get("features"))
         if features is not None:
