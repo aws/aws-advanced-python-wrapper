@@ -28,10 +28,10 @@ DB_LOOKUP["aws-mysql"] = {
     "cast": {
         "minsize": int,
         "maxsize": int,
-        "connect_timeout": float,
+        "connect_timeout": int,
         "echo": bool,
         "use_unicode": bool,
-        "pool_recycle": int,
         "ssl": bool,
+        "use_pure": bool,
     },
 }

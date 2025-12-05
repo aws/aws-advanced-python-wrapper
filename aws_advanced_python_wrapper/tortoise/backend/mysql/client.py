@@ -127,13 +127,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
         self.extra.pop("fetch_inserted", None)
         self.extra.pop("autocommit", None)
         self.extra.setdefault("sql_mode", "STRICT_TRANS_TABLES")
-        
-        # Ensure that timeouts are integers
-        timeout_params = ["connect_timeout", "monitoring-connect_timeout",]
-        for param in timeout_params:
-            if param in self.extra and self.extra[param] is not None:
-                self.extra[param] = int(self.extra[param])
-        
+
         # Initialize connection templates
         self._init_connection_templates()
 

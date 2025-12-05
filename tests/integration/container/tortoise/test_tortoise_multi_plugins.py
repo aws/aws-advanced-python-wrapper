@@ -278,4 +278,3 @@ class TestTortoiseMultiPlugins:
         assert len(insert_exceptions) == 15, f"Expected 15 exceptions, got {len(insert_exceptions)}"
         failover_errors = [e for e in insert_exceptions if isinstance(e, FailoverSuccessError)]
         assert len(failover_errors) == 15, f"Expected all 15 threads to get failover errors, got {len(failover_errors)}"
-        print(f"Successfully verified all 15 threads got failover exceptions with multiple plugins")
