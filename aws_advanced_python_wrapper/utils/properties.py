@@ -13,7 +13,7 @@
 #  limitations under the License.
 
 import copy
-from typing import Any, Dict, Optional, TypeVar, Type
+from typing import Any, Dict, Optional, Type, TypeVar
 from urllib.parse import unquote
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -558,13 +558,14 @@ class WrapperProperties:
 
     SRW_VERIFY_NEW_CONNECTIONS = WrapperProperty(
         "srw_verify_new_connections",
-        "Enables role-verification for new connections made by the Simple Read/Write Splitting Plugin..",
+        "Enables role-verification for new connections made by the Simple Read/Write Splitting Plugin.",
         True,
     )
 
     SRW_VERIFY_INITIAL_CONNECTION_TYPE = WrapperProperty(
         "srw_verify_initial_connection_type",
-        "Force to verify an initial connection to be either a writer or a reader.",
+        "The role of the initial connection. Valid values are 'reader' or 'writer'. If this value is set, " +
+        "the wrapper will verify whether the initial connection matches the specified type.",
         None,
     )
 

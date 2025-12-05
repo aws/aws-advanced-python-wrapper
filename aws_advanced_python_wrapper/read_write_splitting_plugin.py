@@ -50,6 +50,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
         "Connection.set_read_only",
     }
     _POOL_PROVIDER_CLASS_NAME = "aws_advanced_python_wrapper.sql_alchemy_connection_provider.SqlAlchemyPooledConnectionProvider"
+    _CLOSE_METHOD = "Connection.close"
 
     def __init__(
         self,
@@ -94,8 +95,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
         connect_func: Callable,
     ) -> Connection:
         return self._connection_handler.get_verified_initial_connection(
-            host_info, props, is_initial_connection, connect_func
-        )
+            host_info, is_initial_connection, lambda x: self._plugin_service.connect(x, props, self), connect_func)
 
     def notify_connection_changed(
         self, changes: Set[ConnectionEvent]
@@ -140,13 +140,13 @@ class ReadWriteSplittingConnectionManager(Plugin):
             if isinstance(ex, FailoverError):
                 logger.debug(
                     "ReadWriteSplittingPlugin.FailoverExceptionWhileExecutingCommand",
-                    method_name,
+                    method_name
                 )
                 self._close_idle_connections()
             else:
                 logger.debug(
                     "ReadWriteSplittingPlugin.ExceptionWhileExecutingCommand",
-                    method_name,
+                    method_name
                 )
             raise ex
 
@@ -184,13 +184,13 @@ class ReadWriteSplittingConnectionManager(Plugin):
         )
 
     def _initialize_writer_connection(self):
-        conn, writer_host = self._connection_handler.open_new_writer_connection()
+        conn, writer_host = self._connection_handler.open_new_writer_connection(lambda x: self._plugin_service.connect(x, self._properties, self))
 
         if conn is None:
             self.log_and_raise_exception(
                 "ReadWriteSplittingPlugin.FailedToConnectToWriter"
             )
-            return
+            return None
 
         provider = self._conn_provider_manager.get_connection_provider(
             writer_host, self._properties
@@ -335,9 +335,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
                     self._reader_host_info.url,
                 )
 
-                ReadWriteSplittingConnectionManager.close_connection(
-                    self._reader_connection
-                )
+                ReadWriteSplittingConnectionManager.close_connection(self._reader_connection, driver_dialect)
                 self._reader_connection = None
                 self._reader_host_info = None
                 self._initialize_reader_connection()
@@ -356,7 +354,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             )
             return
 
-        conn, reader_host = self._connection_handler.open_new_reader_connection()
+        conn, reader_host = self._connection_handler.open_new_reader_connection(lambda x: self._plugin_service.connect(x, self._properties, self))
 
         if conn is None or reader_host is None:
             self.log_and_raise_exception("ReadWriteSplittingPlugin.NoReadersAvailable")
@@ -392,7 +390,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             if internal_conn != current_conn and self._is_connection_usable(
                 internal_conn, driver_dialect
             ):
-                internal_conn.close()
+                driver_dialect.execute(ReadWriteSplittingConnectionManager._CLOSE_METHOD, lambda: internal_conn.close())
                 if internal_conn == self._writer_connection:
                     self._writer_connection = None
                     self._writer_host_info = None
@@ -420,10 +418,8 @@ class ReadWriteSplittingConnectionManager(Plugin):
         raise ReadWriteSplittingError(Messages.get(log_msg))
 
     @staticmethod
-    def _is_connection_usable(
-        conn: Optional[Connection], driver_dialect: Optional[DriverDialect]
-    ):
-        if conn is None or driver_dialect is None:
+    def _is_connection_usable(conn: Optional[Connection], driver_dialect: DriverDialect):
+        if conn is None:
             return False
         try:
             return not driver_dialect.is_closed(conn)
@@ -432,10 +428,10 @@ class ReadWriteSplittingConnectionManager(Plugin):
             return False
 
     @staticmethod
-    def close_connection(connection: Optional[Connection]):
-        if connection is not None:
+    def close_connection(conn: Optional[Connection], driver_dialect: DriverDialect):
+        if conn is not None:
             try:
-                connection.close()
+                driver_dialect.execute(ReadWriteSplittingConnectionManager._CLOSE_METHOD, lambda: conn.close())
             except Exception:
                 # Swallow exception
                 return
@@ -456,12 +452,14 @@ class ConnectionHandler(Protocol):
 
     def open_new_writer_connection(
         self,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
     ) -> tuple[Optional[Connection], Optional[HostInfo]]:
         """Open a writer connection."""
         ...
 
     def open_new_reader_connection(
         self,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
     ) -> tuple[Optional[Connection], Optional[HostInfo]]:
         """Open a reader connection."""
         ...
@@ -469,8 +467,8 @@ class ConnectionHandler(Protocol):
     def get_verified_initial_connection(
         self,
         host_info: HostInfo,
-        props: Properties,
         is_initial_connection: bool,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
         connect_func: Callable,
     ) -> Connection:
         """Verify initial connection or return normal workflow."""
@@ -516,9 +514,8 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
 
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service: PluginService = plugin_service
-        self._properties: Properties = props
         self._host_list_provider_service: Optional[HostListProviderService] = None
-        strategy = WrapperProperties.READER_HOST_SELECTOR_STRATEGY.get(self._properties)
+        strategy = WrapperProperties.READER_HOST_SELECTOR_STRATEGY.get(props)
         if strategy is not None:
             self._reader_selector_strategy = strategy
         else:
@@ -539,17 +536,19 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
 
     def open_new_writer_connection(
         self,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
     ) -> tuple[Optional[Connection], Optional[HostInfo]]:
         writer_host = self._get_writer()
         if writer_host is None:
             return None, None
 
-        conn = self._plugin_service.connect(writer_host, self._properties, None)
+        conn = plugin_service_connect_func(writer_host)
 
         return conn, writer_host
 
     def open_new_reader_connection(
         self,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
     ) -> tuple[Optional[Connection], Optional[HostInfo]]:
         conn: Optional[Connection] = None
         reader_host: Optional[HostInfo] = None
@@ -561,7 +560,7 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
             )
             if host is not None:
                 try:
-                    conn = self._plugin_service.connect(host, self._properties, None)
+                    conn = plugin_service_connect_func(host)
                     reader_host = host
                     break
                 except Exception:
@@ -574,8 +573,8 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
     def get_verified_initial_connection(
         self,
         host_info: HostInfo,
-        props: Properties,
         is_initial_connection: bool,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
         connect_func: Callable,
     ) -> Connection:
         if not self._plugin_service.accepts_strategy(
@@ -670,12 +669,9 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
 
 
 class ReadWriteSplittingPlugin(ReadWriteSplittingConnectionManager):
-    def __init__(self, plugin_service, props: Properties):
+    def __init__(self, plugin_service: PluginService, props: Properties):
         # The read/write splitting plugin handles connections based on topology.
-        connection_handler = TopologyBasedConnectionHandler(
-            plugin_service,
-            props,
-        )
+        connection_handler = TopologyBasedConnectionHandler(plugin_service, props)
 
         super().__init__(plugin_service, props, connection_handler)
 
