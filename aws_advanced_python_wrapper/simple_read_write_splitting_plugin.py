@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Callable, Optional, TypeVar, Type
+from typing import TYPE_CHECKING, Callable, Optional, Type, TypeVar
 
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.read_write_splitting_plugin import (
@@ -67,15 +67,10 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
             )
 
         self._plugin_service: PluginService = plugin_service
-        self._properties: Properties = props
         self._rds_utils: RdsUtils = RdsUtils()
         self._host_list_provider_service: Optional[HostListProviderService] = None
-        self._write_endpoint_host_info: HostInfo = self._create_host_info(
-            self._write_endpoint, HostRole.WRITER
-        )
-        self._read_endpoint_host_info: HostInfo = self._create_host_info(
-            self._read_endpoint, HostRole.READER
-        )
+        self._write_endpoint_host_info: HostInfo = self._create_host_info(self._write_endpoint, HostRole.WRITER)
+        self._read_endpoint_host_info: HostInfo = self._create_host_info(self._read_endpoint, HostRole.READER)
 
     @property
     def host_list_provider_service(self) -> Optional[HostListProviderService]:
@@ -87,39 +82,29 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
 
     def open_new_writer_connection(
         self,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
     ) -> tuple[Optional[Connection], Optional[HostInfo]]:
-        conn: Optional[Connection] = None
         if self._verify_new_connections:
-            conn = self._get_verified_connection(
-                self._properties, self._write_endpoint_host_info, HostRole.WRITER
-            )
-        else:
-            conn = self._plugin_service.connect(
-                self._write_endpoint_host_info, self._properties, None
-            )
+            return self._get_verified_connection(self._write_endpoint_host_info, HostRole.WRITER, plugin_service_connect_func), \
+                self._write_endpoint_host_info
 
-        return conn, self._write_endpoint_host_info
+        return plugin_service_connect_func(self._write_endpoint_host_info), self._write_endpoint_host_info
 
     def open_new_reader_connection(
         self,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
     ) -> tuple[Optional[Connection], Optional[HostInfo]]:
-        conn: Optional[Connection] = None
         if self._verify_new_connections:
-            conn = self._get_verified_connection(
-                self._properties, self._read_endpoint_host_info, HostRole.READER
-            )
-        else:
-            conn = self._plugin_service.connect(
-                self._read_endpoint_host_info, self._properties, None
-            )
+            return self._get_verified_connection(self._read_endpoint_host_info, HostRole.READER, plugin_service_connect_func), \
+                self._read_endpoint_host_info
 
-        return conn, self._read_endpoint_host_info
+        return plugin_service_connect_func(self._read_endpoint_host_info), self._read_endpoint_host_info
 
     def get_verified_initial_connection(
         self,
         host_info: HostInfo,
-        props: Properties,
         is_initial_connection: bool,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
         connect_func: Callable,
     ) -> Connection:
         if not is_initial_connection or not self._verify_new_connections:
@@ -133,24 +118,20 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
             url_type == RdsUrlType.RDS_WRITER_CLUSTER
             or self._verify_opened_connection_type == HostRole.WRITER
         ):
-            conn = self._get_verified_connection(
-                props, host_info, HostRole.WRITER, connect_func
-            )
+            conn = self._get_verified_connection(host_info, HostRole.WRITER, plugin_service_connect_func, connect_func)
         elif (
             url_type == RdsUrlType.RDS_READER_CLUSTER
             or self._verify_opened_connection_type == HostRole.READER
         ):
-            conn = self._get_verified_connection(
-                props, host_info, HostRole.READER, connect_func
-            )
+            conn = self._get_verified_connection(host_info, HostRole.READER, plugin_service_connect_func, connect_func)
 
         if conn is None:
             conn = connect_func()
 
-        self._set_initial_connection_host_info(conn, host_info)
+        self._set_initial_connection_host_info(host_info)
         return conn
 
-    def _set_initial_connection_host_info(self, conn: Connection, host_info: HostInfo):
+    def _set_initial_connection_host_info(self, host_info: HostInfo):
         if self._host_list_provider_service is None:
             return
 
@@ -158,9 +139,9 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
 
     def _get_verified_connection(
         self,
-        props: Properties,
         host_info: HostInfo,
         role: HostRole,
+        plugin_service_connect_func: Callable[[HostInfo], Connection],
         connect_func: Optional[Callable] = None,
     ) -> Optional[Connection]:
         end_time_nano = perf_counter_ns() + (self._connect_retry_timeout_ms * 1000000)
@@ -174,9 +155,7 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
                 if connect_func is not None:
                     candidate_conn = connect_func()
                 elif host_info is not None:
-                    candidate_conn = self._plugin_service.connect(
-                        host_info, props, None
-                    )
+                    candidate_conn = plugin_service_connect_func(host_info)
                 else:
                     return None
 
@@ -187,14 +166,14 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
                 actual_role = self._plugin_service.get_host_role(candidate_conn)
 
                 if actual_role != role:
-                    ReadWriteSplittingConnectionManager.close_connection(candidate_conn)
+                    ReadWriteSplittingConnectionManager.close_connection(candidate_conn, self._plugin_service.driver_dialect)
                     self._delay()
                     continue
 
                 return candidate_conn
 
             except Exception:
-                ReadWriteSplittingConnectionManager.close_connection(candidate_conn)
+                ReadWriteSplittingConnectionManager.close_connection(candidate_conn, self._plugin_service.driver_dialect)
                 self._delay()
 
         return None
@@ -249,28 +228,18 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
             or current_host.url.casefold() == self._read_endpoint.casefold()
         )
 
-    def _create_host_info(self, endpoint, role: HostRole) -> HostInfo:
+    def _create_host_info(self, endpoint: str, role: HostRole) -> HostInfo:
         endpoint = endpoint.strip()
         host = endpoint
-        port = self._plugin_service.database_dialect.default_port
+        port = self._plugin_service.database_dialect.default_port if not self._plugin_service.current_host_info.is_port_specified() \
+            else self._plugin_service.current_host_info.port
         colon_index = endpoint.rfind(":")
 
         if colon_index != -1:
+            host = endpoint[:colon_index]
             port_str = endpoint[colon_index + 1:]
             if port_str.isdigit():
-                host = endpoint[:colon_index]
                 port = int(port_str)
-            else:
-                if (
-                    self._host_list_provider_service is not None
-                    and self._host_list_provider_service.initial_connection_host_info
-                    is not None
-                    and self._host_list_provider_service.initial_connection_host_info.port
-                    != HostInfo.NO_PORT
-                ):
-                    port = (
-                        self._host_list_provider_service.initial_connection_host_info.port
-                    )
 
         return HostInfo(
             host=host, port=port, role=role, availability=HostAvailability.AVAILABLE
@@ -322,12 +291,9 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
 
 
 class SimpleReadWriteSplittingPlugin(ReadWriteSplittingConnectionManager):
-    def __init__(self, plugin_service, props: Properties):
+    def __init__(self, plugin_service: PluginService, props: Properties):
         # The simple read/write splitting plugin handles connections based on configuration parameter endpoints.
-        connection_handler = EndpointBasedConnectionHandler(
-            plugin_service,
-            props,
-        )
+        connection_handler = EndpointBasedConnectionHandler(plugin_service, props)
 
         super().__init__(plugin_service, props, connection_handler)
 
