@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional, TypeVar, Type
 
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.read_write_splitting_plugin import (
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
-    from aws_advanced_python_wrapper.utils.properties import Properties
+    from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperty
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
@@ -41,53 +41,24 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
     """Endpoint based implementation of connection handling logic."""
 
     def __init__(self, plugin_service: PluginService, props: Properties):
-        srw_read_endpoint = WrapperProperties.SRW_READ_ENDPOINT.get(props)
-        if srw_read_endpoint is None:
-            raise AwsWrapperError(
-                Messages.get_formatted(
-                    "SimpleReadWriteSplittingPlugin.MissingRequiredConfigParameter",
-                    WrapperProperties.SRW_READ_ENDPOINT.name,
-                )
-            )
-        self._read_endpoint: str = srw_read_endpoint
-
-        srw_write_endpoint = WrapperProperties.SRW_WRITE_ENDPOINT.get(props)
-        if srw_write_endpoint is None:
-            raise AwsWrapperError(
-                Messages.get_formatted(
-                    "SimpleReadWriteSplittingPlugin.MissingRequiredConfigParameter",
-                    WrapperProperties.SRW_WRITE_ENDPOINT.name,
-                )
-            )
-        self._write_endpoint: str = srw_write_endpoint
-
-        self._verify_new_connections: bool = (
-            WrapperProperties.SRW_VERIFY_NEW_CONNECTIONS.get_bool(props)
+        self._read_endpoint: str = EndpointBasedConnectionHandler._verify_parameter(
+            WrapperProperties.SRW_READ_ENDPOINT, props, str, required=True
         )
-        if self._verify_new_connections is True:
-            srw_connect_retry_timeout_ms: int = (
-                WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS.get_int(props)
-            )
-            if srw_connect_retry_timeout_ms <= 0:
-                raise ValueError(
-                    Messages.get_formatted(
-                        "SimpleReadWriteSplittingPlugin.IncorrectConfiguration",
-                        WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS.name,
-                    )
-                )
-            self._connect_retry_timeout_ms: int = srw_connect_retry_timeout_ms
+        self._write_endpoint: str = EndpointBasedConnectionHandler._verify_parameter(
+            WrapperProperties.SRW_WRITE_ENDPOINT, props, str, required=True
+        )
 
-            srw_connect_retry_interval_ms: int = (
-                WrapperProperties.SRW_CONNECT_RETRY_INTERVAL_MS.get_int(props)
+        self._verify_new_connections: bool = EndpointBasedConnectionHandler._verify_parameter(
+            WrapperProperties.SRW_VERIFY_NEW_CONNECTIONS, props, bool
+        )
+
+        if self._verify_new_connections:
+            self._connect_retry_timeout_ms: int = EndpointBasedConnectionHandler._verify_parameter(
+                WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS, props, int, lambda x: x > 0
             )
-            if srw_connect_retry_interval_ms <= 0:
-                raise ValueError(
-                    Messages.get_formatted(
-                        "SimpleReadWriteSplittingPlugin.IncorrectConfiguration",
-                        WrapperProperties.SRW_CONNECT_RETRY_INTERVAL_MS.name,
-                    )
-                )
-            self._connect_retry_interval_ms: int = srw_connect_retry_interval_ms
+            self._connect_retry_interval_ms: int = EndpointBasedConnectionHandler._verify_parameter(
+                WrapperProperties.SRW_CONNECT_RETRY_INTERVAL_MS, props, int, lambda x: x > 0
+            )
 
             self._verify_opened_connection_type: Optional[HostRole] = (
                 EndpointBasedConnectionHandler._parse_connection_type(
@@ -304,6 +275,29 @@ class EndpointBasedConnectionHandler(ConnectionHandler):
         return HostInfo(
             host=host, port=port, role=role, availability=HostAvailability.AVAILABLE
         )
+
+    T = TypeVar('T')
+
+    @staticmethod
+    def _verify_parameter(prop: WrapperProperty, props: Properties, expected_type: Type[T], validator=None, required=False):
+        value = prop.get_type(props, expected_type)
+        if required:
+            if value is None:
+                raise AwsWrapperError(
+                    Messages.get_formatted(
+                        "SimpleReadWriteSplittingPlugin.MissingRequiredConfigParameter",
+                        prop.name,
+                    )
+                )
+
+        if validator and not validator(value):
+            raise ValueError(
+                Messages.get_formatted(
+                    "SimpleReadWriteSplittingPlugin.IncorrectConfiguration",
+                    prop.name,
+                )
+            )
+        return value
 
     def _delay(self):
         sleep(self._connect_retry_interval_ms / 1000)
