@@ -48,7 +48,7 @@ class TestTortoiseConfig:
         config = {
             "connections": {
                 "default": {
-                    "engine": "aws_advanced_python_wrapper.tortoise.backend.mysql",
+                    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
                     "credentials": {
                         "host": conn_utils.writer_cluster_host,
                         "port": conn_utils.port,
@@ -87,7 +87,7 @@ class TestTortoiseConfig:
         config = {
             "connections": {
                 "default": {
-                    "engine": "aws_advanced_python_wrapper.tortoise.backend.mysql",
+                    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
                     "credentials": {
                         "host": conn_utils.writer_cluster_host,
                         "port": conn_utils.port,
@@ -98,7 +98,7 @@ class TestTortoiseConfig:
                     }
                 },
                 "second_db": {
-                    "engine": "aws_advanced_python_wrapper.tortoise.backend.mysql",
+                    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
                     "credentials": {
                         "host": conn_utils.writer_cluster_host,
                         "port": conn_utils.port,
@@ -149,7 +149,7 @@ class TestTortoiseConfig:
         config = {
             "connections": {
                 "default": {
-                    "engine": "aws_advanced_python_wrapper.tortoise.backend.mysql",
+                    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
                     "credentials": {
                         "host": conn_utils.writer_cluster_host,
                         "port": conn_utils.port,

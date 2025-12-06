@@ -16,7 +16,7 @@ from tortoise.backends.base.config_generator import DB_LOOKUP
 
 # Register AWS MySQL backend
 DB_LOOKUP["aws-mysql"] = {
-    "engine": "aws_advanced_python_wrapper.tortoise.backend.mysql",
+    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
     "vmap": {
         "path": "database",
         "hostname": "host",
