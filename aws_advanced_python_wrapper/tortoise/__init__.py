@@ -18,12 +18,12 @@ from tortoise.backends.base.config_generator import DB_LOOKUP
 DB_LOOKUP["aws-mysql"] = {
     "engine": "aws_advanced_python_wrapper.tortoise.backend.mysql",
     "vmap": {
-            "path": "database",
-            "hostname": "host",
-            "port": "port",
-            "username": "user",
-            "password": "password",
-        },
+        "path": "database",
+        "hostname": "host",
+        "port": "port",
+        "username": "user",
+        "password": "password",
+    },
     "defaults": {"port": 3306, "charset": "utf8mb4", "sql_mode": "STRICT_TRANS_TABLES"},
     "cast": {
         "minsize": int,

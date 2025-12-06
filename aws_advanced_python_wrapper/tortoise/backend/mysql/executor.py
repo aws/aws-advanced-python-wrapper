@@ -12,9 +12,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from typing import Type
+
 from aws_advanced_python_wrapper.tortoise.utils import load_mysql_module
 
-MySQLExecutor = load_mysql_module("executor.py", "MySQLExecutor")
+MySQLExecutor: Type = load_mysql_module("executor.py", "MySQLExecutor")
+
 
 class AwsMySQLExecutor(MySQLExecutor):
     """AWS MySQL Executor for Tortoise ORM."""

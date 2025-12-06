@@ -32,7 +32,7 @@ from tests.integration.container.utils.test_environment_features import \
                       TestEnvironmentFeatures.PERFORMANCE])
 class TestTortoiseIamAuthentication:
     """Test class for Tortoise ORM with IAM authentication."""
-    
+
     @pytest_asyncio.fixture
     async def setup_tortoise_iam(self, conn_utils):
         """Setup Tortoise with IAM authentication."""

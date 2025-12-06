@@ -165,7 +165,7 @@ class DriverDialect(ABC):
                 return True
         except Exception:
             return False
-    
+
     def get_driver_module(self) -> ModuleType:
         raise UnsupportedOperationError(
             Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "get_driver_module"))

@@ -15,38 +15,28 @@
 import asyncio
 from functools import wraps
 from itertools import count
-from typing import Any, Callable, Coroutine, Dict, List, Optional, SupportsInt, Tuple, TypeVar
+from typing import (Any, Callable, Coroutine, Dict, List, Optional,
+                    SupportsInt, Tuple, TypeVar)
 
 import mysql.connector
-import sqlparse
+import sqlparse  # type: ignore[import-untyped]
 from mysql.connector import errors
 from mysql.connector.charsets import MYSQL_CHARACTER_SETS
 from pypika_tortoise import MySQLQuery
-from tortoise.backends.base.client import (
-    BaseDBAsyncClient,
-    Capabilities,
-    ConnectionWrapper,
-    NestedTransactionContext,
-    TransactionalDBClient,
-    TransactionContext,
-)
-from tortoise.exceptions import (
-    DBConnectionError,
-    IntegrityError,
-    OperationalError,
-    TransactionManagementError,
-)
+from tortoise.backends.base.client import (Capabilities, ConnectionWrapper,
+                                           NestedTransactionContext,
+                                           TransactionContext)
+from tortoise.exceptions import (DBConnectionError, IntegrityError,
+                                 OperationalError, TransactionManagementError)
 
-from aws_advanced_python_wrapper.connection_provider import ConnectionProviderManager, ConnectionProvider
 from aws_advanced_python_wrapper.errors import AwsWrapperError, FailoverError
-from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.tortoise.backend.base.client import (
-    TortoiseAwsClientConnectionWrapper,
-    TortoiseAwsClientTransactionContext,
-)
-from aws_advanced_python_wrapper.tortoise.backend.mysql.executor import AwsMySQLExecutor
-from aws_advanced_python_wrapper.tortoise.backend.mysql.schema_generator import AwsMySQLSchemaGenerator
-from aws_advanced_python_wrapper.tortoise.sql_alchemy_tortoise_connection_provider import SqlAlchemyTortoisePooledConnectionProvider
+    AwsBaseDBAsyncClient, AwsConnectionAsyncWrapper, AwsTransactionalDBClient,
+    TortoiseAwsClientConnectionWrapper, TortoiseAwsClientTransactionContext)
+from aws_advanced_python_wrapper.tortoise.backend.mysql.executor import \
+    AwsMySQLExecutor
+from aws_advanced_python_wrapper.tortoise.backend.mysql.schema_generator import \
+    AwsMySQLSchemaGenerator
 from aws_advanced_python_wrapper.utils.log import Logger
 
 logger = Logger(__name__)
@@ -61,11 +51,11 @@ def translate_exceptions(func: FuncType) -> FuncType:
         try:
             try:
                 return await func(self, *args)
-            except AwsWrapperError as aws_err: # Unwrap any AwsWrappedErrors
+            except AwsWrapperError as aws_err:  # Unwrap any AwsWrappedErrors
                 if aws_err.__cause__:
                     raise aws_err.__cause__
                 raise
-        except FailoverError as exc: # Raise any failover errors
+        except FailoverError:  # Raise any failover errors
             raise
         except errors.IntegrityError as exc:
             raise IntegrityError(exc)
@@ -81,7 +71,8 @@ def translate_exceptions(func: FuncType) -> FuncType:
 
     return translate_exceptions_
 
-class AwsMySQLClient(BaseDBAsyncClient):
+
+class AwsMySQLClient(AwsBaseDBAsyncClient):
     """AWS Advanced Python Wrapper MySQL client for Tortoise ORM."""
     query_class = MySQLQuery
     executor_class = AwsMySQLExecutor
@@ -94,8 +85,6 @@ class AwsMySQLClient(BaseDBAsyncClient):
         support_for_posix_regex_queries=True,
         support_json_attributes=True,
     )
-    _provider: Optional[ConnectionProvider] = None
-    _pool_init_class_lock = asyncio.Lock()
 
     def __init__(
         self,
@@ -109,7 +98,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
     ):
         """Initialize AWS MySQL client with connection parameters."""
         super().__init__(**kwargs)
-        
+
         # Basic connection parameters
         self.user = user
         self.password = password
@@ -121,7 +110,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
         # Extract MySQL-specific settings
         self.storage_engine = self.extra.pop("storage_engine", "innodb")
         self.charset = self.extra.pop("charset", "utf8mb4")
-        
+
         # Remove Tortoise-specific parameters
         self.extra.pop("connection_name", None)
         self.extra.pop("fetch_inserted", None)
@@ -133,7 +122,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
 
         # Initialize state
         self._template: Dict[str, Any] = {}
-        self._connection: Optional[Any] = None
+        self._connection = None
 
     def _init_connection_templates(self) -> None:
         """Initialize connection templates for with/without database."""
@@ -145,7 +134,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
             "autocommit": True,
             **self.extra
         }
-        
+
         self._template_with_db = {**base_template, "database": self.database}
         self._template_no_db = {**base_template, "database": None}
 
@@ -159,7 +148,7 @@ class AwsMySQLClient(BaseDBAsyncClient):
         # Set transaction support based on storage engine
         if self.storage_engine.lower() != "innodb":
             self.capabilities.__dict__["supports_transactions"] = False
-        
+
         # Set template based on database requirement
         self._template = self._template_with_db if with_db else self._template_no_db
 
@@ -237,11 +226,11 @@ class AwsMySQLClient(BaseDBAsyncClient):
                     fields = [desc[0] for desc in cursor.description]
                     return cursor.rowcount, [dict(zip(fields, row)) for row in rows]
                 return cursor.rowcount, []
-            
+
     async def execute_query_dict(self, query: str, values: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
         """Execute a query and return only the results as dictionaries."""
         return (await self.execute_query(query, values))[1]
-    
+
     async def execute_script(self, query: str) -> None:
         """Execute a script query."""
         await self._execute_script(query, True)
@@ -265,12 +254,12 @@ class AwsMySQLClient(BaseDBAsyncClient):
         return TortoiseAwsClientTransactionContext(TransactionWrapper(self))
 
 
-class TransactionWrapper(AwsMySQLClient, TransactionalDBClient):
+class TransactionWrapper(AwsMySQLClient, AwsTransactionalDBClient):
     """Transaction wrapper for AWS MySQL client."""
-    
+
     def __init__(self, connection: AwsMySQLClient) -> None:
         self.connection_name = connection.connection_name
-        self._connection = connection._connection
+        self._connection: AwsConnectionAsyncWrapper = connection._connection
         self._lock = asyncio.Lock()
         self._savepoint: Optional[str] = None
         self._finalized: bool = False
@@ -279,7 +268,7 @@ class TransactionWrapper(AwsMySQLClient, TransactionalDBClient):
     def _in_transaction(self) -> TransactionContext:
         """Create a nested transaction context."""
         return NestedTransactionContext(TransactionWrapper(self))
-    
+
     def acquire_connection(self):
         """Acquire the transaction connection."""
         return ConnectionWrapper(self._lock, self)
@@ -290,7 +279,7 @@ class TransactionWrapper(AwsMySQLClient, TransactionalDBClient):
         """Begin the transaction."""
         await self._connection.set_autocommit(False)
         self._finalized = False
-    
+
     async def commit(self) -> None:
         """Commit the transaction."""
         if self._finalized:

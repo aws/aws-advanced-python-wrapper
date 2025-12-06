@@ -23,11 +23,13 @@ def load_mysql_module(module_file: str, class_name: str) -> Type:
     tortoise_path = Path(tortoise.__file__).parent
     module_path = tortoise_path / "backends" / "mysql" / module_file
     module_name = f"tortoise.backends.mysql.{module_file[:-3]}"
-    
+
     if module_name not in sys.modules:
         spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module {module_name}")
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
-    
+
     return getattr(sys.modules[module_name], class_name)

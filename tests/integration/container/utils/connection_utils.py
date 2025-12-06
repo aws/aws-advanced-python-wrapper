@@ -98,7 +98,7 @@ class ConnectionUtils:
         password = self.password if password is None else password
         dbname = self.dbname if dbname is None else dbname
         return DriverHelper.get_connect_params(host, port, user, password, dbname)
-    
+
     def get_aws_tortoise_url(
             self,
             db_engine: DatabaseEngine,
@@ -114,14 +114,14 @@ class ConnectionUtils:
         user = self.user if user is None else user
         password = self.password if password is None else password
         dbname = self.dbname if dbname is None else dbname
-        
+
         # Build base URL
         protocol = "aws-pg" if db_engine == DatabaseEngine.PG else "aws-mysql"
         url = f"{protocol}://{user}:{password}@{host}:{port}/{dbname}"
-        
+
         # Add all kwargs as query parameters
         if kwargs:
             params = [f"{key}={value}" for key, value in kwargs.items()]
             url += "?" + "&".join(params)
-        
+
         return url

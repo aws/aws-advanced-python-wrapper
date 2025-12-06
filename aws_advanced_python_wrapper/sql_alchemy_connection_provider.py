@@ -88,7 +88,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         if self._accept_url_func:
             return self._accept_url_func(host_info, props)
         url_type = SqlAlchemyPooledConnectionProvider._rds_utils.identify_rds_type(host_info.host)
-        return RdsUrlType.RDS_INSTANCE == url_type or RdsUrlType.RDS_WRITER_CLUSTER
+        return url_type in (RdsUrlType.RDS_INSTANCE, RdsUrlType.RDS_WRITER_CLUSTER)
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         return strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS or strategy in self._accepted_strategies

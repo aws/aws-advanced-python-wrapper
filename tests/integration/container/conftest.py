@@ -111,8 +111,8 @@ def pytest_runtest_setup(item):
 
             # Only sleep if we still need to retry
             if (len(instances) < request.get_num_of_instances()
-                or len(instances) == 0
-                or not rds_utility.is_db_instance_writer(instances[0])):
+                    or len(instances) == 0
+                    or not rds_utility.is_db_instance_writer(instances[0])):
                 sleep(5)
 
         assert len(instances) > 0

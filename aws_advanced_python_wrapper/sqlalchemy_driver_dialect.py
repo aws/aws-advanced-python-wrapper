@@ -32,6 +32,7 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 class SqlAlchemyDriverDialect(DriverDialect):
     _driver_name: str = "SQLAlchemy"
     TARGET_DRIVER_CODE: str = "sqlalchemy"
+    _underlying_driver_dialect = None
 
     def __init__(self, underlying_driver: DriverDialect, props: Properties):
         super().__init__(props)
@@ -126,6 +127,6 @@ class SqlAlchemyDriverDialect(DriverDialect):
             return None
 
         return self._underlying_driver.transfer_session_state(from_driver_conn, to_driver_conn)
-    
+
     def get_driver_module(self) -> ModuleType:
         return self._underlying_driver.get_driver_module()

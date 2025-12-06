@@ -11,10 +11,11 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
+
+import mysql.connector
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -29,11 +30,12 @@ from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesUtils, WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          PropertiesUtils,
+                                                          WrapperProperties)
 
 CMYSQL_ENABLED = False
 
-import mysql.connector
 from mysql.connector import MySQLConnection  # noqa: E402
 from mysql.connector.cursor import MySQLCursor  # noqa: E402
 
