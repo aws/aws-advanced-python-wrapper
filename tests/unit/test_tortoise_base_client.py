@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from aws_advanced_python_wrapper.tortoise.backend.base.client import (
+from aws_advanced_python_wrapper.tortoise.backends.base.client import (
     AwsConnectionAsyncWrapper, AwsCursorAsyncWrapper, AwsWrapperAsyncConnector,
     TortoiseAwsClientConnectionWrapper, TortoiseAwsClientTransactionContext)
 

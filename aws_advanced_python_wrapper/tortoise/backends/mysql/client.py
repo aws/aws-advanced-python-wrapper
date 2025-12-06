@@ -30,12 +30,12 @@ from tortoise.exceptions import (DBConnectionError, IntegrityError,
                                  OperationalError, TransactionManagementError)
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError, FailoverError
-from aws_advanced_python_wrapper.tortoise.backend.base.client import (
+from aws_advanced_python_wrapper.tortoise.backends.base.client import (
     AwsBaseDBAsyncClient, AwsConnectionAsyncWrapper, AwsTransactionalDBClient,
     TortoiseAwsClientConnectionWrapper, TortoiseAwsClientTransactionContext)
-from aws_advanced_python_wrapper.tortoise.backend.mysql.executor import \
+from aws_advanced_python_wrapper.tortoise.backends.mysql.executor import \
     AwsMySQLExecutor
-from aws_advanced_python_wrapper.tortoise.backend.mysql.schema_generator import \
+from aws_advanced_python_wrapper.tortoise.backends.mysql.schema_generator import \
     AwsMySQLSchemaGenerator
 from aws_advanced_python_wrapper.utils.log import Logger
 

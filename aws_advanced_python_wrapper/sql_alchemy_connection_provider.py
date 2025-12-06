@@ -88,7 +88,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         if self._accept_url_func:
             return self._accept_url_func(host_info, props)
         url_type = SqlAlchemyPooledConnectionProvider._rds_utils.identify_rds_type(host_info.host)
-        return url_type in (RdsUrlType.RDS_INSTANCE, RdsUrlType.RDS_WRITER_CLUSTER)
+        return RdsUrlType.RDS_INSTANCE == url_type
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         return strategy == SqlAlchemyPooledConnectionProvider._LEAST_CONNECTIONS or strategy in self._accepted_strategies
@@ -137,6 +137,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
 
         if queue_pool is None:
             raise AwsWrapperError(Messages.get_formatted("SqlAlchemyPooledConnectionProvider.PoolNone", host_info.url))
+
         return queue_pool.connect()
 
     # The pool key should always be retrieved using this method, because the username

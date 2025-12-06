@@ -19,7 +19,7 @@ from mysql.connector import errors
 from tortoise.exceptions import (DBConnectionError, IntegrityError,
                                  OperationalError, TransactionManagementError)
 
-from aws_advanced_python_wrapper.tortoise.backend.mysql.client import (
+from aws_advanced_python_wrapper.tortoise.backends.mysql.client import (
     AwsMySQLClient, TransactionWrapper, _gen_savepoint_name,
     translate_exceptions)
 
@@ -117,7 +117,7 @@ class TestAwsMySQLClient:
                 connection_name="test_conn"
             )
 
-        with patch('aws_advanced_python_wrapper.tortoise.backend.mysql.client.logger'):
+        with patch('aws_advanced_python_wrapper.tortoise.backends.mysql.client.logger'):
             await client.create_connection(with_db=True)
 
         assert client._template["user"] == "test_user"
@@ -177,7 +177,7 @@ class TestAwsMySQLClient:
             mock_connection.cursor.return_value.__aexit__ = AsyncMock()
             mock_cursor.execute = AsyncMock()
 
-            with patch('aws_advanced_python_wrapper.tortoise.backend.mysql.client.logger'):
+            with patch('aws_advanced_python_wrapper.tortoise.backends.mysql.client.logger'):
                 result = await client.execute_insert("INSERT INTO test VALUES (?)", ["value"])
 
             assert result == 123
@@ -208,7 +208,7 @@ class TestAwsMySQLClient:
             with patch.object(client, '_execute_many_with_transaction') as mock_execute_many_tx:
                 mock_execute_many_tx.return_value = None
 
-                with patch('aws_advanced_python_wrapper.tortoise.backend.mysql.client.logger'):
+                with patch('aws_advanced_python_wrapper.tortoise.backends.mysql.client.logger'):
                     await client.execute_many("INSERT INTO test VALUES (?)", [["val1"], ["val2"]])
 
                 mock_execute_many_tx.assert_called_once_with(
@@ -240,7 +240,7 @@ class TestAwsMySQLClient:
             mock_cursor.execute = AsyncMock()
             mock_cursor.fetchall = AsyncMock(return_value=[(1, "test"), (2, "test2")])
 
-            with patch('aws_advanced_python_wrapper.tortoise.backend.mysql.client.logger'):
+            with patch('aws_advanced_python_wrapper.tortoise.backends.mysql.client.logger'):
                 rowcount, results = await client.execute_query("SELECT * FROM test")
 
             assert rowcount == 2
