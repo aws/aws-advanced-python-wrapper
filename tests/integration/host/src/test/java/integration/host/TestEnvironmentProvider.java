@@ -140,10 +140,13 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
             }
 
             for (TargetPythonVersion targetPythonVersion : TargetPythonVersion.values()) {
-              if (targetPythonVersion == TargetPythonVersion.PYTHON_3_8 && config.excludePython38) {
+              if (targetPythonVersion == TargetPythonVersion.PYTHON_3_11 && config.excludePython311) {
                 continue;
               }
-              if (targetPythonVersion == TargetPythonVersion.PYTHON_3_11 && config.excludePython311) {
+              if (targetPythonVersion == TargetPythonVersion.PYTHON_3_12 && config.excludePython312) {
+                continue;
+              }
+              if (targetPythonVersion == TargetPythonVersion.PYTHON_3_13 && config.excludePython313) {
                 continue;
               }
 

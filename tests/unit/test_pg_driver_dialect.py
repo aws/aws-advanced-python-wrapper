@@ -14,7 +14,7 @@
 
 import psycopg
 import pytest
-from mysql.connector import CMySQLConnection
+from mysql.connector import MySQLConnection
 from sqlalchemy import PoolProxiedConnection
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -40,7 +40,7 @@ def mock_pool_conn(mocker, mock_conn):
 
 @pytest.fixture
 def mock_invalid_conn(mocker):
-    return mocker.MagicMock(spec=CMySQLConnection)
+    return mocker.MagicMock(spec=MySQLConnection)
 
 
 @pytest.fixture

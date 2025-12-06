@@ -205,7 +205,7 @@ For all other questions, please use [GitHub discussions](https://github.com/awsl
 
 1. Set up your environment by following the directions in the [Development Guide](./docs/development-guide/DevelopmentGuide.md).
 2. To contribute, first make a fork of this project. 
-3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.8 - 3.11 (inclusive)).
+3. Make any changes on your fork. Make sure you are aware of the requirements for the project (e.g. do not require Python 3.7 if we are supporting Python 3.10 - 3.13 (inclusive)).
 4. Create a pull request from your fork. 
 5. Pull requests need to be approved and merged by maintainers into the main branch. <br />
 

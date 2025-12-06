@@ -18,6 +18,8 @@ import pytest
 from aws_advanced_python_wrapper.connection_provider import (
     ConnectionProviderManager, DriverConnectionProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
+    SqlAlchemyPooledConnectionProvider
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
@@ -28,12 +30,12 @@ def connection_mock(mocker):
 
 @pytest.fixture
 def default_provider_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=DriverConnectionProvider)
 
 
 @pytest.fixture
 def set_provider_mock(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=SqlAlchemyPooledConnectionProvider)
 
 
 @pytest.fixture
@@ -172,9 +174,8 @@ def test_manager_get_host_info_by_strategy(connection_mock, default_provider_moc
     assert host_info.host == "other"
 
 
-def test_release_resources(connection_mock, default_provider_mock, set_provider_mock):
-    connection_provider_manager = ConnectionProviderManager(default_provider_mock)
+def test_release_resources(connection_mock, set_provider_mock):
     ConnectionProviderManager.set_connection_provider(set_provider_mock)
     ConnectionProviderManager.release_resources()
 
-    connection_provider_manager._conn_provider.release_resources.assert_called_once()
+    set_provider_mock.release_resources.assert_called_once()
