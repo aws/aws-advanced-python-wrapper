@@ -13,13 +13,13 @@
 from .database_engine import DatabaseEngine
 
 
-def get_sleep_sql(db_engine : DatabaseEngine, seconds : int):
+def get_sleep_sql(db_engine: DatabaseEngine, seconds: int):
     if db_engine == DatabaseEngine.MYSQL:
         return f"SELECT SLEEP({seconds});"
     elif db_engine == DatabaseEngine.PG:
         return f"SELECT PG_SLEEP({seconds});"
     else:
-        raise ValueError("Unknown database engine: " + db)
+        raise ValueError("Unknown database engine: " + str(db_engine))
 
 
 def get_sleep_trigger_sql(db_engine: DatabaseEngine, duration: int, table_name: str) -> str:
@@ -42,7 +42,7 @@ def get_sleep_trigger_sql(db_engine: DatabaseEngine, duration: int, table_name: 
             RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;
-        
+
         CREATE TRIGGER {table_name}_sleep_trigger
         BEFORE INSERT ON {table_name}
         FOR EACH ROW
@@ -50,4 +50,3 @@ def get_sleep_trigger_sql(db_engine: DatabaseEngine, duration: int, table_name: 
         """
     else:
         raise ValueError(f"Unknown database engine: {db_engine}")
-    

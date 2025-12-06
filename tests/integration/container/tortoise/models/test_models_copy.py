@@ -20,7 +20,7 @@ class User(Model):
     id = fields.IntField(primary_key=True)
     name = fields.CharField(max_length=50)
     email = fields.CharField(max_length=100, unique=True)
-    
+
     class Meta:
         table = "users"
 
@@ -30,7 +30,7 @@ class UniqueName(Model):
     name = fields.CharField(max_length=20, null=True, unique=True)
     optional = fields.CharField(max_length=20, null=True)
     other_optional = fields.CharField(max_length=20, null=True)
-    
+
     class Meta:
         table = "unique_names"
 
@@ -39,6 +39,6 @@ class TableWithSleepTrigger(Model):
     id = fields.IntField(primary_key=True)
     name = fields.CharField(max_length=50)
     value = fields.CharField(max_length=100)
-    
+
     class Meta:
         table = "table_with_sleep_trigger"

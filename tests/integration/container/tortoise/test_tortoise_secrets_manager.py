@@ -18,7 +18,6 @@ import boto3
 import pytest
 import pytest_asyncio
 
-from tests.integration.container.tortoise.models.test_models import User
 from tests.integration.container.tortoise.test_tortoise_common import (
     run_basic_read_operations, run_basic_write_operations, setup_tortoise)
 from tests.integration.container.utils.conditions import (
@@ -38,19 +37,19 @@ from tests.integration.container.utils.test_environment_features import \
                       TestEnvironmentFeatures.PERFORMANCE])
 class TestTortoiseSecretsManager:
     """Test class for Tortoise ORM with AWS Secrets Manager authentication."""
-    
+
     @pytest.fixture(scope='class')
     def create_secret(self, conn_utils):
         """Create a secret in AWS Secrets Manager with database credentials."""
         region = TestEnvironment.get_current().get_info().get_region()
         client = boto3.client('secretsmanager', region_name=region)
-        
+
         secret_name = f"test-tortoise-secret-{TestEnvironment.get_current().get_info().get_db_name()}"
         secret_value = {
             "username": conn_utils.user,
             "password": conn_utils.password
         }
-        
+
         try:
             response = client.create_secret(
                 Name=secret_name,
@@ -66,13 +65,13 @@ class TestTortoiseSecretsManager:
                 )
             except Exception:
                 pass
-    
+
     @pytest_asyncio.fixture
     async def setup_tortoise_secrets_manager(self, conn_utils, create_secret):
         """Setup Tortoise with Secrets Manager authentication."""
-        async for result in setup_tortoise(conn_utils, 
-                                            plugins="aws_secrets_manager", 
-                                            secrets_manager_secret_id=create_secret):
+        async for result in setup_tortoise(conn_utils,
+                                           plugins="aws_secrets_manager",
+                                           secrets_manager_secret_id=create_secret):
             yield result
 
     @pytest.mark.asyncio

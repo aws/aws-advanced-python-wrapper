@@ -15,6 +15,6 @@
 class TestRouter:
     def db_for_read(self, model):
         return "default"
-    
+
     def db_for_write(self, model):
         return "default"

@@ -13,13 +13,11 @@
 #  limitations under the License.
 
 import pytest
-import pytest_asyncio
 from tortoise import Tortoise, connections
 
 # Import to register the aws-mysql backend
-import aws_advanced_python_wrapper.tortoise
-from tests.integration.container.tortoise.models.test_models import *
-from tests.integration.container.utils.rds_test_utility import RdsTestUtility
+import aws_advanced_python_wrapper.tortoise  # noqa: F401
+from tests.integration.container.tortoise.models.test_models import User
 from tests.integration.container.utils.test_environment import TestEnvironment
 
 
@@ -28,11 +26,12 @@ async def clear_test_models():
     from tortoise.models import Model
 
     import tests.integration.container.tortoise.models.test_models as models_module
-    
+
     for attr_name in dir(models_module):
         attr = getattr(models_module, attr_name)
         if isinstance(attr, type) and issubclass(attr, Model) and attr != Model:
             await attr.all().delete()
+
 
 async def setup_tortoise(conn_utils, plugins="aurora_connection_tracker", **kwargs):
     """Setup Tortoise with AWS MySQL backend and configurable plugins."""
@@ -41,7 +40,7 @@ async def setup_tortoise(conn_utils, plugins="aurora_connection_tracker", **kwar
         plugins=plugins,
         **kwargs,
     )
-    
+
     config = {
         "connections": {
             "default": db_url
@@ -53,17 +52,17 @@ async def setup_tortoise(conn_utils, plugins="aurora_connection_tracker", **kwar
             }
         }
     }
-    
+
     from aws_advanced_python_wrapper.tortoise.sql_alchemy_tortoise_connection_provider import \
         setup_tortoise_connection_provider
     setup_tortoise_connection_provider()
     await Tortoise.init(config=config)
     await Tortoise.generate_schemas()
-    
+
     await clear_test_models()
-    
+
     yield
-    
+
     await clear_test_models()
     await reset_tortoise()
 
@@ -71,11 +70,11 @@ async def setup_tortoise(conn_utils, plugins="aurora_connection_tracker", **kwar
 async def run_basic_read_operations(name_prefix="Test", email_prefix="test"):
     """Common test logic for basic read operations."""
     user = await User.create(name=f"{name_prefix} User", email=f"{email_prefix}@example.com")
-    
+
     found_user = await User.get(id=user.id)
     assert found_user.name == f"{name_prefix} User"
     assert found_user.email == f"{email_prefix}@example.com"
-    
+
     users = await User.filter(name=f"{name_prefix} User")
     assert len(users) == 1
     assert users[0].id == user.id
@@ -85,17 +84,18 @@ async def run_basic_write_operations(name_prefix="Write", email_prefix="write"):
     """Common test logic for basic write operations."""
     user = await User.create(name=f"{name_prefix} Test", email=f"{email_prefix}@example.com")
     assert user.id is not None
-    
+
     user.name = f"Updated {name_prefix}"
     await user.save()
-    
+
     updated_user = await User.get(id=user.id)
     assert updated_user.name == f"Updated {name_prefix}"
-    
+
     await updated_user.delete()
-    
+
     with pytest.raises(Exception):
         await User.get(id=user.id)
+
 
 async def reset_tortoise():
     await Tortoise.close_connections()

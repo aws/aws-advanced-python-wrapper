@@ -20,7 +20,6 @@ import pytest_asyncio
 from boto3 import client
 from botocore.exceptions import ClientError
 
-from tests.integration.container.tortoise.models.test_models import User
 from tests.integration.container.tortoise.test_tortoise_common import (
     run_basic_read_operations, run_basic_write_operations, setup_tortoise)
 from tests.integration.container.utils.conditions import (
@@ -43,18 +42,18 @@ from tests.integration.container.utils.test_environment_features import \
 class TestTortoiseCustomEndpoint:
     """Test class for Tortoise ORM with custom endpoint plugin."""
     endpoint_id = f"test-tortoise-endpoint-{uuid4()}"
-    endpoint_info = {}
-    
+    endpoint_info: dict[str, str] = {}
+
     @pytest.fixture(scope='class')
     def create_custom_endpoint(self):
         """Create a custom endpoint for testing."""
         env_info = TestEnvironment.get_current().get_info()
         region = env_info.get_region()
         rds_client = client('rds', region_name=region)
-        
+
         instances = env_info.get_database_info().get_instances()
         instance_ids = [instances[0].get_instance_id()]
-        
+
         try:
             rds_client.create_db_cluster_endpoint(
                 DBClusterEndpointIdentifier=self.endpoint_id,
@@ -62,7 +61,7 @@ class TestTortoiseCustomEndpoint:
                 EndpointType="ANY",
                 StaticMembers=instance_ids
             )
-            
+
             self._wait_until_endpoint_available(rds_client)
             yield self.endpoint_info["Endpoint"]
         finally:
@@ -72,12 +71,12 @@ class TestTortoiseCustomEndpoint:
                 if e.response['Error']['Code'] != 'DBClusterEndpointNotFoundFault':
                     pass  # Ignore if endpoint doesn't exist
             rds_client.close()
-    
+
     def _wait_until_endpoint_available(self, rds_client):
         """Wait for the custom endpoint to become available."""
         end_ns = perf_counter_ns() + 5 * 60 * 1_000_000_000  # 5 minutes
         available = False
-        
+
         while perf_counter_ns() < end_ns:
             response = rds_client.describe_db_cluster_endpoints(
                 DBClusterEndpointIdentifier=self.endpoint_id,
@@ -88,23 +87,23 @@ class TestTortoiseCustomEndpoint:
                     }
                 ]
             )
-            
+
             response_endpoints = response["DBClusterEndpoints"]
             if len(response_endpoints) != 1:
                 sleep(3)
                 continue
-            
+
             response_endpoint = response_endpoints[0]
             TestTortoiseCustomEndpoint.endpoint_info = response_endpoint
             available = "available" == response_endpoint["Status"]
             if available:
                 break
-            
+
             sleep(3)
-        
+
         if not available:
             pytest.fail(f"Timed out waiting for custom endpoint to become available: {self.endpoint_id}")
-    
+
     @pytest_asyncio.fixture
     async def setup_tortoise_custom_endpoint(self, conn_utils, create_custom_endpoint):
         """Setup Tortoise with custom endpoint plugin."""
