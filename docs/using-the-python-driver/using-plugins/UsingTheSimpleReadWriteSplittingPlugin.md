@@ -24,14 +24,22 @@ conn = AwsWrapperConnection.connect(psycopg.Connection.connect, **params)
 ```
 
 ## Simple Read/Write Splitting Plugin Parameters
-| Parameter                            |  Value  | Required | Description                                                                                                                                                          | Default Value | Example Values                                               |
-|--------------------------------------|:-------:|:--------:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|--------------------------------------------------------------|
-| `srw_write_endpoint`                 | String  |   Yes    | The endpoint to connect to upon setting `read_only` to `False`.                                                                                                      | `None`        | `<cluster-name>.cluster-<XYZ>.<region>.rds.amazonaws.com`    |
-| `srw_read_endpoint`                  | String  |   Yes    | The endpoint to connect to upon setting `read_only` to `True`.                                                                                                       | `None`        | `<cluster-name>.cluster-ro-<XYZ>.<region>.rds.amazonaws.com` |
-| `srw_verify_new_connections`         | Boolean |    No    | Enables writer/reader verification for new connections made by the Simple Read/Write Splitting Plugin. More details below.                                           | `True`        | `True`, `False`                                              |
-| `srw_verify_initial_connection_type` | String  |    No    | If `srw_verify_new_connections` is set to `True`, this parameter will verify the initial opened connection to be either a writer or a reader. More details below.    | `None`        | `writer`, `reader`                                           |
-| `srw_connect_retry_timeout_ms`       | Integer |    No    | If `srw_verify_new_connections` is set to `True`, this parameter sets the maximum allowed time in milliseconds for retrying connection attempts. More details below. | `6000`        | `60000`                                                      |
-| `srw_connect_retry_interval_ms`      | Integer |    No    | If `srw_verify_new_connections` is set to `True`, this parameter sets the time delay in milliseconds between each retry of opening a connection. More details below. | `100`         | `1000`                                                       |
+| Parameter                            |  Value  | Required | Description                                                                                                                                                                                                           | Default Value | Example Values                                               |
+|--------------------------------------|:-------:|:--------:|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|--------------------------------------------------------------|
+| `srw_write_endpoint`                 | String  |   Yes    | The endpoint to connect to upon setting `read_only` to `False`.                                                                                                                                                       | `None`        | `<cluster-name>.cluster-<XYZ>.<region>.rds.amazonaws.com`    |
+| `srw_read_endpoint`                  | String  |   Yes    | The endpoint to connect to upon setting `read_only` to `True`.                                                                                                                                                        | `None`        | `<cluster-name>.cluster-ro-<XYZ>.<region>.rds.amazonaws.com` |
+| `srw_verify_new_connections`         | Boolean |    No    | Enables writer/reader verification for new connections made by the Simple Read/Write Splitting Plugin. More details below.                                                                                            | `True`        | `True`, `False`                                              |
+| `srw_verify_initial_connection_type` | String  |    No    | If `srw_verify_new_connections` is set to `True` and this value is set, the wrapper will verify whether the initial connection matches the specified role. Valid values are 'reader' or 'writer'. More details below. | `None`        | `writer`, `reader`                                           |
+| `srw_connect_retry_timeout_ms`       | Integer |    No    | If `srw_verify_new_connections` is set to `True`, this parameter sets the maximum allowed time in milliseconds for retrying connection attempts. More details below.                                                  | `6000`        | `60000`                                                      |
+| `srw_connect_retry_interval_ms`      | Integer |    No    | If `srw_verify_new_connections` is set to `True`, this parameter sets the time delay in milliseconds between each retry of opening a connection. More details below.                                                  | `100`         | `1000`                                                       |
+
+> [!NOTE]\
+> The following values are only used when verifying new connections with the Simple Read/Write Splitting Plugin:
+> - `srw_verify_initial_connection_type`
+> - `srw_connect_retry_timeout_ms`
+> - `srw_connect_retry_interval_ms` 
+> 
+> When `srw_verify_new_connections` is set to `False`, these values will have no impact.
 
 ## How the Simple Read/Write Splitting Plugin Verifies Connections
 
