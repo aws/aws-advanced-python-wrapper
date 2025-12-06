@@ -12,25 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import typing
-from typing import Any, Dict
+from typing import Type
+
+from aws_advanced_python_wrapper.tortoise.utils import load_mysql_module
+
+MySQLSchemaGenerator: Type = load_mysql_module("schema_generator.py", "MySQLSchemaGenerator")
 
 
-class TestTelemetryInfo:
-    __test__ = False
-
-    _endpoint: str
-    _endpoint_port: int
-
-    def __init__(self, telemetry_info: Dict[str, Any]) -> None:
-        if telemetry_info is None:
-            return
-
-        self._endpoint = typing.cast('str', telemetry_info.get("endpoint"))
-        self._endpoint_port = typing.cast('int', telemetry_info.get("endpointPort"))
-
-    def get_endpoint(self) -> str:
-        return self._endpoint
-
-    def get_endpoint_port(self) -> int:
-        return self._endpoint_port
+class AwsMySQLSchemaGenerator(MySQLSchemaGenerator):
+    """AWS MySQL Executor for Tortoise ORM."""
+    pass

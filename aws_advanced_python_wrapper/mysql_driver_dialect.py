@@ -11,14 +11,16 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
 
+import mysql.connector
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
+    from types import ModuleType
 
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from inspect import signature
@@ -201,3 +203,6 @@ class MySQLDriverDialect(DriverDialect):
 
     def supports_connect_timeout(self) -> bool:
         return True
+
+    def get_driver_module(self) -> ModuleType:
+        return mysql.connector
