@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, Optional
 
 import mysql.connector
 import psycopg
+import psycopg2
 
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -35,7 +36,7 @@ class DriverHelper:
             raise Exception(Messages.get("Testing.RequiredTestDriver"))
 
         if d == TestDriver.PG:
-            return psycopg.Connection.connect
+            return psycopg2.connect
         if d == TestDriver.MYSQL:
             return mysql.connector.connect
         else:

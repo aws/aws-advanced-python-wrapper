@@ -759,7 +759,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
         return self._dialect
 
     def _get_target_driver_type(self, driver_dialect: str) -> TargetDriverType:
-        if driver_dialect == DriverDialectCodes.PSYCOPG:
+        if driver_dialect == DriverDialectCodes.PSYCOPG or driver_dialect == DriverDialectCodes.PSYCOPG2:
             return TargetDriverType.POSTGRES
         if driver_dialect == DriverDialectCodes.MYSQL_CONNECTOR_PYTHON:
             return TargetDriverType.MYSQL

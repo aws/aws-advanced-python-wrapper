@@ -12,11 +12,17 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from typing import List, Optional
+from typing import List, Optional, Tuple, Type
 
-from psycopg.errors import (ConnectionTimeout,
-                            InvalidAuthorizationSpecification, InvalidPassword,
+try:
+    from psycopg.errors import (ConnectionTimeout,
+                            InvalidAuthorizationSpecification,
+                            InvalidPassword,
                             OperationalError)
+except ImportError:
+    from psycopg2 import OperationalError  # type: ignore
+    from psycopg2.errors import InvalidAuthorizationSpecification, InvalidPassword  # type: ignore
+    ConnectionTimeout = None  # type: ignore
 
 from aws_advanced_python_wrapper.errors import QueryTimeoutError
 from aws_advanced_python_wrapper.exception_handling import ExceptionHandler
@@ -42,7 +48,9 @@ class PgExceptionHandler(ExceptionHandler):
     _ACCESS_ERROR_CODES: List[str]
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
+        if isinstance(error, QueryTimeoutError):
+             return True
+        if ConnectionTimeout is not None and isinstance(error, ConnectionTimeout):
             return True
         if sql_state is None:
             try:
