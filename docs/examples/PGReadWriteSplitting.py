@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
 
-import psycopg
+import psycopg # type: ignore
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.connection_provider import \
@@ -58,7 +58,7 @@ def execute_queries_with_failover_handling(conn: Connection, sql: str, params: O
 
     except FailoverSuccessError:
         # Query execution failed and AWS Advanced Python Driver successfully failed over to an available instance.
-        # https://github.com/awslabs/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#FailoverFailedError---successful-failover
+        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoversuccesserror
 
         # The old cursor is no longer reusable and the application needs to reconfigure sessions states.
         configure_initial_session_states(conn)
@@ -69,12 +69,12 @@ def execute_queries_with_failover_handling(conn: Connection, sql: str, params: O
 
     except FailoverFailedError as e:
         # User application should open a new connection, check the results of the failed transaction and re-run it if needed. See:
-        # https://github.com/awslabs/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#FailoverFailedError---unable-to-establish-sql-connection
+        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoverfailederror
         raise e
 
     except TransactionResolutionUnknownError as e:
         # User application should check the status of the failed transaction and restart it if needed. See:
-        # https://github.com/awslabs/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#TransactionResolutionUnknownError---transaction-resolution-unknown
+        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#transactionresolutionunknownerror
         raise e
 
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
         "password": "pwd",
         "plugins": "read_write_splitting,failover,host_monitoring",
         "wrapper_dialect": "aurora-pg",
-        "autocommit": True
+        "autocommit": True,
     }
 
     """
@@ -101,11 +101,15 @@ if __name__ == "__main__":
     with AwsWrapperConnection.connect(psycopg.Connection.connect, **params) as conn:
         configure_initial_session_states(conn)
         execute_queries_with_failover_handling(
-            conn, "CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
+            conn,
+            "CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)",
+        )
         execute_queries_with_failover_handling(
-            conn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
+            conn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200)
+        )
         execute_queries_with_failover_handling(
-            conn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
+            conn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200)
+        )
 
     """ Example step: open connection and perform transaction """
     try:
@@ -113,14 +117,22 @@ if __name__ == "__main__":
             configure_initial_session_states(conn)
 
             execute_queries_with_failover_handling(
-                conn, "UPDATE bank_test SET account_balance=account_balance - 100 WHERE name=%s", ("Jane Doe",))
+                conn,
+                "UPDATE bank_test SET account_balance=account_balance - 100 WHERE name=%s",
+                ("Jane Doe",),
+            )
             execute_queries_with_failover_handling(
-                conn, "UPDATE bank_test SET account_balance=account_balance + 100 WHERE name=%s", ("John Smith",))
+                conn,
+                "UPDATE bank_test SET account_balance=account_balance + 100 WHERE name=%s",
+                ("John Smith",),
+            )
 
             # Internally switch to a reader connection
             conn.read_only = True
             for i in range(2):
-                cursor = execute_queries_with_failover_handling(conn, "SELECT * FROM bank_test WHERE id = %s", (i,))
+                cursor = execute_queries_with_failover_handling(
+                    conn, "SELECT * FROM bank_test WHERE id = %s", (i,)
+                )
                 results = cursor.fetchall()
                 for record in results:
                     print(record)
