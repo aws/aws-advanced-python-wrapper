@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Tuple
 
+from aws_advanced_python_wrapper.utils.log import Logger
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
@@ -55,6 +57,8 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         should_dispose_func=lambda queue_pool: queue_pool.checkedout() == 0,
         item_disposal_func=lambda queue_pool: queue_pool.dispose()
     )
+
+    logger = Logger(__name__)
 
     def __init__(
             self,
@@ -134,6 +138,8 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             lambda _: self._create_pool(target_func, driver_dialect, database_dialect, host_info, props),
             SqlAlchemyPooledConnectionProvider._POOL_EXPIRATION_CHECK_NS
         )
+
+        self.logger.info(f"pool size: {queue_pool.size()}, checkedin: {queue_pool.checkedin()}, checkedout: {queue_pool.checkedout()}")
 
         if queue_pool is None:
             raise AwsWrapperError(Messages.get_formatted("SqlAlchemyPooledConnectionProvider.PoolNone", host_info.url))
