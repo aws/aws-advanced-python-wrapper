@@ -107,11 +107,11 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
             try:
                 result = future.result(timeout=self._max_failover_timeout_sec)
-                if result is None:
-                    result = ReaderFailoverHandlerImpl.failed_reader_failover_result
             except TimeoutError:
                 self._timeout_event.set()
         finally:
+            if result is None:
+                result = ReaderFailoverHandlerImpl.failed_reader_failover_result
             executor.shutdown(wait=False)
 
         return result
