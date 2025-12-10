@@ -289,11 +289,13 @@ class FailoverPlugin(Plugin):
             context.set_success(True)
             context.set_exception(fse)
             self._failover_reader_success_counter.inc()
+            logger.info("FailoverSuccessError thrown", exc_info=fse)
             raise fse
         except Exception as ex:
             context.set_success(False)
             context.set_exception(ex)
             self._failover_reader_failed_counter.inc()
+            logger.info("encountered error during reader failover", exc_info=ex)
             raise ex
         finally:
             context.close_context()

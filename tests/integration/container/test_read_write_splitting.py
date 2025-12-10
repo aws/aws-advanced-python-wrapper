@@ -543,9 +543,9 @@ class TestReadWriteSplitting:
         provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1}, None, lambda host_info, props: writer_host in host_info.host)
         ConnectionProviderManager.set_connection_provider(provider)
 
-        WrapperProperties.FAILOVER_TIMEOUT_SEC.set(proxied_failover_props, "1")
+        WrapperProperties.FAILOVER_TIMEOUT_SEC.set(proxied_failover_props, "3")
         WrapperProperties.FAILURE_DETECTION_TIME_MS.set(proxied_failover_props, "1000")
-        WrapperProperties.FAILURE_DETECTION_COUNT.set(proxied_failover_props, "1")
+        WrapperProperties.FAILURE_DETECTION_COUNT.set(proxied_failover_props, "3")
         WrapperProperties.PLUGINS.set(proxied_failover_props, plugins)
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
