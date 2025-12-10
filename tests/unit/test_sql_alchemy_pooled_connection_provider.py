@@ -96,7 +96,7 @@ def test_connect__custom_configuration_and_mapping(host_info, mocker, mock_conn,
     assert conn is mock_conn
     assert 1 == provider.num_pools
     assert expected_keys == provider.keys()
-    get_connection_func_patch.assert_called_with(mock_target_driver_connect_func, props)
+    get_connection_func_patch.assert_called_with(mock_target_driver_connect_func, mock_driver_dialect, props, props)
     mock_pool_initializer_func.assert_called_with(creator=mock_pool_connection_func, pool_size=10)
 
 

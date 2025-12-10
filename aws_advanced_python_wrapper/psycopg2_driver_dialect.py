@@ -21,6 +21,8 @@ from psycopg2.extensions import ( # type: ignore
     cursor as Psycopg2Cursor,
     TRANSACTION_STATUS_IDLE,
 )
+
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -49,7 +51,8 @@ class Psycopg2DriverDialect(DriverDialect):
         "Connection.commit",
         "Connection.autocommit",
         "Connection.autocommit_setter",
-        "Connection.set_session_readonly", # TODO: investigate this 
+        "Connection.is_read_only",
+        "Connection.set_read_only",
         "Connection.rollback",
         "Connection.close",
         "Connection.cursor",
@@ -68,7 +71,7 @@ class Psycopg2DriverDialect(DriverDialect):
 
     def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, Psycopg2Connection):
-            return conn.closed
+            return conn.closed != 0
 
         raise UnsupportedOperationError(
             Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "closed"))
@@ -181,7 +184,14 @@ class Psycopg2DriverDialect(DriverDialect):
         if keepalive_probes is not None:
             driver_props["keepalives_count"] = keepalive_probes
 
+        # Autocommit cannot be passed directly to psycopg2.connect. Set after.
+        driver_props.pop("autocommit", None)
+        
         return driver_props
+    
+    def configure_connection(self, connection: Connection, props: Properties):
+        if (autocommit := props.pop("autocommit", None)) is not None:
+            self.set_autocommit(connection, autocommit)
 
     def supports_connect_timeout(self) -> bool:
         return True

@@ -162,11 +162,18 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         kwargs = dict() if self._pool_configurator is None else self._pool_configurator(host_info, props)
         prepared_properties = driver_dialect.prepare_connect_info(host_info, props)
         database_dialect.prepare_conn_props(prepared_properties)
-        kwargs["creator"] = self._get_connection_func(target_func, prepared_properties)
+        kwargs["creator"] = self._get_connection_func(target_func, driver_dialect, prepared_properties, props)
         return self._create_sql_alchemy_pool(**kwargs)
 
-    def _get_connection_func(self, target_connect_func: Callable, props: Properties):
-        return lambda: target_connect_func(**props)
+    def _get_connection_func(self, target_connect_func: Callable, driver_dialect: DriverDialect,
+                             prepared_props: Properties, props: Properties):
+        def create_connection():
+            conn = target_connect_func(**prepared_props)
+            if hasattr(driver_dialect, "configure_connection"):
+                driver_dialect.configure_connection(conn, props)
+            return conn
+        
+        return create_connection
 
     def _create_sql_alchemy_pool(self, **kwargs):
         return pool.QueuePool(**kwargs)

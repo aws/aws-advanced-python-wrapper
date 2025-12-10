@@ -127,7 +127,10 @@ class DriverConnectionProvider(ConnectionProvider):
         database_dialect.prepare_conn_props(prepared_properties)
         logger.debug("DriverConnectionProvider.ConnectingToHost", host_info.host,
                      PropertiesUtils.log_properties(PropertiesUtils.mask_properties(prepared_properties)))
-        return target_func(**prepared_properties)
+        conn = target_func(**prepared_properties)
+        if hasattr(driver_dialect, "configure_connection"):
+            driver_dialect.configure_connection(conn, props)
+        return conn
 
 
 class ConnectionProviderManager:
