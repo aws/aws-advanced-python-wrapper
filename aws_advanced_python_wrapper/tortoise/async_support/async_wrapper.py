@@ -37,6 +37,46 @@ class AwsWrapperAsyncConnector:
         """Close an AWS wrapper connection asynchronously."""
         await asyncio.to_thread(connection.close)
 
+class AwsConnectionAsyncWrapper(AwsWrapperConnection):
+    """Wraps sync AwsConnection with async cursor support."""
+
+    def __init__(self, connection: AwsWrapperConnection):
+        self._wrapped_connection = connection
+
+    @asynccontextmanager
+    async def cursor(self):
+        """Create an async cursor context manager."""
+        cursor_obj = await asyncio.to_thread(self._wrapped_connection.cursor)
+        try:
+            yield AwsCursorAsyncWrapper(cursor_obj)
+        finally:
+            await asyncio.to_thread(cursor_obj.close)
+
+    async def rollback(self):
+        """Rollback the current transaction."""
+        return await asyncio.to_thread(self._wrapped_connection.rollback)
+
+    async def commit(self):
+        """Commit the current transaction."""
+        return await asyncio.to_thread(self._wrapped_connection.commit)
+
+    async def set_autocommit(self, value: bool):
+        """Set autocommit mode."""
+        return await asyncio.to_thread(setattr, self._wrapped_connection, 'autocommit', value)
+
+    async def close(self):
+        """Close the connection asynchronously."""
+        return await asyncio.to_thread(self._wrapped_connection.close)
+
+    def __getattr__(self, name):
+        """Delegate all other attributes/methods to the wrapped connection."""
+        return getattr(self._wrapped_connection, name)
+
+    def __del__(self):
+        """Delegate cleanup to wrapped connection."""
+        if hasattr(self, '_wrapped_connection'):
+            # Let the wrapped connection handle its own cleanup
+            pass
 
 class AwsCursorAsyncWrapper:
     """Wraps sync AwsCursor cursor with async support."""
@@ -67,41 +107,3 @@ class AwsCursorAsyncWrapper:
     def __getattr__(self, name):
         """Delegate non-async attributes to the wrapped cursor."""
         return getattr(self._cursor, name)
-
-
-class AwsConnectionAsyncWrapper(AwsWrapperConnection):
-    """Wraps sync AwsConnection with async cursor support."""
-
-    def __init__(self, connection: AwsWrapperConnection):
-        self._wrapped_connection = connection
-
-    @asynccontextmanager
-    async def cursor(self):
-        """Create an async cursor context manager."""
-        cursor_obj = await asyncio.to_thread(self._wrapped_connection.cursor)
-        try:
-            yield AwsCursorAsyncWrapper(cursor_obj)
-        finally:
-            await asyncio.to_thread(cursor_obj.close)
-
-    async def rollback(self):
-        """Rollback the current transaction."""
-        return await asyncio.to_thread(self._wrapped_connection.rollback)
-
-    async def commit(self):
-        """Commit the current transaction."""
-        return await asyncio.to_thread(self._wrapped_connection.commit)
-
-    async def set_autocommit(self, value: bool):
-        """Set autocommit mode."""
-        return await asyncio.to_thread(setattr, self._wrapped_connection, 'autocommit', value)
-
-    def __getattr__(self, name):
-        """Delegate all other attributes/methods to the wrapped connection."""
-        return getattr(self._wrapped_connection, name)
-
-    def __del__(self):
-        """Delegate cleanup to wrapped connection."""
-        if hasattr(self, '_wrapped_connection'):
-            # Let the wrapped connection handle its own cleanup
-            pass

@@ -31,6 +31,7 @@ from tests.integration.container.utils.database_engine_deployment import \
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
+from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 
 
 @disable_on_engines([DatabaseEngine.PG])
@@ -45,14 +46,18 @@ class TestTortoiseCustomEndpoint:
     endpoint_info: dict[str, str] = {}
 
     @pytest.fixture(scope='class')
-    def create_custom_endpoint(self):
+    def rds_utils(self):
+        region: str = TestEnvironment.get_current().get_info().get_region()
+        return RdsTestUtility(region)
+
+    @pytest.fixture(scope='class')
+    def create_custom_endpoint(self, rds_utils):
         """Create a custom endpoint for testing."""
         env_info = TestEnvironment.get_current().get_info()
         region = env_info.get_region()
         rds_client = client('rds', region_name=region)
 
-        instances = env_info.get_database_info().get_instances()
-        instance_ids = [instances[0].get_instance_id()]
+        instance_ids = [rds_utils.get_cluster_writer_instance_id()]
 
         try:
             rds_client.create_db_cluster_endpoint(
@@ -107,7 +112,7 @@ class TestTortoiseCustomEndpoint:
     @pytest_asyncio.fixture
     async def setup_tortoise_custom_endpoint(self, conn_utils, create_custom_endpoint):
         """Setup Tortoise with custom endpoint plugin."""
-        async for result in setup_tortoise(conn_utils, plugins="custom_endpoint,aurora_connection_tracker"):
+        async for result in setup_tortoise(conn_utils, plugins="custom_endpoint,aurora_connection_tracker", host=create_custom_endpoint):
             yield result
 
     @pytest.mark.asyncio

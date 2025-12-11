@@ -18,8 +18,6 @@ from tortoise import Tortoise, connections
 
 # Import to register the aws-mysql backend
 import aws_advanced_python_wrapper.tortoise  # noqa: F401
-from aws_advanced_python_wrapper.tortoise.sql_alchemy_tortoise_connection_provider import \
-    setup_tortoise_connection_provider
 from tests.integration.container.tortoise.models.test_models import User
 from tests.integration.container.tortoise.test_tortoise_common import \
     reset_tortoise
@@ -67,7 +65,6 @@ class TestTortoiseConfig:
             }
         }
 
-        setup_tortoise_connection_provider()
         await Tortoise.init(config=config)
         await Tortoise.generate_schemas()
         await self._clear_all_test_models()
@@ -121,7 +118,6 @@ class TestTortoiseConfig:
             }
         }
 
-        setup_tortoise_connection_provider()
         await Tortoise.init(config=config)
 
         # Create second database
@@ -169,7 +165,6 @@ class TestTortoiseConfig:
             "routers": ["tests.integration.container.tortoise.router.test_router.TestRouter"]
         }
 
-        setup_tortoise_connection_provider()
         await Tortoise.init(config=config)
         await Tortoise.generate_schemas()
         await self._clear_all_test_models()

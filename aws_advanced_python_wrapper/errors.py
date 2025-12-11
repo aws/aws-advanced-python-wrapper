@@ -45,3 +45,27 @@ class FailoverSuccessError(FailoverError):
 
 class ReadWriteSplittingError(AwsWrapperError):
     __module__ = "aws_advanced_python_wrapper"
+
+
+class AsyncConnectionPoolError(AwsWrapperError):
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class PoolNotInitializedError(AsyncConnectionPoolError):
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class PoolClosingError(AsyncConnectionPoolError):
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class PoolExhaustedError(AsyncConnectionPoolError):
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class ConnectionReleasedError(AsyncConnectionPoolError):
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class PoolSizeLimitError(AsyncConnectionPoolError):
+    __module__ = "aws_advanced_python_wrapper"

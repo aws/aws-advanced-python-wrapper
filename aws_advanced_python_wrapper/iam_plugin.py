@@ -114,7 +114,7 @@ class IamAuthPlugin(Plugin):
 
             is_cached_token = (token_info is not None and not token_info.is_expired())
             if not self._plugin_service.is_login_exception(error=e) or not is_cached_token:
-                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.ConnectException", e)) from e
+                raise
 
             # Login unsuccessful with cached token
             # Try to generate a new token and try to connect again

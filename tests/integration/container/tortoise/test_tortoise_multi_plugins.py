@@ -13,8 +13,6 @@
 #  limitations under the License.
 
 import asyncio
-import threading
-import time
 from time import perf_counter_ns, sleep
 from uuid import uuid4
 
@@ -39,7 +37,8 @@ from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
-from tests.integration.container.utils.test_utils import get_sleep_trigger_sql
+from tests.integration.container.utils.test_utils import get_sleep_sql, get_sleep_trigger_sql
+from tests.integration.container.utils.proxy_helper import ProxyHelper
 
 
 @disable_on_engines([DatabaseEngine.PG])
@@ -52,6 +51,7 @@ from tests.integration.container.utils.test_utils import get_sleep_trigger_sql
 class TestTortoiseMultiPlugins:
     """Test class for Tortoise ORM with multiple AWS wrapper plugins."""
     endpoint_id = f"test-multi-endpoint-{uuid4()}"
+
     endpoint_info: dict[str, str] = {}
 
     @pytest.fixture(scope='class')
@@ -60,14 +60,13 @@ class TestTortoiseMultiPlugins:
         return RdsTestUtility(region)
 
     @pytest.fixture(scope='class')
-    def create_custom_endpoint(self):
+    def create_custom_endpoint(self, aurora_utility):
         """Create a custom endpoint for testing."""
         env_info = TestEnvironment.get_current().get_info()
         region = env_info.get_region()
         rds_client = client('rds', region_name=region)
 
-        instances = env_info.get_database_info().get_instances()
-        instance_ids = [instances[0].get_instance_id()]
+        instance_ids = [aurora_utility.get_cluster_writer_instance_id()]
 
         try:
             rds_client.create_db_cluster_endpoint(
@@ -139,11 +138,33 @@ class TestTortoiseMultiPlugins:
         """Setup Tortoise with multiple plugins."""
         kwargs = {
             "topology_refresh_ms": 10000,
-            "reader_host_selector_strategy": "fastest_response"
+            "reader_host_selector_strategy": "fastest_response",
+            "connect_timeout": 10,
+            "monitoring-connect_timeout": 5,
+            "host": create_custom_endpoint,
         }
+
         async for result in setup_tortoise(conn_utils,
-                                           plugins="failover,iam,custom_endpoint,aurora_connection_tracker,fastest_response_strategy",
-                                           user=conn_utils.iam_user, **kwargs
+                                           plugins="failover,iam,aurora_connection_tracker,custom_endpoint,fastest_response_strategy",
+                                           user="jane_doe",
+                                            **kwargs,
+                                           ):
+            yield result
+    
+    @pytest_asyncio.fixture
+    async def setup_tortoise_multi_plugins_no_custom_endpoint(self, conn_utils):
+        """Setup Tortoise with multiple plugins."""
+        kwargs = {
+            "topology_refresh_ms": 10000,
+            "reader_host_selector_strategy": "fastest_response",
+            "connect_timeout": 10,
+            "monitoring-connect_timeout": 5,
+        }
+
+        async for result in setup_tortoise(conn_utils,
+                                           plugins="failover,iam,aurora_connection_tracker,fastest_response_strategy",
+                                           user="jane_doe",
+                                            **kwargs,
                                            ):
             yield result
 
@@ -158,40 +179,28 @@ class TestTortoiseMultiPlugins:
         await run_basic_write_operations("Multi", "multi")
 
     @pytest.mark.asyncio
-    async def test_multi_plugins_with_failover(self, setup_tortoise_multi_plugins, sleep_trigger_setup, aurora_utility):
+    async def test_multi_plugins_with_failover(self, setup_tortoise_multi_plugins_no_custom_endpoint, sleep_trigger_setup, aurora_utility):
         """Test multiple plugins work with failover during long-running operations."""
         insert_exception = None
 
-        def insert_thread():
+        async def insert_task():
             nonlocal insert_exception
             try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self._create_sleep_trigger_record())
+                await TableWithSleepTrigger.create(name="Multi Plugin Test", value="multi_test_value")
             except Exception as e:
                 insert_exception = e
 
-        def failover_thread():
-            time.sleep(5)  # Wait for insert to start
-            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+        async def failover_task():
+            await asyncio.sleep(10)
+            await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
 
-        # Start both threads
-        insert_t = threading.Thread(target=insert_thread)
-        failover_t = threading.Thread(target=failover_thread)
+        await asyncio.gather(insert_task(), failover_task(), return_exceptions=True)
 
-        insert_t.start()
-        failover_t.start()
-
-        # Wait for both threads to complete
-        insert_t.join()
-        failover_t.join()
-
-        # Assert that insert thread got FailoverSuccessError
         assert insert_exception is not None
         assert isinstance(insert_exception, FailoverSuccessError)
 
     @pytest.mark.asyncio
-    async def test_concurrent_queries_with_failover(self, setup_tortoise_multi_plugins, sleep_trigger_setup, aurora_utility):
+    async def test_concurrent_queries_with_failover(self, setup_tortoise_multi_plugins_no_custom_endpoint, sleep_trigger_setup, aurora_utility):
         """Test concurrent queries with failover during long-running operation."""
         connection = connections.get("default")
 
@@ -206,33 +215,19 @@ class TestTortoiseMultiPlugins:
         # Run sleep query with failover
         sleep_exception = None
 
-        def sleep_query_thread():
+        async def insert_query_task():
             nonlocal sleep_exception
-            for attempt in range(3):
-                try:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(
-                        TableWithSleepTrigger.create(name=f"Multi Concurrent Test {attempt}", value="multi_sleep_value")
-                    )
-                except Exception as e:
-                    sleep_exception = e
-                    break  # Stop on first exception (likely the failover)
+            try:
+                await TableWithSleepTrigger.create(name="Multi Concurrent Test", value="multi_sleep_value")
+            except Exception as e:
+                sleep_exception = e
 
-        def failover_thread():
-            time.sleep(5)  # Wait for sleep query to start
-            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+        async def failover_task():
+            await asyncio.sleep(5)
+            await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
 
-        sleep_t = threading.Thread(target=sleep_query_thread)
-        failover_t = threading.Thread(target=failover_thread)
+        await asyncio.gather(insert_query_task(), failover_task(), return_exceptions=True)
 
-        sleep_t.start()
-        failover_t.start()
-
-        sleep_t.join()
-        failover_t.join()
-
-        # Verify failover exception occurred
         assert sleep_exception is not None
         assert isinstance(sleep_exception, FailoverSuccessError)
 
@@ -242,42 +237,27 @@ class TestTortoiseMultiPlugins:
         assert len(post_failover_results) == 15
 
     @pytest.mark.asyncio
-    async def test_multiple_concurrent_inserts_with_failover(self, setup_tortoise_multi_plugins, sleep_trigger_setup, aurora_utility):
+    async def test_multiple_concurrent_inserts_with_failover(self, setup_tortoise_multi_plugins_no_custom_endpoint, sleep_trigger_setup, aurora_utility):
         """Test multiple concurrent insert operations with failover during long-running operations."""
-        # Track exceptions from all insert threads
         insert_exceptions = []
 
-        def insert_thread(thread_id):
+        async def insert_task(task_id):
             try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(
-                    TableWithSleepTrigger.create(name=f"Multi Concurrent Insert {thread_id}", value="multi_insert_value")
-                )
+                await TableWithSleepTrigger.create(name=f"Multi Concurrent Insert {task_id}", value="multi_insert_value")
             except Exception as e:
                 insert_exceptions.append(e)
 
-        def failover_thread():
-            time.sleep(5)  # Wait for inserts to start
-            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+        async def failover_task():
+            await asyncio.sleep(5)
+            await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
 
-        # Start 15 insert threads
-        insert_threads = []
-        for i in range(15):
-            t = threading.Thread(target=insert_thread, args=(i,))
-            insert_threads.append(t)
-            t.start()
+        # Create 15 insert tasks and 1 failover task
+        tasks = [insert_task(i) for i in range(15)]
+        tasks.append(failover_task())
 
-        # Start failover thread
-        failover_t = threading.Thread(target=failover_thread)
-        failover_t.start()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Wait for all threads to complete
-        for t in insert_threads:
-            t.join()
-        failover_t.join()
-
-        # Verify ALL threads got FailoverSuccessError or TransactionResolutionUnknownError
+        # Verify ALL tasks got FailoverSuccessError
         assert len(insert_exceptions) == 15, f"Expected 15 exceptions, got {len(insert_exceptions)}"
         failover_errors = [e for e in insert_exceptions if isinstance(e, FailoverSuccessError)]
-        assert len(failover_errors) == 15, f"Expected all 15 threads to get failover errors, got {len(failover_errors)}"
+        assert len(failover_errors) == 15, f"Expected all 15 tasks to get failover errors, got {len(failover_errors)}"

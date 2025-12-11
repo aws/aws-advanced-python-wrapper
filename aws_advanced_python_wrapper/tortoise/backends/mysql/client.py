@@ -31,14 +31,16 @@ from tortoise.exceptions import (DBConnectionError, IntegrityError,
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError, FailoverError
 from aws_advanced_python_wrapper.tortoise.async_support.async_wrapper import (
-    AwsConnectionAsyncWrapper)
+    AwsConnectionAsyncWrapper, AwsWrapperAsyncConnector)
 from aws_advanced_python_wrapper.tortoise.backends.base.client import (
     AwsBaseDBAsyncClient, AwsTransactionalDBClient,
-    TortoiseAwsClientConnectionWrapper, TortoiseAwsClientTransactionContext)
+    TortoiseAwsClientPooledConnectionWrapper, TortoiseAwsClientPooledTransactionContext)
 from aws_advanced_python_wrapper.tortoise.backends.mysql.executor import \
     AwsMySQLExecutor
 from aws_advanced_python_wrapper.tortoise.backends.mysql.schema_generator import \
     AwsMySQLSchemaGenerator
+from aws_advanced_python_wrapper.async_connection_pool import AsyncConnectionPool, PoolConfig
+from dataclasses import fields
 from aws_advanced_python_wrapper.utils.log import Logger
 
 logger = Logger(__name__)
@@ -125,6 +127,21 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
         # Initialize state
         self._template: Dict[str, Any] = {}
         self._connection = None
+        self._pool_init_lock: asyncio.Lock = asyncio.Lock()
+        self._pool: Optional[AsyncConnectionPool] = None
+
+        # Pool configuration
+        default_pool_config = {field.name: field.default for field in fields(PoolConfig)}
+        self._pool_config = PoolConfig(
+            min_size = self.extra.pop("min_size", default_pool_config["min_size"]),
+            max_size = self.extra.pop("max_size", default_pool_config["max_size"]),
+            timeout = self.extra.pop("pool_timeout", default_pool_config["timeout"]),
+            max_lifetime = self.extra.pop("pool_lifetime", default_pool_config["max_lifetime"]),
+            max_idle_time = self.extra.pop("pool_max_idle_time", default_pool_config["max_idle_time"]),
+            health_check_interval = self.extra.pop("pool_health_check_interval", default_pool_config["health_check_interval"]),
+            pre_ping = self.extra.pop("pre_ping", default_pool_config["pre_ping"])
+        )
+        
 
     def _init_connection_templates(self) -> None:
         """Initialize connection templates for with/without database."""
@@ -140,6 +157,29 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
         self._template_with_db = {**base_template, "database": self.database}
         self._template_no_db = {**base_template, "database": None}
 
+    async def _init_pool(self) -> None:
+        """Initialize the connection pool."""
+        if self._pool is not None:
+            return
+
+        async def create_connection():
+            return await AwsWrapperAsyncConnector.connect_with_aws_wrapper(mysql.connector.Connect, **self._template)
+
+        async def health_check(conn):
+            is_closed = await asyncio.to_thread(lambda: conn._wrapped_connection.is_closed)
+            if is_closed:
+                raise Exception("Connection is closed")
+            else:
+                print("NOT CLOSED!")
+
+        self._pool: AsyncConnectionPool = AsyncConnectionPool(
+            creator=create_connection,
+            # closer=close_connection,
+            health_check=health_check,
+            config=self._pool_config
+        )
+        await self._pool.initialize()
+
     # Connection Management
     async def create_connection(self, with_db: bool) -> None:
         """Initialize connection pool and configure database settings."""
@@ -154,18 +194,24 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
         # Set template based on database requirement
         self._template = self._template_with_db if with_db else self._template_no_db
 
+        await self._init_pool()
+        print("Pool is initialized")
+        print(self._pool.get_stats())
+
     async def close(self) -> None:
         """Close connections - AWS wrapper handles cleanup internally."""
-        pass
+        if hasattr(self, '_pool') and self._pool:
+            await self._pool.close()
+            self._pool = None
 
     def acquire_connection(self):
         """Acquire a connection from the pool."""
         return self._acquire_connection(with_db=True)
 
-    def _acquire_connection(self, with_db: bool) -> TortoiseAwsClientConnectionWrapper:
+    def _acquire_connection(self, with_db: bool) -> TortoiseAwsClientPooledConnectionWrapper:
         """Create connection wrapper for specified database mode."""
-        return TortoiseAwsClientConnectionWrapper(
-            self, mysql.connector.Connect, with_db=with_db
+        return TortoiseAwsClientPooledConnectionWrapper(
+            self, pool_init_lock=self._pool_init_lock, with_db=with_db
         )
 
     # Database Operations
@@ -253,7 +299,7 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
     # Transaction Support
     def _in_transaction(self) -> TransactionContext:
         """Create a new transaction context."""
-        return TortoiseAwsClientTransactionContext(TransactionWrapper(self))
+        return TortoiseAwsClientPooledTransactionContext(TransactionWrapper(self), self._pool_init_lock)
 
 
 class TransactionWrapper(AwsMySQLClient, AwsTransactionalDBClient):
@@ -262,6 +308,7 @@ class TransactionWrapper(AwsMySQLClient, AwsTransactionalDBClient):
     def __init__(self, connection: AwsMySQLClient) -> None:
         self.connection_name = connection.connection_name
         self._connection: AwsConnectionAsyncWrapper = connection._connection
+
         self._lock = asyncio.Lock()
         self._savepoint: Optional[str] = None
         self._finalized: bool = False

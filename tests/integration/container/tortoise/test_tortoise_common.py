@@ -40,7 +40,6 @@ async def setup_tortoise(conn_utils, plugins="aurora_connection_tracker", **kwar
         plugins=plugins,
         **kwargs,
     )
-
     config = {
         "connections": {
             "default": db_url
@@ -53,17 +52,13 @@ async def setup_tortoise(conn_utils, plugins="aurora_connection_tracker", **kwar
         }
     }
 
-    from aws_advanced_python_wrapper.tortoise.sql_alchemy_tortoise_connection_provider import \
-        setup_tortoise_connection_provider
-    setup_tortoise_connection_provider()
     await Tortoise.init(config=config)
-    await Tortoise.generate_schemas()
 
+    await Tortoise.generate_schemas()
     await clear_test_models()
 
     yield
 
-    await clear_test_models()
     await reset_tortoise()
 
 

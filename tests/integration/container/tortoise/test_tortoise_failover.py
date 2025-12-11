@@ -40,6 +40,92 @@ from tests.integration.container.utils.test_environment_features import \
 from tests.integration.container.utils.test_utils import get_sleep_trigger_sql
 
 
+# Shared helper functions for failover tests
+async def run_single_insert_with_failover(create_record_func, aurora_utility, name_prefix="Test", value="test_value"):
+    """Helper to test single insert with failover."""
+    insert_exception = None
+
+    async def insert_task():
+        nonlocal insert_exception
+        try:
+            await create_record_func(name_prefix, value)
+        except Exception as e:
+            insert_exception = e
+
+    async def failover_task():
+        await asyncio.sleep(5)
+        await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
+
+    await asyncio.gather(insert_task(), failover_task(), return_exceptions=True)
+
+    assert insert_exception is not None
+    assert isinstance(insert_exception, FailoverSuccessError)
+
+
+async def run_concurrent_queries_with_failover(aurora_utility, record_name="Concurrent Test", record_value="sleep_value"):
+    """Helper to test concurrent queries with failover."""
+    connection = connections.get("default")
+
+    async def run_select_query(query_id):
+        return await connection.execute_query(f"SELECT {query_id} as query_id")
+
+    # Run 15 concurrent select queries
+    initial_tasks = [run_select_query(i) for i in range(15)]
+    initial_results = await asyncio.gather(*initial_tasks)
+    assert len(initial_results) == 15
+
+    # Run insert query with failover
+    sleep_exception = None
+
+    async def insert_query_task():
+        nonlocal sleep_exception
+        try:
+            await TableWithSleepTrigger.create(name=record_name, value=record_value)
+        except Exception as e:
+            sleep_exception = e
+
+    async def failover_task():
+        await asyncio.sleep(5)
+        await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
+
+    await asyncio.gather(insert_query_task(), failover_task(), return_exceptions=True)
+
+
+    assert sleep_exception is not None
+    assert isinstance(sleep_exception, (FailoverSuccessError, TransactionResolutionUnknownError))
+
+    # Run another 15 concurrent select queries after failover
+    post_failover_tasks = [run_select_query(i + 100) for i in range(15)]
+    post_failover_results = await asyncio.gather(*post_failover_tasks)
+    assert len(post_failover_results) == 15
+
+
+async def run_multiple_concurrent_inserts_with_failover(aurora_utility, name_prefix="Concurrent Insert", value="insert_value"):
+    """Helper to test multiple concurrent inserts with failover."""
+    insert_exceptions = []
+
+    async def insert_task(task_id):
+        try:
+            await TableWithSleepTrigger.create(name=f"{name_prefix} {task_id}", value=value)
+        except Exception as e:
+            insert_exceptions.append(e)
+
+    async def failover_task():
+        await asyncio.sleep(5)
+        await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
+
+    # Create 15 insert tasks and 1 failover task
+    tasks = [insert_task(i) for i in range(15)]
+    tasks.append(failover_task())
+
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Verify ALL tasks got FailoverSuccessError or TransactionResolutionUnknownError
+    assert len(insert_exceptions) == 15, f"Expected 15 exceptions, got {len(insert_exceptions)}"
+    failover_errors = [e for e in insert_exceptions if isinstance(e, (FailoverSuccessError, TransactionResolutionUnknownError))]
+    assert len(failover_errors) == 15, f"Expected all 15 tasks to get failover errors, got {len(failover_errors)}"
+
+
 @disable_on_engines([DatabaseEngine.PG])
 @enable_on_num_instances(min_instances=2)
 @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
@@ -61,7 +147,7 @@ class TestTortoiseFailover:
         """Setup and cleanup sleep trigger for testing."""
         connection = connections.get("default")
         db_engine = TestEnvironment.get_current().get_engine()
-        trigger_sql = get_sleep_trigger_sql(db_engine, 60, "table_with_sleep_trigger")
+        trigger_sql = get_sleep_trigger_sql(db_engine, 90, "table_with_sleep_trigger")
         await connection.execute_query("DROP TRIGGER IF EXISTS table_with_sleep_trigger_sleep_trigger")
         await connection.execute_query(trigger_sql)
         yield
@@ -71,10 +157,10 @@ class TestTortoiseFailover:
     async def setup_tortoise_with_failover(self, conn_utils):
         """Setup Tortoise with failover plugins."""
         kwargs = {
-            "topology_refresh_ms": 10000,
-            "connect_timeout": 10,
-            "monitoring-connect_timeout": 5,
-            "use_pure": True,  # MySQL specific
+            "topology_refresh_ms": 1000,
+            "connect_timeout": 15,
+            "monitoring-connect_timeout": 10,
+            "use_pure": True,
         }
         async for result in setup_tortoise(conn_utils, plugins="failover", **kwargs):
             yield result
@@ -82,71 +168,27 @@ class TestTortoiseFailover:
     @pytest.mark.asyncio
     async def test_basic_operations_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
         """Test failover when inserting to a single table"""
-        insert_exception = None
-
-        def insert_thread():
-            nonlocal insert_exception
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self._create_sleep_trigger_record())
-            except Exception as e:
-                insert_exception = e
-
-        def failover_thread():
-            time.sleep(3)  # Wait for insert to start
-            aurora_utility.failover_cluster_and_wait_until_writer_changed()
-
-        # Start both threads
-        insert_t = threading.Thread(target=insert_thread)
-        failover_t = threading.Thread(target=failover_thread)
-
-        insert_t.start()
-        failover_t.start()
-
-        # Wait for both threads to complete
-        insert_t.join()
-        failover_t.join()
-
-        # Assert that insert thread got FailoverSuccessError
-        assert insert_exception is not None
-        assert isinstance(insert_exception, FailoverSuccessError)
+        await run_single_insert_with_failover(self._create_sleep_trigger_record, aurora_utility)
 
     @pytest.mark.asyncio
     async def test_transaction_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
         """Test transactions with failover during long-running operations."""
         transaction_exception = None
 
-        def transaction_thread():
+        async def transaction_task():
             nonlocal transaction_exception
             try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-                async def run_transaction():
-                    async with in_transaction() as conn:
-                        await self._create_sleep_trigger_record("TX Plugin Test", "tx_test_value", conn)
-
-                loop.run_until_complete(run_transaction())
+                async with in_transaction() as conn:
+                    await self._create_sleep_trigger_record("TX Plugin Test", "tx_test_value", conn)
             except Exception as e:
                 transaction_exception = e
 
-        def failover_thread():
-            time.sleep(5)  # Wait for transaction to start
-            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+        async def failover_task():
+            await asyncio.sleep(5)
+            await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
 
-        # Start both threads
-        tx_t = threading.Thread(target=transaction_thread)
-        failover_t = threading.Thread(target=failover_thread)
+        await asyncio.gather(transaction_task(), failover_task(), return_exceptions=True)
 
-        tx_t.start()
-        failover_t.start()
-
-        # Wait for both threads to complete
-        tx_t.join()
-        failover_t.join()
-
-        # Assert that transaction thread got FailoverSuccessError
         assert transaction_exception is not None
         assert isinstance(transaction_exception, (FailoverSuccessError, TransactionResolutionUnknownError))
 
@@ -171,91 +213,9 @@ class TestTortoiseFailover:
     @pytest.mark.asyncio
     async def test_concurrent_queries_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
         """Test concurrent queries with failover during long-running operation."""
-        connection = connections.get("default")
-
-        # Run 15 concurrent select queries
-        async def run_select_query(query_id):
-            return await connection.execute_query(f"SELECT {query_id} as query_id")
-
-        initial_tasks = [run_select_query(i) for i in range(15)]
-        initial_results = await asyncio.gather(*initial_tasks)
-        assert len(initial_results) == 15
-
-        # Run insert query with failover
-        sleep_exception = None
-
-        def insert_query_thread():
-            nonlocal sleep_exception
-            for attempt in range(3):
-                try:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(
-                        TableWithSleepTrigger.create(name=f"Concurrent Test {attempt}", value="sleep_value")
-                    )
-                except Exception as e:
-                    sleep_exception = e
-                    break  # Stop on first exception (likely the failover)
-
-        def failover_thread():
-            time.sleep(5)  # Wait for sleep query to start
-            aurora_utility.failover_cluster_and_wait_until_writer_changed()
-
-        sleep_t = threading.Thread(target=insert_query_thread)
-        failover_t = threading.Thread(target=failover_thread)
-
-        sleep_t.start()
-        failover_t.start()
-
-        sleep_t.join()
-        failover_t.join()
-
-        # Verify failover exception occurred
-        assert sleep_exception is not None
-        assert isinstance(sleep_exception, (FailoverSuccessError, TransactionResolutionUnknownError))
-
-        # Run another 15 concurrent select queries after failover to verify that we can still make connections
-        post_failover_tasks = [run_select_query(i + 100) for i in range(15)]
-        post_failover_results = await asyncio.gather(*post_failover_tasks)
-        assert len(post_failover_results) == 15
+        await run_concurrent_queries_with_failover(aurora_utility)
 
     @pytest.mark.asyncio
     async def test_multiple_concurrent_inserts_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
         """Test multiple concurrent insert operations with failover during long-running operations."""
-        # Track exceptions from all insert threads
-        insert_exceptions = []
-
-        def insert_thread(thread_id):
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(
-                    TableWithSleepTrigger.create(name=f"Concurrent Insert {thread_id}", value="insert_value")
-                )
-            except Exception as e:
-                insert_exceptions.append(e)
-
-        def failover_thread():
-            time.sleep(5)  # Wait for inserts to start
-            aurora_utility.failover_cluster_and_wait_until_writer_changed()
-
-        # Start 15 insert threads
-        insert_threads = []
-        for i in range(15):
-            t = threading.Thread(target=insert_thread, args=(i,))
-            insert_threads.append(t)
-            t.start()
-
-        # Start failover thread
-        failover_t = threading.Thread(target=failover_thread)
-        failover_t.start()
-
-        # Wait for all threads to complete
-        for t in insert_threads:
-            t.join()
-        failover_t.join()
-
-        # Verify ALL threads got FailoverSuccessError or TransactionResolutionUnknownError
-        assert len(insert_exceptions) == 15, f"Expected 15 exceptions, got {len(insert_exceptions)}"
-        failover_errors = [e for e in insert_exceptions if isinstance(e, (FailoverSuccessError, TransactionResolutionUnknownError))]
-        assert len(failover_errors) == 15, f"Expected all 15 threads to get failover errors, got {len(failover_errors)}"
+        await run_multiple_concurrent_inserts_with_failover(aurora_utility)
