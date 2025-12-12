@@ -66,7 +66,7 @@ class TestAwsIamAuthentication:
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         user = f"WRONG_{conn_utils.iam_user}_USER"
         params = conn_utils.get_connect_params(user=user)
-        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        #params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
 
         with pytest.raises(AwsWrapperError):
             AwsWrapperConnection.connect(
@@ -78,7 +78,7 @@ class TestAwsIamAuthentication:
     def test_iam_no_database_username(self, test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         params = conn_utils.get_connect_params()
-        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        #params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
         params.pop("user", None)
 
         with pytest.raises(AwsWrapperError):
@@ -87,7 +87,7 @@ class TestAwsIamAuthentication:
     def test_iam_invalid_host(self, test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         params = conn_utils.get_connect_params()
-        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        #params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
         params.update({"iam_host": "<>", "plugins": "iam"})
 
         with pytest.raises(AwsWrapperError):
@@ -101,7 +101,7 @@ class TestAwsIamAuthentication:
 
         params = conn_utils.get_connect_params(host=ip_address, user=conn_utils.iam_user,
                                                password="<anything>")
-        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        #params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
         params.update({"iam_host": instance.get_host(), "plugins": "iam"})
 
         self.validate_connection(target_driver_connect, **params, **props)
@@ -110,7 +110,7 @@ class TestAwsIamAuthentication:
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         params = conn_utils.get_connect_params(user=conn_utils.iam_user, password="<anything>")
-        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        #params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
         params["plugins"] = "iam"
 
         self.validate_connection(target_driver_connect, **params, **props)
@@ -119,7 +119,7 @@ class TestAwsIamAuthentication:
             self, test_environment: TestEnvironment, test_driver: TestDriver, conn_utils, props):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         params = conn_utils.get_connect_params(user=conn_utils.iam_user)
-        params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
+        #params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
         params.pop("password", None)
         params["plugins"] = "iam"
 

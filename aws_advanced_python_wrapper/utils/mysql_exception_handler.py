@@ -14,7 +14,21 @@
 
 from typing import List, Optional
 
-from mysql.connector import DatabaseError, InterfaceError
+try:
+    from mysql.connector import DatabaseError as MySQLConnectorDatabaseError, InterfaceError as MySQLConnectorInterfaceError
+    MYSQL_CONNECTOR_AVAILABLE = True
+except ImportError:
+    MYSQL_CONNECTOR_AVAILABLE = False
+    MySQLConnectorDatabaseError = None
+    MySQLConnectorInterfaceError = None
+
+try:
+    from pymysql.err import DatabaseError as PyMySQLDatabaseError, OperationalError as PyMySQLOperationalError
+    PYMYSQL_AVAILABLE = True
+except ImportError:
+    PYMYSQL_AVAILABLE = False
+    PyMySQLDatabaseError = None
+    PyMySQLOperationalError = None
 
 from aws_advanced_python_wrapper.errors import QueryTimeoutError
 from aws_advanced_python_wrapper.exception_handling import ExceptionHandler
@@ -40,19 +54,28 @@ class MySQLExceptionHandler(ExceptionHandler):
         if isinstance(error, QueryTimeoutError):
             return True
 
-        if isinstance(error, InterfaceError):
+        # Handle mysql-connector-python exceptions
+        if MYSQL_CONNECTOR_AVAILABLE and isinstance(error, MySQLConnectorInterfaceError):
             if error.errno in self._NETWORK_ERRORS:
                 return True
 
             if sql_state is None and error.sqlstate is not None:
                 sql_state = error.sqlstate
 
+        # Handle PyMySQL exceptions
+        if PYMYSQL_AVAILABLE and isinstance(error, PyMySQLOperationalError):
+            if hasattr(error, 'args') and len(error.args) >= 2:
+                errno = error.args[0]
+                if errno in self._NETWORK_ERRORS:
+                    return True
+
         if sql_state is not None and (sql_state.startswith("08") or sql_state.startswith("HY")):
             # Connection exceptions may also be returned as a generic error
             # e.g. 2013 (HY000): Lost connection to MySQL server during query
             return True
 
-        if isinstance(error, DatabaseError):
+        # Handle mysql-connector-python DatabaseError
+        if MYSQL_CONNECTOR_AVAILABLE and isinstance(error, MySQLConnectorDatabaseError):
             if error.errno in self._NETWORK_ERRORS:
                 return True
             if error.msg is not None and self._UNAVAILABLE_CONNECTION in error.msg:
@@ -60,6 +83,18 @@ class MySQLExceptionHandler(ExceptionHandler):
 
             if len(error.args) == 1:
                 return self._UNAVAILABLE_CONNECTION in error.args[0]
+
+        # Handle PyMySQL DatabaseError
+        if PYMYSQL_AVAILABLE and isinstance(error, PyMySQLDatabaseError):
+            if hasattr(error, 'args') and len(error.args) >= 2:
+                errno = error.args[0]
+                if errno in self._NETWORK_ERRORS:
+                    return True
+            
+            if hasattr(error, 'args') and len(error.args) >= 1:
+                error_msg = str(error.args[0]) if len(error.args) == 1 else str(error.args[1])
+                if self._UNAVAILABLE_CONNECTION in error_msg:
+                    return True
 
         return False
 

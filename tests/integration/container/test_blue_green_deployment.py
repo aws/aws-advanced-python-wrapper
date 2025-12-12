@@ -639,8 +639,8 @@ class TestBlueGreenDeployment:
         else:
             params[WrapperProperties.PLUGINS.name] = "bg"
 
-        if engine == DatabaseEngine.MYSQL:
-            params["use_pure"] = False
+        """ if engine == DatabaseEngine.MYSQL:
+            params["use_pure"] = False """
 
         return params
 
@@ -1004,7 +1004,7 @@ class TestBlueGreenDeployment:
             if test_env.get_engine() == DatabaseEngine.MYSQL:
                 # Required to connect with IAM using the regular mysql driver
                 connect_params["auth_plugin"] = "mysql_clear_password"
-                connect_params["use_pure"] = False
+                # connect_params["use_pure"] = False
 
             sleep(1)
 

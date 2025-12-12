@@ -14,5 +14,6 @@
 
 class DriverDialectCodes:
     PSYCOPG = "psycopg"
+    PYMYSQL = "pymysql"
     MYSQL_CONNECTOR_PYTHON = "mysql-connector-python"
     GENERIC = "generic"

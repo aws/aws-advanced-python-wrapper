@@ -14,8 +14,8 @@
 
 from typing import Any, Callable, Dict, Optional
 
-import mysql.connector
-import psycopg
+import pymysql # type: ignore
+import psycopg # type: ignore
 
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -37,7 +37,7 @@ class DriverHelper:
         if d == TestDriver.PG:
             return psycopg.Connection.connect
         if d == TestDriver.MYSQL:
-            return mysql.connector.connect
+            return pymysql.connect
         else:
             raise UnsupportedOperationError(
                 Messages.get_formatted("Testing.FunctionNotImplementedForDriver", "get_connect_func", d.value))
@@ -55,7 +55,7 @@ class DriverHelper:
             return {"host": host, "port": port, "dbname": db, "user": user, "password": password}
         if d == TestDriver.MYSQL:
             return {
-                "host": host, "port": int(port), "database": db, "user": user, "password": password, "use_pure": True}
+                "host": host, "port": int(port), "database": db, "user": user, "password": password} #, "use_pure": True}
         else:
             raise UnsupportedOperationError(
                 Messages.get_formatted("Testing.FunctionNotImplementedForDriver", "get_connection_string", d.value))

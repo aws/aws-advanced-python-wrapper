@@ -47,6 +47,7 @@ class DriverDialectManager(DriverDialectProvider):
     _custom_dialect: Optional[DriverDialect] = None
     known_dialects_by_code: Dict[str, str] = {
         DriverDialectCodes.PSYCOPG: "aws_advanced_python_wrapper.pg_driver_dialect.PgDriverDialect",
+        DriverDialectCodes.PYMYSQL: "aws_advanced_python_wrapper.pymysql_driver_dialect.PyMySQLDriverDialect",
         DriverDialectCodes.MYSQL_CONNECTOR_PYTHON: "aws_advanced_python_wrapper.mysql_driver_dialect.MySQLDriverDialect",
         DriverDialectCodes.GENERIC: "aws_advanced_python_wrapper.generic_driver_dialect.GenericDriverDialect",
     }
