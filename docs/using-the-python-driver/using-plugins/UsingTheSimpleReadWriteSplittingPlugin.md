@@ -92,7 +92,7 @@ Immediately following a failover event, due to DNS caching, an RDS cluster endpo
 
 To avoid stale DNS connections, enable `srw_verify_new_connections`, as this will retry the connection until the role has been verified. Service for Aurora clusters is typically restored in less than 60 seconds, and often less than 30 seconds. RDS Proxy endpoints to Aurora databases can update in as little as 3 seconds. Depending on your configuration and cluster availability `srw_connect_retry_timeout_ms` and `srw_connect_retry_interval_ms` may be set to customize the timing of the retries.
 
-Following failover, endpoints that point to specific instances will be impacted if their target instance was demoted to a reader or promoted to a writer. The Simple Read/Write Splitting Plugin always connects to the endpoint provided in the initial connection properties when the `read_only` attribute is set. We suggest using endpoints that return connections with a specific role such as cluster or read-only endpoints, or using the [Read/Write Splitting Plugin](UsingTheReadWriteSplittingPlugin.md) to connect to instances based on the cluster's current topology.
+Following failover, endpoints that point to specific instances will be impacted if their target instance was demoted to a reader or promoted to a writer. The Simple Read/Write Splitting Plugin always connects to the endpoints provided in the initial connection properties when the `read_only` attribute is set. We suggest using endpoints that return connections with a specific role such as cluster or read-only endpoints, or using the [Read/Write Splitting Plugin](UsingTheReadWriteSplittingPlugin.md) to connect to instances based on the cluster's current topology.
 
 ### Session state
 
