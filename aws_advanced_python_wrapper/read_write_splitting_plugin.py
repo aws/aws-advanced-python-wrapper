@@ -56,11 +56,11 @@ class ReadWriteSplittingConnectionManager(Plugin):
         self,
         plugin_service: PluginService,
         props: Properties,
-        connection_handler: ConnectionHandler,
+        connection_handler: ReadWriteConnectionHandler,
     ):
         self._plugin_service: PluginService = plugin_service
         self._properties: Properties = props
-        self._connection_handler: ConnectionHandler = connection_handler
+        self._connection_handler: ReadWriteConnectionHandler = connection_handler
         self._writer_connection: Optional[Connection] = None
         self._reader_connection: Optional[Connection] = None
         self._writer_host_info: Optional[HostInfo] = None
@@ -310,7 +310,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
 
         if (
             self._reader_connection is not None
-            and not self._connection_handler.old_reader_can_be_used(
+            and not self._connection_handler.can_host_be_used(
                 self._reader_host_info
             )
         ):
@@ -344,7 +344,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             self._close_connection_if_idle(self._writer_connection)
 
     def _initialize_reader_connection(self):
-        if self._connection_handler.need_connect_to_writer():
+        if self._connection_handler.has_no_readers():
             if not self._is_connection_usable(
                 self._writer_connection, self._plugin_service.driver_dialect
             ):
@@ -437,7 +437,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
                 return
 
 
-class ConnectionHandler(Protocol):
+class ReadWriteConnectionHandler(Protocol):
     """Protocol for handling writer/reader connection logic."""
 
     @property
@@ -491,15 +491,15 @@ class ConnectionHandler(Protocol):
         ...
 
     def is_reader_host(self, current_host: HostInfo) -> bool:
-        """Return true if the current host fits the criteria of a writer host."""
+        """Return true if the current host fits the criteria of a reader host."""
         ...
 
-    def old_reader_can_be_used(self, reader_host_info: HostInfo) -> bool:
-        """Return true if the current host can be used to switch connection to."""
+    def can_host_be_used(self, host_info: HostInfo) -> bool:
+        """Returns true if connections can be switched to the given host"""
         ...
 
-    def need_connect_to_writer(self) -> bool:
-        """Return true if switching to reader should instead connect to writer."""
+    def has_no_readers(self) -> bool:
+        """Return true if there are no readers in the host list"""
         ...
 
     def refresh_and_store_host_list(
@@ -509,7 +509,7 @@ class ConnectionHandler(Protocol):
         ...
 
 
-class TopologyBasedConnectionHandler(ConnectionHandler):
+class TopologyBasedConnectionHandler(ReadWriteConnectionHandler):
     """Topology based implementation of connection handling logic."""
 
     def __init__(self, plugin_service: PluginService, props: Properties):
@@ -615,11 +615,11 @@ class TopologyBasedConnectionHandler(ConnectionHandler):
 
         return current_conn
 
-    def old_reader_can_be_used(self, reader_host_info: HostInfo) -> bool:
+    def can_host_be_used(self, host_info: HostInfo) -> bool:
         hostnames = [host_info.host for host_info in self._hosts]
-        return reader_host_info is not None and reader_host_info.host in hostnames
+        return host_info.host in hostnames
 
-    def need_connect_to_writer(self) -> bool:
+    def has_no_readers(self) -> bool:
         if len(self._hosts) == 1:
             return self._get_writer() is not None
         return False

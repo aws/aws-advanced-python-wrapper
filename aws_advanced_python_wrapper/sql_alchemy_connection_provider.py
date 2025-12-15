@@ -173,7 +173,11 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
 
     def release_resources(self):
         for _, cache_item in SqlAlchemyPooledConnectionProvider._database_pools.items():
-            cache_item.item.dispose()
+            try:
+                cache_item.item.dispose()
+            except Exception:
+                # Swallow exception, connections may already be dead
+                pass
         SqlAlchemyPooledConnectionProvider._database_pools.clear()
 
 

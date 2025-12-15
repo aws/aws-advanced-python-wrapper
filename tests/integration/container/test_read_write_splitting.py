@@ -80,14 +80,9 @@ class TestReadWriteSplitting:
 
     @pytest.fixture(autouse=True)
     def clear_caches(self):
-        # Clear wrapper caches
         RdsHostListProvider._topology_cache.clear()
         RdsHostListProvider._is_primary_cluster_id_cache.clear()
         RdsHostListProvider._cluster_ids_to_update.clear()
-
-        # Force DNS refresh by clearing any internal connection pools
-        ConnectionProviderManager.release_resources()
-        ConnectionProviderManager.reset_provider()
 
     @pytest.fixture
     def props(self, plugin_config, conn_utils):
