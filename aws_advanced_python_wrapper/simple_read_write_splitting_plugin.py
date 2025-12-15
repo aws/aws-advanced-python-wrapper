@@ -231,8 +231,11 @@ class EndpointBasedConnectionHandler(ReadWriteConnectionHandler):
     def _create_host_info(self, endpoint: str, role: HostRole) -> HostInfo:
         endpoint = endpoint.strip()
         host = endpoint
-        port = self._plugin_service.database_dialect.default_port if not self._plugin_service.current_host_info.is_port_specified() \
-            else self._plugin_service.current_host_info.port
+        try:
+            port = self._plugin_service.database_dialect.default_port if not self._plugin_service.current_host_info.is_port_specified() \
+                else self._plugin_service.current_host_info.port
+        except AwsWrapperError:  # if current_host_info cannot be determined fallback to default port
+            port = self._plugin_service.database_dialect.default_port
         colon_index = endpoint.rfind(":")
 
         if colon_index != -1:

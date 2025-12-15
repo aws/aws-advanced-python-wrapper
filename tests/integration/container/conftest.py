@@ -140,6 +140,7 @@ def pytest_runtest_setup(item):
         CustomEndpointPlugin._monitors.clear()
         CustomEndpointMonitor._custom_endpoint_info_cache.clear()
         MonitoringThreadContainer.clean_up()
+        ConnectionProviderManager.release_resources()
 
         ConnectionProviderManager.reset_provider()
         DatabaseDialectManager.reset_custom_dialect()
