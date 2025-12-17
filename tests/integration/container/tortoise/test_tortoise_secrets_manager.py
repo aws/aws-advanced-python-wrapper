@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 import json
+from uuid import uuid4
 
 import boto3
 import pytest
@@ -44,7 +45,7 @@ class TestTortoiseSecretsManager:
         region = TestEnvironment.get_current().get_info().get_region()
         client = boto3.client('secretsmanager', region_name=region)
 
-        secret_name = f"test-tortoise-secret-{TestEnvironment.get_current().get_info().get_db_name()}"
+        secret_name = f"test-tortoise-secret-{uuid4()}"
         secret_value = {
             "username": conn_utils.user,
             "password": conn_utils.password

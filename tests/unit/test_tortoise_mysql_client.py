@@ -64,8 +64,10 @@ class TestAwsMySQLClient:
                 port=3306,
                 charset="utf8mb4",
                 storage_engine="InnoDB",
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         assert client.user == "test_user"
         assert client.password == "test_pass"
@@ -83,8 +85,10 @@ class TestAwsMySQLClient:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         assert client.charset == "utf8mb4"
         assert client.storage_engine == "innodb"
@@ -99,8 +103,10 @@ class TestAwsMySQLClient:
                 host="localhost",
                 port=3306,
                 charset="invalid_charset",
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         with pytest.raises(DBConnectionError, match="Unknown character set"):
             await client.create_connection(with_db=True)
@@ -114,8 +120,10 @@ class TestAwsMySQLClient:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         with patch('aws_advanced_python_wrapper.tortoise.backends.mysql.client.logger'):
             await client.create_connection(with_db=True)
@@ -133,8 +141,10 @@ class TestAwsMySQLClient:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         # close() method now does nothing (AWS wrapper handles cleanup)
         await client.close()
@@ -148,8 +158,10 @@ class TestAwsMySQLClient:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         connection_wrapper = client.acquire_connection()
         assert connection_wrapper.client == client
@@ -163,8 +175,10 @@ class TestAwsMySQLClient:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         mock_connection = MagicMock()
         mock_cursor = MagicMock()
@@ -193,8 +207,10 @@ class TestAwsMySQLClient:
                 host="localhost",
                 port=3306,
                 connection_name="test_conn",
-                storage_engine="innodb"
+                storage_engine="innodb",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         mock_connection = MagicMock()
         mock_cursor = MagicMock()
@@ -224,8 +240,10 @@ class TestAwsMySQLClient:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         mock_connection = MagicMock()
         mock_cursor = MagicMock()
@@ -256,8 +274,10 @@ class TestAwsMySQLClient:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         with patch.object(client, 'execute_query') as mock_execute_query:
             mock_execute_query.return_value = (2, [{"id": 1}, {"id": 2}])
@@ -274,8 +294,10 @@ class TestAwsMySQLClient:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            client._disable_pool_for_testing()
 
         transaction_context = client._in_transaction()
         assert transaction_context is not None
@@ -290,8 +312,10 @@ class TestTransactionWrapper:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            parent_client._disable_pool_for_testing()
 
         wrapper = TransactionWrapper(parent_client)
 
@@ -309,8 +333,10 @@ class TestTransactionWrapper:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            parent_client._disable_pool_for_testing()
 
         wrapper = TransactionWrapper(parent_client)
         mock_connection = MagicMock()
@@ -331,8 +357,10 @@ class TestTransactionWrapper:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            parent_client._disable_pool_for_testing()
 
         wrapper = TransactionWrapper(parent_client)
         mock_connection = MagicMock()
@@ -355,8 +383,10 @@ class TestTransactionWrapper:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            parent_client._disable_pool_for_testing()
 
         wrapper = TransactionWrapper(parent_client)
         wrapper._finalized = True
@@ -373,8 +403,10 @@ class TestTransactionWrapper:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            parent_client._disable_pool_for_testing()
 
         wrapper = TransactionWrapper(parent_client)
         mock_connection = MagicMock()
@@ -397,8 +429,10 @@ class TestTransactionWrapper:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            parent_client._disable_pool_for_testing()
 
         wrapper = TransactionWrapper(parent_client)
         mock_connection = MagicMock()
@@ -424,8 +458,10 @@ class TestTransactionWrapper:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            parent_client._disable_pool_for_testing()
 
         wrapper = TransactionWrapper(parent_client)
         wrapper._savepoint = "test_savepoint"
@@ -452,8 +488,10 @@ class TestTransactionWrapper:
                 database="test_db",
                 host="localhost",
                 port=3306,
-                connection_name="test_conn"
+                connection_name="test_conn",
+                plugins="aurora_connection_tracker,failover"
             )
+            parent_client._disable_pool_for_testing()
 
         wrapper = TransactionWrapper(parent_client)
         wrapper._savepoint = None

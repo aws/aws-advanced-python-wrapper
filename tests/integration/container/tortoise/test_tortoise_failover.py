@@ -53,7 +53,7 @@ async def run_single_insert_with_failover(create_record_func, aurora_utility, na
             insert_exception = e
 
     async def failover_task():
-        await asyncio.sleep(5)
+        await asyncio.sleep(6)
         await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
 
     await asyncio.gather(insert_task(), failover_task(), return_exceptions=True)
@@ -85,7 +85,8 @@ async def run_concurrent_queries_with_failover(aurora_utility, record_name="Conc
             sleep_exception = e
 
     async def failover_task():
-        await asyncio.sleep(5)
+        await asyncio.sleep(6)
+
         await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
 
     await asyncio.gather(insert_query_task(), failover_task(), return_exceptions=True)
@@ -111,7 +112,7 @@ async def run_multiple_concurrent_inserts_with_failover(aurora_utility, name_pre
             insert_exceptions.append(e)
 
     async def failover_task():
-        await asyncio.sleep(5)
+        await asyncio.sleep(6)
         await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
 
     # Create 15 insert tasks and 1 failover task
@@ -147,29 +148,47 @@ class TestTortoiseFailover:
         """Setup and cleanup sleep trigger for testing."""
         connection = connections.get("default")
         db_engine = TestEnvironment.get_current().get_engine()
-        trigger_sql = get_sleep_trigger_sql(db_engine, 90, "table_with_sleep_trigger")
+        trigger_sql = get_sleep_trigger_sql(db_engine, 110, "table_with_sleep_trigger")
         await connection.execute_query("DROP TRIGGER IF EXISTS table_with_sleep_trigger_sleep_trigger")
         await connection.execute_query(trigger_sql)
         yield
         await connection.execute_query("DROP TRIGGER IF EXISTS table_with_sleep_trigger_sleep_trigger")
 
     @pytest_asyncio.fixture
-    async def setup_tortoise_with_failover(self, conn_utils):
+    async def setup_tortoise_with_failover(self, conn_utils, request):
         """Setup Tortoise with failover plugins."""
+        plugins = request.param
         kwargs = {
             "topology_refresh_ms": 1000,
             "connect_timeout": 15,
             "monitoring-connect_timeout": 10,
             "use_pure": True,
         }
-        async for result in setup_tortoise(conn_utils, plugins="failover", **kwargs):
+        
+        # Add reader strategy if multiple plugins
+        if "fastest_response_strategy" in plugins:
+            kwargs["reader_host_selector_strategy"] = "fastest_response"
+            user = conn_utils.iam_user
+            kwargs.pop("use_pure")
+        else:
+            user = None
+            
+        async for result in setup_tortoise(conn_utils, plugins=plugins, user=user, **kwargs):
             yield result
 
+    @pytest.mark.parametrize("setup_tortoise_with_failover", [
+        "failover",
+        "failover,aurora_connection_tracker,fastest_response_strategy,iam"
+    ], indirect=True)
     @pytest.mark.asyncio
     async def test_basic_operations_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
         """Test failover when inserting to a single table"""
         await run_single_insert_with_failover(self._create_sleep_trigger_record, aurora_utility)
 
+    @pytest.mark.parametrize("setup_tortoise_with_failover", [
+        "failover",
+        "failover,aurora_connection_tracker,fastest_response_strategy,iam"
+    ], indirect=True)
     @pytest.mark.asyncio
     async def test_transaction_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
         """Test transactions with failover during long-running operations."""
@@ -184,7 +203,7 @@ class TestTortoiseFailover:
                 transaction_exception = e
 
         async def failover_task():
-            await asyncio.sleep(5)
+            await asyncio.sleep(6)
             await asyncio.to_thread(aurora_utility.failover_cluster_and_wait_until_writer_changed)
 
         await asyncio.gather(transaction_task(), failover_task(), return_exceptions=True)
@@ -210,11 +229,19 @@ class TestTortoiseFailover:
         # Clean up the test record
         await found_record.delete()
 
+    @pytest.mark.parametrize("setup_tortoise_with_failover", [
+        "failover",
+        "failover,aurora_connection_tracker,fastest_response_strategy,iam"
+    ], indirect=True)
     @pytest.mark.asyncio
     async def test_concurrent_queries_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
         """Test concurrent queries with failover during long-running operation."""
         await run_concurrent_queries_with_failover(aurora_utility)
 
+    @pytest.mark.parametrize("setup_tortoise_with_failover", [
+        "failover",
+        "failover,aurora_connection_tracker,fastest_response_strategy,iam"
+    ], indirect=True)
     @pytest.mark.asyncio
     async def test_multiple_concurrent_inserts_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
         """Test multiple concurrent insert operations with failover during long-running operations."""

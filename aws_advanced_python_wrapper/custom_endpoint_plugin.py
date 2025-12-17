@@ -169,7 +169,8 @@ class CustomEndpointMonitor:
                             len(endpoints),
                             endpoint_hostnames)
 
-                        sleep(self._refresh_rate_ns / 1_000_000_000)
+                        if self._stop_event.wait(self._refresh_rate_ns / 1_000_000_000):
+                            break
                         continue
 
                     endpoint_info = CustomEndpointInfo.from_db_cluster_endpoint(endpoints[0])
@@ -178,7 +179,8 @@ class CustomEndpointMonitor:
                     if cached_info is not None and cached_info == endpoint_info:
                         elapsed_time = perf_counter_ns() - start_ns
                         sleep_duration = max(0, self._refresh_rate_ns - elapsed_time)
-                        sleep(sleep_duration / 1_000_000_000)
+                        if self._stop_event.wait(sleep_duration / 1_000_000_000):
+                            break
                         continue
 
                     logger.debug(
@@ -196,7 +198,8 @@ class CustomEndpointMonitor:
 
                     elapsed_time = perf_counter_ns() - start_ns
                     sleep_duration = max(0, self._refresh_rate_ns - elapsed_time)
-                    sleep(sleep_duration / 1_000_000_000)
+                    if self._stop_event.wait(sleep_duration / 1_000_000_000):
+                        break
                     continue
                 except InterruptedError as e:
                     raise e
@@ -218,7 +221,6 @@ class CustomEndpointMonitor:
         logger.debug("CustomEndpointMonitor.StoppingMonitor", self._custom_endpoint_host_info.host)
         CustomEndpointMonitor._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
         self._stop_event.set()
-
 
 class CustomEndpointPlugin(Plugin):
     """

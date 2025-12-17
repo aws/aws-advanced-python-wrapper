@@ -135,10 +135,10 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
         self._pool_config = PoolConfig(
             min_size = self.extra.pop("min_size", default_pool_config["min_size"]),
             max_size = self.extra.pop("max_size", default_pool_config["max_size"]),
-            timeout = self.extra.pop("pool_timeout", default_pool_config["timeout"]),
-            max_lifetime = self.extra.pop("pool_lifetime", default_pool_config["max_lifetime"]),
-            max_idle_time = self.extra.pop("pool_max_idle_time", default_pool_config["max_idle_time"]),
-            health_check_interval = self.extra.pop("pool_health_check_interval", default_pool_config["health_check_interval"]),
+            acquire_conn_timeout = self.extra.pop("acquire_conn_timeout", default_pool_config["acquire_conn_timeout"]),
+            max_conn_lifetime = self.extra.pop("max_conn_lifetime", default_pool_config["max_conn_lifetime"]),
+            max_conn_idle_time = self.extra.pop("max_conn_idle_time", default_pool_config["max_conn_idle_time"]),
+            health_check_interval = self.extra.pop("health_check_interval", default_pool_config["health_check_interval"]),
             pre_ping = self.extra.pop("pre_ping", default_pool_config["pre_ping"])
         )
         
@@ -165,17 +165,8 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
         async def create_connection():
             return await AwsWrapperAsyncConnector.connect_with_aws_wrapper(mysql.connector.Connect, **self._template)
 
-        async def health_check(conn):
-            is_closed = await asyncio.to_thread(lambda: conn._wrapped_connection.is_closed)
-            if is_closed:
-                raise Exception("Connection is closed")
-            else:
-                print("NOT CLOSED!")
-
         self._pool: AsyncConnectionPool = AsyncConnectionPool(
             creator=create_connection,
-            # closer=close_connection,
-            health_check=health_check,
             config=self._pool_config
         )
         await self._pool.initialize()
@@ -195,8 +186,13 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
         self._template = self._template_with_db if with_db else self._template_no_db
 
         await self._init_pool()
-        print("Pool is initialized")
-        print(self._pool.get_stats())
+
+    def _disable_pool_for_testing(self) -> None:
+        """Disable pool initialization for unit testing."""
+        self._pool = None
+        async def _no_op():
+            pass
+        self._init_pool = _no_op
 
     async def close(self) -> None:
         """Close connections - AWS wrapper handles cleanup internally."""
@@ -206,25 +202,21 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
 
     def acquire_connection(self):
         """Acquire a connection from the pool."""
-        return self._acquire_connection(with_db=True)
-
-    def _acquire_connection(self, with_db: bool) -> TortoiseAwsClientPooledConnectionWrapper:
-        """Create connection wrapper for specified database mode."""
         return TortoiseAwsClientPooledConnectionWrapper(
-            self, pool_init_lock=self._pool_init_lock, with_db=with_db
+            self, pool_init_lock=self._pool_init_lock
         )
 
     # Database Operations
     async def db_create(self) -> None:
         """Create the database."""
         await self.create_connection(with_db=False)
-        await self._execute_script(f"CREATE DATABASE {self.database};", False)
+        await self.execute_script(f"CREATE DATABASE {self.database};")
         await self.close()
 
     async def db_delete(self) -> None:
         """Delete the database."""
         await self.create_connection(with_db=False)
-        await self._execute_script(f"DROP DATABASE {self.database};", False)
+        await self.execute_script(f"DROP DATABASE {self.database};")
         await self.close()
 
     # Query Execution Methods
@@ -279,14 +271,10 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
         """Execute a query and return only the results as dictionaries."""
         return (await self.execute_query(query, values))[1]
 
+    @translate_exceptions
     async def execute_script(self, query: str) -> None:
         """Execute a script query."""
-        await self._execute_script(query, True)
-
-    @translate_exceptions
-    async def _execute_script(self, query: str, with_db: bool) -> None:
-        """Execute a multi-statement query by parsing and running statements sequentially."""
-        async with self._acquire_connection(with_db) as connection:
+        async with self.acquire_connection() as connection:
             logger.debug(f"Executing script: {query}")
             async with connection.cursor() as cursor:
                 # Parse multi-statement queries since MySQL Connector doesn't handle them well

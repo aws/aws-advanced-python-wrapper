@@ -62,16 +62,17 @@ def conn_utils():
 
 def pytest_runtest_setup(item):
     test_name: Optional[str] = None
+    full_test_name = item.nodeid  # Full test path including class and method
+    
     if hasattr(item, "callspec"):
         current_driver = item.callspec.params.get("test_driver")
         TestEnvironment.get_current().set_current_driver(current_driver)
-        test_name = item.callspec.id
+        test_name = f"{item.name}[{item.callspec.id}]"
     else:
         TestEnvironment.get_current().set_current_driver(None)
-        # Fallback to item.name if no callspec (for non-parameterized tests)
-        test_name = getattr(item, 'name', None) or str(item)
+        test_name = item.name
 
-    logger.info(f"Starting test preparation for: {test_name}")
+    logger.info(f"Starting test preparation for: {test_name} (full: {full_test_name})")
 
     segment: Optional[Segment] = None
     if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
@@ -82,6 +83,7 @@ def pytest_runtest_setup(item):
                                .get_info().get_request().get_target_python_version().name)
         if test_name is not None:
             segment.put_annotation("test_name", test_name)
+            segment.put_annotation("full_test_name", full_test_name)
 
     info = TestEnvironment.get_current().get_info()
     request = info.get_request()

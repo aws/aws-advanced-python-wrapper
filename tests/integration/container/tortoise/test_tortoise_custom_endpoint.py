@@ -72,6 +72,7 @@ class TestTortoiseCustomEndpoint:
         finally:
             try:
                 rds_client.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=self.endpoint_id)
+                self._wait_until_endpoint_deleted(rds_client)
             except ClientError as e:
                 if e.response['Error']['Code'] != 'DBClusterEndpointNotFoundFault':
                     pass  # Ignore if endpoint doesn't exist
@@ -108,18 +109,46 @@ class TestTortoiseCustomEndpoint:
 
         if not available:
             pytest.fail(f"Timed out waiting for custom endpoint to become available: {self.endpoint_id}")
+    
+    def _wait_until_endpoint_deleted(self, rds_client):
+        """Wait for the custom endpoint to be deleted."""
+        end_ns = perf_counter_ns() + 5 * 60 * 1_000_000_000  # 5 minutes
+        
+        while perf_counter_ns() < end_ns:
+            try:
+                rds_client.describe_db_cluster_endpoints(DBClusterEndpointIdentifier=self.endpoint_id)
+                sleep(5)  # Still exists, keep waiting
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'DBClusterEndpointNotFoundFault':
+                    return  # Successfully deleted
+                raise  # Other error, re-raise
 
     @pytest_asyncio.fixture
-    async def setup_tortoise_custom_endpoint(self, conn_utils, create_custom_endpoint):
+    async def setup_tortoise_custom_endpoint(self, conn_utils, create_custom_endpoint, request):
         """Setup Tortoise with custom endpoint plugin."""
-        async for result in setup_tortoise(conn_utils, plugins="custom_endpoint,aurora_connection_tracker", host=create_custom_endpoint):
+        plugins, user = request.param
+        user_value = getattr(conn_utils, user) if user != "default" else None
+        
+        kwargs = {}
+        if "fastest_response_strategy" in plugins:
+            kwargs["reader_host_selector_strategy"] = "fastest_response"
+            
+        async for result in setup_tortoise(conn_utils, plugins=plugins, host=create_custom_endpoint, user=user_value, **kwargs):
             yield result
 
+    @pytest.mark.parametrize("setup_tortoise_custom_endpoint", [
+        ("custom_endpoint,aurora_connection_tracker", "default"),
+        ("failover,iam,aurora_connection_tracker,custom_endpoint,fastest_response_strategy", "iam_user")
+    ], indirect=True)
     @pytest.mark.asyncio
     async def test_basic_read_operations(self, setup_tortoise_custom_endpoint):
         """Test basic read operations with custom endpoint plugin."""
         await run_basic_read_operations("Custom Test", "custom")
 
+    @pytest.mark.parametrize("setup_tortoise_custom_endpoint", [
+        ("custom_endpoint,aurora_connection_tracker", "default"),
+        ("failover,iam,aurora_connection_tracker,custom_endpoint,fastest_response_strategy", "iam_user")
+    ], indirect=True)
     @pytest.mark.asyncio
     async def test_basic_write_operations(self, setup_tortoise_custom_endpoint):
         """Test basic write operations with custom endpoint plugin."""

@@ -69,3 +69,7 @@ class ConnectionReleasedError(AsyncConnectionPoolError):
 
 class PoolSizeLimitError(AsyncConnectionPoolError):
     __module__ = "aws_advanced_python_wrapper"
+
+
+class PoolHealthCheckError(AsyncConnectionPoolError):
+    __module__ = "aws_advanced_python_wrapper"

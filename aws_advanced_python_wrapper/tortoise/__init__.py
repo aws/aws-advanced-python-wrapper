@@ -14,6 +14,16 @@
 
 from tortoise.backends.base.config_generator import DB_LOOKUP
 
+
+def cast_to_bool(value):
+    """Generic function to cast various types to boolean."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ('true', '1', 'yes', 'on')
+    return bool(value)
+
+
 # Register AWS MySQL backend
 DB_LOOKUP["aws-mysql"] = {
     "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
@@ -29,9 +39,9 @@ DB_LOOKUP["aws-mysql"] = {
         "minsize": int,
         "maxsize": int,
         "connect_timeout": int,
-        "echo": bool,
-        "use_unicode": bool,
-        "ssl": bool,
-        "use_pure": bool,
+        "echo": cast_to_bool,
+        "use_unicode": cast_to_bool,
+        "ssl": cast_to_bool,
+        "use_pure": cast_to_bool
     },
 }
