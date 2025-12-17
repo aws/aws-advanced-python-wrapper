@@ -80,7 +80,6 @@ class TestReadWriteSplitting:
 
     @pytest.fixture(autouse=True)
     def clear_caches(self):
-        # Clear wrapper caches
         RdsHostListProvider._topology_cache.clear()
         RdsHostListProvider._is_primary_cluster_id_cache.clear()
         RdsHostListProvider._cluster_ids_to_update.clear()
