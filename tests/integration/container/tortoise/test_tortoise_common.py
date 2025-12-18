@@ -16,7 +16,7 @@ import pytest
 from tortoise import Tortoise, connections
 
 # Import to register the aws-mysql backend
-import aws_advanced_python_wrapper.tortoise  # noqa: F401
+import aws_advanced_python_wrapper.tortoise_orm  # noqa: F401
 from tests.integration.container.tortoise.models.test_models import User
 from tests.integration.container.utils.test_environment import TestEnvironment
 

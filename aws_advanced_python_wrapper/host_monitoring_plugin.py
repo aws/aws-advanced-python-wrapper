@@ -207,6 +207,7 @@ class MonitoringContext:
     This contains each connection's criteria for whether a server should be considered unhealthy.
     The context is shared between the main thread and the monitor thread.
     """
+
     def __init__(
             self,
             monitor: Monitor,

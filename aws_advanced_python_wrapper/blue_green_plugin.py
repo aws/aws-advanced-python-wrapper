@@ -1156,9 +1156,9 @@ class BlueGreenStatusMonitor:
                 {host_info.host for host_info in self._start_topology}
             current_topology_copy = self._current_topology
             self._all_topology_changed = (
-                    current_topology_copy and
-                    start_topology_hosts and
-                    all(host_info.host not in start_topology_hosts for host_info in current_topology_copy))
+                current_topology_copy and
+                start_topology_hosts and
+                all(host_info.host not in start_topology_hosts for host_info in current_topology_copy))
 
     def _has_all_start_topology_ip_changed(self) -> bool:
         if not self._start_topology:
@@ -1429,7 +1429,7 @@ class BlueGreenStatusProvider:
                     (green_host for green_host in green_hosts
                      if self._rds_utils.is_rds_custom_cluster_dns(green_host)
                      and custom_cluster_name == self._rds_utils.remove_green_instance_prefix(
-                        self._rds_utils.get_cluster_id(green_host))),
+                         self._rds_utils.get_cluster_id(green_host))),
                     None
                 )
 

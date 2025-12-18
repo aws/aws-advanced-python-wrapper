@@ -14,7 +14,7 @@
 
 from typing import Type
 
-from aws_advanced_python_wrapper.tortoise.utils import load_mysql_module
+from aws_advanced_python_wrapper.tortoise_orm.utils import load_mysql_module
 
 MySQLSchemaGenerator: Type = load_mysql_module("schema_generator.py", "MySQLSchemaGenerator")
 

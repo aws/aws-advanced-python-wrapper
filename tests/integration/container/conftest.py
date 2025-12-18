@@ -63,7 +63,7 @@ def conn_utils():
 def pytest_runtest_setup(item):
     test_name: Optional[str] = None
     full_test_name = item.nodeid  # Full test path including class and method
-    
+
     if hasattr(item, "callspec"):
         current_driver = item.callspec.params.get("test_driver")
         TestEnvironment.get_current().set_current_driver(current_driver)

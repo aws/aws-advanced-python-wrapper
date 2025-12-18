@@ -24,17 +24,15 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
 
-from .errors import (
-    ConnectionReleasedError,
-    PoolClosingError,
-    PoolExhaustedError,
-    PoolHealthCheckError,
-    PoolNotInitializedError,
-)
+from aws_advanced_python_wrapper.errors import (ConnectionReleasedError,
+                                                PoolClosingError,
+                                                PoolExhaustedError,
+                                                PoolHealthCheckError,
+                                                PoolNotInitializedError)
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T_con = TypeVar('T_con')
 
 
 class ConnectionState(Enum):
@@ -57,78 +55,79 @@ class PoolConfig:
     pre_ping: bool = True
 
 
+class AsyncPooledConnectionWrapper:
+    """Combined wrapper for pooled connections with metadata and user interface"""
+
+    def __init__(self, connection: Any, connection_id: int, pool: 'AsyncConnectionPool'):
+        # Pool metadata
+        self.connection = connection
+        self.connection_id = connection_id
+        self.created_at = time.monotonic()
+        self.last_used = time.monotonic()
+        self.use_count = 0
+        self.state = ConnectionState.IDLE
+
+        # User interface
+        self._pool = pool
+        self._released = False
+
+    def mark_in_use(self):
+        self.state = ConnectionState.IN_USE
+        self.last_used = time.monotonic()
+        self.use_count += 1
+        self._released = False
+
+    def mark_idle(self):
+        self.state = ConnectionState.IDLE
+        self.last_used = time.monotonic()
+
+    def mark_closed(self):
+        self.state = ConnectionState.CLOSED
+
+    @property
+    def age(self) -> float:
+        return time.monotonic() - self.created_at
+
+    @property
+    def idle_time(self) -> float:
+        return time.monotonic() - self.last_used
+
+    def is_stale(self, max_conn_lifetime: float, max_conn_idle_time: float) -> bool:
+        return (
+            self.age > max_conn_lifetime or
+            (self.state == ConnectionState.IDLE and self.idle_time > max_conn_idle_time)
+        )
+
+    # User interface methods
+    async def release(self):
+        """Return connection to the pool"""
+        if not self._released:
+            self._released = True
+            await self._pool._return_connection(self)
+
+    async def close(self):
+        """Alias for release()"""
+        await self.release()
+
+    def __getattr__(self, name):
+        """Proxy attribute access to underlying connection"""
+        if self._released:
+            raise ConnectionReleasedError("Connection already released to pool")
+        return getattr(self.connection, name)
+
+    def __del__(self):
+        """Warn if connection not released"""
+        if not self._released and self.state == ConnectionState.IN_USE:
+            logger.warning(
+                f"Connection {self.connection_id} was not released! "
+                f"Always call release() or use context manager."
+            )
+
+
 class AsyncConnectionPool:
     """
     Generic async connection pool with manual connection management.
     """
-
-    class AsyncPooledConnectionWrapper:
-        """Combined wrapper for pooled connections with metadata and user interface"""
-
-        def __init__(self, connection: Any, connection_id: int, pool: 'AsyncConnectionPool'):
-            # Pool metadata
-            self.connection = connection
-            self.connection_id = connection_id
-            self.created_at = time.monotonic()
-            self.last_used = time.monotonic()
-            self.use_count = 0
-            self.state = ConnectionState.IDLE
-            
-            # User interface
-            self._pool = pool
-            self._released = False
-
-        def mark_in_use(self):
-            self.state = ConnectionState.IN_USE
-            self.last_used = time.monotonic()
-            self.use_count += 1
-            self._released = False
-
-        def mark_idle(self):
-            self.state = ConnectionState.IDLE
-            self.last_used = time.monotonic()
-
-        def mark_closed(self):
-            self.state = ConnectionState.CLOSED
-
-        @property
-        def age(self) -> float:
-            return time.monotonic() - self.created_at
-
-        @property
-        def idle_time(self) -> float:
-            return time.monotonic() - self.last_used
-
-        def is_stale(self, max_conn_lifetime: float, max_conn_idle_time: float) -> bool:
-            return (
-                self.age > max_conn_lifetime or
-                (self.state == ConnectionState.IDLE and self.idle_time > max_conn_idle_time)
-            )
-        
-        # User interface methods
-        async def release(self):
-            """Return connection to the pool"""
-            if not self._released:
-                self._released = True
-                await self._pool._return_connection(self)
-
-        async def close(self):
-            """Alias for release()"""
-            await self.release()
-
-        def __getattr__(self, name):
-            """Proxy attribute access to underlying connection"""
-            if self._released:
-                raise ConnectionReleasedError("Connection already released to pool")
-            return getattr(self.connection, name)
-
-        def __del__(self):
-            """Warn if connection not released"""
-            if not self._released and self.state == ConnectionState.IN_USE:
-                logger.warning(
-                    f"Connection {self.connection_id} was not released! "
-                    f"Always call release() or use context manager."
-                )
 
     @staticmethod
     async def _default_closer(connection: Any) -> None:
@@ -149,9 +148,9 @@ class AsyncConnectionPool:
 
     def __init__(
         self,
-        creator: Callable[[], Awaitable[T]],
-        health_check: Optional[Callable[[T], Awaitable[None]]] = None,
-        closer: Optional[Callable[[T], Awaitable[None]]] = None,
+        creator: Callable[[], Awaitable[T_con]],
+        health_check: Optional[Callable[[T_con], Awaitable[None]]] = None,
+        closer: Optional[Callable[[T_con], Awaitable[None]]] = None,
         config: Optional[PoolConfig] = None
     ):
         self._creator = creator
@@ -160,8 +159,8 @@ class AsyncConnectionPool:
         self._config = config or PoolConfig()
 
         # Pool state - queue size accounts for overflow
-        self._pool: asyncio.Queue['AsyncConnectionPool.AsyncPooledConnectionWrapper'] = asyncio.Queue()
-        self._all_connections: Dict[int, 'AsyncConnectionPool.AsyncPooledConnectionWrapper'] = {}
+        self._pool: asyncio.Queue[AsyncPooledConnectionWrapper] = asyncio.Queue()
+        self._all_connections: Dict[int, AsyncPooledConnectionWrapper] = {}
         self._connection_counter = 0
         self._max_connection_id = 1000000  # Reset after 1M connections
         self._size = 0
@@ -214,18 +213,18 @@ class AsyncConnectionPool:
                 self._connection_counter += 1
                 if self._connection_counter > self._max_connection_id:
                     self._connection_counter = 1
-                
+
                 # Check if ID is in use (avoid nested lock by checking outside)
                 if self._connection_counter not in self._all_connections:
                     return self._connection_counter
 
-    async def _create_connection(self) -> 'AsyncConnectionPool.AsyncPooledConnectionWrapper':
+    async def _create_connection(self) -> AsyncPooledConnectionWrapper:
         """Create a new connection (caller manages size)"""
         connection_id = await self._get_next_connection_id()
-        
+
         try:
             raw_conn = await self._creator()
-            pooled_conn = AsyncConnectionPool.AsyncPooledConnectionWrapper(raw_conn, connection_id, self)
+            pooled_conn = AsyncPooledConnectionWrapper(raw_conn, connection_id, self)
 
             async with self._lock:
                 self._all_connections[connection_id] = pooled_conn
@@ -237,7 +236,7 @@ class AsyncConnectionPool:
             logger.error(f"Failed to create connection: {e}")
             raise
 
-    async def _close_connection(self, pooled_conn: 'AsyncConnectionPool.AsyncPooledConnectionWrapper'):
+    async def _close_connection(self, pooled_conn: AsyncPooledConnectionWrapper):
         """Close a connection"""
         if pooled_conn.state == ConnectionState.CLOSED:
             return
@@ -256,7 +255,7 @@ class AsyncConnectionPool:
         except Exception as e:
             logger.error(f"Error closing connection {pooled_conn.connection_id}: {e}")
 
-    async def _validate_connection(self, pooled_conn: 'AsyncConnectionPool.AsyncPooledConnectionWrapper') -> bool:
+    async def _validate_connection(self, pooled_conn: AsyncPooledConnectionWrapper) -> bool:
         """Validate a connection"""
         # Check if stale
         if pooled_conn.is_stale(
@@ -283,7 +282,7 @@ class AsyncConnectionPool:
 
         return True
 
-    async def acquire(self) -> 'AsyncConnectionPool.AsyncPooledConnectionWrapper':
+    async def acquire(self) -> AsyncPooledConnectionWrapper:
         """
         Acquire a connection from the pool.
         YOU must call release() when done!
@@ -308,28 +307,28 @@ class AsyncConnectionPool:
                 # Atomic check and reserve slot
                 async with self._lock:
                     max_total = self._config.max_size + (float('inf') if self._config.overflow == -1 else self._config.overflow)
-                    
+
                     if self._size < max_total:
                         self._size += 1  # Reserve slot
                         create_new = True
                     else:
                         create_new = False
-                
+
                 if create_new:
                     try:
                         connection_id = await self._get_next_connection_id()
                         # Create connection with timeout to prevent hanging during failover
                         raw_conn = await asyncio.wait_for(
-                            self._creator(), 
+                            self._creator(),
                             timeout=min(self._config.acquire_conn_timeout, 30.0)  # Cap at 30s to prevent indefinite hangs
                         )
-                        pooled_conn = AsyncConnectionPool.AsyncPooledConnectionWrapper(raw_conn, connection_id, self)
-                        
+                        pooled_conn = AsyncPooledConnectionWrapper(raw_conn, connection_id, self)
+
                         # Add to tracking
                         async with self._lock:
                             self._all_connections[connection_id] = pooled_conn
                         created_new = True
-                    except Exception as e:
+                    except Exception:
                         # Failed to create, decrement reserved size
                         async with self._lock:
                             self._size -= 1
@@ -343,18 +342,18 @@ class AsyncConnectionPool:
                 # Recreate using same pattern as initial creation to avoid deadlock
                 async with self._lock:
                     self._size += 1  # Reserve slot
-                
+
                 try:
                     connection_id = await self._get_next_connection_id()
                     raw_conn = await asyncio.wait_for(
-                        self._creator(), 
+                        self._creator(),
                         timeout=min(self._config.acquire_conn_timeout, 30.0)  # Cap at 30s to prevent indefinite hangs
                     )
-                    pooled_conn = AsyncConnectionPool.AsyncPooledConnectionWrapper(raw_conn, connection_id, self)
+                    pooled_conn = AsyncPooledConnectionWrapper(raw_conn, connection_id, self)
                     async with self._lock:
                         self._all_connections[connection_id] = pooled_conn
                     created_new = True
-                except Exception as e:
+                except Exception:
                     async with self._lock:
                         self._size -= 1
                     raise
@@ -375,17 +374,17 @@ class AsyncConnectionPool:
                 await self._close_connection(pooled_conn)
             raise
 
-    async def _return_connection(self, pooled_conn: 'AsyncConnectionPool.AsyncPooledConnectionWrapper'):
+    async def _return_connection(self, pooled_conn: AsyncPooledConnectionWrapper):
         """Return connection to pool or close if excess"""
         if self._closing:
             await self._close_connection(pooled_conn)
             return
-            
+
         # Check if we should close excess connections (lock released before close)
         should_close = False
         async with self._lock:
             should_close = self._pool.qsize() >= self._config.max_size
-            
+
         if should_close:
             await self._close_connection(pooled_conn)
         else:
@@ -425,7 +424,7 @@ class AsyncConnectionPool:
                     needed = self._config.min_size - self._size
                     if needed > 0:
                         self._size += needed  # Reserve slots
-                
+
                 if needed > 0:
                     for _ in range(needed):
                         try:
@@ -441,10 +440,10 @@ class AsyncConnectionPool:
                 async with self._lock:
                     stale_conns = [
                         conn for conn in self._all_connections.values()
-                        if conn.state == ConnectionState.IDLE and 
-                           conn.is_stale(self._config.max_conn_lifetime, self._config.max_conn_idle_time)
+                        if conn.state == ConnectionState.IDLE and
+                        conn.is_stale(self._config.max_conn_lifetime, self._config.max_conn_idle_time)
                     ]
-                
+
                 # Close stale connections outside the lock to avoid deadlock
                 for conn in stale_conns:
                     try:
@@ -473,7 +472,7 @@ class AsyncConnectionPool:
         # Close all connections (collect under lock, close outside to avoid deadlock)
         async with self._lock:
             connections = list(self._all_connections.values())
-        
+
         await asyncio.gather(
             *[self._close_connection(conn) for conn in connections],
             return_exceptions=True
@@ -489,7 +488,7 @@ class AsyncConnectionPool:
             in_use_count = states.count(ConnectionState.IN_USE)
         except RuntimeError:  # Dictionary changed during iteration
             idle_count = in_use_count = 0
-            
+
         return {
             "total_size": self._size,
             "idle": idle_count,

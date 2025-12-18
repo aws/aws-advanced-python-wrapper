@@ -21,7 +21,7 @@ from typing import Callable
 from aws_advanced_python_wrapper import AwsWrapperConnection
 
 
-class AwsWrapperAsyncConnector:
+class AwsWrapperAsyncConnector():
     """Class for creating and closing AWS wrapper connections."""
 
     @staticmethod
@@ -36,6 +36,7 @@ class AwsWrapperAsyncConnector:
     async def close_aws_wrapper(connection: AwsWrapperConnection) -> None:
         """Close an AWS wrapper connection asynchronously."""
         await asyncio.to_thread(connection.close)
+
 
 class AwsConnectionAsyncWrapper(AwsWrapperConnection):
     """Wraps sync AwsConnection with async cursor support."""
@@ -77,6 +78,7 @@ class AwsConnectionAsyncWrapper(AwsWrapperConnection):
         if hasattr(self, '_wrapped_connection'):
             # Let the wrapped connection handle its own cleanup
             pass
+
 
 class AwsCursorAsyncWrapper:
     """Wraps sync AwsCursor cursor with async support."""

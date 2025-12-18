@@ -34,12 +34,12 @@ def weighted_props():
 
 @pytest.fixture
 def writer_host():
-    return HostInfo("instance-0", 5432, HostRole.WRITER,  HostAvailability.AVAILABLE)
+    return HostInfo("instance-0", 5432, HostRole.WRITER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture
 def reader_host1() -> HostInfo:
-    return HostInfo("instance-1", 5432, HostRole.READER,  HostAvailability.AVAILABLE)
+    return HostInfo("instance-1", 5432, HostRole.READER, HostAvailability.AVAILABLE)
 
 
 @pytest.fixture

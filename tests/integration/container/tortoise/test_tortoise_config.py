@@ -17,7 +17,7 @@ import pytest_asyncio
 from tortoise import Tortoise, connections
 
 # Import to register the aws-mysql backend
-import aws_advanced_python_wrapper.tortoise  # noqa: F401
+import aws_advanced_python_wrapper.tortoise_orm  # noqa: F401
 from tests.integration.container.tortoise.models.test_models import User
 from tests.integration.container.tortoise.test_tortoise_common import \
     reset_tortoise
@@ -46,7 +46,7 @@ class TestTortoiseConfig:
         config = {
             "connections": {
                 "default": {
-                    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
+                    "engine": "aws_advanced_python_wrapper.tortoise_orm.backends.mysql",
                     "credentials": {
                         "host": conn_utils.writer_cluster_host,
                         "port": conn_utils.port,
@@ -84,7 +84,7 @@ class TestTortoiseConfig:
         config = {
             "connections": {
                 "default": {
-                    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
+                    "engine": "aws_advanced_python_wrapper.tortoise_orm.backends.mysql",
                     "credentials": {
                         "host": conn_utils.writer_cluster_host,
                         "port": conn_utils.port,
@@ -95,7 +95,7 @@ class TestTortoiseConfig:
                     }
                 },
                 "second_db": {
-                    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
+                    "engine": "aws_advanced_python_wrapper.tortoise_orm.backends.mysql",
                     "credentials": {
                         "host": conn_utils.writer_cluster_host,
                         "port": conn_utils.port,
@@ -145,7 +145,7 @@ class TestTortoiseConfig:
         config = {
             "connections": {
                 "default": {
-                    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
+                    "engine": "aws_advanced_python_wrapper.tortoise_orm.backends.mysql",
                     "credentials": {
                         "host": conn_utils.writer_cluster_host,
                         "port": conn_utils.port,

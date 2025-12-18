@@ -222,6 +222,7 @@ class CustomEndpointMonitor:
         CustomEndpointMonitor._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
         self._stop_event.set()
 
+
 class CustomEndpointPlugin(Plugin):
     """
     A plugin that analyzes custom endpoints for custom endpoint information and custom endpoint changes, such as adding

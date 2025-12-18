@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from aws_advanced_python_wrapper.tortoise.async_support.async_wrapper import (
+from aws_advanced_python_wrapper.tortoise_orm.async_support.async_wrapper import (
     AwsConnectionAsyncWrapper, AwsCursorAsyncWrapper, AwsWrapperAsyncConnector)
 
 

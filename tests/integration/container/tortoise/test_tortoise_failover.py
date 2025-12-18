@@ -13,8 +13,6 @@
 #  limitations under the License.
 
 import asyncio
-import threading
-import time
 
 import pytest
 import pytest_asyncio
@@ -91,7 +89,6 @@ async def run_concurrent_queries_with_failover(aurora_utility, record_name="Conc
 
     await asyncio.gather(insert_query_task(), failover_task(), return_exceptions=True)
 
-
     assert sleep_exception is not None
     assert isinstance(sleep_exception, (FailoverSuccessError, TransactionResolutionUnknownError))
 
@@ -164,7 +161,7 @@ class TestTortoiseFailover:
             "monitoring-connect_timeout": 10,
             "use_pure": True,
         }
-        
+
         # Add reader strategy if multiple plugins
         if "fastest_response_strategy" in plugins:
             kwargs["reader_host_selector_strategy"] = "fastest_response"
@@ -172,7 +169,7 @@ class TestTortoiseFailover:
             kwargs.pop("use_pure")
         else:
             user = None
-            
+
         async for result in setup_tortoise(conn_utils, plugins=plugins, user=user, **kwargs):
             yield result
 

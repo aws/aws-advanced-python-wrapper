@@ -14,18 +14,19 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Generic, cast
+from typing import TYPE_CHECKING, Any, Dict, Generic, cast
 
-import asyncio
-import mysql.connector
 from tortoise.backends.base.client import (BaseDBAsyncClient, T_conn,
                                            TransactionalDBClient,
                                            TransactionContext)
 from tortoise.connection import connections
 from tortoise.exceptions import TransactionManagementError
 
-from aws_advanced_python_wrapper.tortoise.async_support.async_wrapper import (
-    AwsConnectionAsyncWrapper, AwsWrapperAsyncConnector)
+if TYPE_CHECKING:
+    from asyncio import Lock
+
+    from aws_advanced_python_wrapper.tortoise_orm.async_support.async_connection_pool import \
+        AsyncPooledConnectionWrapper
 
 
 class AwsBaseDBAsyncClient(BaseDBAsyncClient):
@@ -37,18 +38,19 @@ class AwsTransactionalDBClient(TransactionalDBClient):
     _parent: AwsBaseDBAsyncClient
     pass
 
+
 class TortoiseAwsClientPooledConnectionWrapper(Generic[T_conn]):
     """Manages acquiring from and releasing connections to a pool."""
 
     __slots__ = ("client", "connection", "_pool_init_lock",)
 
     def __init__(
-        self, 
-        client: BaseDBAsyncClient, 
-        pool_init_lock: asyncio.Lock, 
+        self,
+        client: BaseDBAsyncClient,
+        pool_init_lock: Lock,
     ) -> None:
         self.client = client
-        self.connection: T_conn | None = None
+        self.connection: AsyncPooledConnectionWrapper | None = None
         self._pool_init_lock = pool_init_lock
 
     async def ensure_connection(self) -> None:
@@ -58,23 +60,24 @@ class TortoiseAwsClientPooledConnectionWrapper(Generic[T_conn]):
                 if not self.client._pool:
                     await self.client.create_connection(with_db=True)
 
-    async def __aenter__(self) -> T_conn:
+    async def __aenter__(self) -> AsyncPooledConnectionWrapper:
         """Acquire connection from pool."""
         await self.ensure_connection()
         self.connection = await self.client._pool.acquire()
-        return self.connection
+        return cast('AsyncPooledConnectionWrapper', self.connection)
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Close connection and release back to pool."""
         if self.connection:
             await self.connection.release()
 
+
 class TortoiseAwsClientPooledTransactionContext(TransactionContext):
     """Transaction context that uses a pool to acquire connections."""
 
     __slots__ = ("client", "connection_name", "token", "_pool_init_lock", "connection")
 
-    def __init__(self, client: TransactionalDBClient, pool_init_lock: asyncio.Lock) -> None:
+    def __init__(self, client: TransactionalDBClient, pool_init_lock: Lock) -> None:
         self.client = client
         self.connection_name = client.connection_name
         self._pool_init_lock = pool_init_lock
@@ -91,13 +94,13 @@ class TortoiseAwsClientPooledTransactionContext(TransactionContext):
     async def __aenter__(self) -> TransactionalDBClient:
         """Enter transaction context."""
         await self.ensure_connection()
-        
+
         # Set the context variable so the current task sees a TransactionWrapper connection
         self.token = connections.set(self.connection_name, self.client)
-        
+
         # Create connection and begin transaction
         self.connection = await self.client._parent._pool.acquire()
-        self.client._connection =  self.connection
+        self.client._connection = self.connection
         await self.client.begin()
         return self.client
 

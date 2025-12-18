@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 import asyncio
+from dataclasses import fields
 from functools import wraps
 from itertools import count
 from typing import (Any, Callable, Coroutine, Dict, List, Optional,
@@ -30,17 +31,18 @@ from tortoise.exceptions import (DBConnectionError, IntegrityError,
                                  OperationalError, TransactionManagementError)
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError, FailoverError
-from aws_advanced_python_wrapper.tortoise.async_support.async_wrapper import (
+from aws_advanced_python_wrapper.tortoise_orm.async_support.async_connection_pool import (
+    AsyncConnectionPool, PoolConfig)
+from aws_advanced_python_wrapper.tortoise_orm.async_support.async_wrapper import (
     AwsConnectionAsyncWrapper, AwsWrapperAsyncConnector)
-from aws_advanced_python_wrapper.tortoise.backends.base.client import (
+from aws_advanced_python_wrapper.tortoise_orm.backends.base.client import (
     AwsBaseDBAsyncClient, AwsTransactionalDBClient,
-    TortoiseAwsClientPooledConnectionWrapper, TortoiseAwsClientPooledTransactionContext)
-from aws_advanced_python_wrapper.tortoise.backends.mysql.executor import \
+    TortoiseAwsClientPooledConnectionWrapper,
+    TortoiseAwsClientPooledTransactionContext)
+from aws_advanced_python_wrapper.tortoise_orm.backends.mysql.executor import \
     AwsMySQLExecutor
-from aws_advanced_python_wrapper.tortoise.backends.mysql.schema_generator import \
+from aws_advanced_python_wrapper.tortoise_orm.backends.mysql.schema_generator import \
     AwsMySQLSchemaGenerator
-from aws_advanced_python_wrapper.async_connection_pool import AsyncConnectionPool, PoolConfig
-from dataclasses import fields
 from aws_advanced_python_wrapper.utils.log import Logger
 
 logger = Logger(__name__)
@@ -133,15 +135,14 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
         # Pool configuration
         default_pool_config = {field.name: field.default for field in fields(PoolConfig)}
         self._pool_config = PoolConfig(
-            min_size = self.extra.pop("min_size", default_pool_config["min_size"]),
-            max_size = self.extra.pop("max_size", default_pool_config["max_size"]),
-            acquire_conn_timeout = self.extra.pop("acquire_conn_timeout", default_pool_config["acquire_conn_timeout"]),
-            max_conn_lifetime = self.extra.pop("max_conn_lifetime", default_pool_config["max_conn_lifetime"]),
-            max_conn_idle_time = self.extra.pop("max_conn_idle_time", default_pool_config["max_conn_idle_time"]),
-            health_check_interval = self.extra.pop("health_check_interval", default_pool_config["health_check_interval"]),
-            pre_ping = self.extra.pop("pre_ping", default_pool_config["pre_ping"])
+            min_size=self.extra.pop("min_size", default_pool_config["min_size"]),
+            max_size=self.extra.pop("max_size", default_pool_config["max_size"]),
+            acquire_conn_timeout=self.extra.pop("acquire_conn_timeout", default_pool_config["acquire_conn_timeout"]),
+            max_conn_lifetime=self.extra.pop("max_conn_lifetime", default_pool_config["max_conn_lifetime"]),
+            max_conn_idle_time=self.extra.pop("max_conn_idle_time", default_pool_config["max_conn_idle_time"]),
+            health_check_interval=self.extra.pop("health_check_interval", default_pool_config["health_check_interval"]),
+            pre_ping=self.extra.pop("pre_ping", default_pool_config["pre_ping"])
         )
-        
 
     def _init_connection_templates(self) -> None:
         """Initialize connection templates for with/without database."""
@@ -165,7 +166,7 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
         async def create_connection():
             return await AwsWrapperAsyncConnector.connect_with_aws_wrapper(mysql.connector.Connect, **self._template)
 
-        self._pool: AsyncConnectionPool = AsyncConnectionPool(
+        self._pool = AsyncConnectionPool(
             creator=create_connection,
             config=self._pool_config
         )
@@ -190,9 +191,10 @@ class AwsMySQLClient(AwsBaseDBAsyncClient):
     def _disable_pool_for_testing(self) -> None:
         """Disable pool initialization for unit testing."""
         self._pool = None
+
         async def _no_op():
             pass
-        self._init_pool = _no_op
+        self._init_pool = _no_op  # type: ignore[method-assign]
 
     async def close(self) -> None:
         """Close connections - AWS wrapper handles cleanup internally."""

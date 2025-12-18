@@ -18,7 +18,7 @@ from tortoise import Tortoise
 from tortoise.exceptions import IntegrityError
 
 # Import to register the aws-mysql backend
-import aws_advanced_python_wrapper.tortoise  # noqa: F401
+import aws_advanced_python_wrapper.tortoise_orm  # noqa: F401
 from tests.integration.container.tortoise.models.test_models_relationships import (
     RelTestAccount, RelTestAccountProfile, RelTestLearner, RelTestPublication,
     RelTestPublisher, RelTestSubject)

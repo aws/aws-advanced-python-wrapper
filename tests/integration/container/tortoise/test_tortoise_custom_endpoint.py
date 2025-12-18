@@ -28,10 +28,10 @@ from tests.integration.container.utils.conditions import (
 from tests.integration.container.utils.database_engine import DatabaseEngine
 from tests.integration.container.utils.database_engine_deployment import \
     DatabaseEngineDeployment
+from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
-from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 
 
 @disable_on_engines([DatabaseEngine.PG])
@@ -109,11 +109,11 @@ class TestTortoiseCustomEndpoint:
 
         if not available:
             pytest.fail(f"Timed out waiting for custom endpoint to become available: {self.endpoint_id}")
-    
+
     def _wait_until_endpoint_deleted(self, rds_client):
         """Wait for the custom endpoint to be deleted."""
         end_ns = perf_counter_ns() + 5 * 60 * 1_000_000_000  # 5 minutes
-        
+
         while perf_counter_ns() < end_ns:
             try:
                 rds_client.describe_db_cluster_endpoints(DBClusterEndpointIdentifier=self.endpoint_id)
@@ -128,11 +128,11 @@ class TestTortoiseCustomEndpoint:
         """Setup Tortoise with custom endpoint plugin."""
         plugins, user = request.param
         user_value = getattr(conn_utils, user) if user != "default" else None
-        
+
         kwargs = {}
         if "fastest_response_strategy" in plugins:
             kwargs["reader_host_selector_strategy"] = "fastest_response"
-            
+
         async for result in setup_tortoise(conn_utils, plugins=plugins, host=create_custom_endpoint, user=user_value, **kwargs):
             yield result
 

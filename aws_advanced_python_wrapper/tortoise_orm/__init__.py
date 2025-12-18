@@ -26,7 +26,7 @@ def cast_to_bool(value):
 
 # Register AWS MySQL backend
 DB_LOOKUP["aws-mysql"] = {
-    "engine": "aws_advanced_python_wrapper.tortoise.backends.mysql",
+    "engine": "aws_advanced_python_wrapper.tortoise_orm.backends.mysql",
     "vmap": {
         "path": "database",
         "hostname": "host",

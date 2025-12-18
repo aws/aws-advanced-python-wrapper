@@ -240,7 +240,7 @@ class TestEnvironment:
             disabled_by_feature = TestEnvironmentFeatures.SKIP_MYSQL_DRIVER_TESTS in features
         elif test_driver == TestDriver.PG:
             driver_compatible_to_database_engine = (
-                    database_engine == DatabaseEngine.PG)
+                database_engine == DatabaseEngine.PG)
             disabled_by_feature = TestEnvironmentFeatures.SKIP_PG_DRIVER_TESTS in features
         else:
             raise UnsupportedOperationError(test_driver.value)
