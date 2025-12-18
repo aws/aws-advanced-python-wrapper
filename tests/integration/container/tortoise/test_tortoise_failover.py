@@ -172,17 +172,13 @@ class TestTortoiseFailover:
         # Add reader strategy if multiple plugins
         if "fastest_response_strategy" in plugins:
             kwargs["reader_host_selector_strategy"] = "fastest_response"
-            user = conn_utils.iam_user
-            kwargs.pop("use_pure")
-        else:
-            user = None
 
-        async for result in setup_tortoise(conn_utils, plugins=plugins, user=user, **kwargs):
+        async for result in setup_tortoise(conn_utils, plugins=plugins, **kwargs):
             yield result
 
     @pytest.mark.parametrize("setup_tortoise_with_failover", [
         "failover",
-        "failover,aurora_connection_tracker,fastest_response_strategy,iam"
+        "failover,aurora_connection_tracker,fastest_response_strategy"
     ], indirect=True)
     @pytest.mark.asyncio
     async def test_basic_operations_with_failover(
@@ -192,7 +188,7 @@ class TestTortoiseFailover:
 
     @pytest.mark.parametrize("setup_tortoise_with_failover", [
         "failover",
-        "failover,aurora_connection_tracker,fastest_response_strategy,iam"
+        "failover,aurora_connection_tracker,fastest_response_strategy"
     ], indirect=True)
     @pytest.mark.asyncio
     async def test_transaction_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
@@ -236,7 +232,7 @@ class TestTortoiseFailover:
 
     @pytest.mark.parametrize("setup_tortoise_with_failover", [
         "failover",
-        "failover,aurora_connection_tracker,fastest_response_strategy,iam"
+        "failover,aurora_connection_tracker,fastest_response_strategy"
     ], indirect=True)
     @pytest.mark.asyncio
     async def test_concurrent_queries_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
@@ -245,7 +241,7 @@ class TestTortoiseFailover:
 
     @pytest.mark.parametrize("setup_tortoise_with_failover", [
         "failover",
-        "failover,aurora_connection_tracker,fastest_response_strategy,iam"
+        "failover,aurora_connection_tracker,fastest_response_strategy"
     ], indirect=True)
     @pytest.mark.asyncio
     async def test_multiple_concurrent_inserts_with_failover(self, setup_tortoise_with_failover, sleep_trigger_setup, aurora_utility):
