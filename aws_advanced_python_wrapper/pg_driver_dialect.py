@@ -22,7 +22,6 @@ import psycopg
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
-    from types import ModuleType
 
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
@@ -175,6 +174,3 @@ class PgDriverDialect(DriverDialect):
 
     def supports_abort_connection(self) -> bool:
         return True
-
-    def get_driver_module(self) -> ModuleType:
-        return psycopg

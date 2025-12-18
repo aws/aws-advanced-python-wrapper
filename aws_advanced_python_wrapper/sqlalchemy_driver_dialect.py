@@ -127,6 +127,3 @@ class SqlAlchemyDriverDialect(DriverDialect):
             return None
 
         return self._underlying_driver.transfer_session_state(from_driver_conn, to_driver_conn)
-
-    def get_driver_module(self) -> ModuleType:
-        return self._underlying_driver.get_driver_module()

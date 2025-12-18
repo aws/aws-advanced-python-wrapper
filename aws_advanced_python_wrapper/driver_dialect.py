@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection, Cursor
-    from types import ModuleType
 
 from abc import ABC
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
@@ -165,7 +164,3 @@ class DriverDialect(ABC):
                 return True
         except Exception:
             return False
-
-    def get_driver_module(self) -> ModuleType:
-        raise UnsupportedOperationError(
-            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "get_driver_module"))
