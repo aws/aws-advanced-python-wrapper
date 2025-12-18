@@ -87,3 +87,11 @@ def disable_on_features(disable_on_test_features: List[TestEnvironmentFeatures])
         disable_test,
         reason="The current test environment contains test features for which this test is disabled"
     )
+
+
+def disable_on_deployments(requested_deployments: List[DatabaseEngineDeployment]):
+    current_deployment = TestEnvironment.get_current().get_deployment()
+    return pytest.mark.skipif(
+        current_deployment in requested_deployments,
+        reason=f"This test is not supported for {current_deployment.value} deployments"
+    )

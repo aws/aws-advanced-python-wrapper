@@ -109,7 +109,6 @@ class ConnectionUtils:
             dbname: Optional[str] = None,
             **kwargs) -> str:
         """Build AWS MySQL connection URL for Tortoise ORM with query parameters."""
-
         env_host = self.writer_cluster_host if self.writer_cluster_host else self.writer_host
         host = env_host if host is None else host
         port = self.port if port is None else port

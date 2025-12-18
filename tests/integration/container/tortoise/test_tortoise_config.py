@@ -21,9 +21,11 @@ import aws_advanced_python_wrapper.tortoise_orm  # noqa: F401
 from tests.integration.container.tortoise.models.test_models import User
 from tests.integration.container.tortoise.test_tortoise_common import \
     reset_tortoise
-from tests.integration.container.utils.conditions import (disable_on_engines,
-                                                          disable_on_features)
+from tests.integration.container.utils.conditions import (
+    disable_on_deployments, disable_on_engines, disable_on_features)
 from tests.integration.container.utils.database_engine import DatabaseEngine
+from tests.integration.container.utils.database_engine_deployment import \
+    DatabaseEngineDeployment
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
 
@@ -43,17 +45,18 @@ class TestTortoiseConfig:
     async def setup_tortoise_dict_config(self, conn_utils):
         """Setup Tortoise with dictionary configuration instead of URL."""
         # Ensure clean state
+        host = conn_utils.writer_cluster_host if conn_utils.writer_cluster_host else conn_utils.writer_host
         config = {
             "connections": {
                 "default": {
                     "engine": "aws_advanced_python_wrapper.tortoise_orm.backends.mysql",
                     "credentials": {
-                        "host": conn_utils.writer_cluster_host,
+                        "host": host,
                         "port": conn_utils.port,
                         "user": conn_utils.user,
                         "password": conn_utils.password,
                         "database": conn_utils.dbname,
-                        "plugins": "aurora_connection_tracker,failover",
+                        "plugins": "aurora_connection_tracker",
                     }
                 }
             },
@@ -80,29 +83,29 @@ class TestTortoiseConfig:
         # Create second database name
         original_db = conn_utils.dbname
         second_db = f"{original_db}_test2"
-
+        host = conn_utils.writer_cluster_host if conn_utils.writer_cluster_host else conn_utils.writer_host
         config = {
             "connections": {
                 "default": {
                     "engine": "aws_advanced_python_wrapper.tortoise_orm.backends.mysql",
                     "credentials": {
-                        "host": conn_utils.writer_cluster_host,
+                        "host": host,
                         "port": conn_utils.port,
                         "user": conn_utils.user,
                         "password": conn_utils.password,
                         "database": original_db,
-                        "plugins": "aurora_connection_tracker,failover",
+                        "plugins": "aurora_connection_tracker",
                     }
                 },
                 "second_db": {
                     "engine": "aws_advanced_python_wrapper.tortoise_orm.backends.mysql",
                     "credentials": {
-                        "host": conn_utils.writer_cluster_host,
+                        "host": host,
                         "port": conn_utils.port,
                         "user": conn_utils.user,
                         "password": conn_utils.password,
                         "database": second_db,
-                        "plugins": "aurora_connection_tracker,failover"
+                        "plugins": "aurora_connection_tracker"
                     }
                 }
             },
@@ -142,17 +145,18 @@ class TestTortoiseConfig:
     @pytest_asyncio.fixture
     async def setup_tortoise_with_router(self, conn_utils):
         """Setup Tortoise with router configuration."""
+        host = conn_utils.writer_cluster_host if conn_utils.writer_cluster_host else conn_utils.writer_host
         config = {
             "connections": {
                 "default": {
                     "engine": "aws_advanced_python_wrapper.tortoise_orm.backends.mysql",
                     "credentials": {
-                        "host": conn_utils.writer_cluster_host,
+                        "host": host,
                         "port": conn_utils.port,
                         "user": conn_utils.user,
                         "password": conn_utils.password,
                         "database": conn_utils.dbname,
-                        "plugins": "aurora_connection_tracker,failover"
+                        "plugins": "aurora_connection_tracker"
                     }
                 }
             },
@@ -210,6 +214,7 @@ class TestTortoiseConfig:
         with pytest.raises(Exception):
             await User.get(id=user.id)
 
+    @disable_on_deployments([DatabaseEngineDeployment.DOCKER])
     @pytest.mark.asyncio
     async def test_multi_db_operations(self, setup_tortoise_multi_db):
         """Test operations with multiple databases using same backend."""
