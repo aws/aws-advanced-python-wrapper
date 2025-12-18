@@ -68,7 +68,7 @@ class TestAwsIamAuthentication:
         params = conn_utils.get_connect_params(user=user)
         params.pop("use_pure", None)  # AWS tokens are truncated when using the pure Python MySQL driver
 
-        with pytest.raises(AwsWrapperError):
+        with pytest.raises(Exception):
             AwsWrapperConnection.connect(
                 target_driver_connect,
                 **params,

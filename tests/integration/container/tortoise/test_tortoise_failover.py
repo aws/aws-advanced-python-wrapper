@@ -37,7 +37,6 @@ from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
 from tests.integration.container.utils.test_utils import get_sleep_trigger_sql
 
-
 # Global configuration for failover tests
 FAILOVER_SLEEP_TIME = 10  # seconds to wait before triggering failover
 CONCURRENT_THREAD_COUNT = 5  # number of concurrent threads/queries to spawn

@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.utils.properties import Properties
-    from types import ModuleType
 
 from sqlalchemy import PoolProxiedConnection
 
