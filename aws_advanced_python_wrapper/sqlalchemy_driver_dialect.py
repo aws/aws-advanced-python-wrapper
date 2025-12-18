@@ -16,6 +16,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from aws_advanced_python_wrapper.driver_dialect import DriverDialect
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.utils.messages import Messages
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -23,15 +27,10 @@ if TYPE_CHECKING:
 
 from sqlalchemy import PoolProxiedConnection
 
-from aws_advanced_python_wrapper.driver_dialect import DriverDialect
-from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.utils.messages import Messages
-
 
 class SqlAlchemyDriverDialect(DriverDialect):
     _driver_name: str = "SQLAlchemy"
     TARGET_DRIVER_CODE: str = "sqlalchemy"
-    _underlying_driver_dialect = None
 
     def __init__(self, underlying_driver: DriverDialect, props: Properties):
         super().__init__(props)

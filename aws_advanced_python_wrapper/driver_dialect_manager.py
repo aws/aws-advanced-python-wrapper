@@ -52,8 +52,7 @@ class DriverDialectManager(DriverDialectProvider):
     }
 
     pool_connection_driver_dialect: Dict[str, str] = {
-        "SqlAlchemyPooledConnectionProvider": "aws_advanced_python_wrapper.sqlalchemy_driver_dialect.SqlAlchemyDriverDialect",
-        "SqlAlchemyTortoisePooledConnectionProvider": "aws_advanced_python_wrapper.sqlalchemy_driver_dialect.SqlAlchemyDriverDialect",
+        "SqlAlchemyPooledConnectionProvider": "aws_advanced_python_wrapper.sqlalchemy_driver_dialect.SqlAlchemyDriverDialect"
     }
 
     @staticmethod

@@ -143,7 +143,7 @@ def test_expired_cached_token(mocker, mock_plugin_service, mock_session, mock_fu
         DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
         Port=5432,
         DBUsername="postgresqlUser"
-    )
+        )
     assert WrapperProperties.USER.get(test_props) == _DB_USER
     assert WrapperProperties.PASSWORD.get(test_props) == _TEST_TOKEN
 
@@ -168,7 +168,7 @@ def test_no_cached_token(mocker, mock_plugin_service, mock_session, mock_func, m
         DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
         Port=5432,
         DBUsername="postgresqlUser"
-    )
+        )
     assert WrapperProperties.USER.get(test_props) == _DB_USER
     assert WrapperProperties.PASSWORD.get(test_props) == _TEST_TOKEN
 

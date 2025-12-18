@@ -415,7 +415,7 @@ class HostMonitorV2:
 
             invalid_host_duration_ns = status_check_end_ns - self._invalid_host_start_time_ns
             max_invalid_host_duration_ns = (
-                self._failure_detection_interval_ns * max(0, self._failure_detection_count - 1))
+                    self._failure_detection_interval_ns * max(0, self._failure_detection_count - 1))
 
             if invalid_host_duration_ns >= max_invalid_host_duration_ns:
                 logger.debug("HostMonitorV2.HostDead", self._host_info.host)

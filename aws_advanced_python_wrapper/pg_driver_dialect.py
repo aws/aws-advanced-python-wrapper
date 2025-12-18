@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Set
 
 import psycopg
@@ -22,6 +21,8 @@ import psycopg
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
+
+from inspect import signature
 
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
