@@ -703,8 +703,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def release_resources(self):
         try:
-            if self.current_connection is not None and not self.driver_dialect.is_closed(
-                    self.current_connection):
+            if self.current_connection is not None:
                 self.current_connection.close()
         except Exception:
             # ignore
