@@ -130,6 +130,7 @@ class TestAwsIamAuthentication:
 
         self.validate_connection(target_driver_connect, **params, **props)
 
+    @pytest.mark.parametrize("plugins", ["failover,iam", "failover_v2,iam"])
     @enable_on_num_instances(min_instances=2)
     @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
     @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
@@ -137,14 +138,14 @@ class TestAwsIamAuthentication:
                           TestEnvironmentFeatures.PERFORMANCE])
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.IAM])
     def test_failover_with_iam(
-            self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils):
+            self, test_driver: TestDriver, props, conn_utils, plugins):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         region = TestEnvironment.get_current().get_info().get_region()
         aurora_utility = RdsTestUtility(region)
         initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
 
         props.update({
-            "plugins": "failover,iam",
+            "plugins": plugins,
             "socket_timeout": 10,
             "connect_timeout": 10,
             "monitoring-connect_timeout": 5,

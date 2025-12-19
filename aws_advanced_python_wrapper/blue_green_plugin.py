@@ -1093,7 +1093,7 @@ class BlueGreenStatusMonitor:
             logger.warning("BlueGreenStatusMonitor.HostInfoNone")
             return
 
-        host_list_provider_supplier = self._plugin_service.database_dialect.get_host_list_provider_supplier()
+        host_list_provider_supplier = self._plugin_service.database_dialect.get_host_list_provider_supplier(self._plugin_service)
         host_list_provider_service: HostListProviderService = cast('HostListProviderService', self._plugin_service)
         self._host_list_provider = host_list_provider_supplier(host_list_provider_service, props_copy)
 

@@ -147,8 +147,6 @@ def test_notify_host_list_changed_with_failover_disabled(plugin_service_mock, ho
 
 
 def test_notify_host_list_changed_with_valid_connection_not_in_topology(plugin_service_mock,
-                                                                        host_list_provider_service_mock,
-                                                                        init_host_provider_func_mock,
                                                                         host_mock):
     host_mock.url = "cluster-url/"
     aliases: FrozenSet[str] = frozenset("instance")
@@ -174,8 +172,6 @@ def test_notify_host_list_changed_with_valid_connection_not_in_topology(plugin_s
 
 def test_update_topology(
         plugin_service_mock,
-        host_list_provider_service_mock,
-        init_host_provider_func_mock,
         driver_dialect_mock):
     properties = Properties()
     WrapperProperties.ENABLE_FAILOVER.set(properties, "False")
@@ -214,7 +210,7 @@ def test_update_topology(
         force_refresh_mock.assert_not_called()
 
 
-def test_failover_reader(plugin_service_mock, host_list_provider_service_mock, init_host_provider_func_mock):
+def test_failover_reader(plugin_service_mock):
     type(plugin_service_mock).is_in_transaction = PropertyMock(return_value=False)
     plugin = FailoverPlugin(plugin_service_mock, Properties())
     plugin._failover_mode = FailoverMode.READER_OR_WRITER
@@ -226,7 +222,7 @@ def test_failover_reader(plugin_service_mock, host_list_provider_service_mock, i
         failover_reader_mock.assert_called_once_with(host_mock)
 
 
-def test_failover_writer(plugin_service_mock, host_list_provider_service_mock, init_host_provider_func_mock):
+def test_failover_writer(plugin_service_mock):
     type(plugin_service_mock).is_in_transaction = PropertyMock(return_value=True)
     plugin = FailoverPlugin(plugin_service_mock, Properties())
     plugin._failover_mode = FailoverMode.STRICT_WRITER
@@ -237,8 +233,7 @@ def test_failover_writer(plugin_service_mock, host_list_provider_service_mock, i
         failover_writer_mock.assert_called_once_with()
 
 
-def test_failover_reader_with_valid_failed_host(plugin_service_mock, host_list_provider_service_mock,
-                                                init_host_provider_func_mock, conn_mock, reader_failover_handler_mock):
+def test_failover_reader_with_valid_failed_host(plugin_service_mock, conn_mock, reader_failover_handler_mock):
     host: HostInfo = HostInfo("host")
     host.availability = HostAvailability.AVAILABLE
     host._aliases = ["alias1", "alias2"]
@@ -259,8 +254,7 @@ def test_failover_reader_with_valid_failed_host(plugin_service_mock, host_list_p
         set_current_connection_mock.assert_called_with(conn_mock, host)
 
 
-def test_failover_reader_with_no_failed_host(plugin_service_mock, host_list_provider_service_mock,
-                                             init_host_provider_func_mock, reader_failover_handler_mock):
+def test_failover_reader_with_no_failed_host(plugin_service_mock, reader_failover_handler_mock):
     host: HostInfo = HostInfo("host")
     host.availability = HostAvailability.AVAILABLE
     host._aliases = ["alias1", "alias2"]
@@ -282,8 +276,7 @@ def test_failover_reader_with_no_failed_host(plugin_service_mock, host_list_prov
         failover_reader_mock.assert_called_with(hosts, None)
 
 
-def test_failover_writer_failed_failover_raises_error(plugin_service_mock, host_list_provider_service_mock,
-                                                      init_host_provider_func_mock):
+def test_failover_writer_failed_failover_raises_error(plugin_service_mock):
     writer_failover_handler_mock: WriterFailoverHandler = MagicMock()
     host: HostInfo = HostInfo("host")
     host._aliases = ["alias1", "alias2"]
@@ -304,8 +297,7 @@ def test_failover_writer_failed_failover_raises_error(plugin_service_mock, host_
         failover_writer_mock.assert_called_with(hosts)
 
 
-def test_failover_writer_failed_failover_with_no_result(plugin_service_mock, host_list_provider_service_mock,
-                                                        init_host_provider_func_mock, writer_failover_handler_mock):
+def test_failover_writer_failed_failover_with_no_result(plugin_service_mock, writer_failover_handler_mock):
     host: HostInfo = HostInfo("host")
     host._aliases = ["alias1", "alias2"]
     hosts: Tuple[HostInfo, ...] = (host, )
@@ -335,8 +327,7 @@ def test_failover_writer_failed_failover_with_no_result(plugin_service_mock, hos
     get_topology_mock.assert_not_called()
 
 
-def test_failover_writer_success(plugin_service_mock, host_list_provider_service_mock, init_host_provider_func_mock,
-                                 writer_failover_handler_mock):
+def test_failover_writer_success(plugin_service_mock, writer_failover_handler_mock):
     host: HostInfo = HostInfo("host")
     host._aliases = ["alias1", "alias2"]
     hosts: Tuple[HostInfo, ...] = (host, )
@@ -356,8 +347,7 @@ def test_failover_writer_success(plugin_service_mock, host_list_provider_service
         failover_writer_mock.assert_called_with(hosts)
 
 
-def test_invalid_current_connection_with_no_connection(plugin_service_mock, host_list_provider_service_mock,
-                                                       init_host_provider_func_mock):
+def test_invalid_current_connection_with_no_connection(plugin_service_mock):
     type(plugin_service_mock).current_connection = PropertyMock(return_value=None)
 
     is_in_transaction_mock = PropertyMock()
@@ -369,8 +359,7 @@ def test_invalid_current_connection_with_no_connection(plugin_service_mock, host
     is_in_transaction_mock.assert_not_called()
 
 
-def test_invalid_current_connection_in_transaction(plugin_service_mock, host_list_provider_service_mock,
-                                                   init_host_provider_func_mock, conn_mock):
+def test_invalid_current_connection_in_transaction(plugin_service_mock, conn_mock):
     type(plugin_service_mock).is_in_transaction = PropertyMock(return_value=True)
     type(plugin_service_mock).current_connection = PropertyMock(return_value=conn_mock)
 
@@ -388,8 +377,7 @@ def test_invalid_current_connection_in_transaction(plugin_service_mock, host_lis
         pytest.fail("_invalidate_current_connection() raised unexpected error")
 
 
-def test_invalidate_current_connection_not_in_transaction(plugin_service_mock, host_list_provider_service_mock,
-                                                          init_host_provider_func_mock, conn_mock):
+def test_invalidate_current_connection_not_in_transaction(plugin_service_mock, conn_mock):
     is_in_transaction_mock = PropertyMock(return_value=False)
     type(plugin_service_mock).is_in_transaction = is_in_transaction_mock
     type(plugin_service_mock).current_connection = PropertyMock(return_value=conn_mock)
@@ -399,8 +387,7 @@ def test_invalidate_current_connection_not_in_transaction(plugin_service_mock, h
     is_in_transaction_mock.assert_called()
 
 
-def test_invalidate_current_connection_with_open_connection(plugin_service_mock, host_list_provider_service_mock,
-                                                            init_host_provider_func_mock, conn_mock,
+def test_invalidate_current_connection_with_open_connection(plugin_service_mock, conn_mock,
                                                             driver_dialect_mock):
     is_in_transaction_mock = PropertyMock(return_value=False)
 
@@ -411,26 +398,21 @@ def test_invalidate_current_connection_with_open_connection(plugin_service_mock,
     plugin = FailoverPlugin(plugin_service_mock, Properties())
 
     with mock.patch.object(driver_dialect_mock, "execute") as close_mock:
-        with mock.patch.object(driver_dialect_mock, "is_closed") as is_closed_mock:
-            driver_dialect_mock.is_closed.return_value = False
+        plugin._invalidate_current_connection()
+        close_mock.assert_called_once()
 
+        conn_mock.close.side_effect = Error("test error")
+
+        try:
             plugin._invalidate_current_connection()
-            close_mock.assert_called_once()
+        except Error:
+            pytest.fail("_invalidate_current_connection() raised unexpected error")
 
-            conn_mock.close.side_effect = Error("test error")
-
-            try:
-                plugin._invalidate_current_connection()
-            except Error:
-                pytest.fail("_invalidate_current_connection() raised unexpected error")
-
-            is_closed_mock.assert_called()
-            assert is_closed_mock.call_count == 2
         close_mock.assert_called()
         assert close_mock.call_count == 2
 
 
-def test_execute(plugin_service_mock, host_list_provider_service_mock, init_host_provider_func_mock, mock_sql_method):
+def test_execute(plugin_service_mock, mock_sql_method):
     properties = Properties()
     WrapperProperties.ENABLE_FAILOVER.set(properties, "False")
     plugin = FailoverPlugin(plugin_service_mock, properties)

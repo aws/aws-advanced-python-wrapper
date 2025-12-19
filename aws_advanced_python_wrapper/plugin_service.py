@@ -23,6 +23,8 @@ from aws_advanced_python_wrapper.blue_green_plugin import \
     BlueGreenPluginFactory
 from aws_advanced_python_wrapper.custom_endpoint_plugin import \
     CustomEndpointPluginFactory
+from aws_advanced_python_wrapper.failover_v2_plugin import \
+    FailoverV2PluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
@@ -255,6 +257,9 @@ class PluginService(ExceptionHandler, Protocol):
         ...
 
     def force_refresh_host_list(self, connection: Optional[Connection] = None):
+        ...
+
+    def force_monitoring_refresh_host_list(self, should_verify_writer: bool, timeout_ms: int) -> bool:
         ...
 
     def connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
@@ -539,7 +544,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 self.driver_dialect)
 
         if original_dialect != self._database_dialect:
-            host_list_provider_init = self._database_dialect.get_host_list_provider_supplier()
+            host_list_provider_init = self._database_dialect.get_host_list_provider_supplier(self)
             self.host_list_provider = host_list_provider_init(self, self._props)
             self.refresh_host_list(connection)
 
@@ -575,6 +580,18 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if updated_host_list != self._all_hosts:
             self._update_host_availability(updated_host_list)
             self._update_hosts(updated_host_list)
+
+    def force_monitoring_refresh_host_list(self, should_verify_writer: bool, timeout_sec: int) -> bool:
+        try:
+            updated_host_list = self.host_list_provider.force_monitoring_refresh(should_verify_writer, timeout_sec)
+            if updated_host_list is not None:
+                self._update_host_availability(updated_host_list)
+                self._update_hosts(updated_host_list)
+                return True
+        except TimeoutError:
+            logger.debug(f"Force refresh timeout after {timeout_sec} sec")
+
+        return False
 
     def connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
@@ -644,6 +661,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         return self._exception_manager.is_login_exception(
+            dialect=self.database_dialect, error=error, sql_state=sql_state)
+
+    def is_read_only_connection_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        return self._exception_manager.is_read_only_connection_exception(
             dialect=self.database_dialect, error=error, sql_state=sql_state)
 
     def get_connection_provider_manager(self) -> ConnectionProviderManager:
@@ -762,6 +783,7 @@ class PluginManager(CanReleaseResources):
         "host_monitoring": HostMonitoringPluginFactory,
         "host_monitoring_v2": HostMonitoringV2PluginFactory,
         "failover": FailoverPluginFactory,
+        "failover_v2": FailoverV2PluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,
         "srw": SimpleReadWriteSplittingPluginFactory,
         "fastest_response_strategy": FastestResponseStrategyPluginFactory,
@@ -790,6 +812,7 @@ class PluginManager(CanReleaseResources):
         ReadWriteSplittingPluginFactory: 300,
         SimpleReadWriteSplittingPluginFactory: 310,
         FailoverPluginFactory: 400,
+        FailoverV2PluginFactory: 410,
         HostMonitoringPluginFactory: 500,
         HostMonitoringV2PluginFactory: 510,
         BlueGreenPluginFactory: 550,

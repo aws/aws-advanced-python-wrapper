@@ -217,9 +217,7 @@ class FailoverPlugin(Plugin):
         if not self._is_failover_enabled():
             return
 
-        conn = self._plugin_service.current_connection
-        driver_dialect = self._plugin_service.driver_dialect
-        if conn is None or (driver_dialect is not None and driver_dialect.is_closed(conn)):
+        if self._plugin_service.current_connection is None:
             return
 
         if force_update:
@@ -377,11 +375,10 @@ class FailoverPlugin(Plugin):
             except Exception:
                 pass
 
-        if not driver_dialect.is_closed(conn):
-            try:
-                return driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
-            except Exception:
-                pass
+        try:
+            return driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
+        except Exception:
+            pass
 
         return None
 

@@ -407,3 +407,11 @@ def test_get_topology_returns_last_writer(mocker, mock_provider_service, mock_co
     result = provider._get_topology(mock_conn, True)
     assert result.hosts[0].host == "expected_writer_host.xyz.us-east-2.rds.amazonaws.com"
     spy.assert_called_once()
+
+
+def test_force_monitoring_refresh(mock_provider_service, props):
+    topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
+    provider = RdsHostListProvider(mock_provider_service, props, topology_utils)
+
+    with pytest.raises(AwsWrapperError):
+        provider.force_monitoring_refresh(True, 5)
