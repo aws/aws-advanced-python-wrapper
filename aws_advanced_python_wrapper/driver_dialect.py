@@ -107,7 +107,7 @@ class DriverDialect(ABC):
         PropertiesUtils.remove_wrapper_props(prop_copy)
         return prop_copy
 
-    def is_closed(self, conn: Connection) -> bool:
+    def is_closed(self, conn: Connection, is_releasing_resources: bool = False) -> bool:
         raise UnsupportedOperationError(
             Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "is_closed"))
 
