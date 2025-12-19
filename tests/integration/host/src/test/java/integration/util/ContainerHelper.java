@@ -73,7 +73,8 @@ public class ContainerHelper {
         "--html=./tests/integration/container/reports/%s.html", primaryInfo);
     Long exitCode = execInContainer(container, consumer,
         "poetry", "run", "pytest", "-vvvvv", reportSetting, "-k", "test_tortoise",
-        "-p", "no:logging", "--capture=tee-sys", testFolder);
+        "--timeout=420", "--timeout-method=thread", "--tb=long", "--capture=tee-sys", "--maxfail=2",
+        "-p", "no:logging", testFolder);
 
     System.out.println("==== Container console feed ==== <<<<");
     assertEquals(0, exitCode, "Some tests failed.");

@@ -47,7 +47,7 @@ class TestTortoiseRelationships:
         """Setup Tortoise with relationship models."""
         db_url = conn_utils.get_aws_tortoise_url(
             TestEnvironment.get_current().get_engine(),
-            plugins="aurora_connection_tracker",
+            plugins="none",
         )
 
         config = {

@@ -66,6 +66,7 @@ opentelemetry-exporter-otlp = "^1.22.0"
 opentelemetry-exporter-otlp-proto-grpc = "^1.22.0"
 opentelemetry-sdk-extension-aws = "^2.0.1"
 pytest-asyncio = "^0.21.0"
+pytest-timeout = "^2.3.1"
 
 [tool.isort]
 sections = "FUTURE,STDLIB,THIRDPARTY,FIRSTPARTY,LOCALFOLDER"
