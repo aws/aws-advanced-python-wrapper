@@ -53,7 +53,7 @@ jobs:
         timeout-minutes: 120
         run: |
           ./gradlew --no-parallel --no-daemon test-python-${{ matrix.python-version }}-${{ matrix.environment }} --info \
-          2>&1 | tee test-output.log 
+          2>&1 | tee test-output.log
         env:
           RDS_CLUSTER_DOMAIN: ${{ secrets.DB_CONN_SUFFIX }}
           RDS_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
