@@ -11,26 +11,6 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+from .client import AwsMySQLClient
 
-import typing
-from typing import Any, Dict
-
-
-class TestTelemetryInfo:
-    __test__ = False
-
-    _endpoint: str
-    _endpoint_port: int
-
-    def __init__(self, telemetry_info: Dict[str, Any]) -> None:
-        if telemetry_info is None:
-            return
-
-        self._endpoint = typing.cast('str', telemetry_info.get("endpoint"))
-        self._endpoint_port = typing.cast('int', telemetry_info.get("endpointPort"))
-
-    def get_endpoint(self) -> str:
-        return self._endpoint
-
-    def get_endpoint_port(self) -> int:
-        return self._endpoint_port
+client_class = AwsMySQLClient

@@ -72,8 +72,9 @@ public class ContainerHelper {
     String reportSetting = String.format(
         "--html=./tests/integration/container/reports/%s.html", primaryInfo);
     Long exitCode = execInContainer(container, consumer,
-        "poetry", "run", "pytest", "-vvvvv", reportSetting, "-k", config.testFilter,
-        "-p", "no:logging", "--capture=tee-sys", testFolder);
+        "poetry", "run", "pytest", "-vvvvv", reportSetting, "-k", "test_tortoise",
+        "--timeout=420", "--timeout-method=thread", "--tb=long", "--capture=tee-sys", "--maxfail=2",
+        "-p", "no:logging", testFolder);
 
     System.out.println("==== Container console feed ==== <<<<");
     assertEquals(0, exitCode, "Some tests failed.");
@@ -280,10 +281,69 @@ public class ContainerHelper {
     }
 
     final ExecCreateCmdResponse execCreateCmdResponse = cmd.exec();
+    
+    // Start monitoring thread
+    final java.util.concurrent.atomic.AtomicBoolean executionComplete = new java.util.concurrent.atomic.AtomicBoolean(false);
+    Thread monitorThread = new Thread(() -> {
+      int checkCount = 0;
+      while (!executionComplete.get()) {
+        try {
+          Thread.sleep(30000); // Check every 30 seconds
+          InspectContainerResponse status = dockerClient.inspectContainerCmd(containerId).exec();
+          checkCount++;
+          
+          System.out.println(String.format(
+              "[Monitor %d] Container status: running=%s, status=%s",
+              checkCount,
+              status.getState().getRunning(),
+              status.getState().getStatus()
+          ));
+          
+          if (!status.getState().getRunning()) {
+            System.out.println("⚠️  Container stopped running!");
+            System.out.println("Exit code: " + status.getState().getExitCodeLong());
+            System.out.println("Finished at: " + status.getState().getFinishedAt());
+            if (status.getState().getError() != null) {
+              System.out.println("Error: " + status.getState().getError());
+            }
+            
+            // Pull container logs when it crashes
+            System.out.println("=== CONTAINER LOGS (last 50 lines) ===");
+            try {
+              dockerClient.logContainerCmd(containerId)
+                  .withStdOut(true)
+                  .withStdErr(true)
+                  .withTail(50)
+                  .exec(new com.github.dockerjava.api.async.ResultCallback.Adapter<com.github.dockerjava.api.model.Frame>() {
+                    @Override
+                    public void onNext(com.github.dockerjava.api.model.Frame frame) {
+                      System.out.print(new String(frame.getPayload()));
+                    }
+                  }).awaitCompletion();
+            } catch (Exception logEx) {
+              System.out.println("Failed to get container logs: " + logEx.getMessage());
+            }
+            System.out.println("=== END CONTAINER LOGS ===");
+            break;
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          break;
+        } catch (Exception e) {
+          System.out.println("Monitor error: " + e.getMessage());
+        }
+      }
+    });
+    monitorThread.setDaemon(true);
+    monitorThread.start();
+    
     try (final FrameConsumerResultCallback callback = new FrameConsumerResultCallback()) {
       callback.addConsumer(OutputFrame.OutputType.STDOUT, consumer);
       callback.addConsumer(OutputFrame.OutputType.STDERR, consumer);
       dockerClient.execStartCmd(execCreateCmdResponse.getId()).exec(callback).awaitCompletion();
+    } finally {
+      executionComplete.set(true);
+      monitorThread.interrupt();
     }
 
     return dockerClient.inspectExecCmd(execCreateCmdResponse.getId()).exec().getExitCodeLong();

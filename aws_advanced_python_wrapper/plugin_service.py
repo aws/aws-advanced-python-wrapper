@@ -703,8 +703,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def release_resources(self):
         try:
-            if self.current_connection is not None and not self.driver_dialect.is_closed(
-                    self.current_connection):
+            if self.current_connection is not None:
                 self.current_connection.close()
         except Exception:
             # ignore
@@ -844,6 +843,9 @@ class PluginManager(CanReleaseResources):
             plugin_codes = WrapperProperties.PLUGINS.get(self._props)
             if plugin_codes is None:
                 plugin_codes = WrapperProperties.DEFAULT_PLUGINS
+
+            if plugin_codes.lower() == "none":
+                plugin_codes = ""
 
             if plugin_codes != "":
                 plugin_factories = self.create_plugin_factories_from_list(plugin_codes.split(","))

@@ -138,7 +138,7 @@ def test_start_monitoring__errors(monitor_service_mocked_container, mock_conn, m
 def test_stop_monitoring(monitor_service_with_container, mock_monitor, mock_conn):
     aliases = frozenset({"instance-1"})
     context = monitor_service_with_container.start_monitoring(
-            mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
+        mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
     monitor_service_with_container.stop_monitoring(context)
     mock_monitor.stop_monitoring.assert_called_once_with(context)
 
@@ -146,7 +146,7 @@ def test_stop_monitoring(monitor_service_with_container, mock_monitor, mock_conn
 def test_stop_monitoring__multiple_calls(monitor_service_with_container, mock_monitor, mock_conn):
     aliases = frozenset({"instance-1"})
     context = monitor_service_with_container.start_monitoring(
-            mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
+        mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
     monitor_service_with_container.stop_monitoring(context)
     mock_monitor.stop_monitoring.assert_called_once_with(context)
     monitor_service_with_container.stop_monitoring(context)
