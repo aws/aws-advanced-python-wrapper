@@ -55,13 +55,13 @@ class SqlAlchemyDriverDialect(DriverDialect):
 
         return self._underlying_driver.set_autocommit(conn, autocommit)
 
-    def is_closed(self, conn: Connection) -> bool:
+    def is_closed(self, conn: Connection, is_releasing_resources: bool = False) -> bool:
         if isinstance(conn, PoolProxiedConnection):
             conn = conn.driver_connection
             if conn is None:
                 return True
 
-        return self._underlying_driver.is_closed(conn)
+        return self._underlying_driver.is_closed(conn, is_releasing_resources)
 
     def abort_connection(self, conn: Connection):
         if isinstance(conn, PoolProxiedConnection):
