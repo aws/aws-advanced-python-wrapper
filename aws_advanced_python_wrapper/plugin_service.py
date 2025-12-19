@@ -845,6 +845,9 @@ class PluginManager(CanReleaseResources):
             if plugin_codes is None:
                 plugin_codes = WrapperProperties.DEFAULT_PLUGINS
 
+            if plugin_codes.lower() == "none":
+                plugin_codes = ""
+
             if plugin_codes != "":
                 plugin_factories = self.create_plugin_factories_from_list(plugin_codes.split(","))
 

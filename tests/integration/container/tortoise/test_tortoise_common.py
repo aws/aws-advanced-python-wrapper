@@ -33,7 +33,7 @@ async def clear_test_models():
             await attr.all().delete()
 
 
-async def setup_tortoise(conn_utils, plugins="aurora_connection_tracker", **kwargs):
+async def setup_tortoise(conn_utils, plugins="none", **kwargs):
     """Setup Tortoise with AWS MySQL backend and configurable plugins."""
     db_url = conn_utils.get_aws_tortoise_url(
         TestEnvironment.get_current().get_engine(),

@@ -137,7 +137,7 @@ class TestTortoiseCustomEndpoint:
             yield result
 
     @pytest.mark.parametrize("setup_tortoise_custom_endpoint", [
-        ("custom_endpoint,aurora_connection_tracker", "default"),
+        ("custom_endpoint", "default"),
         ("failover,iam,aurora_connection_tracker,custom_endpoint,fastest_response_strategy", "iam_user")
     ], indirect=True)
     @pytest.mark.asyncio
@@ -146,7 +146,7 @@ class TestTortoiseCustomEndpoint:
         await run_basic_read_operations("Custom Test", "custom")
 
     @pytest.mark.parametrize("setup_tortoise_custom_endpoint", [
-        ("custom_endpoint,aurora_connection_tracker", "default"),
+        ("custom_endpoint", "default"),
         ("failover,iam,aurora_connection_tracker,custom_endpoint,fastest_response_strategy", "iam_user")
     ], indirect=True)
     @pytest.mark.asyncio

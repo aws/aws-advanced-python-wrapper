@@ -50,10 +50,10 @@ jobs:
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
 
       - name: 'Run LTS Integration Tests'
-        timeout-minutes: 180
+        timeout-minutes: 120
         run: |
           ./gradlew --no-parallel --no-daemon test-python-${{ matrix.python-version }}-${{ matrix.environment }} --info \
-          > test-output.log 2>&1
+          2>&1 | tee test-output.log
         env:
           RDS_CLUSTER_DOMAIN: ${{ secrets.DB_CONN_SUFFIX }}
           RDS_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}

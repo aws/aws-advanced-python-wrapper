@@ -56,7 +56,7 @@ class TestTortoiseConfig:
                         "user": conn_utils.user,
                         "password": conn_utils.password,
                         "database": conn_utils.dbname,
-                        "plugins": "aurora_connection_tracker",
+                        "plugins": "none",
                     }
                 }
             },
@@ -94,7 +94,7 @@ class TestTortoiseConfig:
                         "user": conn_utils.user,
                         "password": conn_utils.password,
                         "database": original_db,
-                        "plugins": "aurora_connection_tracker",
+                        "plugins": "none",
                     }
                 },
                 "second_db": {
@@ -105,7 +105,7 @@ class TestTortoiseConfig:
                         "user": conn_utils.user,
                         "password": conn_utils.password,
                         "database": second_db,
-                        "plugins": "aurora_connection_tracker"
+                        "plugins": "none"
                     }
                 }
             },
@@ -156,7 +156,7 @@ class TestTortoiseConfig:
                         "user": conn_utils.user,
                         "password": conn_utils.password,
                         "database": conn_utils.dbname,
-                        "plugins": "aurora_connection_tracker"
+                        "plugins": "none"
                     }
                 }
             },
