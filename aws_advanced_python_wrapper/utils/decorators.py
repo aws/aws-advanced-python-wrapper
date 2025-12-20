@@ -15,8 +15,6 @@
 from __future__ import annotations
 
 import functools
-import threading
-from concurrent.futures import TimeoutError
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -66,41 +64,6 @@ def timeout(executor: Executor, timeout_sec):
 
             # raises TimeoutError on timeout
             return future.result(timeout=timeout_sec)
-
-        return func_wrapper
-
-    return timeout_decorator
-
-
-def timeout_with_new_thread(timeout_sec):
-    """
-    Timeout decorator using a new daemon thread, timeout in seconds
-    """
-
-    def timeout_decorator(func):
-        @functools.wraps(func)
-        def func_wrapper(*args, **kwargs):
-            result = [None]
-            exception = [None]
-
-            def target():
-                try:
-                    result[0] = func(*args, **kwargs)
-                except Exception as e:
-                    exception[0] = e
-
-            thread = threading.Thread(target=target, daemon=True)
-            thread.start()
-            thread.join(timeout=timeout_sec)
-
-            if thread.is_alive():
-                # Timeout occurred
-                raise TimeoutError(f"Function timed out after {timeout_sec} seconds")
-
-            if exception[0]:
-                raise exception[0]
-
-            return result[0]
 
         return func_wrapper
 

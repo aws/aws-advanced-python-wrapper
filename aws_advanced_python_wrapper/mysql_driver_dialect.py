@@ -26,8 +26,7 @@ from inspect import signature
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
-from aws_advanced_python_wrapper.utils.decorators import (
-    timeout, timeout_with_new_thread)
+from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
@@ -87,20 +86,16 @@ class MySQLDriverDialect(DriverDialect):
             return MySQLDriverDialect.TARGET_DRIVER_CODE.lower() in (connect_func.__module__ + connect_func.__qualname__).lower()
         return True
 
-    def is_closed(self, conn: Connection, is_releasing_resources: bool = False) -> bool:
+    def is_closed(self, conn: Connection) -> bool:
         if MySQLDriverDialect._is_mysql_connection(conn):
+
             # is_connected validates the connection using a ping().
             # If there are any unread results from previous executions an error will be thrown.
             if self.can_execute_query(conn):
                 socket_timeout = WrapperProperties.SOCKET_TIMEOUT_SEC.get_float(self._props)
                 timeout_sec = socket_timeout if socket_timeout > 0 else MySQLDriverDialect.IS_CLOSED_TIMEOUT_SEC
-                is_connected_with_timeout = None
+                is_connected_with_timeout = timeout(MySQLDriverDialect._executor, timeout_sec)(conn.is_connected)  # type: ignore
 
-                if not is_releasing_resources:
-                    is_connected_with_timeout = timeout(MySQLDriverDialect._executor, timeout_sec)(conn.is_connected)  # type: ignore
-                else:
-                    # When the wrapper destructor is called the executor may also be deleted in the same time which could cause a deadlock.
-                    is_connected_with_timeout = timeout_with_new_thread(timeout_sec)(conn.is_connected)   # type: ignore
                 try:
                     return not is_connected_with_timeout()
                 except TimeoutError:

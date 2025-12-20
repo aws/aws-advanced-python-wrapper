@@ -63,7 +63,7 @@ class PgDriverDialect(DriverDialect):
             return PgDriverDialect.TARGET_DRIVER_CODE.lower() in (connect_func.__module__ + connect_func.__qualname__).lower()
         return True
 
-    def is_closed(self, conn: Connection, is_releasing_resources: bool = False) -> bool:
+    def is_closed(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):
             return conn.closed
 
