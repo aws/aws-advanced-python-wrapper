@@ -11,8 +11,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 import copy
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Type, TypeVar
 from urllib.parse import unquote
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -25,19 +26,41 @@ class Properties(Dict[str, Any]):
             self[key] = value
 
 
+T = TypeVar('T')
+
+
 class WrapperProperty:
-    def __init__(self, name: str, description: str, default_value: Optional[Any] = None):
+    def __init__(
+        self, name: str, description: str, default_value: Optional[Any] = None
+    ):
         self.name = name
         self.default_value = default_value
         self.description = description
 
     def __str__(self):
-        return f"WrapperProperty(name={self.name}, default_value={self.default_value}"
+        return f"WrapperProperty(name={self.name}, default_value={self.default_value})"
 
     def get(self, props: Properties) -> Optional[str]:
         if self.default_value:
             return props.get(self.name, self.default_value)
         return props.get(self.name)
+
+    def get_type(self, props: Properties, type_class: Type[T]) -> T:
+        value = props.get(self.name, self.default_value) if self.default_value else props.get(self.name)
+        if value is None:
+            if type_class == int:
+                return -1  # type: ignore
+            elif type_class == float:
+                return -1.0  # type: ignore
+            elif type_class == bool:
+                return False  # type: ignore
+            else:
+                return None  # type: ignore
+        if type_class == bool:
+            if isinstance(value, bool):
+                return value  # type: ignore
+            return value.lower() == "true" if isinstance(value, str) else bool(value)  # type: ignore
+        return type_class(value)  # type: ignore
 
     def get_or_default(self, props: Properties) -> str:
         if not self.default_value:
@@ -45,28 +68,13 @@ class WrapperProperty:
         return props.get(self.name, self.default_value)
 
     def get_int(self, props: Properties) -> int:
-        if self.default_value:
-            return int(props.get(self.name, self.default_value))
-
-        val = props.get(self.name)
-        return int(val) if val else -1
+        return self.get_type(props, int)
 
     def get_float(self, props: Properties) -> float:
-        if self.default_value:
-            return float(props.get(self.name, self.default_value))
-
-        val = props.get(self.name)
-        return float(val) if val else -1
+        return self.get_type(props, float)
 
     def get_bool(self, props: Properties) -> bool:
-        if not self.default_value:
-            value = props.get(self.name)
-        else:
-            value = props.get(self.name, self.default_value)
-        if isinstance(value, bool):
-            return value
-        else:
-            return value is not None and value.lower() == "true"
+        return self.get_type(props, bool)
 
     def set(self, props: Properties, value: Any):
         props[self.name] = value
@@ -76,390 +84,501 @@ class WrapperProperties:
     DEFAULT_PLUGINS = "aurora_connection_tracker,failover,host_monitoring_v2"
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
 
-    PROFILE_NAME = WrapperProperty("profile_name", "Driver configuration profile name", None)
+    PROFILE_NAME = WrapperProperty(
+        "profile_name", "Driver configuration profile name", None
+    )
     PLUGINS = WrapperProperty(
-        "plugins",
-        "Comma separated list of connection plugin codes",
-        DEFAULT_PLUGINS)
+        "plugins", "Comma separated list of connection plugin codes", DEFAULT_PLUGINS
+    )
     USER = WrapperProperty("user", "Driver user name")
     PASSWORD = WrapperProperty("password", "Driver password")
     DATABASE = WrapperProperty("database", "Driver database name")
 
     CONNECT_TIMEOUT_SEC = WrapperProperty(
         "connect_timeout",
-        "Max number of seconds to wait for a connection to be established before timing out.")
+        "Max number of seconds to wait for a connection to be established before timing out.",
+    )
     SOCKET_TIMEOUT_SEC = WrapperProperty(
         "socket_timeout",
-        "Max number of seconds to wait for a SQL query to complete before timing out.")
+        "Max number of seconds to wait for a SQL query to complete before timing out.",
+    )
     TCP_KEEPALIVE = WrapperProperty(
-        "tcp_keepalive", "Enable TCP keepalive functionality.")
+        "tcp_keepalive", "Enable TCP keepalive functionality."
+    )
     TCP_KEEPALIVE_TIME_SEC = WrapperProperty(
-        "tcp_keepalive_time", "Number of seconds to wait before sending an initial keepalive probe.")
+        "tcp_keepalive_time",
+        "Number of seconds to wait before sending an initial keepalive probe.",
+    )
     TCP_KEEPALIVE_INTERVAL_SEC = WrapperProperty(
         "tcp_keepalive_interval",
-        "Number of seconds to wait before sending additional keepalive probes after the initial probe has been sent.")
+        "Number of seconds to wait before sending additional keepalive probes after the initial probe has been sent.",
+    )
     TCP_KEEPALIVE_PROBES = WrapperProperty(
-        "tcp_keepalive_probes", "Number of keepalive probes to send before concluding that the connection is invalid.")
+        "tcp_keepalive_probes",
+        "Number of keepalive probes to send before concluding that the connection is invalid.",
+    )
     TRANSFER_SESSION_STATE_ON_SWITCH = WrapperProperty(
-        "transfer_session_state_on_switch", "Enables session state transfer to a new connection", True)
+        "transfer_session_state_on_switch",
+        "Enables session state transfer to a new connection",
+        True,
+    )
     RESET_SESSION_STATE_ON_CLOSE = WrapperProperty(
         "reset_session_state_on_close",
         "Enables to reset connection session state before closing it.",
-        True)
+        True,
+    )
     ROLLBACK_ON_SWITCH = WrapperProperty(
         "rollback_on_switch",
         "Enables to rollback a current transaction being in progress when switching to a new connection.",
-        True)
+        True,
+    )
 
     # RdsHostListProvider
     TOPOLOGY_REFRESH_MS = WrapperProperty(
         "topology_refresh_ms",
         """Cluster topology refresh rate in milliseconds. The cached topology for the cluster will be invalidated after the
         specified time, after which it will be updated during the next interaction with the connection.""",
-        30_000)
+        30_000,
+    )
     CLUSTER_ID = WrapperProperty(
         "cluster_id",
         """A unique identifier for the cluster. Connections with the same cluster id share a cluster topology cache. If
-        unspecified, a cluster id is automatically created for AWS RDS clusters.""")
+        unspecified, a cluster id is automatically created for AWS RDS clusters.""",
+    )
     CLUSTER_INSTANCE_HOST_PATTERN = WrapperProperty(
         "cluster_instance_host_pattern",
         """The cluster instance DNS pattern that will be used to build a complete instance endpoint. A "?" character in
         this pattern should be used as a placeholder for cluster instance names. This pattern is required to be
         specified for IP address or custom domain connections to AWS RDS clusters. Otherwise, if unspecified, the
-        pattern will be automatically created for AWS RDS clusters.""")
+        pattern will be automatically created for AWS RDS clusters.""",
+    )
 
-    IAM_HOST = WrapperProperty("iam_host", "Overrides the host that is used to generate the IAM token.")
+    IAM_HOST = WrapperProperty(
+        "iam_host", "Overrides the host that is used to generate the IAM token."
+    )
     IAM_DEFAULT_PORT = WrapperProperty(
         "iam_default_port",
-        "Overrides default port that is used to generate the IAM token.")
-    IAM_REGION = WrapperProperty("iam_region", "Overrides AWS region that is used to generate the IAM token.")
+        "Overrides default port that is used to generate the IAM token.",
+    )
+    IAM_REGION = WrapperProperty(
+        "iam_region", "Overrides AWS region that is used to generate the IAM token."
+    )
     IAM_EXPIRATION = WrapperProperty(
         "iam_expiration",
         "IAM token cache expiration in seconds",
-        _DEFAULT_TOKEN_EXPIRATION_SEC)
+        _DEFAULT_TOKEN_EXPIRATION_SEC,
+    )
     SECRETS_MANAGER_SECRET_ID = WrapperProperty(
-        "secrets_manager_secret_id",
-        "The name or the ARN of the secret to retrieve.")
+        "secrets_manager_secret_id", "The name or the ARN of the secret to retrieve."
+    )
     SECRETS_MANAGER_SECRET_USERNAME_KEY = WrapperProperty(
         "secrets_manager_secret_username_key",
         "The key of the secret to retrieve, which contains the username.",
-        "username")
+        "username",
+    )
     SECRETS_MANAGER_SECRET_PASSWORD_KEY = WrapperProperty(
         "secrets_manager_secret_password_key",
         "The key of the secret to retrieve, which contains the password.",
-        "password"
+        "password",
     )
     SECRETS_MANAGER_REGION = WrapperProperty(
-        "secrets_manager_region",
-        "The region of the secret to retrieve.",
-        "us-east-1")
+        "secrets_manager_region", "The region of the secret to retrieve.", "us-east-1"
+    )
     SECRETS_MANAGER_ENDPOINT = WrapperProperty(
-        "secrets_manager_endpoint",
-        "The endpoint of the secret to retrieve.")
+        "secrets_manager_endpoint", "The endpoint of the secret to retrieve."
+    )
     SECRETS_MANAGER_EXPIRATION = WrapperProperty(
         "secrets_manager_expiration",
         "Secret cache expiration in seconds",
-        60 * 60 * 24 * 365)
+        60 * 60 * 24 * 365,
+    )
 
-    DIALECT = WrapperProperty("wrapper_dialect", "A unique identifier for the supported database dialect.")
+    DIALECT = WrapperProperty(
+        "wrapper_dialect", "A unique identifier for the supported database dialect."
+    )
     AUXILIARY_QUERY_TIMEOUT_SEC = WrapperProperty(
         "auxiliary_query_timeout_sec",
         """Network timeout, in seconds, used for auxiliary queries to the database.
         This timeout applies to queries executed by the wrapper driver to gain info about the connected database.
         It does not apply to queries requested by the driver client.""",
-        5)
+        5,
+    )
 
     # HostMonitoringPlugin
     FAILURE_DETECTION_ENABLED = WrapperProperty(
         "failure_detection_enabled",
         "Enable failure detection logic in the HostMonitoringPlugin.",
-        True)
+        True,
+    )
     FAILURE_DETECTION_TIME_MS = WrapperProperty(
         "failure_detection_time_ms",
         "Interval in milliseconds between sending SQL to the server and the first connection check.",
-        30_000)
+        30_000,
+    )
     FAILURE_DETECTION_INTERVAL_MS = WrapperProperty(
         "failure_detection_interval_ms",
         "Interval in milliseconds between consecutive connection checks.",
-        5_000)
+        5_000,
+    )
     FAILURE_DETECTION_COUNT = WrapperProperty(
         "failure_detection_count",
         "Number of failed connection checks before considering the database host unavailable.",
-        3)
+        3,
+    )
     MONITOR_DISPOSAL_TIME_MS = WrapperProperty(
         "monitor_disposal_time_ms",
         "Interval in milliseconds after which a monitor should be considered inactive and marked for disposal.",
-        600_000)  # 10 minutes
+        600_000,
+    )  # 10 minutes
 
     # Failover
     ENABLE_FAILOVER = WrapperProperty(
-        "enable_failover",
-        "Enable/disable cluster-aware failover logic",
-        True)
+        "enable_failover", "Enable/disable cluster-aware failover logic", True
+    )
     FAILOVER_MODE = WrapperProperty(
         "failover_mode",
-        "Decide which host role (writer, reader, or either) to connect to during failover.")
+        "Decide which host role (writer, reader, or either) to connect to during failover.",
+    )
     FAILOVER_TIMEOUT_SEC = WrapperProperty(
         "failover_timeout_sec",
         "Maximum allowed time in seconds for the failover process.",
-        300)  # 5 minutes
+        300,
+    )  # 5 minutes
     FAILOVER_CLUSTER_TOPOLOGY_REFRESH_RATE_SEC = WrapperProperty(
         "failover_cluster_topology_refresh_rate_sec",
         """Cluster topology refresh rate in seconds during a writer failover process.
         During the writer failover process,
         cluster topology may be refreshed at a faster pace than normal to speed up discovery of the newly promoted writer.""",
-        2)
+        2,
+    )
     FAILOVER_WRITER_RECONNECT_INTERVAL_SEC = WrapperProperty(
         "failover_writer_reconnect_interval_sec",
         "Interval of time in seconds to wait between attempts to reconnect to a failed writer during a writer failover process.",
-        2)
+        2,
+    )
     FAILOVER_READER_CONNECT_TIMEOUT_SEC = WrapperProperty(
         "failover_reader_connect_timeout_sec",
         "Reader connection attempt timeout in seconds during a reader failover process.",
-        30)
+        30,
+    )
 
     # CustomEndpointPlugin
     CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS = WrapperProperty(
         "custom_endpoint_info_refresh_rate_ms",
         "Controls how frequently custom endpoint monitors fetch custom endpoint info, in milliseconds.",
-        30_000)
+        30_000,
+    )
     CUSTOM_ENDPOINT_IDLE_MONITOR_EXPIRATION_MS = WrapperProperty(
         "custom_endpoint_idle_monitor_expiration_ms",
         "Controls how long a monitor should run without use before expiring and being removed, in milliseconds.",
-        900_000)  # 15 minutes
+        900_000,
+    )  # 15 minutes
     WAIT_FOR_CUSTOM_ENDPOINT_INFO = WrapperProperty(
         "wait_for_custom_endpoint_info",
         """Controls whether to wait for custom endpoint info to become available before connecting or executing a
         method. Waiting is only necessary if a connection to a given custom endpoint has not been opened or used
         recently. Note that disabling this may result in occasional connections to instances outside of the custom
         endpoint.""",
-        True)
+        True,
+    )
     WAIT_FOR_CUSTOM_ENDPOINT_INFO_TIMEOUT_MS = WrapperProperty(
         "wait_for_custom_endpoint_info_timeout_ms",
         """Controls the maximum amount of time that the plugin will wait for custom endpoint info to be made
         available by the custom endpoint monitor, in milliseconds.""",
-        5_000)
+        5_000,
+    )
 
     # Host Availability Strategy
     DEFAULT_HOST_AVAILABILITY_STRATEGY = WrapperProperty(
         "default_host_availability_strategy",
         "An override for specifying the default host availability change strategy.",
-        ""
+        "",
     )
 
     HOST_AVAILABILITY_STRATEGY_MAX_RETRIES = WrapperProperty(
         "host_availability_strategy_max_retries",
         "Max number of retries for checking a host's availability.",
-        "5"
+        "5",
     )
 
     HOST_AVAILABILITY_STRATEGY_INITIAL_BACKOFF_TIME = WrapperProperty(
         "host_availability_strategy_initial_backoff_time",
         "The initial backoff time in seconds.",
-        "30"
+        "30",
     )
 
     # Driver Dialect
     DRIVER_DIALECT = WrapperProperty(
-        "wrapper_driver_dialect",
-        "A unique identifier for the target driver dialect.")
+        "wrapper_driver_dialect", "A unique identifier for the target driver dialect."
+    )
 
     # Read/Write Splitting
     READER_HOST_SELECTOR_STRATEGY = WrapperProperty(
         "reader_host_selector_strategy",
         "The strategy that should be used to select a new reader host.",
-        "random")
+        "random",
+    )
 
     # Plugin Sorting
     AUTO_SORT_PLUGIN_ORDER = WrapperProperty(
         "auto_sort_wrapper_plugin_order",
         "This flag is enabled by default, meaning that the plugins order will be automatically adjusted. "
         "Disable it at your own risk or if you really need plugins to be executed in a particular order.",
-        True)
+        True,
+    )
 
     # Host Selector
-    ROUND_ROBIN_DEFAULT_WEIGHT = WrapperProperty("round_robin_default_weight",
-                                                 "The default weight for any hosts that have not been " +
-                                                 "configured with the `round_robin_host_weight_pairs` parameter.",
-                                                 1)
+    ROUND_ROBIN_DEFAULT_WEIGHT = WrapperProperty(
+        "round_robin_default_weight",
+        "The default weight for any hosts that have not been "
+        + "configured with the `round_robin_host_weight_pairs` parameter.",
+        1,
+    )
 
-    ROUND_ROBIN_HOST_WEIGHT_PAIRS = WrapperProperty("round_robin_host_weight_pairs",
-                                                    "Comma separated list of database host-weight pairs in the format of `<host>:<weight>`.",
-                                                    "")
+    ROUND_ROBIN_HOST_WEIGHT_PAIRS = WrapperProperty(
+        "round_robin_host_weight_pairs",
+        "Comma separated list of database host-weight pairs in the format of `<host>:<weight>`.",
+        "",
+    )
 
-    WEIGHTED_RANDOM_DEFAULT_WEIGHT = WrapperProperty("weighted_random_default_weight", "The default weight for any hosts that have not been " +
-                                                     "configured with the `weighted_random_host_weight_pairs` parameter.",
-                                                     1)
+    WEIGHTED_RANDOM_DEFAULT_WEIGHT = WrapperProperty(
+        "weighted_random_default_weight",
+        "The default weight for any hosts that have not been "
+        + "configured with the `weighted_random_host_weight_pairs` parameter.",
+        1,
+    )
 
-    WEIGHTED_RANDOM_HOST_WEIGHT_PAIRS = WrapperProperty("weighted_random_host_weight_pairs",
-                                                        "Comma separated list of database host-weight pairs in the format of `<host>:<weight>`.",
-                                                        "")
+    WEIGHTED_RANDOM_HOST_WEIGHT_PAIRS = WrapperProperty(
+        "weighted_random_host_weight_pairs",
+        "Comma separated list of database host-weight pairs in the format of `<host>:<weight>`.",
+        "",
+    )
 
     # Federated Auth Plugin
-    IDP_ENDPOINT = WrapperProperty("idp_endpoint",
-                                   "The hosting URL of the Identity Provider",
-                                   None)
+    IDP_ENDPOINT = WrapperProperty(
+        "idp_endpoint", "The hosting URL of the Identity Provider", None
+    )
 
-    IDP_PORT = WrapperProperty("idp_port",
-                               "The hosting port of the Identity Provider",
-                               443)
+    IDP_PORT = WrapperProperty(
+        "idp_port", "The hosting port of the Identity Provider", 443
+    )
 
-    RELAYING_PARTY_ID = WrapperProperty("rp_identifier",
-                                        "The relaying party identifier",
-                                        "urn:amazon:webservices")
+    RELAYING_PARTY_ID = WrapperProperty(
+        "rp_identifier", "The relaying party identifier", "urn:amazon:webservices"
+    )
 
-    IAM_ROLE_ARN = WrapperProperty("iam_role_arn",
-                                   "The ARN of the IAM Role that is to be assumed.",
-                                   None)
+    IAM_ROLE_ARN = WrapperProperty(
+        "iam_role_arn", "The ARN of the IAM Role that is to be assumed.", None
+    )
 
-    IAM_IDP_ARN = WrapperProperty("iam_idp_arn",
-                                  "The ARN of the Identity Provider",
-                                  None)
+    IAM_IDP_ARN = WrapperProperty(
+        "iam_idp_arn", "The ARN of the Identity Provider", None
+    )
 
-    IAM_TOKEN_EXPIRATION = WrapperProperty("iam_token_expiration",
-                                           "IAM token cache expiration in seconds",
-                                           15 * 60 - 30)
+    IAM_TOKEN_EXPIRATION = WrapperProperty(
+        "iam_token_expiration", "IAM token cache expiration in seconds", 15 * 60 - 30
+    )
 
-    IDP_USERNAME = WrapperProperty("idp_username",
-                                   "The federated user name",
-                                   None)
+    IDP_USERNAME = WrapperProperty("idp_username", "The federated user name", None)
 
-    IDP_PASSWORD = WrapperProperty("idp_password",
-                                   "The federated user password",
-                                   None)
+    IDP_PASSWORD = WrapperProperty("idp_password", "The federated user password", None)
 
-    HTTP_REQUEST_TIMEOUT = WrapperProperty("http_request_connect_timeout",
-                                           "The timeout value in seconds to send the HTTP request data used by the FederatedAuthPlugin",
-                                           60)
+    HTTP_REQUEST_TIMEOUT = WrapperProperty(
+        "http_request_connect_timeout",
+        "The timeout value in seconds to send the HTTP request data used by the FederatedAuthPlugin",
+        60,
+    )
 
-    SSL_SECURE = WrapperProperty("ssl_secure",
-                                 "Whether the SSL session is to be secure and the server's certificates will be verified."
-                                 " We do not recommend disabling this for production use.",
-                                 True)
+    SSL_SECURE = WrapperProperty(
+        "ssl_secure",
+        "Whether the SSL session is to be secure and the server's certificates will be verified."
+        " We do not recommend disabling this for production use.",
+        True,
+    )
 
-    IDP_NAME = WrapperProperty("idp_name",
-                               "The name of the Identity Provider implementation used",
-                               "adfs")
+    IDP_NAME = WrapperProperty(
+        "idp_name", "The name of the Identity Provider implementation used", "adfs"
+    )
 
-    DB_USER = WrapperProperty("db_user",
-                              "The database user used to access the database",
-                              None)
+    DB_USER = WrapperProperty(
+        "db_user", "The database user used to access the database", None
+    )
 
     # Okta
 
-    APP_ID = WrapperProperty("app_id", "The ID of the AWS application configured on Okta", None)
+    APP_ID = WrapperProperty(
+        "app_id", "The ID of the AWS application configured on Okta", None
+    )
 
     # Fastest Response Strategy
-    RESPONSE_MEASUREMENT_INTERVAL_MS = WrapperProperty("response_measurement_interval_ms",
-                                                       "Interval in milliseconds between measuring response time to a database host",
-                                                       30_000)
+    RESPONSE_MEASUREMENT_INTERVAL_MS = WrapperProperty(
+        "response_measurement_interval_ms",
+        "Interval in milliseconds between measuring response time to a database host",
+        30_000,
+    )
 
     # Limitless
-    LIMITLESS_MONITOR_DISPOSAL_TIME_MS = WrapperProperty("limitless_transaction_router_monitor_disposal_time_ms",
-                                                         "Interval in milliseconds for an Limitless router monitor to be "
-                                                         "considered inactive and to be disposed.",
-                                                         600_000)
+    LIMITLESS_MONITOR_DISPOSAL_TIME_MS = WrapperProperty(
+        "limitless_transaction_router_monitor_disposal_time_ms",
+        "Interval in milliseconds for an Limitless router monitor to be "
+        "considered inactive and to be disposed.",
+        600_000,
+    )
 
-    LIMITLESS_INTERVAL_MILLIS = WrapperProperty("limitless_transaction_router_monitor_interval_ms",
-                                                "Interval in millis between polling for Limitless Transaction Routers to the database.",
-                                                7_500)
+    LIMITLESS_INTERVAL_MILLIS = WrapperProperty(
+        "limitless_transaction_router_monitor_interval_ms",
+        "Interval in millis between polling for Limitless Transaction Routers to the database.",
+        7_500,
+    )
 
-    WAIT_FOR_ROUTER_INFO = WrapperProperty("limitless_wait_for_transaction_router_info",
-                                           "If the cache of transaction router info is empty "
-                                           "and a new connection is made, this property toggles whether "
-                                           "the plugin will wait and synchronously fetch transaction router info before selecting a transaction "
-                                           "router to connect to, or to fall back to using the provided DB Shard Group endpoint URL.",
-                                           True)
+    WAIT_FOR_ROUTER_INFO = WrapperProperty(
+        "limitless_wait_for_transaction_router_info",
+        "If the cache of transaction router info is empty "
+        "and a new connection is made, this property toggles whether "
+        "the plugin will wait and synchronously fetch transaction router info before selecting a transaction "
+        "router to connect to, or to fall back to using the provided DB Shard Group endpoint URL.",
+        True,
+    )
 
-    GET_ROUTER_RETRY_INTERVAL_MS = WrapperProperty("limitless_get_transaction_router_retry_interval_ms",
-                                                   "Interval in milliseconds between retries fetching Limitless Transaction Router information.",
-                                                   300)
+    GET_ROUTER_RETRY_INTERVAL_MS = WrapperProperty(
+        "limitless_get_transaction_router_retry_interval_ms",
+        "Interval in milliseconds between retries fetching Limitless Transaction Router information.",
+        300,
+    )
 
-    GET_ROUTER_MAX_RETRIES = WrapperProperty("limitless_get_transaction_router_max_retries",
-                                             "Max number of connection retries the Limitless Connection Plugin will attempt.",
-                                             5)
+    GET_ROUTER_MAX_RETRIES = WrapperProperty(
+        "limitless_get_transaction_router_max_retries",
+        "Max number of connection retries the Limitless Connection Plugin will attempt.",
+        5,
+    )
 
-    MAX_RETRIES_MS = WrapperProperty("limitless_max_retries_ms",
-                                     "Interval in milliseconds between polling for Limitless Transaction Routers to the database.",
-                                     7_500)
+    MAX_RETRIES_MS = WrapperProperty(
+        "limitless_max_retries_ms",
+        "Interval in milliseconds between polling for Limitless Transaction Routers to the database.",
+        7_500,
+    )
 
     # Blue/Green
     BG_CONNECT_TIMEOUT_MS = WrapperProperty(
         "bg_connect_timeout_ms",
         "Connect timeout (in msec) during Blue/Green Deployment switchover.",
-        30_000)
+        30_000,
+    )
     BG_ID = WrapperProperty(
         "bg_id",
         "Blue/Green Deployment identifier that helps the driver to distinguish different deployments.",
-        "1")
+        "1",
+    )
     BG_INTERVAL_BASELINE_MS = WrapperProperty(
         "bg_interval_baseline_ms",
         "Baseline Blue/Green Deployment status checking interval (in msec).",
-        60_000)
+        60_000,
+    )
     BG_INTERVAL_INCREASED_MS = WrapperProperty(
         "bg_interval_increased_ms",
         "Increased Blue/Green Deployment status checking interval (in msec).",
-        1_000)
+        1_000,
+    )
     BG_INTERVAL_HIGH_MS = WrapperProperty(
         "bg_interval_high_ms",
         "High Blue/Green Deployment status checking interval (in msec).",
-        100)
+        100,
+    )
     BG_SWITCHOVER_TIMEOUT_MS = WrapperProperty(
         "bg_switchover_timeout_ms",
         "Blue/Green Deployment switchover timeout (in msec).",
-        180_000)  # 3 minutes
+        180_000,
+    )  # 3 minutes
     BG_SUSPEND_NEW_BLUE_CONNECTIONS = WrapperProperty(
         "bg_suspend_new_blue_connections",
         "Enables Blue/Green Deployment switchover to suspend new blue connection requests while the "
         "switchover process is in progress.",
-        False)
+        False,
+    )
 
     # Telemetry
     ENABLE_TELEMETRY = WrapperProperty(
-        "enable_telemetry",
-        "Enables telemetry and observability of the driver.",
-        False
+        "enable_telemetry", "Enables telemetry and observability of the driver.", False
     )
 
     TELEMETRY_SUBMIT_TOPLEVEL = WrapperProperty(
         "telemetry_submit_toplevel",
         "Force submitting traces related to Python calls as top level traces.",
-        False
+        False,
     )
 
     TELEMETRY_TRACES_BACKEND = WrapperProperty(
         "telemetry_traces_backend",
         "Method to export telemetry traces of the driver.",
-        None
+        None,
     )
 
     TELEMETRY_METRICS_BACKEND = WrapperProperty(
         "telemetry_metrics_backend",
         "Method to export telemetry metrics of the driver.",
-        None
+        None,
     )
 
     TELEMETRY_FAILOVER_ADDITIONAL_TOP_TRACE = WrapperProperty(
         "telemetry_failover_additional_top_trace",
         "Post an additional top-level trace for failover process.",
-        False
+        False,
     )
 
     READER_INITIAL_HOST_SELECTOR_STRATEGY = WrapperProperty(
         "reader_initial_connection_host_selector_strategy",
         "The strategy that should be used to select a new reader host while opening a new connection.",
-        "random")
+        "random",
+    )
 
     OPEN_CONNECTION_RETRY_TIMEOUT_MS = WrapperProperty(
         "open_connection_retry_timeout_ms",
         "Maximum allowed time for the retries opening a connection.",
-        30000
+        30000,
     )
 
     OPEN_CONNECTION_RETRY_INTERVAL_MS = WrapperProperty(
         "open_connection_retry_interval_ms",
         "Time between each retry of opening a connection.",
-        1000
+        1000,
+    )
+
+    # Simple Read/Write Splitting
+    SRW_READ_ENDPOINT = WrapperProperty(
+        "srw_read_endpoint",
+        "The read-only endpoint that should be used to connect to a reader.",
+        None,
+    )
+
+    SRW_WRITE_ENDPOINT = WrapperProperty(
+        "srw_write_endpoint",
+        "The read-write/cluster endpoint that should be used to connect to the writer.",
+        None,
+    )
+
+    SRW_VERIFY_NEW_CONNECTIONS = WrapperProperty(
+        "srw_verify_new_connections",
+        "Enables role-verification for new connections made by the Simple Read/Write Splitting Plugin.",
+        True,
+    )
+
+    SRW_VERIFY_INITIAL_CONNECTION_TYPE = WrapperProperty(
+        "srw_verify_initial_connection_type",
+        "The role of the initial connection. Valid values are 'reader' or 'writer'. If this value is set, " +
+        "the wrapper will verify whether the initial connection matches the specified type.",
+        None,
+    )
+
+    SRW_CONNECT_RETRY_TIMEOUT_MS = WrapperProperty(
+        "srw_connect_retry_timeout_ms",
+        "Maximum allowed time in milliseconds for the plugin to retry opening a connection.",
+        60000,
+    )
+
+    SRW_CONNECT_RETRY_INTERVAL_MS = WrapperProperty(
+        "srw_connect_retry_interval_ms",
+        "Time in milliseconds between each retry of opening a connection.",
+        1000,
     )
 
 
@@ -485,7 +604,9 @@ class PropertiesUtils:
         elif conn_info.startswith("postgres://"):
             to_parse = conn_info[len("postgres://"):]
         else:
-            raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.InvalidPgSchemeUrl", conn_info))
+            raise AwsWrapperError(
+                Messages.get_formatted("PropertiesUtils.InvalidPgSchemeUrl", conn_info)
+            )
 
         # Example URL: postgresql://user:password@host:port/dbname?some_prop=some_value
         # More examples here: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
@@ -495,7 +616,9 @@ class PropertiesUtils:
             password_separator = user_spec.find(":")
             if password_separator >= 0:
                 props[WrapperProperties.USER.name] = user_spec[:password_separator]
-                props[WrapperProperties.PASSWORD.name] = user_spec[password_separator + 1:host_separator]
+                props[WrapperProperties.PASSWORD.name] = user_spec[
+                    password_separator + 1: host_separator
+                ]
             else:
                 props[WrapperProperties.USER.name] = user_spec
             to_parse = to_parse[host_separator + 1:]
@@ -513,7 +636,11 @@ class PropertiesUtils:
             host_spec = to_parse
 
         if host_spec.find(",") >= 0:
-            raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.MultipleHostsNotSupported", conn_info))
+            raise AwsWrapperError(
+                Messages.get_formatted(
+                    "PropertiesUtils.MultipleHostsNotSupported", conn_info
+                )
+            )
 
         # host_spec may be a percent-encoded unix domain socket, eg '%2Fvar%2Flib%2Fpostgresql'.
         # When stored as a kwarg instead of a connection string property, it should be decoded.
@@ -521,7 +648,7 @@ class PropertiesUtils:
         if host_spec.startswith("["):
             # IPv6 addresses should be enclosed in square brackets, eg 'postgresql://[2001:db8::1234]/dbname'
             host_end = host_spec.find("]")
-            props["host"] = host_spec[:host_end + 1]
+            props["host"] = host_spec[: host_end + 1]
             host_spec = host_spec[host_end + 1:]
             if len(host_spec) > 0:
                 props["port"] = host_spec[1:]
@@ -544,11 +671,17 @@ class PropertiesUtils:
 
         if props_separator >= 0:
             # Connection string properties must be percent-decoded when stored as kwargs
-            props.update(PropertiesUtils.parse_key_values(to_parse, separator="&", percent_decode=True))
+            props.update(
+                PropertiesUtils.parse_key_values(
+                    to_parse, separator="&", percent_decode=True
+                )
+            )
         return props
 
     @staticmethod
-    def parse_key_values(conn_info: str, separator: str = " ", percent_decode: bool = False) -> Properties:
+    def parse_key_values(
+        conn_info: str, separator: str = " ", percent_decode: bool = False
+    ) -> Properties:
         props = Properties()
         to_parse = conn_info
 
@@ -558,7 +691,11 @@ class PropertiesUtils:
             equals_i = to_parse.find("=")
             key_end = sep_i if -1 < sep_i < equals_i else equals_i
             if key_end == -1:
-                raise AwsWrapperError(Messages.get_formatted("PropertiesUtils.ErrorParsingConnectionString", conn_info))
+                raise AwsWrapperError(
+                    Messages.get_formatted(
+                        "PropertiesUtils.ErrorParsingConnectionString", conn_info
+                    )
+                )
 
             key = to_parse[0:key_end]
             to_parse = to_parse[equals_i + 1:].lstrip()
@@ -576,7 +713,10 @@ class PropertiesUtils:
 
     @staticmethod
     def remove_wrapper_props(props: Properties):
-        persisting_properties = [WrapperProperties.USER.name, WrapperProperties.PASSWORD.name]
+        persisting_properties = [
+            WrapperProperties.USER.name,
+            WrapperProperties.PASSWORD.name,
+        ]
 
         for attr_name, attr_val in WrapperProperties.__dict__.items():
             if isinstance(attr_val, WrapperProperty):
@@ -584,7 +724,11 @@ class PropertiesUtils:
                 if attr_val.name not in persisting_properties:
                     props.pop(attr_val.name, None)
 
-        monitor_prop_keys = [key for key in props if key.startswith(PropertiesUtils._MONITORING_PROPERTY_PREFIX)]
+        monitor_prop_keys = [
+            key
+            for key in props
+            if key.startswith(PropertiesUtils._MONITORING_PROPERTY_PREFIX)
+        ]
         for key in monitor_prop_keys:
             props.pop(key, None)
 
@@ -618,6 +762,7 @@ class PropertiesUtils:
         monitoring_properties = copy.deepcopy(props)
         for property_key in list(monitoring_properties.keys()):
             if property_key.startswith(PropertiesUtils._MONITORING_PROPERTY_PREFIX):
-                monitoring_properties[property_key[len(PropertiesUtils._MONITORING_PROPERTY_PREFIX):]] = \
-                    monitoring_properties.pop(property_key)
+                monitoring_properties[
+                    property_key[len(PropertiesUtils._MONITORING_PROPERTY_PREFIX):]
+                ] = monitoring_properties.pop(property_key)
         return monitoring_properties

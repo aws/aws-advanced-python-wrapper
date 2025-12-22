@@ -76,6 +76,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 filterwarnings = [
     'ignore:cache could not write path',
-    'ignore:could not create cache path'
+    'ignore:could not create cache path',
+    'ignore:Exception during reset or similar:pytest.PytestUnhandledThreadExceptionWarning'
 ]
 

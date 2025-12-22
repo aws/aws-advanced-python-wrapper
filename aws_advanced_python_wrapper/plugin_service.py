@@ -82,6 +82,8 @@ from aws_advanced_python_wrapper.iam_plugin import IamAuthPluginFactory
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.read_write_splitting_plugin import \
     ReadWriteSplittingPluginFactory
+from aws_advanced_python_wrapper.simple_read_write_splitting_plugin import \
+    SimpleReadWriteSplittingPluginFactory
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsPluginFactory
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.decorators import \
@@ -759,6 +761,7 @@ class PluginManager(CanReleaseResources):
         "host_monitoring_v2": HostMonitoringV2PluginFactory,
         "failover": FailoverPluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,
+        "srw": SimpleReadWriteSplittingPluginFactory,
         "fastest_response_strategy": FastestResponseStrategyPluginFactory,
         "stale_dns": StaleDnsPluginFactory,
         "custom_endpoint": CustomEndpointPluginFactory,
@@ -783,6 +786,7 @@ class PluginManager(CanReleaseResources):
         AuroraConnectionTrackerPluginFactory: 100,
         StaleDnsPluginFactory: 200,
         ReadWriteSplittingPluginFactory: 300,
+        SimpleReadWriteSplittingPluginFactory: 310,
         FailoverPluginFactory: 400,
         HostMonitoringPluginFactory: 500,
         HostMonitoringV2PluginFactory: 510,
