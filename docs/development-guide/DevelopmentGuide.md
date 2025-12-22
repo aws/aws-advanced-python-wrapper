@@ -6,7 +6,7 @@ Make sure you have Python 3.10 - 3.13 (inclusive) installed, along with your cho
 Clone the AWS Advanced Python Driver repository:
 
 ```bash
-git clone https://github.com/awslabs/aws-advanced-python-wrapper.git
+git clone https://github.com/aws/aws-advanced-python-wrapper.git
 ```
 
 You can now make changes in the repository.

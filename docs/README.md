@@ -21,6 +21,7 @@
       - [Federated Authentication Plugin](./using-the-python-driver/using-plugins/UsingTheFederatedAuthenticationPlugin.md)
       - [Read Write Splitting Plugin](./using-the-python-driver/using-plugins/UsingTheReadWriteSplittingPlugin.md)
         - [Reader Selection Strategies](./using-the-python-driver/ReaderSelectionStrategies.md)
+      - [Simple Read Write Splitting Plugin](./using-the-python-driver/using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md)
       - [Fastest Response Strategy Plugin](./using-the-python-driver/using-plugins/UsingTheFastestResponseStrategyPlugin.md)
     - [Host Availability Strategy](./using-the-python-driver/HostAvailabilityStrategy.md)
 - [Development Guide](./development-guide/DevelopmentGuide.md)
