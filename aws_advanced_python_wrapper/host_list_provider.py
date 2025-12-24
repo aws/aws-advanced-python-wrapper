@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import uuid
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
 from contextlib import closing
 from dataclasses import dataclass
@@ -23,6 +23,9 @@ from datetime import datetime
 from threading import RLock
 from typing import (TYPE_CHECKING, ClassVar, List, Optional, Protocol, Tuple,
                     runtime_checkable)
+
+from aws_advanced_python_wrapper.utils.decorators import \
+    preserve_transaction_status_with_timeout
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -37,8 +40,6 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import (Connection, Cursor,
                                                 ProgrammingError)
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
-from aws_advanced_python_wrapper.utils.decorators import \
-    preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -149,23 +150,16 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
     _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="RdsHostListProviderExecutor")
 
-    def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
+    def __init__(self, host_list_provider_service: HostListProviderService, props: Properties, topology_utils: TopologyUtils):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
         self._props: Properties = props
+        self._topology_utils = topology_utils
 
-        self._max_timeout = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(self._props)
         self._rds_utils: RdsUtils = RdsUtils()
         self._hosts: Tuple[HostInfo, ...] = ()
         self._cluster_id: str = str(uuid.uuid4())
-        self._initial_host_info: Optional[HostInfo] = None
         self._initial_hosts: Tuple[HostInfo, ...] = ()
-        self._cluster_instance_template: Optional[HostInfo] = None
         self._rds_url_type: Optional[RdsUrlType] = None
-
-        dialect = self._host_list_provider_service.database_dialect
-        if not isinstance(dialect, db_dialect.TopologyAwareDatabaseDialect):
-            raise AwsWrapperError(Messages.get_formatted("RdsHostListProvider.InvalidDialect", dialect))
-        self._dialect: db_dialect.TopologyAwareDatabaseDialect = dialect
 
         self._is_primary_cluster_id: bool = False
         self._is_initialized: bool = False
@@ -180,73 +174,32 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             if self._is_initialized:
                 return
 
-            host_availability_strategy = create_host_availability_strategy(self._props)
-            self._initial_host_info: HostInfo = HostInfo(
-                host=self._props.get("host"),
-                port=self._props.get("port", HostInfo.NO_PORT),
-                host_availability_strategy=host_availability_strategy)
-            self._initial_hosts: Tuple[HostInfo, ...] = (self._initial_host_info,)
-            self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
+            self._initial_hosts: Tuple[HostInfo, ...] = (self._topology_utils.initial_host_info,)
+            self._host_list_provider_service.initial_connection_host_info = self._topology_utils.initial_host_info
 
-            host_pattern = WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(self._props)
-            if host_pattern:
-                if host_pattern.find(":") > -1:
-                    host_pattern, port = host_pattern.split(":")
-                else:
-                    port = HostInfo.NO_PORT
-
-                self._cluster_instance_template = HostInfo(
-                    host=host_pattern,
-                    port=port,
-                    host_availability_strategy=host_availability_strategy)
-            else:
-                self._cluster_instance_template = HostInfo(
-                    host=self._rds_utils.get_rds_instance_host_pattern(self._initial_host_info.host),
-                    host_id=self._initial_host_info.host_id,
-                    port=self._initial_host_info.port,
-                    host_availability_strategy=host_availability_strategy)
-            self._validate_host_pattern(self._cluster_instance_template.host)
-
-            self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._initial_host_info.host)
+            self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._topology_utils.initial_host_info.host)
             cluster_id = WrapperProperties.CLUSTER_ID.get(self._props)
             if cluster_id:
                 self._cluster_id = cluster_id
             elif self._rds_url_type == RdsUrlType.RDS_PROXY:
-                self._cluster_id = self._initial_host_info.url
+                self._cluster_id = self._topology_utils.initial_host_info.url
             elif self._rds_url_type.is_rds:
-                cluster_id_suggestion = self._get_suggested_cluster_id(self._initial_host_info.url)
+                cluster_id_suggestion = self._get_suggested_cluster_id(self._topology_utils.initial_host_info.url)
                 if cluster_id_suggestion and cluster_id_suggestion.cluster_id:
                     # The initial URL matches an entry in the topology cache for an existing cluster ID.
                     # Update this cluster ID to match the existing one so that topology info can be shared.
                     self._cluster_id = cluster_id_suggestion.cluster_id
                     self._is_primary_cluster_id = cluster_id_suggestion.is_primary_cluster_id
                 else:
-                    cluster_url = self._rds_utils.get_rds_cluster_host_url(self._initial_host_info.host)
+                    cluster_url = self._rds_utils.get_rds_cluster_host_url(self._topology_utils.initial_host_info.host)
                     if cluster_url is not None:
-                        self._cluster_id = f"{cluster_url}:{self._cluster_instance_template.port}" \
-                            if self._cluster_instance_template.is_port_specified() else cluster_url
+                        self._cluster_id = f"{cluster_url}:{self._topology_utils.instance_template.port}" \
+                            if self._topology_utils.instance_template.is_port_specified() else cluster_url
                         self._is_primary_cluster_id = True
                         self._is_primary_cluster_id_cache.put(self._cluster_id, True,
                                                               self._suggested_cluster_id_refresh_ns)
 
                     self._is_initialized = True
-
-    def _validate_host_pattern(self, host: str):
-        if not self._rds_utils.is_dns_pattern_valid(host):
-            message = "RdsHostListProvider.InvalidPattern"
-            logger.error(message)
-            raise AwsWrapperError(Messages.get(message))
-
-        url_type = self._rds_utils.identify_rds_type(host)
-        if url_type == RdsUrlType.RDS_PROXY:
-            message = "RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy"
-            logger.error(message)
-            raise AwsWrapperError(Messages.get(message))
-
-        if url_type == RdsUrlType.RDS_CUSTOM_CLUSTER:
-            message = "RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom"
-            logger.error(message)
-            raise AwsWrapperError(Messages.get(message))
 
     def _get_suggested_cluster_id(self, url: str) -> Optional[ClusterIdSuggestion]:
         for key, hosts in RdsHostListProvider._topology_cache.get_dict().items():
@@ -292,10 +245,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
             try:
                 driver_dialect = self._host_list_provider_service.driver_dialect
-
-                query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
-                    RdsHostListProvider._executor, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
-                hosts = query_for_topology_func_with_timeout(conn)
+                hosts = self._topology_utils.query_for_topology(conn, driver_dialect)
                 if hosts is not None and len(hosts) > 0:
                     RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
                     if self._is_primary_cluster_id and cached_hosts is None:
@@ -334,95 +284,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                         cluster_id, self._cluster_id, self._suggested_cluster_id_refresh_ns)
                     break
 
-    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
-        """
-        Query the database for topology information.
-
-        :param conn: the connection to use to fetch topology information.
-        :return: a tuple of :py:class:`HostInfo` objects representing the database topology. If the query results did not include a writer instance,
-        an empty tuple will be returned.
-        """
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self._dialect.topology_query)
-                return self._process_query_results(cursor)
-        except ProgrammingError as e:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
-
-    def _process_query_results(self, cursor: Cursor) -> Tuple[HostInfo, ...]:
-        """
-        Form a list of hosts from the results of the topology query.
-        :param cursor: The Cursor object containing a reference to the results of the topology query.
-        :return: a tuple of hosts representing the database topology.
-        An empty tuple will be returned if the query results did not include a writer instance.
-        """
-        host_map = {}
-        for record in cursor:
-            host = self._create_host(record)
-            host_map[host.host] = host
-
-        hosts = []
-        writers = []
-        for host in host_map.values():
-            if host.role == HostRole.WRITER:
-                writers.append(host)
-            else:
-                hosts.append(host)
-
-        if len(writers) == 0:
-            logger.error("RdsHostListProvider.InvalidTopology")
-            hosts.clear()
-        elif len(writers) == 1:
-            hosts.append(writers[0])
-        else:
-            # Take the latest updated writer host as the current writer. All others will be ignored.
-            existing_writers: List[HostInfo] = [x for x in writers if x is not None]
-            existing_writers.sort(reverse=True, key=lambda h: h.last_update_time is not None and h.last_update_time)
-            hosts.append(existing_writers[0])
-
-        return tuple(hosts)
-
-    def _create_host(self, record: Tuple) -> HostInfo:
-        """
-        Convert a topology query record into a :py:class:`HostInfo`
-        object containing the information for a database instance in the cluster.
-
-        :param record: a query record containing information about a database instance in the cluster.
-        :return: a :py:class:`HostInfo` object representing a database instance in the cluster.
-        """
-
-        # According to TopologyAwareDatabaseDialect.topology_query the result set
-        # should contain 4 columns: instance ID, 1/0 (writer/reader), CPU utilization, host lag in ms.
-        # There might be a 5th column specifying the last update time.
-        if not self._cluster_instance_template:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.UninitializedClusterInstanceTemplate"))
-        if not self._initial_host_info:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.UninitializedInitialHostInfo"))
-
-        host_id: str = record[0]
-        is_writer: bool = record[1]
-        last_update: datetime
-        if len(record) > 4 and isinstance(record[4], datetime):
-            last_update = record[4]
-        else:
-            last_update = datetime.now()
-
-        host_id = host_id if host_id else "?"
-        endpoint = self._cluster_instance_template.host.replace("?", host_id)
-        port = self._cluster_instance_template.port \
-            if self._cluster_instance_template.is_port_specified() \
-            else self._initial_host_info.port
-        host_info = HostInfo(
-            host=endpoint,
-            port=port,
-            availability=HostAvailability.AVAILABLE,
-            host_availability_strategy=create_host_availability_strategy(self._props),
-            role=HostRole.WRITER if is_writer else HostRole.READER,
-            last_update_time=last_update,
-            host_id=host_id)
-        host_info.add_alias(host_id)
-        return host_info
-
     def refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
         """
         Get topology information for the database cluster.
@@ -459,22 +320,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     def get_host_role(self, connection: Connection) -> HostRole:
         driver_dialect = self._host_list_provider_service.driver_dialect
 
-        try:
-            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_role)
-            result = cursor_execute_func_with_timeout(connection)
-            if result is not None:
-                is_reader = result[0]
-                return HostRole.READER if is_reader else HostRole.WRITER
-        except TimeoutError as e:
-            raise QueryTimeoutError(Messages.get("RdsHostListProvider.GetHostRoleTimeout")) from e
-
-        raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole"))
-
-    def _get_host_role(self, conn: Connection):
-        with closing(conn.cursor()) as cursor:
-            cursor.execute(self._dialect.is_reader_query)
-            return cursor.fetchone()
+        return self._topology_utils.get_host_role(connection, driver_dialect)
 
     def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
         """
@@ -487,11 +333,8 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
         driver_dialect = self._host_list_provider_service.driver_dialect
         try:
-            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._identify_connection)
-            result = cursor_execute_func_with_timeout(connection)
-            if result:
-                host_id = result[0]
+            host_id = self._topology_utils.get_host_id(connection, driver_dialect)
+            if host_id is not None:
                 hosts = self.refresh(connection)
                 is_force_refresh = False
                 if not hosts:
@@ -517,11 +360,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
         raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection"))
 
-    def _identify_connection(self, conn: Connection):
-        with closing(conn.cursor()) as cursor:
-            cursor.execute(self._dialect.host_id_query)
-            return cursor.fetchone()
-
     def get_cluster_id(self):
         self._initialize()
         return self._cluster_id
@@ -535,84 +373,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     class FetchTopologyResult:
         hosts: Tuple[HostInfo, ...]
         is_cached_data: bool
-
-
-class MultiAzHostListProvider(RdsHostListProvider):
-    def __init__(
-            self,
-            provider_service: HostListProviderService,
-            props: Properties,
-            topology_query: str,
-            host_id_query: str,
-            is_reader_query: str,
-            writer_host_query: str,
-            writer_host_column_index: int = 0):
-        super().__init__(provider_service, props)
-        self._topology_query = topology_query
-        self._host_id_query = host_id_query
-        self._is_reader_query = is_reader_query
-        self._writer_host_query = writer_host_query
-        self._writer_host_column_index = writer_host_column_index
-
-    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self._writer_host_query)
-                row = cursor.fetchone()
-                if row is not None:
-                    writer_id = row[self._writer_host_column_index]
-                else:
-                    # In MySQL, the writer host query above will be empty if we are connected to the writer.
-                    # Consequently, this block is only entered if we are connected to a MySQL writer.
-                    cursor.execute(self._host_id_query)
-                    writer_id = cursor.fetchone()[0]
-                cursor.execute(self._topology_query)
-                return self._process_multi_az_query_results(cursor, writer_id)
-        except ProgrammingError as e:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
-
-    def _process_multi_az_query_results(self, cursor: Cursor, writer_id: str) -> Tuple[HostInfo, ...]:
-        hosts_dict = {}
-        for record in cursor:
-            host = self._create_multi_az_host(record, writer_id)
-            hosts_dict[host.host] = host
-
-        hosts = []
-        writers = []
-        for host in hosts_dict.values():
-            if host.role == HostRole.WRITER:
-                writers.append(host)
-            else:
-                hosts.append(host)
-
-        if len(writers) == 0:
-            logger.error("RdsHostListProvider.InvalidTopology")
-            hosts.clear()
-        else:
-            hosts.append(writers[0])
-
-        return tuple(hosts)
-
-    def _create_multi_az_host(self, record: Tuple, writer_id: str) -> HostInfo:
-        id = record[0]  # The ID will look something like '0123456789' (MySQL) or 'db-ABC1DE2FGHI' (Postgres)
-        host = record[1]
-        port = record[2]
-        role = HostRole.WRITER if id == writer_id else HostRole.READER
-
-        host_pattern = WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(self._props)
-        if host_pattern:
-            instance_name = self._rds_utils.get_instance_id(host)  # e.g. 'postgres-instance-1'
-            if instance_name is None:
-                raise AwsWrapperError(Messages.get("MultiAzHostListProvider.UnableToParseInstanceName"))
-
-            host = host_pattern.replace("?", instance_name)
-            if host.find(":") > -1:
-                host, port = host.split(":")
-
-        host_info = HostInfo(
-            host=host, port=port, role=role, availability=HostAvailability.AVAILABLE, weight=0, host_id=id)
-        host_info.add_alias(host)
-        return host_info
 
 
 class ConnectionStringHostListProvider(StaticHostListProvider):
@@ -656,3 +416,292 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
 
     def get_cluster_id(self):
         return "<none>"
+
+
+class TopologyUtils(ABC):
+    """
+    An abstract class defining utility methods that can be used to retrieve and process
+    database topology information. This class can be overridden to define logic specific
+    to various database engine deployments (e.g. Aurora, Multi-AZ, etc.).
+    """
+
+    def __init__(self, dialect: db_dialect.TopologyAwareDatabaseDialect, props: Properties):
+        self._dialect: db_dialect.TopologyAwareDatabaseDialect = dialect
+        self._rds_utils = RdsUtils()
+        self._host_availability_strategy = create_host_availability_strategy(props)
+        self.initial_host_info: HostInfo = HostInfo(
+                host=str(props.get("host")),
+                port=props.get("port", HostInfo.NO_PORT),
+                host_availability_strategy=self._host_availability_strategy)
+
+        host_pattern = WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(props)
+        if host_pattern:
+            if host_pattern.find(":") > -1:
+                host_pattern, port_str = host_pattern.split(":")
+                port = int(port_str)
+            else:
+                port = HostInfo.NO_PORT
+
+            instance_template = HostInfo(
+                host=host_pattern,
+                port=port,
+                host_availability_strategy=self._host_availability_strategy)
+        else:
+            instance_template = HostInfo(
+                host=self._rds_utils.get_rds_instance_host_pattern(self.initial_host_info.host),
+                host_id=self.initial_host_info.host_id,
+                port=self.initial_host_info.port,
+                host_availability_strategy=self._host_availability_strategy)
+        self._validate_host_pattern(instance_template.host)
+
+        self.instance_template: HostInfo = instance_template
+        self._max_timeout = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(props)
+
+    def _validate_host_pattern(self, host: str):
+        if not self._rds_utils.is_dns_pattern_valid(host):
+            message = "RdsHostListProvider.InvalidPattern"
+            logger.error(message)
+            raise AwsWrapperError(Messages.get(message))
+
+        url_type = self._rds_utils.identify_rds_type(host)
+        if url_type == RdsUrlType.RDS_PROXY:
+            message = "RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy"
+            logger.error(message)
+            raise AwsWrapperError(Messages.get(message))
+
+        if url_type == RdsUrlType.RDS_CUSTOM_CLUSTER:
+            message = "RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom"
+            logger.error(message)
+            raise AwsWrapperError(Messages.get(message))
+
+    def query_for_topology(
+        self,
+        conn: Connection,
+        driver_dialect: DriverDialect,
+    ) -> Optional[Tuple[HostInfo, ...]]:
+        """
+        Query the database for topology information.
+
+        :param conn: the connection to use to fetch topology information.
+        :return: a tuple of :py:class:`HostInfo` objects representing the database topology. If the query results did not include a writer instance,
+        an empty tuple will be returned.
+        """
+        query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
+                    RdsHostListProvider._executor, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
+        return query_for_topology_func_with_timeout(conn)
+
+    @abstractmethod
+    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+        pass
+
+    def _create_host(self, record: Tuple) -> HostInfo:
+        """
+        Convert a topology query record into a :py:class:`HostInfo`
+        object containing the information for a database instance in the cluster.
+
+        :param record: a query record containing information about a database instance in the cluster.
+        :return: a :py:class:`HostInfo` object representing a database instance in the cluster.
+        """
+
+        # According to TopologyAwareDatabaseDialect.topology_query the result set
+        # should contain 4 columns: instance ID, 1/0 (writer/reader), CPU utilization, host lag in ms.
+        # There might be a 5th column specifying the last update time.
+        if not self.instance_template:
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.UninitializedClusterInstanceTemplate"))
+        if not self.initial_host_info:
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.UninitializedInitialHostInfo"))
+
+        host_id: str = record[0]
+        is_writer: bool = record[1]
+        last_update: datetime
+        if len(record) > 4 and isinstance(record[4], datetime):
+            last_update = record[4]
+        else:
+            last_update = datetime.now()
+
+        host_id = host_id if host_id else "?"
+        return self.create_host(host_id, is_writer, last_update, self.instance_template, self.initial_host_info)
+
+    def create_host(
+            self,
+            host_id: str,
+            is_writer: bool,
+            last_update: datetime,
+            cluster_instance_template: HostInfo,
+            initial_host_info: HostInfo
+            ) -> HostInfo:
+        endpoint = cluster_instance_template.host.replace("?", host_id)
+        port = cluster_instance_template.port \
+            if cluster_instance_template.is_port_specified() \
+            else initial_host_info.port
+
+        host_info = HostInfo(
+            host=endpoint,
+            port=port,
+            availability=HostAvailability.AVAILABLE,
+            host_availability_strategy=self._host_availability_strategy,
+            role=HostRole.WRITER if is_writer else HostRole.READER,
+            last_update_time=last_update,
+            host_id=host_id)
+        host_info.add_alias(host_id)
+        return host_info
+
+    def get_host_role(self, connection: Connection, driver_dialect: DriverDialect) -> HostRole:
+        try:
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_role)
+            result = cursor_execute_func_with_timeout(connection)
+            if result is not None:
+                is_reader = result[0]
+                return HostRole.READER if is_reader else HostRole.WRITER
+        except TimeoutError as e:
+            raise QueryTimeoutError(Messages.get("RdsHostListProvider.GetHostRoleTimeout")) from e
+
+        raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole"))
+
+    def _get_host_role(self, conn: Connection):
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._dialect.is_reader_query)
+            return cursor.fetchone()
+
+    def get_host_id(self, connection: Connection, driver_dialect: DriverDialect) -> Optional[str]:
+        """
+        Identify which host the given connection points to.
+        :param connection: an opened connection.
+        :return: a str of the current host's id
+        """
+
+        cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+            RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_id)
+        result = cursor_execute_func_with_timeout(connection)
+        if result:
+            host_id: str = result[0]
+            return host_id
+        return None
+
+    def _get_host_id(self, conn: Connection):
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._dialect.host_id_query)
+            return cursor.fetchone()
+
+
+class AuroraTopologyUtils(TopologyUtils):
+    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+        """
+        Query the database for topology information.
+
+        :param conn: the connection to use to fetch topology information.
+        :return: a tuple of :py:class:`HostInfo` objects representing the database topology. If the query results did not include a writer instance,
+        an empty tuple will be returned.
+        """
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(self._dialect.topology_query)
+                return self._process_query_results(cursor)
+        except ProgrammingError as e:
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
+
+    def _process_query_results(self, cursor: Cursor) -> Tuple[HostInfo, ...]:
+        """
+        Form a list of hosts from the results of the topology query.
+        :param cursor: The Cursor object containing a reference to the results of the topology query.
+        :return: a tuple of hosts representing the database topology.
+        An empty tuple will be returned if the query results did not include a writer instance.
+        """
+        host_map = {}
+        for record in cursor:
+            host: HostInfo = self._create_host(record)
+            host_map[host.host] = host
+
+        hosts = []
+        writers = []
+        for host in host_map.values():
+            if host.role == HostRole.WRITER:
+                writers.append(host)
+            else:
+                hosts.append(host)
+
+        if len(writers) == 0:
+            logger.error("RdsHostListProvider.InvalidTopology")
+            hosts.clear()
+        elif len(writers) == 1:
+            hosts.append(writers[0])
+        else:
+            # Take the latest updated writer host as the current writer. All others will be ignored.
+            existing_writers: List[HostInfo] = [x for x in writers if x is not None]
+            existing_writers.sort(reverse=True, key=lambda h: h.last_update_time is not None and h.last_update_time)
+            hosts.append(existing_writers[0])
+
+        return tuple(hosts)
+
+
+class MultiAzTopologyUtils(TopologyUtils):
+    def __init__(
+        self,
+        dialect: db_dialect.TopologyAwareDatabaseDialect,
+        props: Properties,
+        writer_host_query: str,
+        writer_host_column_index: int = 0
+    ):
+        super().__init__(dialect, props)
+        self._writer_host_query = writer_host_query
+        self._writer_host_column_index = writer_host_column_index
+
+    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+        try:
+            with closing(conn.cursor()) as cursor:
+                cursor.execute(self._writer_host_query)
+                row = cursor.fetchone()
+                if row is not None:
+                    writer_id = row[self._writer_host_column_index]
+                else:
+                    # In MySQL, the writer host query above will be empty if we are connected to the writer.
+                    # Consequently, this block is only entered if we are connected to a MySQL writer.
+                    cursor.execute(self._dialect.host_id_query)
+                    writer_id = cursor.fetchone()[0]
+                cursor.execute(self._dialect.topology_query)
+                return self._process_multi_az_query_results(cursor, writer_id)
+        except ProgrammingError as e:
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
+
+    def _process_multi_az_query_results(self, cursor: Cursor, writer_id: str) -> Tuple[HostInfo, ...]:
+        hosts_dict = {}
+        for record in cursor:
+            host: HostInfo = self._create_multi_az_host(record, writer_id)
+            hosts_dict[host.host] = host
+
+        hosts = []
+        writers = []
+        for host in hosts_dict.values():
+            if host.role == HostRole.WRITER:
+                writers.append(host)
+            else:
+                hosts.append(host)
+
+        if len(writers) == 0:
+            logger.error("RdsHostListProvider.InvalidTopology")
+            hosts.clear()
+        else:
+            hosts.append(writers[0])
+
+        return tuple(hosts)
+
+    def _create_multi_az_host(self, record: Tuple, writer_id: str) -> HostInfo:
+        id = record[0]  # The ID will look something like '0123456789' (MySQL) or 'db-ABC1DE2FGHI' (Postgres)
+        host = record[1]
+        port = record[2]
+        role = HostRole.WRITER if id == writer_id else HostRole.READER
+
+        if self.instance_template:
+            instance_name = self._rds_utils.get_instance_id(host)  # e.g. 'postgres-instance-1'
+            if instance_name is None:
+                raise AwsWrapperError(Messages.get("MultiAzTopologyUtils.UnableToParseInstanceName"))
+
+            host = self.instance_template.host.replace("?", instance_name)
+            if host.find(":") > -1:
+                host, port = host.split(":")
+
+        host_info = HostInfo(
+            host=host, port=port, role=role, availability=HostAvailability.AVAILABLE, weight=0, host_id=id)
+        host_info.add_alias(host)
+        return host_info
