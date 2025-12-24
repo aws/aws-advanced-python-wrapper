@@ -54,7 +54,7 @@ When connecting with custom endpoints and other non-standard URLs, role verifica
 ## Limitations When Verifying Connections
 
 #### Non-RDS clusters
-The verification step determines the role of the connection by executing a query against it. If the endpoint is not part of an Aurora or RDS cluster, the plugin will not be able to verify the role, so `srw_verify_new_connections` *must* be set to `False`.
+The verification step determines the role of the connection by executing a query against it. The AWS Advanced Python Driver does not support gathering such information for databases that are not Aurora or RDS clusters. Thus, when connecting to non-RDS clusters `verifyNewSrwConnections` must be set to `false`.
 
 #### Autocommit
 The verification logic results in errors such as `Cannot change transaction read-only property in the middle of a transaction` from the underlying driver when:
