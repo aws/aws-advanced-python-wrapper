@@ -14,17 +14,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
-import mysql.connector # type: ignore
+import mysql.connector  # type: ignore
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.errors import (
     FailoverFailedError, FailoverSuccessError,
     TransactionResolutionUnknownError)
+
 
 def configure_initial_session_states(conn: Connection):
     awscursor = conn.cursor()
@@ -60,15 +61,15 @@ def execute_queries_with_failover_handling(conn: Connection, sql: str, params: O
 
 
 if __name__ == "__main__":
-    params = {
+    params: Any = {
         "host": "rds-proxy-name.proxy-xyz.us-east-1.rds.amazonaws.com",
         "database": "mysql",
         "user": "admin",
-        "password": "pwd", 
+        "password": "pwd",
         "plugins": "srw,failover",
-        "srw_write_endpoint": "rds-proxy-name.proxy-xyz.us-east-1.rds.amazonaws.com",  # Replace with write endpoint
-        "srw_read_endpoint": "rds-proxy-name-read-only.endpoint.proxy-xyz.us-east-1.rds.amazonaws.com",  # Replace with read endpoint
-        "srw_verify_new_connections": "True", # Enables role-verification for new endpoints
+        "srw_write_endpoint": "rds-proxy-name.proxy-xyz.us-east-1.rds.amazonaws.com",
+        "srw_read_endpoint": "rds-proxy-name-read-only.endpoint.proxy-xyz.us-east-1.rds.amazonaws.com",
+        "srw_verify_new_connections": "True",
         "wrapper_dialect": "aurora-mysql",
         "autocommit": True,
     }
