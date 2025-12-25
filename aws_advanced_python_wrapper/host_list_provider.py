@@ -40,6 +40,7 @@ from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -147,7 +148,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     # cluster IDs so that connections to the same clusters can share topology info.
     _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="RdsHostListProviderExecutor")
+    _executor_name: ClassVar[str] = "RdsHostListProviderExecutor"
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
@@ -294,7 +295,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 driver_dialect = self._host_list_provider_service.driver_dialect
 
                 query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
-                    RdsHostListProvider._executor, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
+                    ThreadPoolContainer.get_thread_pool(RdsHostListProvider._executor_name), self._max_timeout, driver_dialect, conn)(self._query_for_topology)
                 hosts = query_for_topology_func_with_timeout(conn)
                 if hosts is not None and len(hosts) > 0:
                     RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
@@ -461,7 +462,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_role)
+                ThreadPoolContainer.get_thread_pool(RdsHostListProvider._executor_name), self._max_timeout, driver_dialect, connection)(self._get_host_role)
             result = cursor_execute_func_with_timeout(connection)
             if result is not None:
                 is_reader = result[0]
@@ -488,7 +489,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         driver_dialect = self._host_list_provider_service.driver_dialect
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._identify_connection)
+                ThreadPoolContainer.get_thread_pool(RdsHostListProvider._executor_name), self._max_timeout, driver_dialect, connection)(self._identify_connection)
             result = cursor_execute_func_with_timeout(connection)
             if result:
                 host_id = result[0]

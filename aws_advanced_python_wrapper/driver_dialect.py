@@ -19,13 +19,15 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection, Cursor
+    from concurrent.futures import Executor
 
 from abc import ABC
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import (QueryTimeoutError,
                                                 UnsupportedOperationError)
+from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -40,7 +42,7 @@ class DriverDialect(ABC):
     _QUERY = "SELECT 1"
     _ALL_METHODS = "*"
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DriverDialectExecutor")
+    _executor_name: ClassVar[str] = "DriverDialectExecutor"
     _dialect_code: str = DriverDialectCodes.GENERIC
     _network_bound_methods: Set[str] = {_ALL_METHODS}
     _read_only: bool = False
@@ -136,7 +138,7 @@ class DriverDialect(ABC):
 
         if exec_timeout > 0:
             try:
-                execute_with_timeout = timeout(DriverDialect._executor, exec_timeout)(exec_func)
+                execute_with_timeout = timeout(ThreadPoolContainer.get_thread_pool(DriverDialect._executor_name), exec_timeout)(exec_func)
                 return execute_with_timeout()
             except TimeoutError as e:
                 raise QueryTimeoutError(Messages.get_formatted("DriverDialect.ExecuteTimeout", method_name)) from e
