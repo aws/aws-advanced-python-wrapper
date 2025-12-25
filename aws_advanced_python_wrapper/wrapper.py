@@ -24,11 +24,13 @@ from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 FailoverSuccessError)
+from aws_advanced_python_wrapper.host_monitoring_plugin import MonitoringThreadContainer
 from aws_advanced_python_wrapper.pep249 import Connection, Cursor, Error
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.plugin_service import (
     PluginManager, PluginService, PluginServiceImpl,
     PluginServiceManagerContainer)
+from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -326,3 +328,9 @@ class AwsWrapperCursor(Cursor):
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()
+
+class Wrapper:
+    @staticmethod
+    def release_resources() -> None:
+        MonitoringThreadContainer.clean_up()
+        ThreadPoolContainer.release_resources()

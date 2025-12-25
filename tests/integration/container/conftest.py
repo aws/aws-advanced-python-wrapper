@@ -31,6 +31,8 @@ from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.host_monitoring_plugin import \
     MonitoringThreadContainer
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
@@ -140,6 +142,7 @@ def pytest_runtest_setup(item):
         CustomEndpointPlugin._monitors.clear()
         CustomEndpointMonitor._custom_endpoint_info_cache.clear()
         MonitoringThreadContainer.clean_up()
+        ThreadPoolContainer.release_resources()
 
         ConnectionProviderManager.reset_provider()
         DatabaseDialectManager.reset_custom_dialect()

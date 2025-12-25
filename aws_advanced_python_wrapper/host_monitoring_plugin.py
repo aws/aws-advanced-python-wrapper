@@ -48,6 +48,7 @@ from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryCounter, TelemetryTraceLevel)
 from aws_advanced_python_wrapper.utils.utils import QueueUtils
+from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
 
 logger = Logger(__name__)
 
@@ -565,7 +566,7 @@ class MonitoringThreadContainer:
 
     _monitor_map: ConcurrentDict[str, Monitor] = ConcurrentDict()
     _tasks_map: ConcurrentDict[Monitor, Future] = ConcurrentDict()
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
+    _executor_name: ClassVar[str] = "MonitoringThreadContainerExecutor"
 
     # This logic ensures that this class is a Singleton
     def __new__(cls, *args, **kwargs):
@@ -649,10 +650,6 @@ class MonitoringThreadContainer:
                 monitor.stop()
 
             self._tasks_map.clear()
-
-            # Reset the executor.
-            self._executor.shutdown(wait=False)
-            MonitoringThreadContainer._executor = ThreadPoolExecutor(thread_name_prefix="MonitoringThreadContainerExecutor")
 
 
 class MonitorService:

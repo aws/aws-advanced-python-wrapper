@@ -26,9 +26,10 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from .driver_dialect import DriverDialect
     from .exception_handling import ExceptionHandler
+    from concurrent.futures import Executor
 
 from abc import ABC, abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 from contextlib import closing
 from enum import Enum, auto
 
@@ -44,6 +45,7 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
 from .driver_dialect_codes import DriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages
@@ -638,7 +640,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
     _known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
     _custom_dialect: Optional[DatabaseDialect] = None
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DatabaseDialectManagerExecutor")
+    _executor_name: ClassVar[str] = "DatabaseDialectManagerExecutor"
     _known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {
         DialectCode.MYSQL: MysqlDatabaseDialect(),
         DialectCode.RDS_MYSQL: RdsMysqlDialect(),
@@ -776,7 +778,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                 timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
                 try:
                     cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                        DatabaseDialectManager._executor,
+                        ThreadPoolContainer.get_thread_pool(DatabaseDialectManager._executor_name),
                         timeout_sec,
                         driver_dialect,
                         conn)(dialect_candidate.is_dialect)
