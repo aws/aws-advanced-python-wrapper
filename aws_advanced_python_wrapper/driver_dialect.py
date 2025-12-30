@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection, Cursor
-    from concurrent.futures import Executor
 
 from abc import ABC
 from concurrent.futures import TimeoutError
@@ -27,7 +26,8 @@ from concurrent.futures import TimeoutError
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import (QueryTimeoutError,
                                                 UnsupportedOperationError)
-from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,

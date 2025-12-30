@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 
 from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 from contextlib import closing
 from typing import (Any, Callable, Dict, FrozenSet, Optional, Protocol, Set,
                     Tuple)
@@ -85,11 +85,12 @@ from aws_advanced_python_wrapper.read_write_splitting_plugin import \
 from aws_advanced_python_wrapper.simple_read_write_splitting_plugin import \
     SimpleReadWriteSplittingPluginFactory
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsPluginFactory
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
     ConnectionEvent, HostEvent, OldConnectionSuggestedAction)

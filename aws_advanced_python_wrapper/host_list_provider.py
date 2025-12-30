@@ -39,9 +39,10 @@ from aws_advanced_python_wrapper.host_availability import (
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import (Connection, Cursor,
                                                 ProgrammingError)
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -587,7 +588,7 @@ class TopologyUtils(ABC):
 
 
 class AuroraTopologyUtils(TopologyUtils):
-    
+
     _executor_name: ClassVar[str] = "AuroraTopologyUtils"
 
     def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
@@ -642,6 +643,7 @@ class AuroraTopologyUtils(TopologyUtils):
 class MultiAzTopologyUtils(TopologyUtils):
 
     _executor_name: ClassVar[str] = "MultiAzTopologyUtils"
+
     def __init__(
         self,
         dialect: db_dialect.TopologyAwareDatabaseDialect,

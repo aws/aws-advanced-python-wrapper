@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from .driver_dialect import DriverDialect
     from .exception_handling import ExceptionHandler
-    from concurrent.futures import Executor
 
 from abc import ABC, abstractmethod
 from concurrent.futures import TimeoutError
@@ -38,6 +37,8 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.host_list_provider import (
     ConnectionStringHostListProvider, RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -45,7 +46,6 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
 from .driver_dialect_codes import DriverDialectCodes
 from .utils.cache_map import CacheMap
 from .utils.messages import Messages

@@ -12,9 +12,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, List
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Optional
 
 
 class ThreadPoolContainer:
@@ -22,25 +22,25 @@ class ThreadPoolContainer:
     A container class for managing multiple named thread pools.
     Provides static methods for getting, creating, and releasing thread pools.
     """
-    
+
     _pools: Dict[str, ThreadPoolExecutor] = {}
     _lock: threading.Lock = threading.Lock()
     _default_max_workers: Optional[int] = None  # Uses Python's default
 
     @classmethod
     def get_thread_pool(
-        cls, 
-        name: str, 
+        cls,
+        name: str,
         max_workers: Optional[int] = None
     ) -> ThreadPoolExecutor:
         """
         Get an existing thread pool or create a new one if it doesn't exist.
-        
+
         Args:
             name: Unique identifier for the thread pool
             max_workers: Max worker threads (only used when creating new pool)
                          If None, uses Python's default: min(32, os.cpu_count() + 4)
-        
+
         Returns:
             ThreadPoolExecutor instance
         """
@@ -57,14 +57,14 @@ class ThreadPoolContainer:
     def release_resources(cls) -> None:
         """
         Shutdown all thread pools and release resources.
-        
+
         Args:
             wait: If True, wait for all pending tasks to complete
         """
         with cls._lock:
             for name, pool in cls._pools.items():
                 try:
-                    pool.shutdown(wait=wait)
+                    pool.shutdown(wait=False)
                 except Exception as e:
                     print(f"Error shutting down pool '{name}': {e}")
             cls._pools.clear()
@@ -73,11 +73,11 @@ class ThreadPoolContainer:
     def release_pool(cls, name: str, wait: bool = True) -> bool:
         """
         Release a specific thread pool by name.
-        
+
         Args:
             name: The name of the thread pool to release
             wait: If True, wait for pending tasks to complete
-        
+
         Returns:
             True if pool was found and released, False otherwise
         """

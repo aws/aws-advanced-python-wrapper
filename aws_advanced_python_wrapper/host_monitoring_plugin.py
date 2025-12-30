@@ -22,8 +22,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
-from concurrent.futures import (Executor, Future, ThreadPoolExecutor,
-                                TimeoutError)
+from concurrent.futures import Future, TimeoutError
 from dataclasses import dataclass
 from queue import Queue
 from threading import Event, Lock, RLock
@@ -36,6 +35,8 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -48,7 +49,6 @@ from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryCounter, TelemetryTraceLevel)
 from aws_advanced_python_wrapper.utils.utils import QueueUtils
-from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
 
 logger = Logger(__name__)
 
@@ -594,7 +594,9 @@ class MonitoringThreadContainer:
                 if supplied_monitor is None:
                     raise AwsWrapperError(Messages.get("MonitoringThreadContainer.SupplierMonitorNone"))
                 self._tasks_map.compute_if_absent(
-                    supplied_monitor, lambda _: MonitoringThreadContainer._executor.submit(supplied_monitor.run))
+                    supplied_monitor,
+                    lambda _: ThreadPoolContainer.get_thread_pool(MonitoringThreadContainer._executor_name)
+                    .submit(supplied_monitor.run))
                 return supplied_monitor
 
             if monitor is None:
