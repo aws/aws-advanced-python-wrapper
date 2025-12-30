@@ -18,6 +18,8 @@ from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
                     Protocol, Tuple, runtime_checkable)
 
 from aws_advanced_python_wrapper.driver_info import DriverInfo
+from aws_advanced_python_wrapper.host_list_provider import (
+    AuroraTopologyUtils, MultiAzTopologyUtils)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
 if TYPE_CHECKING:
@@ -33,8 +35,7 @@ from enum import Enum, auto
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import (
-    ConnectionStringHostListProvider, MultiAzHostListProvider,
-    RdsHostListProvider)
+    ConnectionStringHostListProvider, RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
@@ -408,7 +409,7 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, Blu
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
-        return lambda provider_service, props: RdsHostListProvider(provider_service, props)
+        return lambda provider_service, props: RdsHostListProvider(provider_service, props, AuroraTopologyUtils(self, props))
 
     @property
     def blue_green_status_query(self) -> str:
@@ -481,7 +482,7 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLim
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
-        return lambda provider_service, props: RdsHostListProvider(provider_service, props)
+        return lambda provider_service, props: RdsHostListProvider(provider_service, props, AuroraTopologyUtils(self, props))
 
     @property
     def blue_green_status_query(self) -> str:
@@ -531,14 +532,10 @@ class MultiAzClusterMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDial
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
-        return lambda provider_service, props: MultiAzHostListProvider(
+        return lambda provider_service, props: RdsHostListProvider(
             provider_service,
             props,
-            self._TOPOLOGY_QUERY,
-            self._HOST_ID_QUERY,
-            self._IS_READER_QUERY,
-            self._WRITER_HOST_QUERY,
-            self._WRITER_HOST_COLUMN_INDEX)
+            MultiAzTopologyUtils(self, props, self._WRITER_HOST_QUERY, self._WRITER_HOST_COLUMN_INDEX))
 
     def prepare_conn_props(self, props: Properties):
         # These props are added for RDS metrics purposes, they are not required for functional correctness.
@@ -590,13 +587,10 @@ class MultiAzClusterPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
         return False
 
     def get_host_list_provider_supplier(self) -> Callable:
-        return lambda provider_service, props: MultiAzHostListProvider(
+        return lambda provider_service, props: RdsHostListProvider(
             provider_service,
             props,
-            self._TOPOLOGY_QUERY,
-            self._HOST_ID_QUERY,
-            self._IS_READER_QUERY,
-            self._WRITER_HOST_QUERY)
+            MultiAzTopologyUtils(self, props, self._WRITER_HOST_QUERY))
 
 
 class UnknownDatabaseDialect(DatabaseDialect):
