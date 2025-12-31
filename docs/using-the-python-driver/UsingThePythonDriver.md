@@ -44,6 +44,34 @@ These parameters are applicable to any instance of the AWS Advanced Python Drive
 | tcp_keepalive_interval        | Number of seconds to wait before sending additional keepalive probes after the initial probe has been sent.                                                                                                                                                                                                                                                                                 | False    | None          |
 | tcp_keepalive_probes          | Number of keepalive probes to send before concluding that the connection is invalid.                                                                                                                                                                                                                                                                                                        | False    | None          |
 
+## Resource Management
+
+The AWS Advanced Python Wrapper creates background threads and thread pools for various plugins during operations such as host monitoring and connection management. To ensure proper cleanup and prevent resource leaks, it's important to release these resources when your application shuts down.
+
+### Cleaning Up Resources
+
+Call the following methods before your application terminates:
+
+```python
+from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
+
+try:
+    # Your application code here
+    conn = AwsWrapperConnection.connect(...)
+    # ... use connection
+finally:
+    # Clean up all resources before application exit
+    ThreadPoolContainer.release_resources()
+```
+
+> [!IMPORTANT]
+> Always call both `AwsWrapperConnection.release_resources()` and `ThreadPoolContainer.release_resources()` at application shutdown to ensure:
+> - All monitoring threads are properly terminated
+> - Thread pools are shut down gracefully
+> - No resource leaks occur
+> - The application exits cleanly without hanging
+
 ## Plugins
 
 The AWS Advanced Python Driver uses plugins to execute database API calls. You can think of a plugin as an extensible code module that adds extra logic around any database API calls. The AWS Advanced Python Driver has a number of [built-in plugins](#list-of-available-plugins) available for use. 

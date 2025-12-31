@@ -21,6 +21,8 @@ import pytest
 from aws_advanced_python_wrapper.host_monitoring_plugin import (
     Monitor, MonitoringContext, MonitoringThreadContainer)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -84,6 +86,7 @@ def release_container():
     yield
     while MonitoringThreadContainer._instance is not None:
         MonitoringThreadContainer.clean_up()
+        ThreadPoolContainer.release_resources()
 
 
 @pytest.fixture

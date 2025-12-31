@@ -54,7 +54,7 @@ class ThreadPoolContainer:
             return cls._pools[name]
 
     @classmethod
-    def release_resources(cls) -> None:
+    def release_resources(cls, wait=False) -> None:
         """
         Shutdown all thread pools and release resources.
 
@@ -64,7 +64,7 @@ class ThreadPoolContainer:
         with cls._lock:
             for name, pool in cls._pools.items():
                 try:
-                    pool.shutdown(wait=False)
+                    pool.shutdown(wait=wait)
                 except Exception as e:
                     print(f"Error shutting down pool '{name}': {e}")
             cls._pools.clear()

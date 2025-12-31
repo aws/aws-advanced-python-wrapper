@@ -26,7 +26,7 @@ from concurrent.futures import Future, TimeoutError
 from dataclasses import dataclass
 from queue import Queue
 from threading import Event, Lock, RLock
-from time import perf_counter_ns, sleep
+from time import perf_counter_ns
 from typing import Any, Callable, ClassVar, Dict, FrozenSet, Optional, Set
 
 from _weakref import ReferenceType, ref
@@ -549,9 +549,8 @@ class Monitor:
             driver_dialect.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
             cursor.fetchone()
 
-    # Used to help with testing
     def sleep(self, duration: int):
-        sleep(duration)
+        self._is_stopped.wait(duration)
 
 
 class MonitoringThreadContainer:

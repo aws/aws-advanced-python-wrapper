@@ -21,8 +21,8 @@ This plugin only works with drivers that support aborting connections from a sep
 > [IMPORTANT]\
 > The Host Monitoring Plugin creates monitoring threads in the background to monitor all connections established to each cluster instance. The monitoring threads can be cleaned up in two ways:
 > 1. If there are no connections to the cluster instance the thread is monitoring for over a period of time, the Host Monitoring Plugin will automatically terminate the thread. This period of time is adjustable via the `monitor_disposal_time_ms` parameter.
-> 2. Client applications can manually call `MonitoringThreadContainer.clean_up()` to clean up any dangling resources.
-> It is best practice to call `MonitoringThreadContainer.clean_up()` at the end of the application to ensure a graceful exit; otherwise, the application may wait until the `monitor_disposal_time_ms` has been passed before terminating. This is because the Python driver waits for all daemon threads to complete before exiting.
+> 2. Client applications can manually call `Wrapper.release_resources()` to clean up any dangling resources.
+> It is best practice to call `Wrapper.release_resources()` at the end of the application to ensure a graceful exit; otherwise, the application may wait until the `monitor_disposal_time_ms` has been passed before terminating. This is because the Python driver waits for all daemon threads to complete before exiting.
 > See [PGFailover](../../examples/PGFailover.py) for an example.
 
 ### Enhanced Failure Monitoring Parameters
