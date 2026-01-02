@@ -25,6 +25,7 @@ from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.errors import (
     FailoverFailedError, FailoverSuccessError,
     TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.wrapper import Wrapper
 
 
 def configure_initial_session_states(conn: Connection):
@@ -61,26 +62,30 @@ def execute_queries_with_failover_handling(conn: Connection, sql: str, params: O
 
 
 if __name__ == "__main__":
-    with AwsWrapperConnection.connect(
-            mysql.connector.Connect,
-            host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
-            database="mysql",
-            user="admin",
-            password="pwd",
-            plugins="failover",
-            wrapper_dialect="aurora-mysql",
-            autocommit=True
-    ) as awsconn:
-        configure_initial_session_states(awsconn)
-        execute_queries_with_failover_handling(
-            awsconn, "CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
-        execute_queries_with_failover_handling(
-            awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
-        execute_queries_with_failover_handling(
-            awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
 
-        cursor = execute_queries_with_failover_handling(awsconn, "SELECT * FROM bank_test")
-        for record in cursor:
-            print(record)
+    try: 
+        with AwsWrapperConnection.connect(
+                mysql.connector.Connect,
+                host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
+                database="mysql",
+                user="admin",
+                password="pwd",
+                plugins="failover",
+                wrapper_dialect="aurora-mysql",
+                autocommit=True
+        ) as awsconn:
+            configure_initial_session_states(awsconn)
+            execute_queries_with_failover_handling(
+                awsconn, "CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
+            execute_queries_with_failover_handling(
+                awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
+            execute_queries_with_failover_handling(
+                awsconn, "INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
 
-        execute_queries_with_failover_handling(awsconn, "DROP TABLE bank_test")
+            cursor = execute_queries_with_failover_handling(awsconn, "SELECT * FROM bank_test")
+            for record in cursor:
+                print(record)
+
+            execute_queries_with_failover_handling(awsconn, "DROP TABLE bank_test")
+    finally:
+        Wrapper.release_resources()

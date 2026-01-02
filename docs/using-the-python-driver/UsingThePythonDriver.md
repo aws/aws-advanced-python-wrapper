@@ -66,7 +66,7 @@ finally:
 ```
 
 > [!IMPORTANT]
-> Always call both `AwsWrapperConnection.release_resources()` and `ThreadPoolContainer.release_resources()` at application shutdown to ensure:
+> Always call `Wrapper.release_resources` at application shutdown to ensure:
 > - All monitoring threads are properly terminated
 > - Thread pools are shut down gracefully
 > - No resource leaks occur

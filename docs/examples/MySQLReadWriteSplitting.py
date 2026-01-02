@@ -30,6 +30,7 @@ from aws_advanced_python_wrapper.errors import (
     TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
+from aws_advanced_python_wrapper.wrapper import Wrapper
 
 
 def configure_pool(host_info: HostInfo, props: Dict[str, Any]) -> Dict[str, Any]:
@@ -142,3 +143,6 @@ if __name__ == "__main__":
 
         """ If connection pools were enabled, close them here """
         ConnectionProviderManager.release_resources()
+
+        # Clean up any remaining resources created by the plugins.
+        Wrapper.release_resources()

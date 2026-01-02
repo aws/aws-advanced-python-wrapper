@@ -22,6 +22,7 @@ from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core.sampling.local.sampler import LocalSampler
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.wrapper import Wrapper
 
 SQL_DBLIST = "select datname from pg_database;"
 
@@ -54,3 +55,6 @@ if __name__ == "__main__":
                 print(record)
 
     print("-- end of application")
+
+    # Clean up any remaining resources created by the plugins.
+    Wrapper.release_resources()
