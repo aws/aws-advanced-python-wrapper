@@ -132,12 +132,12 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
               // Multi-AZ Instances supports only 1 instance
               continue;
             }
-            if (deployment == DatabaseEngineDeployment.AURORA && numOfInstances == 3) {
-              // Aurora supports clusters with 3 instances but running such tests is similar
-              // to running tests on 5-instance cluster.
-              // Let's save some time and skip tests for this configuration
-              continue;
-            }
+           if (deployment == DatabaseEngineDeployment.AURORA && numOfInstances == 3 && config.numInstances == null) {
+             // Aurora supports clusters with 3 instances but running such tests is similar
+             // to running tests on 5-instance cluster.
+             // Let's save some time and skip tests for this configuration
+             continue;
+           }
 
             for (TargetPythonVersion targetPythonVersion : TargetPythonVersion.values()) {
               if (targetPythonVersion == TargetPythonVersion.PYTHON_3_11 && config.excludePython311) {
