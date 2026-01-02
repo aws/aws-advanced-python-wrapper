@@ -17,6 +17,7 @@ from __future__ import annotations
 import psycopg
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.wrapper import Wrapper
 
 if __name__ == "__main__":
     with AwsWrapperConnection.connect(
@@ -30,3 +31,6 @@ if __name__ == "__main__":
         cursor.execute("SELECT pg_catalog.aurora_db_instance_identifier()")
         for record in cursor.fetchone():
             print(record)
+
+    # Clean up any remaining resources created by the plugins.
+    Wrapper.release_resources()

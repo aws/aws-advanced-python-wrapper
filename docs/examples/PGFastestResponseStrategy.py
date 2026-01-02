@@ -19,6 +19,7 @@ from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
+from aws_advanced_python_wrapper.wrapper import Wrapper
 
 if __name__ == "__main__":
     provider = SqlAlchemyPooledConnectionProvider()
@@ -64,3 +65,6 @@ if __name__ == "__main__":
 
     # Closes all pools and removes all cached pool connections
     ConnectionProviderManager.release_resources()
+
+    # Clean up any remaining resources created by the plugins.
+    Wrapper.release_resources()

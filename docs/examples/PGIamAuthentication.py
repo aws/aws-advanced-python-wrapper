@@ -15,6 +15,7 @@
 import psycopg
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.wrapper import Wrapper
 
 if __name__ == "__main__":
     with AwsWrapperConnection.connect(
@@ -35,3 +36,6 @@ if __name__ == "__main__":
         for record in res:
             print(record)
         awscursor.execute("DROP TABLE bank_test")
+
+    # Clean up any remaining resources created by the plugins.
+    Wrapper.release_resources()

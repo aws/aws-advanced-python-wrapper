@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,6 +39,8 @@ from aws_advanced_python_wrapper.host_availability import (
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import (Connection, Cursor,
                                                 ProgrammingError)
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -147,8 +149,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     # Maps existing cluster IDs to suggested cluster IDs. This is used to update non-primary cluster IDs to primary
     # cluster IDs so that connections to the same clusters can share topology info.
     _cluster_ids_to_update: CacheMap[str, str] = CacheMap()
-
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="RdsHostListProviderExecutor")
 
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties, topology_utils: TopologyUtils):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
@@ -425,6 +425,8 @@ class TopologyUtils(ABC):
     to various database engine deployments (e.g. Aurora, Multi-AZ, etc.).
     """
 
+    _executor_name: ClassVar[str] = "TopologyUtils"
+
     def __init__(self, dialect: db_dialect.TopologyAwareDatabaseDialect, props: Properties):
         self._dialect: db_dialect.TopologyAwareDatabaseDialect = dialect
         self._rds_utils = RdsUtils()
@@ -487,7 +489,7 @@ class TopologyUtils(ABC):
         an empty tuple will be returned.
         """
         query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
-                    RdsHostListProvider._executor, self._max_timeout, driver_dialect, conn)(self._query_for_topology)
+                    ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout, driver_dialect, conn)(self._query_for_topology)
         return query_for_topology_func_with_timeout(conn)
 
     @abstractmethod
@@ -549,7 +551,7 @@ class TopologyUtils(ABC):
     def get_host_role(self, connection: Connection, driver_dialect: DriverDialect) -> HostRole:
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_role)
+                ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout, driver_dialect, connection)(self._get_host_role)
             result = cursor_execute_func_with_timeout(connection)
             if result is not None:
                 is_reader = result[0]
@@ -572,7 +574,7 @@ class TopologyUtils(ABC):
         """
 
         cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-            RdsHostListProvider._executor, self._max_timeout, driver_dialect, connection)(self._get_host_id)
+            ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout, driver_dialect, connection)(self._get_host_id)
         result = cursor_execute_func_with_timeout(connection)
         if result:
             host_id: str = result[0]
@@ -586,6 +588,9 @@ class TopologyUtils(ABC):
 
 
 class AuroraTopologyUtils(TopologyUtils):
+
+    _executor_name: ClassVar[str] = "AuroraTopologyUtils"
+
     def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
         """
         Query the database for topology information.
@@ -636,6 +641,9 @@ class AuroraTopologyUtils(TopologyUtils):
 
 
 class MultiAzTopologyUtils(TopologyUtils):
+
+    _executor_name: ClassVar[str] = "MultiAzTopologyUtils"
+
     def __init__(
         self,
         dialect: db_dialect.TopologyAwareDatabaseDialect,

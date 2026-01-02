@@ -30,6 +30,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.wrapper import Wrapper
 
 SQL_DBLIST = "select datname from pg_database;"
 
@@ -78,3 +79,6 @@ if __name__ == "__main__":
                 print(record)
 
     print("-- end of application")
+
+    # Clean up any remaining resources created by the plugins.
+    Wrapper.release_resources()

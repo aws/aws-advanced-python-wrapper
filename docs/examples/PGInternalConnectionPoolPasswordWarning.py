@@ -19,6 +19,7 @@ from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
+from aws_advanced_python_wrapper.wrapper import Wrapper
 
 if __name__ == "__main__":
     params = {
@@ -62,3 +63,6 @@ if __name__ == "__main__":
             pass
     except Exception:
         print("Failed to connect - password was incorrect")
+
+    # Clean up any remaining resources created by the plugins.
+    Wrapper.release_resources()

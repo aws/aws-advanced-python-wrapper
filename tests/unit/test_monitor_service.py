@@ -46,15 +46,8 @@ def mock_monitor(mocker):
 
 
 @pytest.fixture
-def mock_executor(mocker):
-    return mocker.MagicMock()
-
-
-@pytest.fixture
-def thread_container(mock_executor):
-    container = MonitoringThreadContainer()
-    MonitoringThreadContainer._executor = mock_executor
-    return container
+def thread_container():
+    return MonitoringThreadContainer()
 
 
 @pytest.fixture
@@ -99,8 +92,12 @@ def test_start_monitoring(
     assert aliases == monitor_service_mocked_container._cached_monitor_aliases
 
 
-def test_start_monitoring__multiple_calls(monitor_service_with_container, mock_monitor, mock_executor, mock_conn):
+def test_start_monitoring__multiple_calls(monitor_service_with_container, mock_monitor, mock_conn, mocker):
     aliases = frozenset({"instance-1"})
+
+    # Mock ThreadPoolContainer.get_thread_pool
+    mock_thread_pool = mocker.MagicMock()
+    mocker.patch('aws_advanced_python_wrapper.host_monitoring_plugin.ThreadPoolContainer.get_thread_pool', return_value=mock_thread_pool)
 
     num_calls = 5
     for _ in range(num_calls):
@@ -108,7 +105,7 @@ def test_start_monitoring__multiple_calls(monitor_service_with_container, mock_m
             mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
     assert num_calls == mock_monitor.start_monitoring.call_count
-    mock_executor.submit.assert_called_once_with(mock_monitor.run)
+    mock_thread_pool.submit.assert_called_once_with(mock_monitor.run)
     assert mock_monitor == monitor_service_with_container._cached_monitor()
     assert aliases == monitor_service_with_container._cached_monitor_aliases
 

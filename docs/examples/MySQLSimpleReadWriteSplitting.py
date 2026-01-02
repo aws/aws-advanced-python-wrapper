@@ -25,6 +25,7 @@ from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.errors import (
     FailoverFailedError, FailoverSuccessError,
     TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.wrapper import Wrapper
 
 
 def configure_initial_session_states(conn: Connection):
@@ -116,3 +117,6 @@ if __name__ == "__main__":
     finally:
         with AwsWrapperConnection.connect(mysql.connector.Connect, **params) as conn:
             execute_queries_with_failover_handling(conn, "DROP TABLE bank_test")
+
+    # Clean up any remaining resources created by the plugins.
+    Wrapper.release_resources()
