@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 import mysql.connector  # type: ignore
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
 from aws_advanced_python_wrapper.errors import (
@@ -30,7 +30,6 @@ from aws_advanced_python_wrapper.errors import (
     TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
-from aws_advanced_python_wrapper.wrapper import Wrapper
 
 
 def configure_pool(host_info: HostInfo, props: Dict[str, Any]) -> Dict[str, Any]:
@@ -145,4 +144,4 @@ if __name__ == "__main__":
         ConnectionProviderManager.release_resources()
 
         # Clean up any remaining resources created by the plugins.
-        Wrapper.release_resources()
+        release_resources()

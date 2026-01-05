@@ -14,8 +14,7 @@
 
 import mysql.connector
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
-from aws_advanced_python_wrapper.wrapper import Wrapper
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 if __name__ == "__main__":
     with AwsWrapperConnection.connect(
@@ -38,6 +37,6 @@ if __name__ == "__main__":
 
         res = awscursor.fetchone()
         print(res)
-    
+
     # Clean up any remaining resources created by the plugins.
-    Wrapper.release_resources()
+    release_resources()

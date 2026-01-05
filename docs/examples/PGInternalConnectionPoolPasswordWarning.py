@@ -14,12 +14,11 @@
 
 import psycopg
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
-from aws_advanced_python_wrapper.wrapper import Wrapper
 
 if __name__ == "__main__":
     params = {
@@ -65,4 +64,4 @@ if __name__ == "__main__":
         print("Failed to connect - password was incorrect")
 
     # Clean up any remaining resources created by the plugins.
-    Wrapper.release_resources()
+    release_resources()

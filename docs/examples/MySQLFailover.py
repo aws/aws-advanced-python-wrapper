@@ -21,11 +21,10 @@ import mysql.connector
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 from aws_advanced_python_wrapper.errors import (
     FailoverFailedError, FailoverSuccessError,
     TransactionResolutionUnknownError)
-from aws_advanced_python_wrapper.wrapper import Wrapper
 
 
 def configure_initial_session_states(conn: Connection):
@@ -62,8 +61,7 @@ def execute_queries_with_failover_handling(conn: Connection, sql: str, params: O
 
 
 if __name__ == "__main__":
-
-    try: 
+    try:
         with AwsWrapperConnection.connect(
                 mysql.connector.Connect,
                 host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
@@ -88,4 +86,4 @@ if __name__ == "__main__":
 
             execute_queries_with_failover_handling(awsconn, "DROP TABLE bank_test")
     finally:
-        Wrapper.release_resources()
+        release_resources()

@@ -53,8 +53,7 @@ The AWS Advanced Python Wrapper creates background threads and thread pools for 
 Call the following methods before your application terminates:
 
 ```python
-from aws_advanced_python_wrapper import AwsWrapperConnection
-from aws_advanced_python_wrapper.thread_pool_container import ThreadPoolContainer
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 try:
     # Your application code here
@@ -62,11 +61,11 @@ try:
     # ... use connection
 finally:
     # Clean up all resources before application exit
-    ThreadPoolContainer.release_resources()
+    release_resources()
 ```
 
 > [!IMPORTANT]
-> Always call `Wrapper.release_resources` at application shutdown to ensure:
+> Always call `release_resources()` at application shutdown to ensure:
 > - All monitoring threads are properly terminated
 > - Thread pools are shut down gracefully
 > - No resource leaks occur
