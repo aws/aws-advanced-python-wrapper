@@ -88,6 +88,7 @@ def pytest_runtest_setup(item):
         ProxyHelper.enable_all_connectivity()
 
     deployment = request.get_database_engine_deployment()
+    _reset_wrapper_state()
     if DatabaseEngineDeployment.AURORA == deployment or DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER == deployment:
         rds_utility = RdsTestUtility(info.get_region(), info.get_rds_endpoint())
         rds_utility.wait_until_cluster_has_desired_status(info.get_db_name(), "available")
@@ -131,24 +132,28 @@ def pytest_runtest_setup(item):
 
         assert cluster_ip == writer_ip
 
-        RdsUtils.clear_cache()
-        RdsHostListProvider._topology_cache.clear()
-        RdsHostListProvider._is_primary_cluster_id_cache.clear()
-        RdsHostListProvider._cluster_ids_to_update.clear()
-        PluginServiceImpl._host_availability_expiring_cache.clear()
-        DatabaseDialectManager._known_endpoint_dialects.clear()
-        CustomEndpointPlugin._monitors.clear()
-        CustomEndpointMonitor._custom_endpoint_info_cache.clear()
-        MonitoringThreadContainer.clean_up()
-
-        ConnectionProviderManager.reset_provider()
-        DatabaseDialectManager.reset_custom_dialect()
-        DriverDialectManager.reset_custom_dialect()
-        ExceptionManager.reset_custom_handler()
+        _reset_wrapper_state()
 
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
                 and segment is not None:
             xray_recorder.end_segment()
+
+
+def _reset_wrapper_state():
+    RdsUtils.clear_cache()
+    RdsHostListProvider._topology_cache.clear()
+    RdsHostListProvider._is_primary_cluster_id_cache.clear()
+    RdsHostListProvider._cluster_ids_to_update.clear()
+    PluginServiceImpl._host_availability_expiring_cache.clear()
+    DatabaseDialectManager._known_endpoint_dialects.clear()
+    CustomEndpointPlugin._monitors.clear()
+    CustomEndpointMonitor._custom_endpoint_info_cache.clear()
+    MonitoringThreadContainer.clean_up()
+
+    ConnectionProviderManager.reset_provider()
+    DatabaseDialectManager.reset_custom_dialect()
+    DriverDialectManager.reset_custom_dialect()
+    ExceptionManager.reset_custom_handler()
 
 
 def pytest_generate_tests(metafunc):
