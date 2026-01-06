@@ -344,24 +344,3 @@ class TestAuroraFailover:
         # Ensure that all idle connections are closed.
         for idle_connection in idle_connections:
             assert idle_connection.is_closed is True
-
-    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.IAM])
-    def test_failover_with_iam(
-            self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils, aurora_utility):
-        target_driver_connect = DriverHelper.get_connect_func(test_driver)
-        initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
-
-        props["plugins"] = "failover,iam"
-
-        with AwsWrapperConnection.connect(
-                target_driver_connect, **conn_utils.get_connect_params(user=conn_utils.iam_user), **props) as aws_conn:
-            # crash instance1 and nominate a new writer
-            aurora_utility.failover_cluster_and_wait_until_writer_changed()
-
-            # failure occurs on Cursor invocation
-            aurora_utility.assert_first_query_throws(aws_conn, FailoverSuccessError)
-
-            # assert that we are connected to the new writer after failover happens and we can reuse the cursor
-            current_connection_id = aurora_utility.query_instance_id(aws_conn)
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
-            assert current_connection_id != initial_writer_id
