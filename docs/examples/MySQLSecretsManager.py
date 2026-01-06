@@ -19,17 +19,18 @@ import mysql.connector
 from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 if __name__ == "__main__":
-    with AwsWrapperConnection.connect(
-            mysql.connector.Connect,
-            host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
-            database="mysql",
-            secrets_manager_secret_id="arn:aws:secretsmanager:<Region>:<AccountId>:secret:Secre78tName-6RandomCharacters",
-            secrets_manager_region="us-east-2",
-            plugins="aws_secrets_manager"
-    ) as awsconn, awsconn.cursor() as cursor:
-        cursor.execute("SELECT @@aurora_server_id")
-        for record in cursor.fetchone():
-            print(record)
-
-    # Clean up any remaining resources created by the plugins.
-    release_resources()
+    try:
+        with AwsWrapperConnection.connect(
+                mysql.connector.Connect,
+                host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
+                database="mysql",
+                secrets_manager_secret_id="arn:aws:secretsmanager:<Region>:<AccountId>:secret:Secre78tName-6RandomCharacters",
+                secrets_manager_region="us-east-2",
+                plugins="aws_secrets_manager"
+        ) as awsconn, awsconn.cursor() as cursor:
+            cursor.execute("SELECT @@aurora_server_id")
+            for record in cursor.fetchone():
+                print(record)
+    finally:
+        # Clean up global resources created by wrapper
+        release_resources()

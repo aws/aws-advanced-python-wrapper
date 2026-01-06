@@ -16,6 +16,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
+from aws_advanced_python_wrapper.utils.log import Logger
+
+logger = Logger(__name__)
+
 
 class ThreadPoolContainer:
     """
@@ -66,7 +70,7 @@ class ThreadPoolContainer:
                 try:
                     pool.shutdown(wait=wait)
                 except Exception as e:
-                    print(f"Error shutting down pool '{name}': {e}")
+                    logger.warning("ThreadPoolContainer.ErrorShuttingDownPool", name, e)
             cls._pools.clear()
 
     @classmethod
@@ -83,9 +87,12 @@ class ThreadPoolContainer:
         """
         with cls._lock:
             if name in cls._pools:
-                cls._pools[name].shutdown(wait=wait)
-                del cls._pools[name]
-                return True
+                try:
+                    cls._pools[name].shutdown(wait=wait)
+                    del cls._pools[name]
+                    return True
+                except Exception as e:
+                    logger.warning("ThreadPoolContainer.ErrorShuttingDownPool", name, e)
             return False
 
     @classmethod

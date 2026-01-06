@@ -17,19 +17,20 @@ import psycopg
 from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 if __name__ == "__main__":
-    with AwsWrapperConnection.connect(
-        psycopg.Connection.connect,
-        host="limitless-cluster.limitless-xyz.us-east-1.rds.amazonaws.com",
-        dbname="postgres_limitless",
-        user="user",
-        password="password",
-        plugins="limitless",
-        autocommit=True
-    ) as awsconn, awsconn.cursor() as awscursor:
-        awscursor.execute("SELECT * FROM pg_catalog.aurora_db_instance_identifier()")
+    try:
+        with AwsWrapperConnection.connect(
+            psycopg.Connection.connect,
+            host="limitless-cluster.limitless-xyz.us-east-1.rds.amazonaws.com",
+            dbname="postgres_limitless",
+            user="user",
+            password="password",
+            plugins="limitless",
+            autocommit=True
+        ) as awsconn, awsconn.cursor() as awscursor:
+            awscursor.execute("SELECT * FROM pg_catalog.aurora_db_instance_identifier()")
 
-        res = awscursor.fetchone()
-        print(res)
-
-    # Clean up any remaining resources created by the plugins.
-    release_resources()
+            res = awscursor.fetchone()
+            print(res)
+    finally:
+        # Clean up global resources created by wrapper
+        release_resources()

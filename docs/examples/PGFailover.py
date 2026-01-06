@@ -93,5 +93,5 @@ if __name__ == "__main__":
 
             execute_queries_with_failover_handling(awsconn, "DROP TABLE bank_test")
     finally:
-        # Clean up any remaining resources created by the plugins.
+        # Clean up global resources created by wrapper
         release_resources()

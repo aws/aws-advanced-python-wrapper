@@ -17,23 +17,24 @@ import mysql.connector
 from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 if __name__ == "__main__":
-    with AwsWrapperConnection.connect(
-            mysql.connector.Connect,
-            host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
-            database="mysql",
-            user="admin",
-            plugins="iam",
-            wrapper_dialect="aurora-mysql",
-            autocommit=True
-    ) as awsconn, awsconn.cursor() as awscursor:
-        awscursor.execute("CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
-        awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
-        awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
-        awscursor.execute("SELECT * FROM bank_test")
+    try:
+        with AwsWrapperConnection.connect(
+                mysql.connector.Connect,
+                host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
+                database="mysql",
+                user="admin",
+                plugins="iam",
+                wrapper_dialect="aurora-mysql",
+                autocommit=True
+        ) as awsconn, awsconn.cursor() as awscursor:
+            awscursor.execute("CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
+            awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
+            awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
+            awscursor.execute("SELECT * FROM bank_test")
 
-        for record in awscursor:
-            print(record)
-        awscursor.execute("DROP TABLE bank_test")
-
-    # Clean up any remaining resources created by the plugins.
-    release_resources()
+            for record in awscursor:
+                print(record)
+            awscursor.execute("DROP TABLE bank_test")
+    finally:
+        # Clean up global resources created by wrapper
+        release_resources()

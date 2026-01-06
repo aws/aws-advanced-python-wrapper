@@ -51,24 +51,27 @@ The Host Monitoring Connection Plugin may create new monitoring connections to c
 
 ```python
 import psycopg
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 props = {
     "monitoring-connect_timeout": 10,
     "monitoring-socket_timeout": 10
 }
-    
-conn = AwsWrapperConnection.connect(
-    psycopg.Connection.connect,
-    host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
-    dbname="postgres",
-    user="john",
-    password="pwd",
-    plugins="host_monitoring",
-    # Configure the timeout values for all non-monitoring connections.
-    connect_timeout=30, socket_timeout=30,
-    # Configure different timeout values for the monitoring connections.
-    **props)
+
+try: 
+    conn = AwsWrapperConnection.connect(
+        psycopg.Connection.connect,
+        host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
+        dbname="postgres",
+        user="john",
+        password="pwd",
+        plugins="host_monitoring",
+        # Configure the timeout values for all non-monitoring connections.
+        connect_timeout=30, socket_timeout=30,
+        # Configure different timeout values for the monitoring connections.
+        **props)
+finally:
+    release_resources()
 ```
 
 > [!IMPORTANT]\

@@ -143,5 +143,5 @@ if __name__ == "__main__":
         """ If connection pools were enabled, close them here """
         ConnectionProviderManager.release_resources()
 
-        # Clean up any remaining resources created by the plugins.
+        # Clean up global resources created by wrapper
         release_resources()

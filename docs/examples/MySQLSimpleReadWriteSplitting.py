@@ -117,5 +117,5 @@ if __name__ == "__main__":
         with AwsWrapperConnection.connect(mysql.connector.Connect, **params) as conn:
             execute_queries_with_failover_handling(conn, "DROP TABLE bank_test")
 
-    # Clean up any remaining resources created by the plugins.
-    release_resources()
+        # Clean up global resources created by wrapper
+        release_resources()

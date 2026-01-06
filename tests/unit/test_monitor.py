@@ -18,11 +18,10 @@ from time import perf_counter_ns, sleep
 import psycopg
 import pytest
 
+from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.host_monitoring_plugin import (
     Monitor, MonitoringContext, MonitoringThreadContainer)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
-from aws_advanced_python_wrapper.thread_pool_container import \
-    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -85,8 +84,7 @@ def monitor(mock_plugin_service, host_info, props):
 def release_container():
     yield
     while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.clean_up()
-        ThreadPoolContainer.release_resources()
+        release_resources()
 
 
 @pytest.fixture
@@ -233,7 +231,7 @@ def test_run__no_contexts(mocker, monitor):
 
     assert container._monitor_map.get(host_alias) is None
     assert container._tasks_map.get(monitor) is None
-    MonitoringThreadContainer.clean_up()
+    release_resources()
 
 
 def test_check_connection_status__valid_then_invalid(mocker, monitor):

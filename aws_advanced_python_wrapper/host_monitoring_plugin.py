@@ -650,6 +650,7 @@ class MonitoringThreadContainer:
             for monitor, _ in self._tasks_map.items():
                 monitor.stop()
 
+            ThreadPoolContainer.release_pool(MonitoringThreadContainer._executor_name, wait=False)
             self._tasks_map.clear()
 
 

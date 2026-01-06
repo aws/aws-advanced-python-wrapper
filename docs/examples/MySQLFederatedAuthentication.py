@@ -17,26 +17,27 @@ import mysql.connector
 from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 if __name__ == "__main__":
-    with AwsWrapperConnection.connect(
-            mysql.connector.Connect,
-            host="database.cluster-xyz.us-east-2.rds.amazonaws.com",
-            database="mysql",
-            plugins="federated_auth",
-            idp_name="adfs",
-            app_id="abcde1fgh3kLZTBz1S5d7",
-            idp_endpoint="ec2amaz-ab3cdef.example.com",
-            iam_role_arn="arn:aws:iam::123456789012:role/adfs_example_iam_role",
-            iam_idp_arn="arn:aws:iam::123456789012:saml-provider/adfs_example",
-            iam_region="us-east-2",
-            idp_username="some_federated_username@example.com",
-            idp_password="some_password",
-            db_user="john",
-            autocommit=True
-    ) as awsconn, awsconn.cursor() as awscursor:
-        awscursor.execute("SELECT 1")
+    try:
+        with AwsWrapperConnection.connect(
+                mysql.connector.Connect,
+                host="database.cluster-xyz.us-east-2.rds.amazonaws.com",
+                database="mysql",
+                plugins="federated_auth",
+                idp_name="adfs",
+                app_id="abcde1fgh3kLZTBz1S5d7",
+                idp_endpoint="ec2amaz-ab3cdef.example.com",
+                iam_role_arn="arn:aws:iam::123456789012:role/adfs_example_iam_role",
+                iam_idp_arn="arn:aws:iam::123456789012:saml-provider/adfs_example",
+                iam_region="us-east-2",
+                idp_username="some_federated_username@example.com",
+                idp_password="some_password",
+                db_user="john",
+                autocommit=True
+        ) as awsconn, awsconn.cursor() as awscursor:
+            awscursor.execute("SELECT 1")
 
-        res = awscursor.fetchone()
-        print(res)
-
-    # Clean up any remaining resources created by the plugins.
-    release_resources()
+            res = awscursor.fetchone()
+            print(res)
+    finally:
+        # Clean up global resources created by wrapper
+        release_resources()

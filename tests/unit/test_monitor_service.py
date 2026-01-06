@@ -16,6 +16,7 @@ import psycopg
 import pytest
 from _weakref import ref
 
+from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_monitoring_plugin import (
     MonitoringThreadContainer, MonitorService)
@@ -73,7 +74,7 @@ def setup_teardown(mocker, mock_thread_container, mock_plugin_service, mock_moni
     yield
 
     while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.clean_up()
+        release_resources()
 
 
 def test_start_monitoring(

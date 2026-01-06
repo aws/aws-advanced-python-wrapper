@@ -22,8 +22,6 @@ import pytest
 
 from aws_advanced_python_wrapper.errors import (
     FailoverSuccessError, TransactionResolutionUnknownError)
-from aws_advanced_python_wrapper.host_monitoring_plugin import \
-    MonitoringThreadContainer
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from .utils.conditions import (disable_on_features, enable_on_deployments,
@@ -34,7 +32,7 @@ from .utils.proxy_helper import ProxyHelper
 if TYPE_CHECKING:
     from .utils.test_instance_info import TestInstanceInfo
     from .utils.test_driver import TestDriver
-
+from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
 from .utils.driver_helper import DriverHelper
@@ -59,7 +57,7 @@ class TestAuroraFailover:
         self.logger.info(f"Starting test: {request.node.name}")
         yield
         self.logger.info(f"Ending test: {request.node.name}")
-        MonitoringThreadContainer.clean_up()
+        release_resources()
         gc.collect()
 
     @pytest.fixture(scope='class')

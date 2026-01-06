@@ -17,15 +17,13 @@ import gc
 import pytest
 from sqlalchemy import PoolProxiedConnection
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
 from aws_advanced_python_wrapper.errors import (
     AwsWrapperError, FailoverFailedError, FailoverSuccessError,
     ReadWriteSplittingError, TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
-from aws_advanced_python_wrapper.host_monitoring_plugin import \
-    MonitoringThreadContainer
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -63,7 +61,7 @@ class TestReadWriteSplitting:
         yield
         self.logger.info(f"Ending test: {request.node.name}")
 
-        MonitoringThreadContainer.clean_up()
+        release_resources()
         gc.collect()
 
     # Plugin configurations

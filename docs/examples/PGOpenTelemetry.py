@@ -56,28 +56,29 @@ if __name__ == "__main__":
 
     tracer = trace.get_tracer(__name__)
     with tracer.start_as_current_span("python_otlp_telemetry_app") as segment:
-        with AwsWrapperConnection.connect(
-                psycopg.Connection.connect,
-                host="db-identifier-postgres.XYZ.us-east-2.rds.amazonaws.com",
-                dbname="test_db",
-                user="user",
-                password="password",
-                plugins="failover,host_monitoring",
-                wrapper_dialect="aurora-pg",
-                autocommit=True,
-                enable_telemetry=True,
-                telemetry_submit_toplevel=False,
-                telemetry_traces_backend="OTLP",
-                telemetry_metrics_backend="OTLP",
-                telemetry_failover_additional_top_trace=True
-        ) as awsconn:
-            awscursor = awsconn.cursor()
-            awscursor.execute(SQL_DBLIST)
-            res = awscursor.fetchall()
-            for record in res:
-                print(record)
+        try:
+            with AwsWrapperConnection.connect(
+                    psycopg.Connection.connect,
+                    host="db-identifier-postgres.XYZ.us-east-2.rds.amazonaws.com",
+                    dbname="test_db",
+                    user="user",
+                    password="password",
+                    plugins="failover,host_monitoring",
+                    wrapper_dialect="aurora-pg",
+                    autocommit=True,
+                    enable_telemetry=True,
+                    telemetry_submit_toplevel=False,
+                    telemetry_traces_backend="OTLP",
+                    telemetry_metrics_backend="OTLP",
+                    telemetry_failover_additional_top_trace=True
+            ) as awsconn:
+                awscursor = awsconn.cursor()
+                awscursor.execute(SQL_DBLIST)
+                res = awscursor.fetchall()
+                for record in res:
+                    print(record)
+        finally:
+            # Clean up global resources created by wrapper
+            release_resources()
 
     print("-- end of application")
-
-    # Clean up any remaining resources created by the plugins.
-    release_resources()

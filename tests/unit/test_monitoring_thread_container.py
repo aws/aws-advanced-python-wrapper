@@ -14,6 +14,7 @@
 
 import pytest
 
+from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_monitoring_plugin import \
     MonitoringThreadContainer
@@ -61,7 +62,7 @@ def mock_monitor_supplier(mocker, mock_monitor1, mock_monitor2):
 def release_container():
     yield
     while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.clean_up()
+        release_resources()
 
 
 def test_get_or_create_monitor__monitor_created(
@@ -172,3 +173,4 @@ def test_release_instance(mocker, container, mock_monitor1, mock_future):
     assert 0 == len(container._tasks_map)
     mock_future.cancel.assert_called_once()
     assert MonitoringThreadContainer._instance is None
+    release_resources()
