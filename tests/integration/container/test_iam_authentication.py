@@ -33,8 +33,11 @@ import pytest
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 FailoverSuccessError)
-from tests.integration.container.utils.conditions import (disable_on_features,
-                                                          enable_on_features)
+from tests.integration.container.utils.conditions import (
+    disable_on_features, enable_on_deployments, enable_on_features,
+    enable_on_num_instances)
+from tests.integration.container.utils.database_engine_deployment import \
+    DatabaseEngineDeployment
 from tests.integration.container.utils.driver_helper import DriverHelper
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
@@ -127,6 +130,11 @@ class TestAwsIamAuthentication:
 
         self.validate_connection(target_driver_connect, **params, **props)
 
+    @enable_on_num_instances(min_instances=2)
+    @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
+    @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                          TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
+                          TestEnvironmentFeatures.PERFORMANCE])
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.IAM])
     def test_failover_with_iam(
             self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils):

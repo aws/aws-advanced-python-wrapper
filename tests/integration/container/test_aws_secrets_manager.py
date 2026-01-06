@@ -23,13 +23,16 @@ from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 FailoverSuccessError)
 from aws_advanced_python_wrapper.utils.properties import Properties
-from .utils.conditions import enable_on_features
+from .utils.conditions import (disable_on_features, enable_on_deployments,
+                               enable_on_features, enable_on_num_instances)
+from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.driver_helper import DriverHelper
 from .utils.rds_test_utility import RdsTestUtility
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
 
+@enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
 class TestAwsSecretsManager:
     """Test class for AWS Secrets Manager authentication"""
 
@@ -196,7 +199,11 @@ class TestAwsSecretsManager:
             ) as conn:
                 conn.cursor()
 
-    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    @enable_on_num_instances(min_instances=2)
+    @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                          TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
+                          TestEnvironmentFeatures.PERFORMANCE])
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.IAM])
     def test_failover_with_secrets_manager(
             self, test_driver, props, conn_utils, create_secret):
         region = TestEnvironment.get_current().get_info().get_region()
