@@ -12,29 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from logging import DEBUG, getLogger
-
-from .cleanup import release_resources
-from .utils.utils import LogUtils
-from .wrapper import AwsWrapperConnection
-
-# PEP249 compliance
-connect = AwsWrapperConnection.connect
-apilevel = "2.0"
-threadsafety = 2
-paramstyle = "pyformat"
-
-# Public API
-__all__ = [
-    'connect',
-    'AwsWrapperConnection',
-    'release_resources',
-    'set_logger',
-    'apilevel',
-    'threadsafety',
-    'paramstyle'
-]
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    MonitoringThreadContainer
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 
 
-def set_logger(name='aws_advanced_python_wrapper', level=DEBUG, format_string=None):
-    LogUtils.setup_logger(getLogger(name), level, format_string)
+def release_resources() -> None:
+    """Release all global resources used by the wrapper."""
+    MonitoringThreadContainer.clean_up()
+    ThreadPoolContainer.release_resources()

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from .exception_handling import ExceptionHandler
 
 from abc import ABC, abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 from contextlib import closing
 from enum import Enum, auto
 
@@ -37,6 +37,8 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.host_list_provider import (
     ConnectionStringHostListProvider, RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -638,7 +640,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
     _ENDPOINT_CACHE_EXPIRATION_NS = 30 * 60_000_000_000  # 30 minutes
     _known_endpoint_dialects: CacheMap[str, DialectCode] = CacheMap()
     _custom_dialect: Optional[DatabaseDialect] = None
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="DatabaseDialectManagerExecutor")
+    _executor_name: ClassVar[str] = "DatabaseDialectManagerExecutor"
     _known_dialects_by_code: Dict[DialectCode, DatabaseDialect] = {
         DialectCode.MYSQL: MysqlDatabaseDialect(),
         DialectCode.RDS_MYSQL: RdsMysqlDialect(),
@@ -776,7 +778,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                 timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
                 try:
                     cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                        DatabaseDialectManager._executor,
+                        ThreadPoolContainer.get_thread_pool(DatabaseDialectManager._executor_name),
                         timeout_sec,
                         driver_dialect,
                         conn)(dialect_candidate.is_dialect)

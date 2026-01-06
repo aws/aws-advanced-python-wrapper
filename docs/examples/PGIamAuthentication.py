@@ -14,24 +14,28 @@
 
 import psycopg
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 if __name__ == "__main__":
-    with AwsWrapperConnection.connect(
-            psycopg.Connection.connect,
-            host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
-            dbname="postgres",
-            user="john",
-            plugins="iam",
-            wrapper_dialect="aurora-pg",
-            autocommit=True
-    ) as awsconn, awsconn.cursor() as awscursor:
-        awscursor.execute("CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
-        awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
-        awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
-        awscursor.execute("SELECT * FROM bank_test")
+    try:
+        with AwsWrapperConnection.connect(
+                psycopg.Connection.connect,
+                host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
+                dbname="postgres",
+                user="john",
+                plugins="iam",
+                wrapper_dialect="aurora-pg",
+                autocommit=True
+        ) as awsconn, awsconn.cursor() as awscursor:
+            awscursor.execute("CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
+            awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (0, "Jane Doe", 200))
+            awscursor.execute("INSERT INTO bank_test VALUES (%s, %s, %s)", (1, "John Smith", 200))
+            awscursor.execute("SELECT * FROM bank_test")
 
-        res = awscursor.fetchall()
-        for record in res:
-            print(record)
-        awscursor.execute("DROP TABLE bank_test")
+            res = awscursor.fetchall()
+            for record in res:
+                print(record)
+            awscursor.execute("DROP TABLE bank_test")
+    finally:
+        # Clean up global resources created by wrapper
+        release_resources()

@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 
 from abc import abstractmethod
-from concurrent.futures import Executor, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import TimeoutError
 from contextlib import closing
 from typing import (Any, Callable, Dict, FrozenSet, Optional, Protocol, Set,
                     Tuple)
@@ -85,6 +85,8 @@ from aws_advanced_python_wrapper.read_write_splitting_plugin import \
 from aws_advanced_python_wrapper.simple_read_write_splitting_plugin import \
     SimpleReadWriteSplittingPluginFactory
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsPluginFactory
+from aws_advanced_python_wrapper.thread_pool_container import \
+    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
@@ -314,7 +316,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
     _status_cache: ClassVar[CacheMap[str, Any]] = CacheMap()
 
-    _executor: ClassVar[Executor] = ThreadPoolExecutor(thread_name_prefix="PluginServiceImplExecutor")
+    _executor_name: ClassVar[str] = "PluginServiceImplExecutor"
 
     def __init__(
             self,
@@ -611,7 +613,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         try:
             timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                PluginServiceImpl._executor, timeout_sec, driver_dialect, connection)(self._fill_aliases)
+                ThreadPoolContainer.get_thread_pool(PluginServiceImpl._executor_name), timeout_sec, driver_dialect, connection)(self._fill_aliases)
             cursor_execute_func_with_timeout(connection, host_info)
         except TimeoutError as e:
             raise QueryTimeoutError(Messages.get("PluginServiceImpl.FillAliasesTimeout")) from e

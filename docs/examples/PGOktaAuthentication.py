@@ -14,25 +14,29 @@
 
 import psycopg
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 if __name__ == "__main__":
-    with AwsWrapperConnection.connect(
-            psycopg.Connection.connect,
-            host="database.cluster-xyz.us-east-2.rds.amazonaws.com",
-            dbname="postgres",
-            plugins="okta",
-            idp_endpoint="ec2amaz-ab3cdef.example.com",
-            app_id="abcde1fgh3kLZTBz1S5d7",
-            iam_role_arn="arn:aws:iam::123456789012:role/adfs_example_iam_role",
-            iam_idp_arn="arn:aws:iam::123456789012:saml-provider/adfs_example",
-            iam_region="us-east-2",
-            idp_username="some_federated_username@example.com",
-            idp_password="some_password",
-            db_user="john",
-            autocommit=True
-    ) as awsconn, awsconn.cursor() as awscursor:
-        awscursor.execute("SELECT * FROM pg_catalog.aurora_db_instance_identifier()")
+    try:
+        with AwsWrapperConnection.connect(
+                psycopg.Connection.connect,
+                host="database.cluster-xyz.us-east-2.rds.amazonaws.com",
+                dbname="postgres",
+                plugins="okta",
+                idp_endpoint="ec2amaz-ab3cdef.example.com",
+                app_id="abcde1fgh3kLZTBz1S5d7",
+                iam_role_arn="arn:aws:iam::123456789012:role/adfs_example_iam_role",
+                iam_idp_arn="arn:aws:iam::123456789012:saml-provider/adfs_example",
+                iam_region="us-east-2",
+                idp_username="some_federated_username@example.com",
+                idp_password="some_password",
+                db_user="john",
+                autocommit=True
+        ) as awsconn, awsconn.cursor() as awscursor:
+            awscursor.execute("SELECT * FROM pg_catalog.aurora_db_instance_identifier()")
 
-        res = awscursor.fetchone()
-        print(res)
+            res = awscursor.fetchone()
+            print(res)
+    finally:
+        # Clean up global resources created by wrapper
+        release_resources()

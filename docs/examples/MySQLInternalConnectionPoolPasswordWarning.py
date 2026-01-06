@@ -14,51 +14,56 @@
 
 import mysql.connector
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
 
 if __name__ == "__main__":
-    params = {
-        # In general, you should not use instance URLs to connect. However, we will use one here to simplify this
-        # example, because internal connection pools are only opened when connecting to an instance URL. Normally the
-        # internal connection pool would be opened when read_only is set instead of when you are initially connecting.
-        "host": "database-instance.xyz.us-east-1.rds.amazonaws.com",
-        "database": "mysql",
-        "user": "admin",
-        "plugins": "read_write_splitting,failover",
-        "autocommit": True
-    }
-
-    correct_password = "correct_password"
-    incorrect_password = "incorrect_password"
-
-    provider = SqlAlchemyPooledConnectionProvider()
-    ConnectionProviderManager.set_connection_provider(provider)
-
-    # Create an internal connection pool with the correct password
-    conn = AwsWrapperConnection.connect(mysql.connector.Connect, **params, password=correct_password)
-    # Finished with connection. The connection is not actually closed here, instead it will be returned to the pool but
-    # will remain open.
-    conn.close()
-
-    # Even though we use an incorrect password, the original connection 'conn' will be returned by the pool, and we can
-    # still use it.
-    with AwsWrapperConnection.connect(
-            mysql.connector.Connect, **params, password=incorrect_password) as incorrect_password_conn:
-        incorrect_password_conn.cursor().execute("SELECT 1")
-
-    # Closes all pools and removes all cached pool connections
-    ConnectionProviderManager.release_resources()
-
     try:
-        # Correctly throws an exception - creates a fresh connection pool which will check the password because there
-        # are no longer any cached pool connections.
+        params = {
+            # In general, you should not use instance URLs to connect. However, we will use one here to simplify this
+            # example, because internal connection pools are only opened when connecting to an instance URL. Normally the
+            # internal connection pool would be opened when read_only is set instead of when you are initially connecting.
+            "host": "database-instance.xyz.us-east-1.rds.amazonaws.com",
+            "database": "mysql",
+            "user": "admin",
+            "plugins": "read_write_splitting,failover",
+            "autocommit": True
+        }
+
+        correct_password = "correct_password"
+        incorrect_password = "incorrect_password"
+
+        provider = SqlAlchemyPooledConnectionProvider()
+        ConnectionProviderManager.set_connection_provider(provider)
+
+        # Create an internal connection pool with the correct password
+        conn = AwsWrapperConnection.connect(mysql.connector.Connect, **params, password=correct_password)
+        # Finished with connection. The connection is not actually closed here, instead it will be returned to the pool but
+        # will remain open.
+        conn.close()
+
+        # Even though we use an incorrect password, the original connection 'conn' will be returned by the pool, and we can
+        # still use it.
         with AwsWrapperConnection.connect(
                 mysql.connector.Connect, **params, password=incorrect_password) as incorrect_password_conn:
-            # Will not reach - exception will be thrown
-            pass
-    except Exception:
-        print("Failed to connect - password was incorrect")
+            incorrect_password_conn.cursor().execute("SELECT 1")
+
+        # Closes all pools and removes all cached pool connections
+        ConnectionProviderManager.release_resources()
+
+        try:
+            # Correctly throws an exception - creates a fresh connection pool which will check the password because there
+            # are no longer any cached pool connections.
+            with AwsWrapperConnection.connect(
+                    mysql.connector.Connect, **params, password=incorrect_password) as incorrect_password_conn:
+                # Will not reach - exception will be thrown
+                pass
+        except Exception:
+            print("Failed to connect - password was incorrect")
+
+    finally:
+        # Clean up global resources created by wrapper
+        release_resources()

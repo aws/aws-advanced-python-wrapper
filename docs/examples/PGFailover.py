@@ -18,13 +18,10 @@ from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 import psycopg
 
-from aws_advanced_python_wrapper.host_monitoring_plugin import \
-    MonitoringThreadContainer
-
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 from aws_advanced_python_wrapper.errors import (
     FailoverFailedError, FailoverSuccessError,
     TransactionResolutionUnknownError)
@@ -69,18 +66,18 @@ if __name__ == "__main__":
         "monitoring-socket_timeout": 10
     }
 
-    with AwsWrapperConnection.connect(
-            psycopg.Connection.connect,
-            host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
-            dbname="postgres",
-            user="john",
-            password="pwd",
-            plugins="failover,host_monitoring",
-            connect_timeout=30,
-            socket_timeout=30,
-            autocommit=True
-    ) as awsconn:
-        try:
+    try:
+        with AwsWrapperConnection.connect(
+                psycopg.Connection.connect,
+                host="database.cluster-xyz.us-east-1.rds.amazonaws.com",
+                dbname="postgres",
+                user="john",
+                password="pwd",
+                plugins="failover,host_monitoring",
+                connect_timeout=30,
+                socket_timeout=30,
+                autocommit=True
+        ) as awsconn:
             configure_initial_session_states(awsconn)
             execute_queries_with_failover_handling(
                 awsconn, "CREATE TABLE IF NOT EXISTS bank_test (id int primary key, name varchar(40), account_balance int)")
@@ -95,6 +92,6 @@ if __name__ == "__main__":
                 print(record)
 
             execute_queries_with_failover_handling(awsconn, "DROP TABLE bank_test")
-        finally:
-            # Clean up any remaining resources created by the Host Monitoring Plugin.
-            MonitoringThreadContainer.clean_up()
+    finally:
+        # Clean up global resources created by wrapper
+        release_resources()

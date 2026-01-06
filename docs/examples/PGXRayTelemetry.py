@@ -21,7 +21,7 @@ from aws_xray_sdk import global_sdk_config
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core.sampling.local.sampler import LocalSampler
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 
 SQL_DBLIST = "select datname from pg_database;"
 
@@ -33,24 +33,28 @@ if __name__ == "__main__":
     global_sdk_config.set_sdk_enabled(True)
 
     with xray_recorder.in_segment("python_xray_telemetry_app") as segment:
-        with AwsWrapperConnection.connect(
-                psycopg.Connection.connect,
-                host="db-identifier-postgres.XYZ.us-east-2.rds.amazonaws.com",
-                dbname="test_db",
-                user="user",
-                password="password",
-                plugins="failover,host_monitoring",
-                wrapper_dialect="aurora-pg",
-                autocommit=True,
-                enable_telemetry=True,
-                telemetry_submit_toplevel=False,
-                telemetry_traces_backend="XRAY",
-                telemetry_metrics_backend="NONE"
-        ) as awsconn:
-            awscursor = awsconn.cursor()
-            awscursor.execute(SQL_DBLIST)
-            res = awscursor.fetchall()
-            for record in res:
-                print(record)
+        try:
+            with AwsWrapperConnection.connect(
+                    psycopg.Connection.connect,
+                    host="db-identifier-postgres.XYZ.us-east-2.rds.amazonaws.com",
+                    dbname="test_db",
+                    user="user",
+                    password="password",
+                    plugins="failover,host_monitoring",
+                    wrapper_dialect="aurora-pg",
+                    autocommit=True,
+                    enable_telemetry=True,
+                    telemetry_submit_toplevel=False,
+                    telemetry_traces_backend="XRAY",
+                    telemetry_metrics_backend="NONE"
+            ) as awsconn:
+                awscursor = awsconn.cursor()
+                awscursor.execute(SQL_DBLIST)
+                res = awscursor.fetchall()
+                for record in res:
+                    print(record)
+        finally:
+            # Clean up global resources created by wrapper
+            release_resources()
 
     print("-- end of application")

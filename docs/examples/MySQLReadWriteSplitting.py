@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 import mysql.connector  # type: ignore
 
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
 from aws_advanced_python_wrapper.errors import (
@@ -142,3 +142,6 @@ if __name__ == "__main__":
 
         """ If connection pools were enabled, close them here """
         ConnectionProviderManager.release_resources()
+
+        # Clean up global resources created by wrapper
+        release_resources()

@@ -20,6 +20,7 @@ from typing import FrozenSet, List
 import psycopg
 import pytest
 
+from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.host_monitoring_plugin import (
     MonitoringContext, MonitoringThreadContainer, MonitorService)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -110,7 +111,7 @@ def verify_concurrency(mock_monitor, mock_executor, mock_future, counter, concur
     assert concurrent_counter.get() > 0
     concurrent_counter.set(0)
 
-    MonitoringThreadContainer.clean_up()
+    release_resources()
 
 
 def test_start_monitoring__connections_to_different_hosts(
@@ -137,7 +138,7 @@ def test_start_monitoring__connections_to_different_hosts(
         expected_create_monitor_calls = [mocker.call(host_info, props, MonitoringThreadContainer())] * num_conns
         mock_create_monitor.assert_has_calls(expected_create_monitor_calls)
     finally:
-        release_resources(services)
+        release_service_resource(services)
 
 
 def test_start_monitoring__connections_to_same_host(
@@ -164,7 +165,7 @@ def test_start_monitoring__connections_to_same_host(
         expected_create_monitor_calls = [mocker.call(host_info, props, MonitoringThreadContainer())]
         mock_create_monitor.assert_has_calls(expected_create_monitor_calls)
     finally:
-        release_resources(services)
+        release_service_resource(services)
 
 
 def test_stop_monitoring__connections_to_different_hosts(
@@ -186,7 +187,7 @@ def test_stop_monitoring__connections_to_different_hosts(
         expected_stop_monitoring_calls = [mocker.call(context) for context in contexts]
         mock_monitor.stop_monitoring.assert_has_calls(expected_stop_monitoring_calls, True)
     finally:
-        release_resources(services)
+        release_service_resource(services)
 
 
 def test_stop_monitoring__connections_to_same_host(
@@ -208,7 +209,7 @@ def test_stop_monitoring__connections_to_same_host(
         expected_stop_monitoring_calls = [mocker.call(context) for context in contexts]
         mock_monitor.stop_monitoring.assert_has_calls(expected_stop_monitoring_calls, True)
     finally:
-        release_resources(services)
+        release_service_resource(services)
 
 
 def generate_host_aliases(num_aliases: int, generate_unique_aliases: bool) -> List[FrozenSet[str]]:
@@ -247,7 +248,7 @@ def generate_contexts(
     return _generate_contexts
 
 
-def release_resources(services):
+def release_service_resource(services):
     for service in services:
         service.release_resources()
 

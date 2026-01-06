@@ -14,21 +14,15 @@
 
 import pytest
 
+from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_monitoring_plugin import \
     MonitoringThreadContainer
 
 
 @pytest.fixture
-def container(mock_executor):
-    container = MonitoringThreadContainer()
-    MonitoringThreadContainer._executor = mock_executor
-    return container
-
-
-@pytest.fixture
-def mock_executor(mocker):
-    return mocker.MagicMock()
+def container():
+    return MonitoringThreadContainer()
 
 
 @pytest.fixture
@@ -68,16 +62,20 @@ def mock_monitor_supplier(mocker, mock_monitor1, mock_monitor2):
 def release_container():
     yield
     while MonitoringThreadContainer._instance is not None:
-        MonitoringThreadContainer.clean_up()
+        release_resources()
 
 
 def test_get_or_create_monitor__monitor_created(
-        container, mock_monitor_supplier, mock_stopped_monitor, mock_monitor1, mock_executor, mock_future):
+        container, mock_monitor_supplier, mock_stopped_monitor, mock_monitor1, mock_future, mocker):
+    mock_thread_pool = mocker.MagicMock()
+    mock_thread_pool.submit.return_value = mock_future
+    mocker.patch('aws_advanced_python_wrapper.host_monitoring_plugin.ThreadPoolContainer.get_thread_pool', return_value=mock_thread_pool)
+
     result = container.get_or_create_monitor(frozenset({"alias-1", "alias-2"}), mock_monitor_supplier)
     assert mock_monitor1 == result
 
     mock_monitor_supplier.assert_called_once()
-    mock_executor.submit.assert_called_once_with(mock_monitor1.run)
+    mock_thread_pool.submit.assert_called_once_with(mock_monitor1.run)
     assert mock_monitor1 == container._monitor_map.get("alias-1")
     assert mock_monitor1 == container._monitor_map.get("alias-2")
 
@@ -175,3 +173,4 @@ def test_release_instance(mocker, container, mock_monitor1, mock_future):
     assert 0 == len(container._tasks_map)
     mock_future.cancel.assert_called_once()
     assert MonitoringThreadContainer._instance is None
+    release_resources()
