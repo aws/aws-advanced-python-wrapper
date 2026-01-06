@@ -100,8 +100,8 @@ class LimitlessPlugin(Plugin):
 
 
 class LimitlessPluginFactory:
-
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return LimitlessPlugin(plugin_service, props)
 
 

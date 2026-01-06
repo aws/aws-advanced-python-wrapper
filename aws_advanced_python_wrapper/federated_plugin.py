@@ -158,10 +158,12 @@ class FederatedAuthPlugin(Plugin):
 
 
 class FederatedAuthPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return FederatedAuthPlugin(plugin_service, self.get_credentials_provider_factory(plugin_service, props))
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
+        return FederatedAuthPlugin(plugin_service, FederatedAuthPluginFactory.get_credentials_provider_factory(plugin_service, props))
 
-    def get_credentials_provider_factory(self, plugin_service: PluginService, props: Properties) -> AdfsCredentialsProviderFactory:
+    @staticmethod
+    def get_credentials_provider_factory(plugin_service: PluginService, props: Properties) -> AdfsCredentialsProviderFactory:
         idp_name = WrapperProperties.IDP_NAME.get(props)
         if idp_name is None or idp_name == "" or idp_name == "adfs":
             return AdfsCredentialsProviderFactory(plugin_service, props)

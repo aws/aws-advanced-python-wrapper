@@ -138,8 +138,8 @@ class FastestResponseStrategyPlugin(Plugin):
 
 
 class FastestResponseStrategyPluginFactory:
-
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return FastestResponseStrategyPlugin(plugin_service, props)
 
 

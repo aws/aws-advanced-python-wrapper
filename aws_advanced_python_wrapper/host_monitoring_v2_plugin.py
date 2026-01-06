@@ -161,8 +161,8 @@ class HostMonitoringV2Plugin(Plugin, CanReleaseResources):
 
 
 class HostMonitoringV2PluginFactory(PluginFactory):
-
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return HostMonitoringV2Plugin(plugin_service, props)
 
 

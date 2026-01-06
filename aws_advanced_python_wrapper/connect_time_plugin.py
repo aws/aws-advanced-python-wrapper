@@ -65,5 +65,6 @@ class ConnectTimePlugin(Plugin):
 
 
 class ConnectTimePluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return ConnectTimePlugin()

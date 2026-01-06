@@ -302,5 +302,6 @@ class SimpleReadWriteSplittingPlugin(ReadWriteSplittingConnectionManager):
 
 
 class SimpleReadWriteSplittingPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service, props: Properties):
+    @staticmethod
+    def get_instance(plugin_service, props: Properties):
         return SimpleReadWriteSplittingPlugin(plugin_service, props)

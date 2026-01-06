@@ -228,5 +228,6 @@ class AwsSecretsManagerPlugin(Plugin):
 
 
 class AwsSecretsManagerPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return AwsSecretsManagerPlugin(plugin_service, props)

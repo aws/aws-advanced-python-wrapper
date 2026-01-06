@@ -227,8 +227,10 @@ class OktaCredentialsProviderFactory(SamlCredentialsProviderFactory):
 
 
 class OktaAuthPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
-        return OktaAuthPlugin(plugin_service, self.get_credentials_provider_factory(plugin_service, props))
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
+        return OktaAuthPlugin(plugin_service, OktaAuthPluginFactory.get_credentials_provider_factory(plugin_service, props))
 
-    def get_credentials_provider_factory(self, plugin_service: PluginService, props: Properties) -> OktaCredentialsProviderFactory:
+    @staticmethod
+    def get_credentials_provider_factory(plugin_service: PluginService, props: Properties) -> OktaCredentialsProviderFactory:
         return OktaCredentialsProviderFactory(plugin_service, props)

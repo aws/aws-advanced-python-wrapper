@@ -54,7 +54,8 @@ logger = Logger(__name__)
 
 
 class HostMonitoringPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return HostMonitoringPlugin(plugin_service, props)
 
 

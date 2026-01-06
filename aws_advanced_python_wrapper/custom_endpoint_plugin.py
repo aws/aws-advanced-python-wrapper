@@ -343,5 +343,6 @@ class CustomEndpointPlugin(Plugin):
 
 
 class CustomEndpointPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return CustomEndpointPlugin(plugin_service, props)
