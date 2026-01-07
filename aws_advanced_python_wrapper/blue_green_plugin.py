@@ -471,7 +471,8 @@ class SuspendConnectRouting(BaseRouting, ConnectRouting):
                     "SuspendConnectRouting.SwitchoverCompleteContinueWithConnect",
                     (time.time() - start_time_sec) * 1000))
         finally:
-            telemetry_context.close_context()
+            if telemetry_context is not None:
+                telemetry_context.close_context()
 
         # return None so that the next routing can attempt a connection
         return None
@@ -540,7 +541,8 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
                     host_info.host,
                     (time.time() - start_time_sec) * 1000))
         finally:
-            telemetry_context.close_context()
+            if telemetry_context is not None:
+                telemetry_context.close_context()
 
         # return None so that the next routing can attempt a connection
         return None
@@ -615,7 +617,8 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
                     method_name,
                     (time.time() - start_time_sec) * 1000))
         finally:
-            telemetry_context.close_context()
+            if telemetry_context is not None:
+                telemetry_context.close_context()
 
         # return empty so that the next routing can attempt a connection
         return ValueContainer.empty()

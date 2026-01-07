@@ -136,7 +136,8 @@ class AwsSecretsManagerPlugin(Plugin):
         """
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         context = telemetry_factory.open_telemetry_context("fetch credentials", TelemetryTraceLevel.NESTED)
-        self._fetch_credentials_counter.inc()
+        if self._fetch_credentials_counter is not None:
+            self._fetch_credentials_counter.inc()
 
         try:
             fetched: bool = False
@@ -167,11 +168,13 @@ class AwsSecretsManagerPlugin(Plugin):
 
             return fetched
         except Exception as ex:
-            context.set_success(False)
-            context.set_exception(ex)
+            if context is not None:
+                context.set_success(False)
+                context.set_exception(ex)
             raise ex
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
     def _fetch_latest_credentials(self):
         """

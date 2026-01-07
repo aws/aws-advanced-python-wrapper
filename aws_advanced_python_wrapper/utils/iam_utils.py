@@ -110,11 +110,13 @@ class IamAuthUtils:
             logger.debug("IamAuthUtils.GeneratedNewAuthToken", token)
             return token
         except Exception as ex:
-            context.set_success(False)
-            context.set_exception(ex)
+            if context is not None:
+                context.set_success(False)
+                context.set_exception(ex)
             raise ex
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
 
 class TokenInfo:

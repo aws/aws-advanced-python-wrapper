@@ -812,6 +812,7 @@ class PluginManager(CanReleaseResources):
         self._container.plugin_manager = self
         self._connection_provider_manager = ConnectionProviderManager()
         self._telemetry_factory = telemetry_factory
+        self._telemetry_in_use = telemetry_factory.in_use()
         self._plugins = self.get_plugins()
 
     @property
@@ -918,9 +919,10 @@ class PluginManager(CanReleaseResources):
         if conn is None and method_name in ["Connection.close", "Cursor.close"]:
             return
 
-        context: TelemetryContext
+        context: TelemetryContext | None
         context = self._telemetry_factory.open_telemetry_context(method_name, TelemetryTraceLevel.TOP_LEVEL)
-        context.set_attribute("python_call", method_name)
+        if context is not None:
+            context.set_attribute("python_call", method_name)
 
         try:
             result = self._execute_with_subscribed_plugins(
@@ -929,22 +931,25 @@ class PluginManager(CanReleaseResources):
                 lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args, **kwargs),
                 target_driver_func,
                 None)
-
-            context.set_success(True)
+            if context is not None:
+                context.set_success(True)
 
             return result
         except Exception as e:
-            context.set_success(False)
+            if context is not None:
+                context.set_success(False)
             raise e
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
     def _execute_with_telemetry(self, plugin_name: str, func: Callable):
         context = self._telemetry_factory.open_telemetry_context(plugin_name, TelemetryTraceLevel.NESTED)
         try:
             return func()
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
     def _execute_with_subscribed_plugins(
             self,
@@ -1020,7 +1025,8 @@ class PluginManager(CanReleaseResources):
                 lambda: None,
                 plugin_to_skip)
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
     def force_connect(
             self,
@@ -1108,7 +1114,8 @@ class PluginManager(CanReleaseResources):
                 lambda: None,
                 None)
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
     def is_plugin_in_use(self, plugin_class: Type[Plugin]) -> bool:
         if not self._plugins:

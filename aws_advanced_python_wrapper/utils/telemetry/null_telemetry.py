@@ -12,44 +12,44 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from typing import ClassVar
+
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryContext, TelemetryCounter, TelemetryFactory, TelemetryGauge,
     TelemetryTraceLevel)
 
 
 class NullTelemetryContext(TelemetryContext):
-    def __init__(self, name: str):
-        self.name: str = name
-
     def get_name(self):
-        return self.name
+        return "null"
 
 
 class NullTelemetryCounter(TelemetryCounter):
-    def __init__(self, name: str):
-        self.name: str = name
-
     def get_name(self):
-        return self.name
+        return "null"
 
 
 class NullTelemetryGauge(TelemetryGauge):
-    def __init__(self, name: str):
-        self.name: str = name
-
     def get_name(self):
-        return self.name
+        return "null"
 
 
 class NullTelemetryFactory(TelemetryFactory):
+    _NULL_CONTEXT: ClassVar[NullTelemetryContext] = NullTelemetryContext()
+    _NULL_COUNTER: ClassVar[NullTelemetryCounter] = NullTelemetryCounter()
+    _NULL_GAUGE: ClassVar[NullTelemetryGauge] = NullTelemetryGauge()
+
     def open_telemetry_context(self, name: str, trace_level: TelemetryTraceLevel) -> TelemetryContext:
-        return NullTelemetryContext(name)
+        return NullTelemetryFactory._NULL_CONTEXT
 
     def post_copy(self, context: TelemetryContext, trace_level: TelemetryTraceLevel):
         pass  # Do nothing
 
     def create_counter(self, name: str) -> TelemetryCounter:
-        return NullTelemetryCounter(name)
+        return NullTelemetryFactory._NULL_COUNTER
 
-    def create_gauge(self, name: str, callback):
-        return NullTelemetryGauge(name)
+    def create_gauge(self, name: str, callback) -> TelemetryGauge:
+        return NullTelemetryFactory._NULL_GAUGE
+
+    def in_use(self) -> bool:
+        return False

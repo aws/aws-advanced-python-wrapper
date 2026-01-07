@@ -74,7 +74,8 @@ class DefaultPlugin(Plugin):
             database_dialect = self._plugin_service.database_dialect
             conn = conn_provider.connect(target_func, driver_dialect, database_dialect, host_info, props)
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
         self._plugin_service.set_availability(host_info.all_aliases, HostAvailability.AVAILABLE)
         self._plugin_service.update_driver_dialect(conn_provider)
@@ -106,7 +107,8 @@ class DefaultPlugin(Plugin):
         try:
             result = self._plugin_service.driver_dialect.execute(method_name, execute_func, *args, **kwargs)
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
         if method_name != DefaultPlugin._CLOSE_METHOD and self._plugin_service.current_connection is not None:
             self._plugin_service.update_in_transaction()

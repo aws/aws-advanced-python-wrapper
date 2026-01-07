@@ -166,11 +166,13 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
 
             return AwsWrapperConnection(target_func, plugin_service, plugin_service, plugin_manager)
         except Exception as ex:
-            context.set_exception(ex)
-            context.set_success(False)
+            if context is not None:
+                context.set_exception(ex)
+                context.set_success(False)
             raise ex
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
     def close(self) -> None:
         self._plugin_manager.execute(self.target_connection, "Connection.close",

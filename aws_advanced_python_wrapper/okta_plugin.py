@@ -139,7 +139,8 @@ class OktaAuthPlugin(Plugin):
         token_expiry: datetime = datetime.now() + timedelta(seconds=token_expiration_sec)
         port: int = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
         credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props)
-
+        if self._fetch_token_counter:
+            self._fetch_token_counter.inc()
         token: str = IamAuthUtils.generate_authentication_token(
             self._plugin_service,
             user,

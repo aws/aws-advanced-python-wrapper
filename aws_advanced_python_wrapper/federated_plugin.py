@@ -144,7 +144,8 @@ class FederatedAuthPlugin(Plugin):
         port: int = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
         credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props)
 
-        self._fetch_token_counter.inc()
+        if self._fetch_token_counter is not None:
+            self._fetch_token_counter.inc()
         token: str = IamAuthUtils.generate_authentication_token(
             self._plugin_service,
             user,

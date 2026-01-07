@@ -216,7 +216,7 @@ class HostMonitorV2:
             failure_detection_time_ms: int,
             failure_detection_interval_ms: int,
             failure_detection_count: int,
-            aborted_connection_counter: TelemetryCounter):
+            aborted_connection_counter: TelemetryCounter | None):
         self._plugin_service: PluginService = plugin_service
         self._host_info: HostInfo = host_info
         self._props: Properties = props
@@ -224,7 +224,7 @@ class HostMonitorV2:
         self._failure_detection_time_ns: int = failure_detection_time_ms * 10**6
         self._failure_detection_interval_ns: int = failure_detection_interval_ms * 10**6
         self._failure_detection_count: int = failure_detection_count
-        self._aborted_connection_counter: TelemetryCounter = aborted_connection_counter
+        self._aborted_connection_counter: TelemetryCounter | None = aborted_connection_counter
 
         self._active_contexts: Queue = Queue()
         self._new_contexts: ConcurrentDict[float, Queue] = ConcurrentDict()

@@ -101,7 +101,8 @@ class IamAuthPlugin(Plugin):
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
-            self._fetch_token_counter.inc()
+            if self._fetch_token_counter is not None:
+                self._fetch_token_counter.inc()
             token: str = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
@@ -119,7 +120,8 @@ class IamAuthPlugin(Plugin):
             # Login unsuccessful with cached token
             # Try to generate a new token and try to connect again
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
-            self._fetch_token_counter.inc()
+            if self._fetch_token_counter is not None:
+                self._fetch_token_counter.inc()
             token = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)

@@ -254,7 +254,8 @@ class FailoverPlugin(Plugin):
     def _failover_reader(self, failed_host: Optional[HostInfo]):
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         context = telemetry_factory.open_telemetry_context("failover to replica", TelemetryTraceLevel.NESTED)
-        self._failover_reader_triggered_counter.inc()
+        if self._failover_reader_triggered_counter is not None:
+            self._failover_reader_triggered_counter.inc()
 
         try:
             logger.info("FailoverPlugin.StartReaderFailover")
@@ -284,26 +285,33 @@ class FailoverPlugin(Plugin):
 
             logger.info("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
 
-            self._failover_reader_success_counter.inc()
+            if self._failover_reader_success_counter is not None:
+                self._failover_reader_success_counter.inc()
         except FailoverSuccessError as fse:
-            context.set_success(True)
-            context.set_exception(fse)
-            self._failover_reader_success_counter.inc()
+            if context is not None:
+                context.set_success(True)
+                context.set_exception(fse)
+            if self._failover_reader_success_counter is not None:
+                self._failover_reader_success_counter.inc()
             raise fse
         except Exception as ex:
-            context.set_success(False)
-            context.set_exception(ex)
-            self._failover_reader_failed_counter.inc()
+            if context is not None:
+                context.set_success(False)
+                context.set_exception(ex)
+            if self._failover_reader_failed_counter is not None:
+                self._failover_reader_failed_counter.inc()
             raise ex
         finally:
-            context.close_context()
-            if self._telemetry_failover_additional_top_trace_setting:
-                telemetry_factory.post_copy(context, TelemetryTraceLevel.FORCE_TOP_LEVEL)
+            if context is not None:
+                context.close_context()
+                if self._telemetry_failover_additional_top_trace_setting:
+                    telemetry_factory.post_copy(context, TelemetryTraceLevel.FORCE_TOP_LEVEL)
 
     def _failover_writer(self):
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         context = telemetry_factory.open_telemetry_context("failover to writer host", TelemetryTraceLevel.NESTED)
-        self._failover_writer_triggered_counter.inc()
+        if self._failover_writer_triggered_counter is not None:
+            self._failover_writer_triggered_counter.inc()
 
         try:
             logger.info("FailoverPlugin.StartWriterFailover")
@@ -328,22 +336,27 @@ class FailoverPlugin(Plugin):
             logger.info("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
 
             self._plugin_service.refresh_host_list()
-
-            self._failover_writer_success_counter.inc()
+            if self._failover_writer_success_counter is not None:
+                self._failover_writer_success_counter.inc()
         except FailoverSuccessError as fse:
-            context.set_success(True)
-            context.set_exception(fse)
-            self._failover_writer_success_counter.inc()
+            if context is not None:
+                context.set_success(True)
+                context.set_exception(fse)
+            if self._failover_writer_success_counter is not None:
+                self._failover_writer_success_counter.inc()
             raise fse
         except Exception as ex:
-            context.set_success(False)
-            context.set_exception(ex)
-            self._failover_writer_failed_counter.inc()
+            if context is not None:
+                context.set_success(False)
+                context.set_exception(ex)
+            if self._failover_writer_success_counter is not None:
+                self._failover_writer_failed_counter.inc()
             raise ex
         finally:
-            context.close_context()
-            if self._telemetry_failover_additional_top_trace_setting:
-                telemetry_factory.post_copy(context, TelemetryTraceLevel.FORCE_TOP_LEVEL)
+            if context is not None:
+                context.close_context()
+                if self._telemetry_failover_additional_top_trace_setting:
+                    telemetry_factory.post_copy(context, TelemetryTraceLevel.FORCE_TOP_LEVEL)
 
     def _invalidate_current_connection(self):
         """
