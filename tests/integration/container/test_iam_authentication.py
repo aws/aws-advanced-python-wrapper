@@ -31,10 +31,15 @@ from typing import Callable
 import pytest
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
-from aws_advanced_python_wrapper.errors import AwsWrapperError
-from tests.integration.container.utils.conditions import (disable_on_features,
-                                                          enable_on_features)
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                FailoverSuccessError)
+from tests.integration.container.utils.conditions import (
+    disable_on_features, enable_on_deployments, enable_on_features,
+    enable_on_num_instances)
+from tests.integration.container.utils.database_engine_deployment import \
+    DatabaseEngineDeployment
 from tests.integration.container.utils.driver_helper import DriverHelper
+from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
 
 
@@ -124,6 +129,42 @@ class TestAwsIamAuthentication:
         params["plugins"] = "iam"
 
         self.validate_connection(target_driver_connect, **params, **props)
+
+    @enable_on_num_instances(min_instances=2)
+    @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
+    @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
+                          TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
+                          TestEnvironmentFeatures.PERFORMANCE])
+    @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.IAM])
+    def test_failover_with_iam(
+            self, test_environment: TestEnvironment, test_driver: TestDriver, props, conn_utils):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        region = TestEnvironment.get_current().get_info().get_region()
+        aurora_utility = RdsTestUtility(region)
+        initial_writer_id = aurora_utility.get_cluster_writer_instance_id()
+
+        props.update({
+            "plugins": "failover,iam",
+            "socket_timeout": 10,
+            "connect_timeout": 10,
+            "monitoring-connect_timeout": 5,
+            "monitoring-socket_timeout": 5,
+            "topology_refresh_ms": 10,
+            "autocommit": True
+        })
+
+        with AwsWrapperConnection.connect(
+                target_driver_connect, **conn_utils.get_connect_params(user=conn_utils.iam_user), **props) as aws_conn:
+            # crash instance1 and nominate a new writer
+            aurora_utility.failover_cluster_and_wait_until_writer_changed()
+
+            # failure occurs on Cursor invocation
+            aurora_utility.assert_first_query_throws(aws_conn, FailoverSuccessError)
+
+            # assert that we are connected to the new writer after failover happens and we can reuse the cursor
+            current_connection_id = aurora_utility.query_instance_id(aws_conn)
+            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            assert current_connection_id != initial_writer_id
 
     def get_ip_address(self, hostname: str):
         return gethostbyname(hostname)
