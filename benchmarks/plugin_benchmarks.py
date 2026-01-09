@@ -30,6 +30,8 @@ from aws_advanced_python_wrapper.plugin_service import (
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
 from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.telemetry.null_telemetry import \
+    NullTelemetryFactory
 
 host_info = HostInfo(host="host", port=1234)
 
@@ -83,7 +85,7 @@ def plugin_service_manager_container_mock(mocker, plugin_service_mock):
 
 @pytest.fixture
 def plugin_manager_with_execute_time_plugin(plugin_service_manager_container_mock, props_with_execute_time_plugin):
-    manager: PluginManager = PluginManager(plugin_service_manager_container_mock, props_with_execute_time_plugin)
+    manager: PluginManager = PluginManager(plugin_service_manager_container_mock, props_with_execute_time_plugin, NullTelemetryFactory())
     return manager
 
 
@@ -92,7 +94,7 @@ def plugin_manager_with_aurora_connection_tracker_plugin(
         plugin_service_manager_container_mock, props_with_aurora_connection_tracker_plugin):
 
     manager: PluginManager = PluginManager(
-        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_plugin)
+        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_plugin, NullTelemetryFactory())
     return manager
 
 
@@ -101,7 +103,7 @@ def plugin_manager_with_execute_time_and_aurora_connection_tracker_plugin(
         plugin_service_manager_container_mock, props_with_execute_time_and_aurora_connection_tracker_plugin):
 
     manager: PluginManager = PluginManager(
-        plugin_service_manager_container_mock, props_with_execute_time_and_aurora_connection_tracker_plugin)
+        plugin_service_manager_container_mock, props_with_execute_time_and_aurora_connection_tracker_plugin, NullTelemetryFactory())
     return manager
 
 
@@ -110,7 +112,7 @@ def plugin_manager_with_read_write_splitting_plugin(
         plugin_service_manager_container_mock, props_with_read_write_splitting_plugin):
 
     manager: PluginManager = PluginManager(
-        plugin_service_manager_container_mock, props_with_read_write_splitting_plugin)
+        plugin_service_manager_container_mock, props_with_read_write_splitting_plugin, NullTelemetryFactory())
     return manager
 
 
@@ -119,7 +121,7 @@ def plugin_manager_with_aurora_connection_tracker_and_read_write_splitting_plugi
         plugin_service_manager_container_mock, props_with_aurora_connection_tracker_and_read_write_splitting_plugin):
 
     manager: PluginManager = PluginManager(
-        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_and_read_write_splitting_plugin)
+        plugin_service_manager_container_mock, props_with_aurora_connection_tracker_and_read_write_splitting_plugin, NullTelemetryFactory())
     return manager
 
 
