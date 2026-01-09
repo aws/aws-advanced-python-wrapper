@@ -25,9 +25,12 @@ if TYPE_CHECKING:
 from aws_advanced_python_wrapper.driver_configuration_profiles import \
     DriverConfigurationProfiles
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin_service import (
     PluginManager, PluginServiceManagerContainer)
 from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.telemetry.null_telemetry import \
+    NullTelemetryFactory
 from benchmarks.benchmark_plugin import BenchmarkPluginFactory
 
 host_info = HostInfo(host="host", port=1234)
@@ -76,18 +79,18 @@ def plugin_service_manager_container_mock(mocker, plugin_service_mock):
 
 @pytest.fixture
 def plugin_manager_with_no_plugins(plugin_service_manager_container_mock, props_without_plugins):
-    manager = PluginManager(plugin_service_manager_container_mock, props_without_plugins)
+    manager = PluginManager(plugin_service_manager_container_mock, props_without_plugins, NullTelemetryFactory())
     return manager
 
 
 @pytest.fixture
 def plugin_manager_with_plugins(plugin_service_manager_container_mock, props_with_plugins):
-    manager = PluginManager(plugin_service_manager_container_mock, props_with_plugins)
+    manager = PluginManager(plugin_service_manager_container_mock, props_with_plugins, NullTelemetryFactory())
     return manager
 
 
 def init_plugin_manager(plugin_service_manager_container, props):
-    manager = PluginManager(plugin_service_manager_container, props)
+    manager = PluginManager(plugin_service_manager_container, props, NullTelemetryFactory())
     return manager
 
 
@@ -121,7 +124,7 @@ def test_connect_with_plugins(benchmark, mocker, plugin_manager_with_plugins, pr
 
 
 def execute(mocker, plugin_manager, statement):
-    result = plugin_manager.execute(mocker.MagicMock(), "Statement.execute", statement)
+    result = plugin_manager.execute(mocker.MagicMock(), DbApiMethod.CURSOR_EXECUTE, statement)
     return result
 
 
