@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
 from aws_advanced_python_wrapper.utils.atomic import (AtomicBoolean,
@@ -399,7 +400,7 @@ class HostMonitorV2:
         driver_dialect = self._plugin_service.driver_dialect
         with conn.cursor() as cursor:
             query = HostMonitorV2._QUERY
-            driver_dialect.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
+            driver_dialect.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
             cursor.fetchone()
 
     def _update_host_health_status(

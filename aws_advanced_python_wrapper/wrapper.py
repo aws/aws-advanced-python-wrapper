@@ -25,6 +25,7 @@ from aws_advanced_python_wrapper.driver_dialect_manager import \
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 FailoverSuccessError)
 from aws_advanced_python_wrapper.pep249 import Connection, Cursor, Error
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.plugin_service import (
     PluginManager, PluginService, PluginServiceImpl,
@@ -91,14 +92,14 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def read_only(self) -> bool:
         return self._plugin_manager.execute(
             self.target_connection,
-            "Connection.is_read_only",
+            DbApiMethod.CONNECTION_IS_READ_ONLY,
             lambda: self._is_read_only())
 
     @read_only.setter
     def read_only(self, val: bool):
         self._plugin_manager.execute(
             self.target_connection,
-            "Connection.set_read_only",
+            DbApiMethod.CONNECTION_SET_READ_ONLY,
             lambda: self._set_read_only(val),
             val)
 
@@ -116,14 +117,14 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def autocommit(self):
         return self._plugin_manager.execute(
             self.target_connection,
-            "Connection.autocommit",
+            DbApiMethod.CONNECTION_AUTOCOMMIT,
             lambda: self._plugin_service.driver_dialect.get_autocommit(self.target_connection))
 
     @autocommit.setter
     def autocommit(self, val: bool):
         self._plugin_manager.execute(
             self.target_connection,
-            "Connection.autocommit_setter",
+            DbApiMethod.CONNECTION_AUTOCOMMIT_SETTER,
             lambda: self._set_autocommit(val),
             val)
 
@@ -175,41 +176,41 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
                 context.close_context()
 
     def close(self) -> None:
-        self._plugin_manager.execute(self.target_connection, "Connection.close",
+        self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_CLOSE,
                                      lambda: self.target_connection.close())
 
     def cursor(self, *args: Any, **kwargs: Any) -> AwsWrapperCursor:
-        _cursor = self._plugin_manager.execute(self.target_connection, "Connection.cursor",
+        _cursor = self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_CURSOR,
                                                lambda: self.target_connection.cursor(*args, **kwargs),
                                                *args, **kwargs)
         return AwsWrapperCursor(self, self._plugin_service, self._plugin_manager, _cursor)
 
     def commit(self) -> None:
-        self._plugin_manager.execute(self.target_connection, "Connection.commit",
+        self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_COMMIT,
                                      lambda: self.target_connection.commit())
 
     def rollback(self) -> None:
-        self._plugin_manager.execute(self.target_connection, "Connection.rollback",
+        self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_ROLLBACK,
                                      lambda: self.target_connection.rollback())
 
     def tpc_begin(self, xid: Any) -> None:
-        self._plugin_manager.execute(self.target_connection, "Connection.tpc_begin",
+        self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_TPC_BEGIN,
                                      lambda: self.target_connection.tpc_begin(xid), xid)
 
     def tpc_prepare(self) -> None:
-        self._plugin_manager.execute(self.target_connection, "Connection.tpc_prepare",
+        self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_TPC_PREPARE,
                                      lambda: self.target_connection.tpc_prepare())
 
     def tpc_commit(self, xid: Any = None) -> None:
-        self._plugin_manager.execute(self.target_connection, "Connection.tpc_commit",
+        self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_TPC_COMMIT,
                                      lambda: self.target_connection.tpc_commit(xid), xid)
 
     def tpc_rollback(self, xid: Any = None) -> None:
-        self._plugin_manager.execute(self.target_connection, "Connection.tpc_rollback",
+        self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_TPC_ROLLBACK,
                                      lambda: self.target_connection.tpc_rollback(xid), xid)
 
     def tpc_recover(self) -> Any:
-        return self._plugin_manager.execute(self.target_connection, "Connection.tpc_recover",
+        return self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_TPC_RECOVER,
                                             lambda: self.target_connection.tpc_recover())
 
     def release_resources(self):
@@ -228,7 +229,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self._plugin_manager.execute(self.target_connection, "Connection.close",
+        self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_CLOSE,
                                      lambda: self.target_connection.close(), exc_type, exc_val, exc_tb)
 
 
@@ -268,11 +269,11 @@ class AwsWrapperCursor(Cursor):
         return self.target_cursor.arraysize
 
     def close(self) -> None:
-        self._plugin_manager.execute(self.target_cursor, "Cursor.close",
+        self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_CLOSE,
                                      lambda: self.target_cursor.close())
 
     def callproc(self, *args: Any, **kwargs: Any):
-        return self._plugin_manager.execute(self.target_cursor, "Cursor.callproc",
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_CALLPROC,
                                             lambda: self.target_cursor.callproc(**kwargs), *args, **kwargs)
 
     def execute(
@@ -281,7 +282,7 @@ class AwsWrapperCursor(Cursor):
             **kwargs: Any
     ) -> AwsWrapperCursor:
         try:
-            return self._plugin_manager.execute(self.target_cursor, "Cursor.execute",
+            return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTE,
                                                 lambda: self.target_cursor.execute(*args, **kwargs), *args, **kwargs)
         except FailoverSuccessError as e:
             self._target_cursor = self.connection.target_connection.cursor()
@@ -292,35 +293,35 @@ class AwsWrapperCursor(Cursor):
             *args: Any,
             **kwargs: Any
     ) -> None:
-        self._plugin_manager.execute(self.target_cursor, "Cursor.executemany",
+        self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTEMANY,
                                      lambda: self.target_cursor.executemany(*args, **kwargs),
                                      *args, **kwargs)
 
     def nextset(self) -> bool:
-        return self._plugin_manager.execute(self.target_cursor, "Cursor.nextset",
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_NEXTSET,
                                             lambda: self.target_cursor.nextset())
 
     def fetchone(self) -> Any:
-        return self._plugin_manager.execute(self.target_cursor, "Cursor.fetchone",
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_FETCHONE,
                                             lambda: self.target_cursor.fetchone())
 
     def fetchmany(self, size: int = 0) -> List[Any]:
-        return self._plugin_manager.execute(self.target_cursor, "Cursor.fetchmany",
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_FETCHMANY,
                                             lambda: self.target_cursor.fetchmany(size), size)
 
     def fetchall(self) -> List[Any]:
-        return self._plugin_manager.execute(self.target_cursor, "Cursor.fetchall",
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_FETCHALL,
                                             lambda: self.target_cursor.fetchall())
 
     def __iter__(self) -> Iterator[Any]:
         return self.target_cursor.__iter__()
 
     def setinputsizes(self, sizes: Any) -> None:
-        return self._plugin_manager.execute(self.target_cursor, "Cursor.setinputsizes",
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_SETINPUTSIZES,
                                             lambda: self.target_cursor.setinputsizes(sizes), sizes)
 
     def setoutputsize(self, size: Any, column: Optional[int] = None) -> None:
-        return self._plugin_manager.execute(self.target_cursor, "Cursor.setoutputsize",
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_SETOUTPUTSIZE,
                                             lambda: self.target_cursor.setoutputsize(size, column), size, column)
 
     def __enter__(self: AwsWrapperCursor) -> AwsWrapperCursor:

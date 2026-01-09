@@ -26,6 +26,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -233,7 +234,7 @@ class LimitlessQueryHelper:
         query = aurora_limitless_dialect.limitless_router_endpoint_query
 
         with closing(connection.cursor()) as cursor:
-            self._plugin_service.driver_dialect.execute("Cursor.execute",
+            self._plugin_service.driver_dialect.execute(DbApiMethod.CURSOR_EXECUTE.method_name,
                                                         lambda: cursor.execute(query),
                                                         query,
                                                         exec_timeout=LimitlessQueryHelper._DEFAULT_QUERY_TIMEOUT_SEC)

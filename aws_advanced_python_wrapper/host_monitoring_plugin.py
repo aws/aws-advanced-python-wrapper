@@ -33,6 +33,7 @@ from _weakref import ReferenceType, ref
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
 from aws_advanced_python_wrapper.thread_pool_container import \
@@ -60,7 +61,11 @@ class HostMonitoringPluginFactory(PluginFactory):
 
 
 class HostMonitoringPlugin(Plugin, CanReleaseResources):
-    _SUBSCRIBED_METHODS: Set[str] = {"connect", "notify_host_list_changed", "notify_connection_changed"}
+    _SUBSCRIBED_METHODS: Set[str] = {
+        DbApiMethod.CONNECT.method_name,
+        DbApiMethod.NOTIFY_HOST_LIST_CHANGED.method_name,
+        DbApiMethod.NOTIFY_CONNECTION_CHANGED.method_name
+    }
 
     def __init__(self, plugin_service, props):
         dialect: DriverDialect = plugin_service.driver_dialect
@@ -552,7 +557,7 @@ class Monitor:
         driver_dialect = self._plugin_service.driver_dialect
         with conn.cursor() as cursor:
             query = Monitor._QUERY
-            driver_dialect.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
+            driver_dialect.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
             cursor.fetchone()
 
     def sleep(self, duration: int):

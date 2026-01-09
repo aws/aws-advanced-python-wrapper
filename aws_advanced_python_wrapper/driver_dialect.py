@@ -26,6 +26,7 @@ from concurrent.futures import TimeoutError
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import (QueryTimeoutError,
                                                 UnsupportedOperationError)
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.thread_pool_container import \
     ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.decorators import timeout
@@ -40,11 +41,10 @@ class DriverDialect(ABC):
     Driver dialects help the driver-agnostic AWS Python Driver interface with the driver-specific functionality of the underlying Python Driver.
     """
     _QUERY = "SELECT 1"
-    _ALL_METHODS = "*"
 
     _executor_name: ClassVar[str] = "DriverDialectExecutor"
     _dialect_code: str = DriverDialectCodes.GENERIC
-    _network_bound_methods: Set[str] = {_ALL_METHODS}
+    _network_bound_methods: Set[str] = {DbApiMethod.ALL.method_name}
     _read_only: bool = False
     _autocommit: bool = False
     _driver_name: str = "Generic"
@@ -130,7 +130,7 @@ class DriverDialect(ABC):
             *args: Any,
             exec_timeout: Optional[float] = None,
             **kwargs: Any) -> Cursor:
-        if DriverDialect._ALL_METHODS not in self.network_bound_methods and method_name not in self.network_bound_methods:
+        if DbApiMethod.ALL.method_name not in self.network_bound_methods and method_name not in self.network_bound_methods:
             return exec_func()
 
         if exec_timeout is None:
@@ -161,7 +161,7 @@ class DriverDialect(ABC):
         try:
             with conn.cursor() as cursor:
                 query = DriverDialect._QUERY
-                self.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=10)
+                self.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(query), query, exec_timeout=10)
                 cursor.fetchone()
                 return True
         except Exception:

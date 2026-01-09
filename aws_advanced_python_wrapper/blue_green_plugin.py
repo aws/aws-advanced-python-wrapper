@@ -42,6 +42,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import (ConcurrentDict,
@@ -625,8 +626,8 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
 
 
 class BlueGreenPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"connect"}
-    _CLOSE_METHODS: ClassVar[Set[str]] = {"Connection.close", "Cursor.close"}
+    _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.CONNECT.method_name}
+    _CLOSE_METHODS: ClassVar[Set[str]] = {DbApiMethod.CONNECTION_CLOSE.method_name, DbApiMethod.CURSOR_CLOSE.method_name}
     _status_providers: ClassVar[ConcurrentDict[str, BlueGreenStatusProvider]] = ConcurrentDict()
 
     def __init__(self, plugin_service: PluginService, props: Properties):

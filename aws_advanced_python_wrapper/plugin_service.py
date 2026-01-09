@@ -79,6 +79,7 @@ from aws_advanced_python_wrapper.host_monitoring_v2_plugin import \
     HostMonitoringV2PluginFactory
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPluginFactory
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.read_write_splitting_plugin import \
     ReadWriteSplittingPluginFactory
@@ -746,15 +747,14 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return status
 
 
-class PluginManager(CanReleaseResources):
-    _ALL_METHODS: str = "*"
-    _CONNECT_METHOD: str = "connect"
-    _FORCE_CONNECT_METHOD: str = "force_connect"
-    _NOTIFY_CONNECTION_CHANGED_METHOD: str = "notify_connection_changed"
-    _NOTIFY_HOST_LIST_CHANGED_METHOD: str = "notify_host_list_changed"
-    _GET_HOST_INFO_BY_STRATEGY_METHOD: str = "get_host_info_by_strategy"
-    _INIT_HOST_LIST_PROVIDER_METHOD: str = "init_host_provider"
+class PluginChainCallableInfo:
+    """Container for plugin chain callable and subscription information."""
+    def __init__(self, func: Callable, is_subscribed: bool):
+        self.func = func
+        self.is_subscribed = is_subscribed
 
+
+class PluginManager(CanReleaseResources):
     PLUGIN_FACTORIES: Dict[str, Type[PluginFactory]] = {
         "iam": IamAuthPluginFactory,
         "aws_secrets_manager": AwsSecretsManagerPluginFactory,
@@ -807,7 +807,7 @@ class PluginManager(CanReleaseResources):
     def __init__(
             self, container: PluginServiceManagerContainer, props: Properties, telemetry_factory: TelemetryFactory):
         self._props: Properties = props
-        self._function_cache: Dict[str, Callable] = {}
+        self._function_cache: list[Optional[PluginChainCallableInfo]] = [None] * (DbApiMethod.ALL.id + 1)    # last element in DbApiMethod
         self._container = container
         self._container.plugin_manager = self
         self._connection_provider_manager = ConnectionProviderManager()
@@ -907,28 +907,32 @@ class PluginManager(CanReleaseResources):
 
         return weights
 
-    def execute(self, target: object, method_name: str, target_driver_func: Callable, *args, **kwargs) -> Any:
+    def must_use_pipeline(self, method: DbApiMethod):
+        plugin_chain_info: Optional[PluginChainCallableInfo] = self._function_cache[method.id]
+        return method.always_use_pipeline or plugin_chain_info is None or plugin_chain_info.is_subscribed or self._telemetry_in_use
+
+    def execute(self, target: object, method: DbApiMethod, target_driver_func: Callable, *args, **kwargs) -> Any:
         plugin_service = self._container.plugin_service
         driver_dialect = plugin_service.driver_dialect
         conn: Optional[Connection] = driver_dialect.get_connection_from_obj(target)
         current_conn: Optional[Connection] = driver_dialect.unwrap_connection(plugin_service.current_connection)
 
-        if method_name not in ["Connection.close", "Cursor.close"] and conn is not None and conn != current_conn:
+        if method not in [DbApiMethod.CONNECTION_CLOSE, DbApiMethod.CURSOR_CLOSE] and conn is not None and conn != current_conn:
             raise AwsWrapperError(Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target))
 
-        if conn is None and method_name in ["Connection.close", "Cursor.close"]:
+        if conn is None and method in [DbApiMethod.CONNECTION_CLOSE, DbApiMethod.CURSOR_CLOSE]:
             return
 
         context: TelemetryContext | None
-        context = self._telemetry_factory.open_telemetry_context(method_name, TelemetryTraceLevel.TOP_LEVEL)
+        context = self._telemetry_factory.open_telemetry_context(method.method_name, TelemetryTraceLevel.TOP_LEVEL)
         if context is not None:
-            context.set_attribute("python_call", method_name)
+            context.set_attribute("python_call", method.method_name)
 
         try:
             result = self._execute_with_subscribed_plugins(
-                method_name,
+                method,
                 # next_plugin_func is defined later in make_pipeline
-                lambda plugin, next_plugin_func: plugin.execute(target, method_name, next_plugin_func, *args, **kwargs),
+                lambda plugin, next_plugin_func: plugin.execute(target, method.method_name, next_plugin_func, *args, **kwargs),
                 target_driver_func,
                 None)
             if context is not None:
@@ -953,59 +957,64 @@ class PluginManager(CanReleaseResources):
 
     def _execute_with_subscribed_plugins(
             self,
-            method_name: str,
+            method: DbApiMethod,
             plugin_func: Callable,
             target_driver_func: Callable,
             plugin_to_skip: Optional[Plugin] = None):
-        cache_key = method_name if plugin_to_skip is None else method_name + plugin_to_skip.__class__.__name__
-        pipeline_func: Optional[Callable] = self._function_cache.get(cache_key)
-        if pipeline_func is None:
-            pipeline_func = self._make_pipeline(method_name, plugin_to_skip)
-            self._function_cache[cache_key] = pipeline_func
+        pipeline_func_info: Optional[PluginChainCallableInfo] = self._function_cache[method.id]
+        if pipeline_func_info is None:
+            pipeline_func_info = self._make_pipeline(method.method_name)
+            self._function_cache[method.id] = pipeline_func_info
 
-        return pipeline_func(plugin_func, target_driver_func)
+        # Execute only if method needs to use pipeline, or a plugin is subscribed to this method
+        if method.always_use_pipeline or pipeline_func_info.is_subscribed:
+            return pipeline_func_info.func(plugin_func, target_driver_func, method.method_name, plugin_to_skip)
+        else:
+            return target_driver_func()
 
     # Builds the plugin pipeline function chain. The pipeline is built in a way that allows plugins to perform logic
     # both before and after the target driver function call.
-    def _make_pipeline(self, method_name: str, plugin_to_skip: Optional[Plugin] = None) -> Callable:
+    def _make_pipeline(self, method_name: str) -> PluginChainCallableInfo:
         pipeline_func: Optional[Callable] = None
         num_plugins: int = len(self._plugins)
+        is_subscribed: bool = False
 
         # Build the pipeline starting at the end and working backwards
         for i in range(num_plugins - 1, -1, -1):
             plugin: Plugin = self._plugins[i]
-            if plugin_to_skip is not None and plugin_to_skip == plugin:
-                continue
 
             subscribed_methods: Set[str] = plugin.subscribed_methods
-            is_subscribed: bool = PluginManager._ALL_METHODS in subscribed_methods or method_name in subscribed_methods
-            if not is_subscribed:
-                continue
+            is_plugin_subscribed = DbApiMethod.ALL.method_name in subscribed_methods or method_name in subscribed_methods
+            is_subscribed |= is_plugin_subscribed
 
-            if pipeline_func is None:
-                # Defines the call to DefaultPlugin, which is the last plugin in the pipeline
-                pipeline_func = self._create_base_pipeline_func(plugin)
-            else:
+            if is_plugin_subscribed:
+                if pipeline_func is None:
+                    # Defines the call to DefaultPlugin, which is the last plugin in the pipeline
+                    pipeline_func = self._create_base_pipeline_func(plugin)
+                    continue
                 pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
 
         if pipeline_func is None:
             raise AwsWrapperError(Messages.get("PluginManager.PipelineNone"))
-        else:
-            return pipeline_func
+        return PluginChainCallableInfo(pipeline_func, is_subscribed)
 
     def _create_base_pipeline_func(self, plugin: Plugin):
         # The plugin passed here will be the DefaultPlugin, which is the last plugin in the pipeline
         # The second arg to plugin_func is the next call in the pipeline. Here, it is the target driver function
         plugin_name = plugin.__class__.__name__
-        return lambda plugin_func, target_driver_func: self._execute_with_telemetry(
+        return lambda plugin_func, target_driver_func, *_: self._execute_with_telemetry(
             plugin_name, lambda: plugin_func(plugin, target_driver_func))
 
     def _extend_pipeline_func(self, plugin: Plugin, pipeline_so_far: Callable):
         # Defines the call to a plugin that precedes the DefaultPlugin in the pipeline
         # The second arg to plugin_func effectively appends the tail end of the pipeline to the current plugin's call
         plugin_name = plugin.__class__.__name__
-        return lambda plugin_func, target_driver_func: self._execute_with_telemetry(
-            plugin_name, lambda: plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func)))
+        return lambda plugin_func, target_driver_func, method_name, plugin_to_skip: (
+            pipeline_so_far(plugin_func, target_driver_func, method_name, plugin_to_skip)
+            if plugin_to_skip is not None and plugin_to_skip == plugin
+            else self._execute_with_telemetry(
+                plugin_name, lambda: plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func, method_name, plugin_to_skip)))
+        )
 
     def connect(
             self,
@@ -1015,10 +1024,10 @@ class PluginManager(CanReleaseResources):
             props: Properties,
             is_initial_connection: bool,
             plugin_to_skip: Optional[Plugin] = None) -> Connection:
-        context = self._telemetry_factory.open_telemetry_context("connect", TelemetryTraceLevel.NESTED)
+        context = self._telemetry_factory.open_telemetry_context(DbApiMethod.CONNECT.method_name, TelemetryTraceLevel.NESTED)
         try:
             return self._execute_with_subscribed_plugins(
-                PluginManager._CONNECT_METHOD,
+                DbApiMethod.CONNECT,
                 lambda plugin, func: plugin.connect(
                     target_func, driver_dialect, host_info, props, is_initial_connection, func),
                 # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
@@ -1037,7 +1046,7 @@ class PluginManager(CanReleaseResources):
             is_initial_connection: bool,
             plugin_to_skip: Optional[Plugin] = None) -> Connection:
         return self._execute_with_subscribed_plugins(
-            PluginManager._FORCE_CONNECT_METHOD,
+            DbApiMethod.FORCE_CONNECT,
             lambda plugin, func: plugin.force_connect(
                 target_func, driver_dialect, host_info, props, is_initial_connection, func),
             # The final connect action will be handled by the ConnectionProvider, so this lambda will not be called.
@@ -1047,7 +1056,7 @@ class PluginManager(CanReleaseResources):
     def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         old_conn_suggestions: Set[OldConnectionSuggestedAction] = set()
         self._notify_subscribed_plugins(
-            PluginManager._NOTIFY_CONNECTION_CHANGED_METHOD,
+            DbApiMethod.NOTIFY_CONNECTION_CHANGED.method_name,
             lambda plugin: self._notify_plugin_conn_changed(plugin, changes, old_conn_suggestions))
 
         if OldConnectionSuggestedAction.PRESERVE in old_conn_suggestions:
@@ -1060,7 +1069,7 @@ class PluginManager(CanReleaseResources):
     def _notify_subscribed_plugins(self, method_name: str, notify_plugin_func: Callable):
         for plugin in self._plugins:
             subscribed_methods = plugin.subscribed_methods
-            is_subscribed = PluginManager._ALL_METHODS in subscribed_methods or method_name in subscribed_methods
+            is_subscribed = DbApiMethod.ALL.method_name in subscribed_methods or method_name in subscribed_methods
             if is_subscribed:
                 notify_plugin_func(plugin)
 
@@ -1073,15 +1082,15 @@ class PluginManager(CanReleaseResources):
         old_conn_suggestions.add(suggestion)
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        self._notify_subscribed_plugins(PluginManager._NOTIFY_HOST_LIST_CHANGED_METHOD,
+        self._notify_subscribed_plugins(DbApiMethod.NOTIFY_HOST_LIST_CHANGED.method_name,
                                         lambda plugin: plugin.notify_host_list_changed(changes))
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         for plugin in self._plugins:
             plugin_subscribed_methods = plugin.subscribed_methods
             is_subscribed = \
-                self._ALL_METHODS in plugin_subscribed_methods \
-                or self._GET_HOST_INFO_BY_STRATEGY_METHOD in plugin_subscribed_methods
+                DbApiMethod.ALL.method_name in plugin_subscribed_methods \
+                or DbApiMethod.GET_HOST_INFO_BY_STRATEGY.method_name in plugin_subscribed_methods
             if is_subscribed:
                 if plugin.accepts_strategy(role, strategy):
                     return True
@@ -1092,8 +1101,8 @@ class PluginManager(CanReleaseResources):
         for plugin in self._plugins:
             plugin_subscribed_methods = plugin.subscribed_methods
             is_subscribed = \
-                self._ALL_METHODS in plugin_subscribed_methods \
-                or self._GET_HOST_INFO_BY_STRATEGY_METHOD in plugin_subscribed_methods
+                DbApiMethod.ALL.method_name in plugin_subscribed_methods \
+                or DbApiMethod.GET_HOST_INFO_BY_STRATEGY.method_name in plugin_subscribed_methods
 
             if is_subscribed:
                 try:
@@ -1106,10 +1115,10 @@ class PluginManager(CanReleaseResources):
         return None
 
     def init_host_provider(self, props: Properties, host_list_provider_service: HostListProviderService):
-        context = self._telemetry_factory.open_telemetry_context("init_host_provider", TelemetryTraceLevel.NESTED)
+        context = self._telemetry_factory.open_telemetry_context(DbApiMethod.INIT_HOST_PROVIDER.method_name, TelemetryTraceLevel.NESTED)
         try:
             return self._execute_with_subscribed_plugins(
-                PluginManager._INIT_HOST_LIST_PROVIDER_METHOD,
+                DbApiMethod.INIT_HOST_PROVIDER,
                 lambda plugin, func: plugin.init_host_provider(props, host_list_provider_service, func),
                 lambda: None,
                 None)

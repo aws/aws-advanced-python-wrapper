@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -45,7 +46,7 @@ logger = Logger(__name__)
 
 
 class AwsSecretsManagerPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
+    _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.CONNECT.method_name, DbApiMethod.FORCE_CONNECT.method_name}
 
     _SECRETS_ARN_PATTERN = r"^arn:aws:secretsmanager:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
     _ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365

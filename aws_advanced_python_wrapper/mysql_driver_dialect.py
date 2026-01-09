@@ -26,6 +26,7 @@ from inspect import signature
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.thread_pool_container import \
     ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.decorators import timeout
@@ -61,18 +62,18 @@ class MySQLDriverDialect(DriverDialect):
 
     _dialect_code: str = DriverDialectCodes.MYSQL_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
-        "Connection.commit",
-        "Connection.autocommit",
-        "Connection.autocommit_setter",
-        "Connection.is_read_only",
-        "Connection.set_read_only",
-        "Connection.rollback",
-        "Connection.cursor",
-        "Cursor.close",
-        "Cursor.execute",
-        "Cursor.fetchone",
-        "Cursor.fetchmany",
-        "Cursor.fetchall"
+        DbApiMethod.CONNECTION_COMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT_SETTER.method_name,
+        DbApiMethod.CONNECTION_IS_READ_ONLY.method_name,
+        DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
+        DbApiMethod.CONNECTION_ROLLBACK.method_name,
+        DbApiMethod.CONNECTION_CURSOR.method_name,
+        DbApiMethod.CURSOR_CLOSE.method_name,
+        DbApiMethod.CURSOR_EXECUTE.method_name,
+        DbApiMethod.CURSOR_FETCHONE.method_name,
+        DbApiMethod.CURSOR_FETCHMANY.method_name,
+        DbApiMethod.CURSOR_FETCHALL.method_name
     }
 
     @staticmethod

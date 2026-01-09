@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 from aws_advanced_python_wrapper.errors import (AwsWrapperError, FailoverError,
                                                 ReadWriteSplittingError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -44,13 +45,12 @@ class ReadWriteSplittingConnectionManager(Plugin):
     """Base class that manages connection switching logic."""
 
     _SUBSCRIBED_METHODS: Set[str] = {
-        "init_host_provider",
-        "connect",
-        "notify_connection_changed",
-        "Connection.set_read_only",
+        DbApiMethod.INIT_HOST_PROVIDER.method_name,
+        DbApiMethod.CONNECT.method_name,
+        DbApiMethod.NOTIFY_CONNECTION_CHANGED.method_name,
+        DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
     }
     _POOL_PROVIDER_CLASS_NAME = "aws_advanced_python_wrapper.sql_alchemy_connection_provider.SqlAlchemyPooledConnectionProvider"
-    _CLOSE_METHOD = "Connection.close"
 
     def __init__(
         self,
@@ -128,7 +128,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             raise AwsWrapperError(msg)
 
         if (
-            method_name == "Connection.set_read_only"
+            method_name == DbApiMethod.CONNECTION_SET_READ_ONLY.method_name
             and args is not None
             and len(args) > 0
         ):
@@ -390,7 +390,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             if internal_conn != current_conn and self._is_connection_usable(
                 internal_conn, driver_dialect
             ):
-                driver_dialect.execute(ReadWriteSplittingConnectionManager._CLOSE_METHOD, lambda: internal_conn.close())
+                driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: internal_conn.close())
                 if internal_conn == self._writer_connection:
                     self._writer_connection = None
                     self._writer_host_info = None
@@ -431,7 +431,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
     def close_connection(conn: Optional[Connection], driver_dialect: DriverDialect):
         if conn is not None:
             try:
-                driver_dialect.execute(ReadWriteSplittingConnectionManager._CLOSE_METHOD, lambda: conn.close())
+                driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
             except Exception:
                 # Swallow exception
                 return

@@ -31,6 +31,7 @@ from typing import Any, Callable, Set
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
@@ -38,8 +39,7 @@ from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
 
 
 class DefaultPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"*"}
-    _CLOSE_METHOD = "Connection.close"
+    _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.ALL.method_name}
 
     def __init__(self, plugin_service: PluginService, connection_provider_manager: ConnectionProviderManager):
         self._plugin_service: PluginService = plugin_service
@@ -110,7 +110,7 @@ class DefaultPlugin(Plugin):
             if context is not None:
                 context.close_context()
 
-        if method_name != DefaultPlugin._CLOSE_METHOD and self._plugin_service.current_connection is not None:
+        if method_name != DbApiMethod.CONNECTION_CLOSE.method_name and self._plugin_service.current_connection is not None:
             self._plugin_service.update_in_transaction()
 
         return result

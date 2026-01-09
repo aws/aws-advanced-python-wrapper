@@ -31,6 +31,7 @@ from aws_advanced_python_wrapper.errors import (
     TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.reader_failover_handler import (
     ReaderFailoverHandler, ReaderFailoverHandlerImpl)
@@ -57,18 +58,18 @@ class FailoverPlugin(Plugin):
     This plugin provides cluster-aware failover features.
     The plugin switches connections upon detecting communication related exceptions and/or cluster topology changes.
     """
-    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
-                                     "connect",
-                                     "notify_host_list_changed"}
+    _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.INIT_HOST_PROVIDER.method_name,
+                                     DbApiMethod.CONNECT.method_name,
+                                     DbApiMethod.NOTIFY_HOST_LIST_CHANGED.method_name}
 
     _METHODS_REQUIRE_UPDATED_TOPOLOGY: Set[str] = {
-        "Connection.commit",
-        "Connection.autocommit",
-        "Connection.autocommit_setter",
-        "Connection.rollback",
-        "Connection.cursor",
-        "Cursor.callproc",
-        "Cursor.execute"
+        DbApiMethod.CONNECTION_COMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT_SETTER.method_name,
+        DbApiMethod.CONNECTION_ROLLBACK.method_name,
+        DbApiMethod.CONNECTION_CURSOR.method_name,
+        DbApiMethod.CURSOR_CALLPROC.method_name,
+        DbApiMethod.CURSOR_EXECUTE.method_name
     }
 
     def __init__(self, plugin_service: PluginService, props: Properties):
@@ -371,14 +372,14 @@ class FailoverPlugin(Plugin):
         if self._plugin_service.is_in_transaction:
             self._plugin_service.update_in_transaction(True)
             try:
-                driver_dialect.execute("Connection.rollback", lambda: conn.rollback())
+                driver_dialect.execute(DbApiMethod.CONNECTION_ROLLBACK.method_name, lambda: conn.rollback())
                 conn.rollback()
             except Exception:
                 pass
 
         if not driver_dialect.is_closed(conn):
             try:
-                return driver_dialect.execute("Connection.close", lambda: conn.close())
+                return driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
             except Exception:
                 pass
 
@@ -489,9 +490,9 @@ class FailoverPlugin(Plugin):
         :param method_name: The name of the method that is being called.
         :return: `True` if the method can be executed directly; `False` otherwise.
         """
-        return method_name == "Connection.close" or \
-            method_name == "Connection.is_closed" or \
-            method_name == "Cursor.close"
+        return method_name == DbApiMethod.CONNECTION_CLOSE.method_name or \
+            method_name == DbApiMethod.CONNECTION_IS_CLOSED.method_name or \
+            method_name == DbApiMethod.CURSOR_CLOSE.method_name
 
     @staticmethod
     def _allowed_on_closed_connection(method_name: str):
@@ -501,7 +502,7 @@ class FailoverPlugin(Plugin):
         :param method_name: The method being executed at the moment.
         :return: `True` if the given method is allowed on closed connections.
         """
-        return method_name == "Connection.autocommit"
+        return method_name == DbApiMethod.CONNECTION_AUTOCOMMIT.method_name
 
     def _requires_update_topology(self, method_name: str):
         """

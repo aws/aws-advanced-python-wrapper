@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostRole
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -152,9 +153,9 @@ class StaleDnsHelper:
 
 class StaleDnsPlugin(Plugin):
 
-    _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider",
-                                     "connect",
-                                     "notify_host_list_changed"}
+    _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.INIT_HOST_PROVIDER.method_name,
+                                     DbApiMethod.CONNECT.method_name,
+                                     DbApiMethod.NOTIFY_HOST_LIST_CHANGED.method_name}
 
     def __init__(self, plugin_service: PluginService) -> None:
         self._plugin_service = plugin_service
