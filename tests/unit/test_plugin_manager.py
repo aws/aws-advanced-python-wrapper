@@ -43,7 +43,7 @@ from aws_advanced_python_wrapper.utils.notifications import (
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
-class TestApiMethod(Enum):
+class DbApiMethodTest(Enum):
     """Test-specific enumeration of API methods for testing purposes."""
 
     TEST_CALL_A = (DbApiMethod.ALL.id + 1, "test_call_a", False)
@@ -168,12 +168,12 @@ def test_execute_call_method(mocker, mock_conn, container, mock_plugin_service, 
     manager._container = container
     manager._plugins = plugins
     manager._telemetry_factory = mock_telemetry_factory
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
 
     make_pipeline_func = mocker.patch.object(manager, '_make_pipeline', wraps=manager._make_pipeline)
-    result = manager.execute(mock_conn, TestApiMethod.TEST_CALL_A, lambda: _target_call(calls), *args)
+    result = manager.execute(mock_conn, DbApiMethodTest.TEST_CALL_A, lambda: _target_call(calls), *args)
 
-    make_pipeline_func.assert_called_once_with(TestApiMethod.TEST_CALL_A.method_name)
+    make_pipeline_func.assert_called_once_with(DbApiMethodTest.TEST_CALL_A.method_name)
     assert result == "result_value"
     assert len(calls) == 7
     assert calls[0] == "TestPluginOne:before execute"
@@ -185,10 +185,10 @@ def test_execute_call_method(mocker, mock_conn, container, mock_plugin_service, 
     assert calls[6] == "TestPluginOne:after execute"
 
     calls.clear()
-    result = manager.execute(mock_conn, TestApiMethod.TEST_CALL_A, lambda: _target_call(calls), *args)
+    result = manager.execute(mock_conn, DbApiMethodTest.TEST_CALL_A, lambda: _target_call(calls), *args)
 
     # The first execute call should cache the pipeline
-    make_pipeline_func.assert_called_once_with(TestApiMethod.TEST_CALL_A.method_name)
+    make_pipeline_func.assert_called_once_with(DbApiMethodTest.TEST_CALL_A.method_name)
     assert result == "result_value"
     assert len(calls) == 7
     assert calls[0] == "TestPluginOne:before execute"
@@ -215,9 +215,9 @@ def test_execute_call_b(mocker, container, mock_driver_dialect, mock_telemetry_f
     manager._container = container
     manager._plugins = plugins
     manager._telemetry_factory = mock_telemetry_factory
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
 
-    result = manager.execute(mock_conn, TestApiMethod.TEST_CALL_B, lambda: _target_call(calls), *args)
+    result = manager.execute(mock_conn, DbApiMethodTest.TEST_CALL_B, lambda: _target_call(calls), *args)
 
     assert result == "result_value"
     assert len(calls) == 5
@@ -238,9 +238,9 @@ def test_execute_call_c(mocker, container, mock_driver_dialect, mock_telemetry_f
     manager._container = container
     manager._plugins = plugins
     manager._telemetry_factory = mock_telemetry_factory
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
 
-    result = manager.execute(mock_conn, TestApiMethod.TEST_CALL_C, lambda: _target_call(calls), *args)
+    result = manager.execute(mock_conn, DbApiMethodTest.TEST_CALL_C, lambda: _target_call(calls), *args)
 
     assert result == "result_value"
     assert len(calls) == 3
@@ -255,12 +255,12 @@ def test_execute_against_old_target(mocker, container, mock_driver_dialect, mock
     manager._container = container
     manager._plugins = ""
     manager._telemetry_factory = mock_telemetry_factory
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
 
     # Set current connection to a new connection object
     container.plugin_service.current_connection = mocker.MagicMock(spec=psycopg.Connection)
     with pytest.raises(AwsWrapperError):
-        manager.execute(mock_conn, TestApiMethod.TEST_EXECUTE, lambda: _target_call([]))
+        manager.execute(mock_conn, DbApiMethodTest.TEST_EXECUTE, lambda: _target_call([]))
 
 
 def test_connect(mocker, container, mock_conn, mock_driver_dialect, mock_telemetry_factory):
@@ -271,7 +271,7 @@ def test_connect(mocker, container, mock_conn, mock_driver_dialect, mock_telemet
     mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
     manager._telemetry_factory = mock_telemetry_factory
     manager._container = container
 
@@ -294,7 +294,7 @@ def test_connect__skip_plugin(mocker, container, mock_conn, mock_driver_dialect,
     mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
     manager._telemetry_factory = mock_telemetry_factory
     manager._container = container
 
@@ -314,7 +314,7 @@ def test_force_connect(mocker, container, mock_conn, mock_driver_dialect, mock_t
     mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
     manager._telemetry_factory = mock_telemetry_factory
     manager._container = container
 
@@ -352,7 +352,7 @@ def test_force_connect__cached(mocker, container, mock_conn, mock_driver_dialect
     mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
     manager._telemetry_factory = mock_telemetry_factory
     manager._container = container
 
@@ -375,7 +375,7 @@ def test_exception_before_connect(mocker, container, mock_telemetry_factory):
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
     manager._telemetry_factory = mock_telemetry_factory
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
     manager._container = container
 
     with pytest.raises(AwsWrapperError):
@@ -397,7 +397,7 @@ def test_exception_after_connect(mocker, container, mock_telemetry_factory):
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
     manager._telemetry_factory = mock_telemetry_factory
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
     manager._container = container
 
     with pytest.raises(AwsWrapperError):
@@ -440,7 +440,7 @@ def test_notify_connection_changed(mocker, mock_telemetry_factory):
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
     manager._telemetry_factory = mock_telemetry_factory
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
 
     old_connection_suggestion = manager.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
 
@@ -467,7 +467,7 @@ def test_notify_host_list_changed(mocker, mock_telemetry_factory):
     manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
     manager._plugins = plugins
     manager._telemetry_factory = mock_telemetry_factory
-    manager._function_cache = [None] * (TestApiMethod.TEST_EXECUTE.id + 1)
+    manager._function_cache = [None] * (DbApiMethodTest.TEST_EXECUTE.id + 1)
 
     manager.notify_host_list_changed(
         {"host-1": {HostEvent.CONVERTED_TO_READER}, "host-2": {HostEvent.CONVERTED_TO_WRITER}})
@@ -548,7 +548,7 @@ class TestPluginTwo(TestPlugin):
 
     @property
     def subscribed_methods(self) -> Set[str]:
-        return {TestApiMethod.TEST_CALL_A.method_name, TestApiMethod.TEST_CALL_B.method_name, DbApiMethod.NOTIFY_CONNECTION_CHANGED.method_name}
+        return {DbApiMethodTest.TEST_CALL_A.method_name, DbApiMethodTest.TEST_CALL_B.method_name, DbApiMethod.NOTIFY_CONNECTION_CHANGED.method_name}
 
     def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         self._calls.append(type(self).__name__ + ":notify_connection_changed")
@@ -559,7 +559,7 @@ class TestPluginThree(TestPlugin):
     @property
     def subscribed_methods(self) -> Set[str]:
         return {
-            TestApiMethod.TEST_CALL_A.method_name,
+            DbApiMethodTest.TEST_CALL_A.method_name,
             DbApiMethod.CONNECT.method_name,
             DbApiMethod.FORCE_CONNECT.method_name,
             DbApiMethod.NOTIFY_CONNECTION_CHANGED.method_name,
