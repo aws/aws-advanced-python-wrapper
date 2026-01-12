@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
 from aws_advanced_python_wrapper.utils.atomic import (AtomicBoolean,
@@ -161,8 +162,8 @@ class HostMonitoringV2Plugin(Plugin, CanReleaseResources):
 
 
 class HostMonitoringV2PluginFactory(PluginFactory):
-
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return HostMonitoringV2Plugin(plugin_service, props)
 
 
@@ -216,7 +217,7 @@ class HostMonitorV2:
             failure_detection_time_ms: int,
             failure_detection_interval_ms: int,
             failure_detection_count: int,
-            aborted_connection_counter: TelemetryCounter):
+            aborted_connection_counter: TelemetryCounter | None):
         self._plugin_service: PluginService = plugin_service
         self._host_info: HostInfo = host_info
         self._props: Properties = props
@@ -224,7 +225,7 @@ class HostMonitorV2:
         self._failure_detection_time_ns: int = failure_detection_time_ms * 10**6
         self._failure_detection_interval_ns: int = failure_detection_interval_ms * 10**6
         self._failure_detection_count: int = failure_detection_count
-        self._aborted_connection_counter: TelemetryCounter = aborted_connection_counter
+        self._aborted_connection_counter: TelemetryCounter | None = aborted_connection_counter
 
         self._active_contexts: Queue = Queue()
         self._new_contexts: ConcurrentDict[float, Queue] = ConcurrentDict()
@@ -399,7 +400,7 @@ class HostMonitorV2:
         driver_dialect = self._plugin_service.driver_dialect
         with conn.cursor() as cursor:
             query = HostMonitorV2._QUERY
-            driver_dialect.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
+            driver_dialect.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
             cursor.fetchone()
 
     def _update_host_health_status(

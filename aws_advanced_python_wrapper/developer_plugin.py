@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.utils.properties import Properties
     from aws_advanced_python_wrapper.hostinfo import HostInfo
 
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -76,8 +77,7 @@ class ExceptionSimulatorManager:
 
 
 class DeveloperPlugin(Plugin):
-    _ALL_METHODS: str = "*"
-    _SUBSCRIBED_METHODS: Set[str] = {_ALL_METHODS}
+    _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.ALL.method_name}
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -90,7 +90,7 @@ class DeveloperPlugin(Plugin):
     def raise_method_exception_if_set(
             self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> None:
         if ExceptionSimulatorManager.next_method_exception is not None:
-            if DeveloperPlugin._ALL_METHODS == ExceptionSimulatorManager.next_method_name or \
+            if DbApiMethod.ALL.method_name == ExceptionSimulatorManager.next_method_name or \
                     method_name == ExceptionSimulatorManager.next_method_name:
                 self.raise_exception_on_method(ExceptionSimulatorManager.next_method_exception, method_name)
         elif ExceptionSimulatorManager.method_callback is not None:
@@ -158,6 +158,6 @@ class DeveloperPlugin(Plugin):
 
 
 class DeveloperPluginFactory(PluginFactory):
-
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return DeveloperPlugin()

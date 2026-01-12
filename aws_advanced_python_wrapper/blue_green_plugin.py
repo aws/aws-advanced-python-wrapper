@@ -42,6 +42,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import (ConcurrentDict,
@@ -471,7 +472,8 @@ class SuspendConnectRouting(BaseRouting, ConnectRouting):
                     "SuspendConnectRouting.SwitchoverCompleteContinueWithConnect",
                     (time.time() - start_time_sec) * 1000))
         finally:
-            telemetry_context.close_context()
+            if telemetry_context is not None:
+                telemetry_context.close_context()
 
         # return None so that the next routing can attempt a connection
         return None
@@ -540,7 +542,8 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
                     host_info.host,
                     (time.time() - start_time_sec) * 1000))
         finally:
-            telemetry_context.close_context()
+            if telemetry_context is not None:
+                telemetry_context.close_context()
 
         # return None so that the next routing can attempt a connection
         return None
@@ -615,15 +618,16 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
                     method_name,
                     (time.time() - start_time_sec) * 1000))
         finally:
-            telemetry_context.close_context()
+            if telemetry_context is not None:
+                telemetry_context.close_context()
 
         # return empty so that the next routing can attempt a connection
         return ValueContainer.empty()
 
 
 class BlueGreenPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"connect"}
-    _CLOSE_METHODS: ClassVar[Set[str]] = {"Connection.close", "Cursor.close"}
+    _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.CONNECT.method_name}
+    _CLOSE_METHODS: ClassVar[Set[str]] = {DbApiMethod.CONNECTION_CLOSE.method_name, DbApiMethod.CURSOR_CLOSE.method_name}
     _status_providers: ClassVar[ConcurrentDict[str, BlueGreenStatusProvider]] = ConcurrentDict()
 
     def __init__(self, plugin_service: PluginService, props: Properties):
@@ -779,7 +783,8 @@ class BlueGreenPlugin(Plugin):
 
 
 class BlueGreenPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return BlueGreenPlugin(plugin_service, props)
 
 

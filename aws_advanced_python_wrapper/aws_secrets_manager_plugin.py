@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -45,7 +46,7 @@ logger = Logger(__name__)
 
 
 class AwsSecretsManagerPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
+    _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.CONNECT.method_name, DbApiMethod.FORCE_CONNECT.method_name}
 
     _SECRETS_ARN_PATTERN = r"^arn:aws:secretsmanager:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
     _ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365
@@ -136,7 +137,8 @@ class AwsSecretsManagerPlugin(Plugin):
         """
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         context = telemetry_factory.open_telemetry_context("fetch credentials", TelemetryTraceLevel.NESTED)
-        self._fetch_credentials_counter.inc()
+        if self._fetch_credentials_counter is not None:
+            self._fetch_credentials_counter.inc()
 
         try:
             fetched: bool = False
@@ -167,11 +169,13 @@ class AwsSecretsManagerPlugin(Plugin):
 
             return fetched
         except Exception as ex:
-            context.set_success(False)
-            context.set_exception(ex)
+            if context is not None:
+                context.set_success(False)
+                context.set_exception(ex)
             raise ex
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
     def _fetch_latest_credentials(self):
         """
@@ -228,5 +232,6 @@ class AwsSecretsManagerPlugin(Plugin):
 
 
 class AwsSecretsManagerPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return AwsSecretsManagerPlugin(plugin_service, props)

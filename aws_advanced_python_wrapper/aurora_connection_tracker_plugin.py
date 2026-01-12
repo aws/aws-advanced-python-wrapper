@@ -30,6 +30,7 @@ from _weakrefset import WeakSet
 
 from aws_advanced_python_wrapper.errors import FailoverError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
@@ -147,13 +148,12 @@ class OpenedConnectionTracker:
 
 
 class AuroraConnectionTrackerPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"*"}
     _current_writer: Optional[HostInfo] = None
     _need_update_current_writer: bool = False
 
     @property
     def subscribed_methods(self) -> Set[str]:
-        return self._SUBSCRIBED_METHODS
+        return self._subscribed_methods
 
     def __init__(self,
                  plugin_service: PluginService,
@@ -164,6 +164,11 @@ class AuroraConnectionTrackerPlugin(Plugin):
         self._props = props
         self._rds_utils = rds_utils
         self._tracker = tracker
+        self._subscribed_methods: Set[str] = {DbApiMethod.CONNECT.method_name,
+                                              DbApiMethod.CONNECTION_CLOSE.method_name,
+                                              DbApiMethod.CONNECT.method_name,
+                                              DbApiMethod.NOTIFY_HOST_LIST_CHANGED.method_name}
+        self._subscribed_methods.update(self._plugin_service.network_bound_methods)
 
     def connect(
             self,
@@ -210,5 +215,6 @@ class AuroraConnectionTrackerPlugin(Plugin):
 
 
 class AuroraConnectionTrackerPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return AuroraConnectionTrackerPlugin(plugin_service, props)

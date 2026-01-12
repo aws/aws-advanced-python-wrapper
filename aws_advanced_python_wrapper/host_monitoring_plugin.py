@@ -33,6 +33,7 @@ from _weakref import ReferenceType, ref
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
 from aws_advanced_python_wrapper.thread_pool_container import \
@@ -54,12 +55,17 @@ logger = Logger(__name__)
 
 
 class HostMonitoringPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return HostMonitoringPlugin(plugin_service, props)
 
 
 class HostMonitoringPlugin(Plugin, CanReleaseResources):
-    _SUBSCRIBED_METHODS: Set[str] = {"connect", "notify_host_list_changed", "notify_connection_changed"}
+    _SUBSCRIBED_METHODS: Set[str] = {
+        DbApiMethod.CONNECT.method_name,
+        DbApiMethod.NOTIFY_HOST_LIST_CHANGED.method_name,
+        DbApiMethod.NOTIFY_CONNECTION_CHANGED.method_name
+    }
 
     def __init__(self, plugin_service, props):
         dialect: DriverDialect = plugin_service.driver_dialect
@@ -74,6 +80,10 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
         self._rds_utils: RdsUtils = RdsUtils()
         self._monitor_service: MonitorService = MonitorService(plugin_service)
         self._lock: Lock = Lock()
+        self._is_enabled = WrapperProperties.FAILURE_DETECTION_ENABLED.get_bool(self._props)
+        self._failure_detection_time_ms = WrapperProperties.FAILURE_DETECTION_TIME_MS.get_int(self._props)
+        self._failure_detection_interval = WrapperProperties.FAILURE_DETECTION_INTERVAL_MS.get_int(self._props)
+        self._failure_detection_count = WrapperProperties.FAILURE_DETECTION_COUNT.get_int(self._props)
         HostMonitoringPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
     @property
@@ -105,13 +115,8 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
         if host_info is None:
             raise AwsWrapperError(Messages.get_formatted("HostMonitoringPlugin.HostInfoNoneForMethod", method_name))
 
-        is_enabled = WrapperProperties.FAILURE_DETECTION_ENABLED.get_bool(self._props)
-        if not is_enabled or not self._plugin_service.is_network_bound_method(method_name):
+        if not self._is_enabled or not self._plugin_service.is_network_bound_method(method_name):
             return execute_func()
-
-        failure_detection_time_ms = WrapperProperties.FAILURE_DETECTION_TIME_MS.get_int(self._props)
-        failure_detection_interval = WrapperProperties.FAILURE_DETECTION_INTERVAL_MS.get_int(self._props)
-        failure_detection_count = WrapperProperties.FAILURE_DETECTION_COUNT.get_int(self._props)
 
         monitor_context = None
         result = None
@@ -123,9 +128,9 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
                 self._get_monitoring_host_info().all_aliases,
                 self._get_monitoring_host_info(),
                 self._props,
-                failure_detection_time_ms,
-                failure_detection_interval,
-                failure_detection_count
+                self._failure_detection_time_ms,
+                self._failure_detection_interval,
+                self._failure_detection_count
             )
             result = execute_func()
         finally:
@@ -216,7 +221,7 @@ class MonitoringContext:
             failure_detection_time_ms: int,
             failure_detection_interval_ms: int,
             failure_detection_count: int,
-            aborted_connections_counter: TelemetryCounter):
+            aborted_connections_counter: TelemetryCounter | None):
         self._monitor: Monitor = monitor
         self._connection: Connection = connection
         self._target_dialect: DriverDialect = target_dialect
@@ -322,7 +327,8 @@ class MonitoringContext:
             logger.debug("MonitorContext.HostUnavailable", host)
             self._is_host_unavailable = True
             self._abort_connection()
-            self._aborted_connections_counter.inc()
+            if self._aborted_connections_counter is not None:
+                self._aborted_connections_counter.inc()
             return
 
         logger.debug("MonitorContext.HostNotResponding", host, self._current_failure_count)
@@ -506,7 +512,9 @@ class Monitor:
     def _check_host_status(self, host_check_timeout_ms: int) -> HostStatus:
         context = self._telemetry_factory.open_telemetry_context(
             "connection status check", TelemetryTraceLevel.FORCE_TOP_LEVEL)
-        context.set_attribute("url", self._host_info.url)
+
+        if context is not None:
+            context.set_attribute("url", self._host_info.url)
 
         start_ns = perf_counter_ns()
         try:
@@ -527,13 +535,16 @@ class Monitor:
             start_ns = perf_counter_ns()
             is_available = self._is_host_available(self._monitoring_conn, host_check_timeout_ms / 1000)
             if not is_available:
-                self._host_invalid_counter.inc()
+                if self._host_invalid_counter is not None:
+                    self._host_invalid_counter.inc()
             return Monitor.HostStatus(is_available, perf_counter_ns() - start_ns)
         except Exception:
-            self._host_invalid_counter.inc()
+            if self._host_invalid_counter is not None:
+                self._host_invalid_counter.inc()
             return Monitor.HostStatus(False, perf_counter_ns() - start_ns)
         finally:
-            context.close_context()
+            if context is not None:
+                context.close_context()
 
     def _is_host_available(self, conn: Connection, timeout_sec: float) -> bool:
         try:
@@ -546,7 +557,7 @@ class Monitor:
         driver_dialect = self._plugin_service.driver_dialect
         with conn.cursor() as cursor:
             query = Monitor._QUERY
-            driver_dialect.execute("Cursor.execute", lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
+            driver_dialect.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
             cursor.fetchone()
 
     def sleep(self, duration: int):

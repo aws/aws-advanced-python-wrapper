@@ -37,6 +37,7 @@ from enum import Enum
 
 from boto3 import Session
 
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
@@ -194,7 +195,9 @@ class CustomEndpointMonitor:
                         self._custom_endpoint_host_info.host,
                         endpoint_info,
                         CustomEndpointMonitor._CUSTOM_ENDPOINT_INFO_EXPIRATION_NS)
-                    self._info_changed_counter.inc()
+
+                    if self._info_changed_counter is not None:
+                        self._info_changed_counter.inc()
 
                     elapsed_time = perf_counter_ns() - start_ns
                     sleep_duration = max(0, self._refresh_rate_ns - elapsed_time)
@@ -228,7 +231,7 @@ class CustomEndpointPlugin(Plugin):
     A plugin that analyzes custom endpoints for custom endpoint information and custom endpoint changes, such as adding
     or removing an instance in the custom endpoint.
     """
-    _SUBSCRIBED_METHODS: ClassVar[Set[str]] = {"connect"}
+    _SUBSCRIBED_METHODS: ClassVar[Set[str]] = {DbApiMethod.CONNECT.method_name}
     _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 6 * 10 ^ 10  # 1 minute
     _monitors: ClassVar[SlidingExpirationCacheWithCleanupThread[str, CustomEndpointMonitor]] = \
         SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_RATE_NS,
@@ -250,7 +253,7 @@ class CustomEndpointPlugin(Plugin):
         self._custom_endpoint_host_info: Optional[HostInfo] = None
         self._custom_endpoint_id: Optional[str] = None
         telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
-        self._wait_for_info_counter: TelemetryCounter = telemetry_factory.create_counter("customEndpoint.waitForInfo.counter")
+        self._wait_for_info_counter: TelemetryCounter | None = telemetry_factory.create_counter("customEndpoint.waitForInfo.counter")
 
         CustomEndpointPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
@@ -312,7 +315,8 @@ class CustomEndpointPlugin(Plugin):
         if has_info:
             return
 
-        self._wait_for_info_counter.inc()
+        if self._wait_for_info_counter is not None:
+            self._wait_for_info_counter.inc()
         host_info = cast('HostInfo', self._custom_endpoint_host_info)
         hostname = host_info.host
         logger.debug("CustomEndpointPlugin.WaitingForCustomEndpointInfo", hostname, self._wait_for_info_timeout_ms)
@@ -343,5 +347,6 @@ class CustomEndpointPlugin(Plugin):
 
 
 class CustomEndpointPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return CustomEndpointPlugin(plugin_service, props)

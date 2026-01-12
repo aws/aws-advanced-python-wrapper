@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Dict, Optional, Set
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -41,7 +42,7 @@ logger = Logger(__name__)
 
 
 class IamAuthPlugin(Plugin):
-    _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
+    _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.CONNECT.method_name, DbApiMethod.FORCE_CONNECT.method_name}
     # Leave 30 second buffer to prevent time-of-check to time-of-use errors
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60 - 30
 
@@ -101,7 +102,8 @@ class IamAuthPlugin(Plugin):
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
-            self._fetch_token_counter.inc()
+            if self._fetch_token_counter is not None:
+                self._fetch_token_counter.inc()
             token: str = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
@@ -119,7 +121,8 @@ class IamAuthPlugin(Plugin):
             # Login unsuccessful with cached token
             # Try to generate a new token and try to connect again
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
-            self._fetch_token_counter.inc()
+            if self._fetch_token_counter is not None:
+                self._fetch_token_counter.inc()
             token = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
@@ -141,5 +144,6 @@ class IamAuthPlugin(Plugin):
 
 
 class IamAuthPluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return IamAuthPlugin(plugin_service)

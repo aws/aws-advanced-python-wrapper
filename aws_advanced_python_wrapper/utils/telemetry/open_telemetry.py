@@ -173,7 +173,7 @@ class OpenTelemetryGauge(TelemetryGauge):
 
 
 class OpenTelemetryFactory(TelemetryFactory):
-    def open_telemetry_context(self, name: str, trace_level: TelemetryTraceLevel) -> TelemetryContext:
+    def open_telemetry_context(self, name: str, trace_level: TelemetryTraceLevel) -> TelemetryContext | None:
         return OpenTelemetryContext(trace.get_tracer(INSTRUMENTATION_NAME), name, trace_level)  # type: ignore
 
     def post_copy(self, context: TelemetryContext, trace_level: TelemetryTraceLevel):
@@ -182,8 +182,11 @@ class OpenTelemetryFactory(TelemetryFactory):
         else:
             raise RuntimeError(Messages.get_formatted("OpenTelemetryFactory.WrongParameterType", type(context)))
 
-    def create_counter(self, name: str) -> TelemetryCounter:
+    def create_counter(self, name: str) -> TelemetryCounter | None:
         return OpenTelemetryCounter(get_meter(INSTRUMENTATION_NAME), name)
 
-    def create_gauge(self, name: str, callback: Callable[[], Union[float, int]]):
+    def create_gauge(self, name: str, callback: Callable[[], Union[float, int]]) -> TelemetryGauge | None:
         return OpenTelemetryGauge(get_meter(INSTRUMENTATION_NAME), name, callback)
+
+    def in_use(self) -> bool:
+        return True

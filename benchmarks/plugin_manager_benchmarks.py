@@ -25,9 +25,12 @@ if TYPE_CHECKING:
 from aws_advanced_python_wrapper.driver_configuration_profiles import \
     DriverConfigurationProfiles
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin_service import (
     PluginManager, PluginServiceManagerContainer)
 from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.telemetry.null_telemetry import \
+    NullTelemetryFactory
 from benchmarks.benchmark_plugin import BenchmarkPluginFactory
 
 host_info = HostInfo(host="host", port=1234)
@@ -76,31 +79,31 @@ def plugin_service_manager_container_mock(mocker, plugin_service_mock):
 
 @pytest.fixture
 def plugin_manager_with_no_plugins(plugin_service_manager_container_mock, props_without_plugins):
-    manager = PluginManager(plugin_service_manager_container_mock, props_without_plugins)
+    manager = PluginManager(plugin_service_manager_container_mock, props_without_plugins, NullTelemetryFactory())
     return manager
 
 
 @pytest.fixture
 def plugin_manager_with_plugins(plugin_service_manager_container_mock, props_with_plugins):
-    manager = PluginManager(plugin_service_manager_container_mock, props_with_plugins)
+    manager = PluginManager(plugin_service_manager_container_mock, props_with_plugins, NullTelemetryFactory())
     return manager
 
 
 def init_plugin_manager(plugin_service_manager_container, props):
-    manager = PluginManager(plugin_service_manager_container, props)
+    manager = PluginManager(plugin_service_manager_container, props, NullTelemetryFactory())
     return manager
 
 
+@pytest.mark.benchmark(group="plugin_manager_init")
 def test_init_plugin_manager_with_no_plugins(
         benchmark, plugin_service_manager_container_mock, props_without_plugins):
-
     result = benchmark(init_plugin_manager, plugin_service_manager_container_mock, props_without_plugins)
     assert result is not None
 
 
+@pytest.mark.benchmark(group="plugin_manager_init")
 def test_init_plugin_manager_with_plugins(
         benchmark, plugin_service_manager_container_mock, props_with_plugins):
-
     result = benchmark(init_plugin_manager, plugin_service_manager_container_mock, props_with_plugins)
     assert result is not None
 
@@ -110,26 +113,30 @@ def connect(mocker, plugin_manager, props):
     return conn
 
 
+@pytest.mark.benchmark(group="plugin_manager_connect")
 def test_connect_with_no_plugins(benchmark, mocker, plugin_manager_with_no_plugins, props_without_plugins):
     result = benchmark(connect, mocker, plugin_manager_with_no_plugins, props_without_plugins)
     assert result is not None
 
 
+@pytest.mark.benchmark(group="plugin_manager_connect")
 def test_connect_with_plugins(benchmark, mocker, plugin_manager_with_plugins, props_with_plugins):
     result = benchmark(connect, mocker, plugin_manager_with_plugins, props_with_plugins)
     assert result is not None
 
 
 def execute(mocker, plugin_manager, statement):
-    result = plugin_manager.execute(mocker.MagicMock(), "Statement.execute", statement)
+    result = plugin_manager.execute(mocker.MagicMock(), DbApiMethod.CURSOR_EXECUTE, statement)
     return result
 
 
+@pytest.mark.benchmark(group="plugin_manager_execute")
 def test_execute_with_no_plugins(benchmark, mocker, plugin_manager_with_no_plugins, statement_mock):
     result = benchmark(execute, mocker, plugin_manager_with_no_plugins, statement_mock)
     assert result is not None
 
 
+@pytest.mark.benchmark(group="plugin_manager_execute")
 def test_execute_with_plugins(benchmark, mocker, plugin_manager_with_plugins, statement_mock):
     result = benchmark(execute, mocker, plugin_manager_with_plugins, statement_mock)
     assert result is not None
@@ -139,10 +146,12 @@ def init_host_provider(mocker, plugin_manager, props):
     plugin_manager.init_host_provider(props, mocker.MagicMock())
 
 
+@pytest.mark.benchmark(group="plugin_manager_host_provider")
 def test_init_host_provider_with_no_plugins(benchmark, mocker, plugin_manager_with_no_plugins, props_without_plugins):
     benchmark(init_host_provider, mocker, plugin_manager_with_no_plugins, props_without_plugins)
 
 
+@pytest.mark.benchmark(group="plugin_manager_host_provider")
 def test_init_host_provider_with_plugins(benchmark, mocker, plugin_manager_with_plugins, props_with_plugins):
     benchmark(init_host_provider, mocker, plugin_manager_with_plugins, props_with_plugins)
 
@@ -152,11 +161,13 @@ def notify_connection_changed(mocker, plugin_manager):
     return result
 
 
+@pytest.mark.benchmark(group="plugin_manager_notify")
 def test_notify_connection_changed_with_no_plugins(benchmark, mocker, plugin_manager_with_no_plugins):
     result = benchmark(notify_connection_changed, mocker, plugin_manager_with_no_plugins)
     assert result is not None
 
 
+@pytest.mark.benchmark(group="plugin_manager_notify")
 def test_notify_connection_changed_with_plugins(benchmark, mocker, plugin_manager_with_plugins):
     result = benchmark(notify_connection_changed, mocker, plugin_manager_with_plugins)
     assert result is not None
@@ -166,9 +177,11 @@ def release_resources(plugin_manager):
     plugin_manager.release_resources()
 
 
+@pytest.mark.benchmark(group="plugin_manager_cleanup")
 def test_release_resources_with_no_plugins(benchmark, plugin_manager_with_no_plugins):
     benchmark(release_resources, plugin_manager_with_no_plugins)
 
 
+@pytest.mark.benchmark(group="plugin_manager_cleanup")
 def test_release_resources_with_plugins(benchmark, plugin_manager_with_plugins):
     benchmark(release_resources, plugin_manager_with_plugins)

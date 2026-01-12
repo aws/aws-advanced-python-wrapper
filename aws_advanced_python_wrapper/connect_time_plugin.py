@@ -27,6 +27,7 @@ from logging import getLogger
 from time import perf_counter_ns
 from typing import Callable, Set
 
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.messages import Messages
 
@@ -42,7 +43,7 @@ class ConnectTimePlugin(Plugin):
 
     @property
     def subscribed_methods(self) -> Set[str]:
-        return {"connect", "force_connect"}
+        return {DbApiMethod.CONNECT.method_name, DbApiMethod.FORCE_CONNECT.method_name}
 
     def connect(
             self,
@@ -65,5 +66,6 @@ class ConnectTimePlugin(Plugin):
 
 
 class ConnectTimePluginFactory(PluginFactory):
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return ConnectTimePlugin()

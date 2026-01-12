@@ -138,8 +138,8 @@ class FastestResponseStrategyPlugin(Plugin):
 
 
 class FastestResponseStrategyPluginFactory:
-
-    def get_instance(self, plugin_service: PluginService, props: Properties) -> Plugin:
+    @staticmethod
+    def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
         return FastestResponseStrategyPlugin(plugin_service, props)
 
 
@@ -169,7 +169,7 @@ class HostResponseTimeMonitor:
 
         # Report current response time (in milliseconds) to telemetry engine.
         # Report -1 if response time couldn't be measured.
-        self._response_time_gauge: TelemetryGauge = \
+        self._response_time_gauge: TelemetryGauge | None = \
             self._telemetry_factory.create_gauge("frt.response.time." + self._host_id,
                                                  lambda: self._response_time if self._response_time != MAX_VALUE else -1)
         self._daemon_thread.start()
@@ -201,7 +201,9 @@ class HostResponseTimeMonitor:
     def run(self):
         context: TelemetryContext = self._telemetry_factory.open_telemetry_context(
             "host response time thread", TelemetryTraceLevel.TOP_LEVEL)
-        context.set_attribute("url", self._host_info.url)
+
+        if context is not None:
+            context.set_attribute("url", self._host_info.url)
         try:
             while not self.is_stopped:
                 self._open_connection()
@@ -290,7 +292,7 @@ class HostResponseTimeService:
         self._interval_ms = interval_ms
         self._hosts: Tuple[HostInfo, ...] = ()
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
-        self._host_count_gauge: TelemetryGauge = self._telemetry_factory.create_gauge("frt.hosts.count", lambda: len(self._monitoring_hosts))
+        self._host_count_gauge: TelemetryGauge | None = self._telemetry_factory.create_gauge("frt.hosts.count", lambda: len(self._monitoring_hosts))
 
     @property
     def hosts(self) -> Tuple[HostInfo, ...]:

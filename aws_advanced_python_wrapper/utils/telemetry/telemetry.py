@@ -69,7 +69,7 @@ class TelemetryGauge(ABC):
 
 class TelemetryFactory(ABC):
     @abstractmethod
-    def open_telemetry_context(self, name: str, trace_level: TelemetryTraceLevel) -> TelemetryContext:
+    def open_telemetry_context(self, name: str, trace_level: TelemetryTraceLevel) -> TelemetryContext | None:
         pass
 
     @abstractmethod
@@ -77,9 +77,13 @@ class TelemetryFactory(ABC):
         pass
 
     @abstractmethod
-    def create_counter(self, name: str) -> TelemetryCounter:
+    def create_counter(self, name: str) -> TelemetryCounter | None:
         pass
 
     @abstractmethod
-    def create_gauge(self, name: str, callback):
+    def create_gauge(self, name: str, callback) -> TelemetryGauge | None:
+        pass
+
+    @abstractmethod
+    def in_use(self) -> bool:
         pass
