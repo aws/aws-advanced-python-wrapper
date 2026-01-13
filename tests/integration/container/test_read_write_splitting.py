@@ -758,7 +758,7 @@ class TestReadWriteSplitting:
 
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_pooled_connection__failover(
-        self, test_driver: TestDriver, rds_utils, conn_utils, failover_props
+        self, test_driver: TestDriver, rds_utils, conn_utils, failover_props, cleanup_connection_provider
     ):
         provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
         ConnectionProviderManager.set_connection_provider(provider)
@@ -797,7 +797,7 @@ class TestReadWriteSplitting:
 
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_pooled_connection__cluster_url_failover(
-        self, test_driver: TestDriver, rds_utils, conn_utils, failover_props
+        self, test_driver: TestDriver, rds_utils, conn_utils, failover_props, cleanup_connection_provider
     ):
         provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
         ConnectionProviderManager.set_connection_provider(provider)
@@ -840,7 +840,8 @@ class TestReadWriteSplitting:
         conn_utils,
         proxied_failover_props,
         plugin_config,
-        plugins
+        plugins,
+        cleanup_connection_provider,
     ):
         plugin_name, _ = plugin_config
         writer_host = test_environment.get_writer().get_host()
@@ -888,7 +889,7 @@ class TestReadWriteSplitting:
 
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
     def test_pooled_connection__failover_in_transaction(
-        self, test_driver: TestDriver, rds_utils, conn_utils, failover_props
+        self, test_driver: TestDriver, rds_utils, conn_utils, failover_props, cleanup_connection_provider
     ):
         provider = SqlAlchemyPooledConnectionProvider(lambda _, __: {"pool_size": 1})
         ConnectionProviderManager.set_connection_provider(provider)
@@ -935,6 +936,7 @@ class TestReadWriteSplitting:
         rds_utils,
         conn_utils,
         props,
+        cleanup_connection_provider,
     ):
         privileged_user_props = conn_utils.get_connect_params().copy()
         limited_user_props = conn_utils.get_connect_params().copy()
@@ -1012,6 +1014,7 @@ class TestReadWriteSplitting:
         conn_utils,
         props,
         plugin_config,
+        cleanup_connection_provider,
     ):
         plugin_name, _ = plugin_config
         if plugin_name != "read_write_splitting":
@@ -1061,6 +1064,7 @@ class TestReadWriteSplitting:
         conn_utils,
         props,
         plugin_config,
+        cleanup_connection_provider,
     ):
         plugin_name, _ = plugin_config
         if plugin_name != "read_write_splitting":

@@ -149,6 +149,7 @@ def pytest_runtest_setup(item):
         MonitoringThreadContainer.clean_up()
         ThreadPoolContainer.release_resources(wait=True)
 
+        ConnectionProviderManager.release_resources()
         ConnectionProviderManager.reset_provider()
         DatabaseDialectManager.reset_custom_dialect()
         DriverDialectManager.reset_custom_dialect()
