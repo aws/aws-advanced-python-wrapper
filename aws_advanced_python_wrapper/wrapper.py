@@ -266,7 +266,7 @@ class AwsWrapperCursor(Cursor):
     @property
     def arraysize(self) -> int:
         return self.target_cursor.arraysize
-    
+
     # Optional for PEP249
     @property
     def lastrowid(self) -> int:
