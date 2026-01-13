@@ -266,6 +266,13 @@ class AwsWrapperCursor(Cursor):
     @property
     def arraysize(self) -> int:
         return self.target_cursor.arraysize
+    
+    # Optional for PEP249
+    @property
+    def lastrowid(self) -> int:
+        if hasattr(self.target_cursor, 'lastrowid'):
+            return self.target_cursor.lastrowid
+        raise AttributeError("'Cursor' object has no attribute 'lastrowid'")
 
     def close(self) -> None:
         self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_CLOSE,
