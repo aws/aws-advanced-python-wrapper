@@ -12,48 +12,46 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import mysql.connector.django.base as base
+from typing import Any
+
 import mysql.connector
-from aws_advanced_python_wrapper import AwsWrapperConnection
-from django.conf import settings
+import mysql.connector.django.base as base
 from django.utils.asyncio import async_unsafe
-from django.core.exceptions import ImproperlyConfigured
 from django.utils.functional import cached_property
 from django.utils.regex_helper import _lazy_re_compile
 
-class CursorWrapper(base.CursorWrapper):
-    """Custom Cursor Wrapper for MySQL Connector backend"""
-    pass
+from aws_advanced_python_wrapper import AwsWrapperConnection
 
 # This should match the numerical portion of the version numbers (we can treat
 # versions like 5.0.24 and 5.0.24a as the same).
 server_version_re = _lazy_re_compile(r"(\d{1,2})\.(\d{1,2})\.(\d{1,2})")
 
+
 class DatabaseWrapper(base.DatabaseWrapper):
     """Custom MySQL Connector backend for Django"""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._read_only = False
 
     @async_unsafe
     def get_new_connection(self, conn_params):
         if "converter_class" not in conn_params:
             conn_params["converter_class"] = base.DjangoMySQLConverter
-        print("THIS IS MY CONNECT PARAMS:", conn_params)
-        return AwsWrapperConnection.connect(
+        conn = AwsWrapperConnection.connect(
             mysql.connector.Connect,
             **conn_params
         )
-    
+
+        if not self._read_only:
+            return conn
+        else:
+            conn.read_only = True
+            return conn
+
     def get_connection_params(self):
         kwargs = super().get_connection_params()
-        
-        options = self.settings_dict.get("OPTIONS", {}).copy()
-        
-        # These options are handled by the superclass
-        options.pop("isolation_level", None) 
-        options.pop("init_command", None)
-        options.pop("client_flags", None)
-        options.pop("raise_on_warnings", None)
-
-        kwargs.update(options)
+        self._read_only = kwargs.pop("read_only", False)
         return kwargs
 
     @cached_property
