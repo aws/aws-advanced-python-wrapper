@@ -216,9 +216,6 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
     def init_host_provider(self, props: Properties, host_list_provider_service: HostListProviderService, init_host_provider_func: Callable):
         self._host_list_provider_service = host_list_provider_service
-        if host_list_provider_service.is_static_host_list_provider():
-            raise AwsWrapperError(Messages.get("AuroraInitialConnectionStrategyPlugin.RequireDynamicProvider"))
-
         init_host_provider_func(props)
 
     def _has_no_readers(self) -> bool:
