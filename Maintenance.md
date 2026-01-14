@@ -8,6 +8,7 @@
 | December 12, 2024 | [Release 1.2.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.2.0) |
 | July 28, 2025     | [Release 1.3.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.3.0) |
 | October 17, 2025  | [Release 1.4.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/1.4.0) |
+| January 14, 2026  | [Release 2.0.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/2.0.0) |
 
 `aws-advanced-python-wrapper` [follows semver](https://semver.org/#semantic-versioning-200) which means we will only
 release breaking changes in major versions. Generally speaking patches will be released to fix existing problems without
@@ -36,7 +37,7 @@ to releases, so you should be able to upgrade to the latest minor version of tha
 software without encountering incompatible changes (e.g., 1.1.0 → 1.4.x).
 
 Sometimes an incompatible change is unavoidable. When this happens, the software’s maintainers will increment
-the major version number (e.g., increment from `aws-advanced-python-wrapper` 1.4.0 to `aws-advanced-python-wrapper` 2.0.0).
+the major version number (e.g., increment from `aws-advanced-python-wrapper` 2.0.0 to `aws-advanced-python-wrapper` 3.0.0).
 The last minor version of the previous major version of the software will then enter a maintenance window
 (e.g., 1.4.x). During the maintenance window, the software will continue to receive bug fixes and security patches,
 but no new features.
@@ -58,6 +59,7 @@ That said, PRs with said back-ports are welcome and will follow the project's re
 No new releases will result from these changes, but interested parties can create their own distribution
 from the updated source after the PRs are merged.
 
-| Major Version | Latest Minor Version | Status  | Initial Release | Maintenance Window Start | Maintenance Window End |
-|---------------|----------------------|---------|-----------------|--------------------------|------------------------|
-| 1             | 1.4.0                | Current | May 16, 2024    | May 16, 2024             | N/A                    | 
+| Major Version | Latest Minor Version | Status      | Initial Release     | Maintenance Window Start     | Maintenance Window End |
+|---------------|----------------------|-------------|---------------------|------------------------------|------------------------|
+| 1             | 1.4.0                | Maintenance | May 16, 2024        | January 14, 2026             | January 14, 2027       |
+| 2             | 2.0.0                | Current     | January 14, 2026    | N/A                          | N/A                    |
