@@ -13,7 +13,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * [Simple Read/Write Splitting Plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) (`srw`). This plugin adds functionality to switch between endpoints via calls to the Connection#setReadOnly method. It does not rely on cluster topology. It relies purely on the provided endpoints and their DNS resolution ([PR #1048](https://github.com/aws/aws-advanced-python-wrapper/pull/1048)).
 * Wrapper resource cleanup method `aws_advanced_python_wrapper.release_resources()`. This method should be called at program exit to properly clean up background threads and resources ([PR #1066](https://github.com/aws/aws-advanced-python-wrapper/pull/1066)).
 
-
 ### :bug: Fixed
 * Sliding expiration cache bug which causes delay upon exit ([PR #1043](https://github.com/aws/aws-advanced-python-wrapper/pull/1043)).
 * Unnecessary boto3 call to verify region in IAM plugin which causes performance issues ([PR #1042](https://github.com/aws/aws-advanced-python-wrapper/pull/1042)).
@@ -26,7 +25,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * Refactor host list provider ([PR #1065](https://github.com/aws/aws-advanced-python-wrapper/pull/1065)).
 * Performance optimizations ([PR #1072](https://github.com/aws/aws-advanced-python-wrapper/pull/1072)).
 * Update documentation with required db user permissions for Multi-AZ DB Cluster and Blue/Green support ([PR #1061](https://github.com/aws/aws-advanced-python-wrapper/pull/1061)).
-
 
 ## [1.4.0] - 2025-10-17
 ### :magic_wand: Added
