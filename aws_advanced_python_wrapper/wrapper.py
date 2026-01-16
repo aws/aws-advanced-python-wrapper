@@ -178,6 +178,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def close(self) -> None:
         self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_CLOSE,
                                      lambda: self.target_connection.close())
+        self.release_resources()
 
     def cursor(self, *args: Any, **kwargs: Any) -> AwsWrapperCursor:
         _cursor = self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_CURSOR,
@@ -222,15 +223,13 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def _unwrap(self, unwrap_class: Type[UnwrapType]) -> Optional[UnwrapType]:
         return self._plugin_manager._unwrap(unwrap_class)
 
-    def __del__(self):
-        self.release_resources()
-
     def __enter__(self: AwsWrapperConnection) -> AwsWrapperConnection:
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_CLOSE,
                                      lambda: self.target_connection.close(), exc_type, exc_val, exc_tb)
+        self.release_resources()
 
 
 class AwsWrapperCursor(Cursor):
