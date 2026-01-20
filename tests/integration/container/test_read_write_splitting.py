@@ -81,6 +81,11 @@ class TestReadWriteSplitting:
         RdsHostListProvider._topology_cache.clear()
         RdsHostListProvider._is_primary_cluster_id_cache.clear()
         RdsHostListProvider._cluster_ids_to_update.clear()
+        yield
+        ConnectionProviderManager.release_resources()
+        ConnectionProviderManager.reset_provider()
+        gc.collect()
+        ProxyHelper.enable_all_connectivity()
 
     @pytest.fixture
     def props(self, plugin_config, conn_utils):
@@ -195,14 +200,6 @@ class TestReadWriteSplitting:
             props_copy, f"?.{endpoint_suffix}:{conn_utils.proxy_port}"
         )
         return props_copy
-
-    @pytest.fixture(autouse=True)
-    def cleanup_connection_provider(self):
-        yield
-        ConnectionProviderManager.release_resources()
-        ConnectionProviderManager.reset_provider()
-        gc.collect()
-        ProxyHelper.enable_all_connectivity()
 
     def test_connect_to_writer__switch_read_only(
         self, test_driver: TestDriver, props, conn_utils, rds_utils

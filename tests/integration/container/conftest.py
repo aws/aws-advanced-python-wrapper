@@ -109,7 +109,12 @@ def pytest_runtest_setup(item):
                 logger.warning("conftest.ExceptionWhileObtainingInstanceIDs", ex)
                 instances = list()
 
-            sleep(5)
+            # Only sleep if condition is still not met
+            if (len(instances) < request.get_num_of_instances()
+                or len(instances) == 0
+                or not rds_utility.is_db_instance_writer(instances[0])) and (
+                    timeit.default_timer() - start_time) < 300:
+                sleep(5)
 
         assert len(instances) > 0
         current_writer = instances[0]
@@ -144,6 +149,7 @@ def pytest_runtest_setup(item):
         MonitoringThreadContainer.clean_up()
         ThreadPoolContainer.release_resources(wait=True)
 
+        ConnectionProviderManager.release_resources()
         ConnectionProviderManager.reset_provider()
         DatabaseDialectManager.reset_custom_dialect()
         DriverDialectManager.reset_custom_dialect()
