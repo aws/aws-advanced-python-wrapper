@@ -268,13 +268,15 @@ class TestCustomEndpoint:
         try:
             self.wait_until_endpoint_has_members(rds_client, {original_instance_id, new_member})
 
-            # We should now be able to switch to reader.
+            # We should now be able to switch to writer.
             conn.read_only = False
             new_instance_id = rds_utils.query_instance_id(conn)
             assert new_instance_id == new_member
 
             # Switch back to original instance
             conn.read_only = True
+            new_instance_id = rds_utils.query_instance_id(conn)
+            assert new_instance_id == original_instance_id
         finally:
             rds_client.modify_db_cluster_endpoint(
                 DBClusterEndpointIdentifier=self.endpoint_id,
@@ -298,7 +300,7 @@ class TestCustomEndpoint:
         props["custom_endpoint_idle_monitor_expiration_ms"] = 30_000
         props["wait_for_custom_endpoint_info_timeout_ms"] = 30_000
 
-        # Ensure that we are starting with a reader connection
+        # Ensure that we are starting with a writer connection
         self._setup_custom_endpoint_role(target_driver_connect, kwargs, rds_utils, HostRole.WRITER)
         conn = AwsWrapperConnection.connect(target_driver_connect, **kwargs, **props)
 
@@ -347,7 +349,7 @@ class TestCustomEndpoint:
 
         # We should not be able to switch again because new_member was removed from the custom endpoint.
         # We are connected to the writer. Attempting to switch to the reader will not work but will intentionally
-        # not throw an exception. In this scenario we log a warning and purposefully stick with the writer.
+        # not throw an exception. In this scenario we log a warning and fallback to the writer.
         conn.read_only = True
         new_instance_id = rds_utils.query_instance_id(conn)
         assert new_instance_id == original_instance_id
