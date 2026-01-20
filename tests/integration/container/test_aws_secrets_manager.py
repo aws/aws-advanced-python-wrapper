@@ -215,7 +215,12 @@ class TestAwsSecretsManager:
         props.update({
             "plugins": "failover,aws_secrets_manager",
             "secrets_manager_secret_id": secret_name,
-            "secrets_manager_region": region
+            "secrets_manager_region": region,
+            "socket_timeout": 10,
+            "connect_timeout": 10,
+            "monitoring-connect_timeout": 5,
+            "monitoring-socket_timeout": 5,
+            "topology_refresh_ms": 10,
         })
 
         with AwsWrapperConnection.connect(

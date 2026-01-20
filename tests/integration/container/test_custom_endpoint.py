@@ -211,6 +211,7 @@ class TestCustomEndpoint:
                 if original_instance_id == original_writer:
                     self.logger.debug("Role is already " + host_role.name + ", no failover needed.")
                     return  # Do nothing, no need to failover.
+                failover_target = original_instance_id
                 self.logger.debug("Failing over to get writer role...")
             elif host_role == HostRole.READER:
                 if original_instance_id != original_writer:
