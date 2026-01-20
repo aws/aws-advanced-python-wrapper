@@ -228,6 +228,9 @@ class EndpointBasedConnectionHandler(ReadWriteConnectionHandler):
             or current_host.url.casefold() == self._read_endpoint
         )
 
+    def get_writer(self) -> Optional[HostInfo]:
+        return self._write_endpoint_host_info
+
     def _create_host_info(self, endpoint: str, role: HostRole) -> HostInfo:
         endpoint = endpoint.strip()
         host = endpoint

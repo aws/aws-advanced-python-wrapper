@@ -29,6 +29,7 @@ from botocore.exceptions import ClientError
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.errors import (FailoverSuccessError,
                                                 ReadWriteSplittingError)
+from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -195,7 +196,42 @@ class TestCustomEndpoint:
 
         conn.close()
 
-    def test_custom_endpoint_read_write_splitting__with_custom_endpoint_changes(
+    def _setup_custom_endpoint_role(self, target_driver_connect, conn_kwargs, rds_utils, host_role: HostRole):
+        self.logger.debug("Setting up custom endpoint instance with role: " + host_role.name)
+        props = {'plugins': ''}
+        original_writer = rds_utils.get_cluster_writer_instance_id()
+        failover_target = None
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_kwargs, **props) as conn:
+            endpoint_members = self.endpoint_info["StaticMembers"]
+            original_instance_id = rds_utils.query_instance_id(conn)
+            self.logger.debug("Original instance id: " + original_instance_id)
+            assert original_instance_id in endpoint_members
+
+            if host_role == HostRole.WRITER:
+                if original_instance_id == original_writer:
+                    self.logger.debug("Role is already " + host_role.name + ", no failover needed.")
+                    return  # Do nothing, no need to failover.
+                self.logger.debug("Failing over to get writer role...")
+            elif host_role == HostRole.READER:
+                if original_instance_id != original_writer:
+                    self.logger.debug("Role is already " + host_role.name + ", no failover needed.")
+                    return  # Do nothing, no need to failover.
+                self.logger.debug("Failing over to get reader role...")
+
+        rds_utils.failover_cluster_and_wait_until_writer_changed(target_id=failover_target)
+
+        self.logger.debug("Verifying that new connection has role: " + host_role.name)
+        # Verify that new connection is now the correct role
+        with AwsWrapperConnection.connect(target_driver_connect, **conn_kwargs, **props) as conn:
+            endpoint_members = self.endpoint_info["StaticMembers"]
+            original_instance_id = rds_utils.query_instance_id(conn)
+            assert original_instance_id in endpoint_members
+
+            new_role = rds_utils.query_host_role(conn, TestEnvironment.get_current().get_engine())
+            assert new_role == host_role
+        self.logger.debug("Custom endpoint instance successfully set to role: " + host_role.name)
+
+    def test_custom_endpoint_read_write_splitting__with_custom_endpoint_changes__with_reader_as_init_conn(
             self, test_driver: TestDriver, conn_utils, props, rds_utils):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         kwargs = conn_utils.get_connect_params()
@@ -204,34 +240,87 @@ class TestCustomEndpoint:
         # it takes more than 30 seconds to modify the cluster endpoint (usually around 140s).
         props["custom_endpoint_idle_monitor_expiration_ms"] = 30_000
         props["wait_for_custom_endpoint_info_timeout_ms"] = 30_000
-        conn = AwsWrapperConnection.connect(target_driver_connect, **kwargs, **props)
 
+        # Ensure that we are starting with a reader connection
+        self._setup_custom_endpoint_role(target_driver_connect, kwargs, rds_utils, HostRole.READER)
+
+        conn = AwsWrapperConnection.connect(target_driver_connect, **kwargs, **props)
         endpoint_members = self.endpoint_info["StaticMembers"]
         original_instance_id = rds_utils.query_instance_id(conn)
         assert original_instance_id in endpoint_members
 
         # Attempt to switch to an instance of the opposite role. This should fail since the custom endpoint consists
         # only of the current host.
-        new_read_only_value = original_instance_id == rds_utils.get_cluster_writer_instance_id()
-        if new_read_only_value:
-            # We are connected to the writer. Attempting to switch to the reader will not work but will intentionally
-            # not throw an exception. In this scenario we log a warning and purposefully stick with the writer.
-            self.logger.debug("Initial connection is to the writer. Attempting to switch to reader...")
-            conn.read_only = new_read_only_value
+        self.logger.debug("Initial connection is to a reader. Attempting to switch to writer...")
+        with pytest.raises(ReadWriteSplittingError):
+            conn.read_only = False
+
+        writer_id = rds_utils.get_cluster_writer_instance_id()
+        new_member = writer_id
+
+        rds_client = client('rds', region_name=TestEnvironment.get_current().get_aurora_region())
+        rds_client.modify_db_cluster_endpoint(
+            DBClusterEndpointIdentifier=self.endpoint_id,
+            StaticMembers=[original_instance_id, new_member]
+        )
+
+        try:
+            self.wait_until_endpoint_has_members(rds_client, {original_instance_id, new_member})
+
+            # We should now be able to switch to reader.
+            conn.read_only = False
             new_instance_id = rds_utils.query_instance_id(conn)
-            assert new_instance_id == original_instance_id
-        else:
-            # We are connected to the reader. Attempting to switch to the writer will throw an exception.
-            self.logger.debug("Initial connection is to a reader. Attempting to switch to writer...")
-            with pytest.raises(ReadWriteSplittingError):
-                conn.read_only = new_read_only_value
+            assert new_instance_id == new_member
+
+            # Switch back to original instance
+            conn.read_only = True
+        finally:
+            rds_client.modify_db_cluster_endpoint(
+                DBClusterEndpointIdentifier=self.endpoint_id,
+                StaticMembers=[original_instance_id])
+            self.wait_until_endpoint_has_members(rds_client, {original_instance_id})
+
+        # We should not be able to switch again because new_member was removed from the custom endpoint.
+        # We are connected to the reader. Attempting to switch to the writer will throw an exception.
+        with pytest.raises(ReadWriteSplittingError):
+            conn.read_only = False
+
+        conn.close()
+
+    def test_custom_endpoint_read_write_splitting__with_custom_endpoint_changes__with_writer_as_init_conn(
+            self, test_driver: TestDriver, conn_utils, props, rds_utils):
+        target_driver_connect = DriverHelper.get_connect_func(test_driver)
+        kwargs = conn_utils.get_connect_params()
+        kwargs["host"] = self.endpoint_info["Endpoint"]
+        # This setting is not required for the test, but it allows us to also test re-creation of expired monitors since
+        # it takes more than 30 seconds to modify the cluster endpoint (usually around 140s).
+        props["custom_endpoint_idle_monitor_expiration_ms"] = 30_000
+        props["wait_for_custom_endpoint_info_timeout_ms"] = 30_000
+
+        # Ensure that we are starting with a reader connection
+        self._setup_custom_endpoint_role(target_driver_connect, kwargs, rds_utils, HostRole.WRITER)
+        conn = AwsWrapperConnection.connect(target_driver_connect, **kwargs, **props)
+
+        endpoint_members = self.endpoint_info["StaticMembers"]
+        original_instance_id = str(rds_utils.query_instance_id(conn))
+        assert original_instance_id in endpoint_members
+
+        # We are connected to the writer. Attempting to switch to the reader will not work but will intentionally
+        # not throw an exception. In this scenario we log a warning and purposefully stick with the writer.
+        self.logger.debug("Initial connection is to the writer. Attempting to switch to reader...")
+        conn.read_only = True
+        new_instance_id = rds_utils.query_instance_id(conn)
+        assert new_instance_id == original_instance_id
 
         instances = TestEnvironment.get_current().get_instances()
-        writer_id = rds_utils.get_cluster_writer_instance_id()
-        if original_instance_id == writer_id:
-            new_member = instances[1].get_instance_id()
-        else:
-            new_member = writer_id
+        writer_id = str(rds_utils.get_cluster_writer_instance_id())
+
+        new_member = ""
+        # Get any reader id
+        for instance in instances:
+            if instance.get_instance_id() != writer_id:
+                new_member = instance.get_instance_id()
+                break
 
         rds_client = client('rds', region_name=TestEnvironment.get_current().get_aurora_region())
         rds_client.modify_db_cluster_endpoint(
@@ -243,12 +332,12 @@ class TestCustomEndpoint:
             self.wait_until_endpoint_has_members(rds_client, {original_instance_id, new_member})
 
             # We should now be able to switch to new_member.
-            conn.read_only = new_read_only_value
+            conn.read_only = True
             new_instance_id = rds_utils.query_instance_id(conn)
             assert new_instance_id == new_member
 
             # Switch back to original instance
-            conn.read_only = not new_read_only_value
+            conn.read_only = False
         finally:
             rds_client.modify_db_cluster_endpoint(
                 DBClusterEndpointIdentifier=self.endpoint_id,
@@ -256,15 +345,10 @@ class TestCustomEndpoint:
             self.wait_until_endpoint_has_members(rds_client, {original_instance_id})
 
         # We should not be able to switch again because new_member was removed from the custom endpoint.
-        if new_read_only_value:
-            # We are connected to the writer. Attempting to switch to the reader will not work but will intentionally
-            # not throw an exception. In this scenario we log a warning and purposefully stick with the writer.
-            conn.read_only = new_read_only_value
-            new_instance_id = rds_utils.query_instance_id(conn)
-            assert new_instance_id == original_instance_id
-        else:
-            # We are connected to the reader. Attempting to switch to the writer will throw an exception.
-            with pytest.raises(ReadWriteSplittingError):
-                conn.read_only = new_read_only_value
+        # We are connected to the writer. Attempting to switch to the reader will not work but will intentionally
+        # not throw an exception. In this scenario we log a warning and purposefully stick with the writer.
+        conn.read_only = True
+        new_instance_id = rds_utils.query_instance_id(conn)
+        assert new_instance_id == original_instance_id
 
         conn.close()
