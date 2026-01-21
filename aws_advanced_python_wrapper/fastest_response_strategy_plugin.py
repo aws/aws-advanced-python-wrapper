@@ -14,9 +14,9 @@
 
 from __future__ import annotations
 
+import time
 from copy import copy
 from dataclasses import dataclass
-from datetime import datetime
 from threading import Event, Lock, Thread
 from time import sleep
 from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, List, Optional,
@@ -96,7 +96,7 @@ class FastestResponseStrategyPlugin(Plugin):
 
             # Found a fastest host. Let's find it in the latest topology.
             for host in self._plugin_service.hosts:
-                if host == fastest_response_host:
+                if host.get_host_and_port() == fastest_response_host.get_host_and_port():
                     # found the fastest host in the topology
                     return host
                 # It seems that the fastest cached host isn't in the latest topology.
@@ -196,7 +196,7 @@ class HostResponseTimeMonitor:
         logger.debug("HostResponseTimeMonitor.Stopped", self._host_info.host)
 
     def _get_current_time(self):
-        return datetime.now().microsecond / 1000  # milliseconds
+        return time.perf_counter() * 1000  # milliseconds
 
     def run(self):
         context: TelemetryContext = self._telemetry_factory.open_telemetry_context(
