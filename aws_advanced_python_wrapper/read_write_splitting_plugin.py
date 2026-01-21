@@ -279,7 +279,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             # Already connected to the intended writer.
             return
 
-        self._writer_host_info = self._connection_handler.get_writer()
+        self._writer_host_info = self._connection_handler.get_writer_host_info()
         self._in_read_write_split = True
         if not self._is_connection_usable(self._writer_connection, driver_dialect):
             self._initialize_writer_connection()
@@ -512,7 +512,7 @@ class ReadWriteConnectionHandler(Protocol):
         """Refreshes the host list and then stores it."""
         ...
 
-    def get_writer(self) -> Optional[HostInfo]:
+    def get_writer_host_info(self) -> Optional[HostInfo]:
         """Get the current writer host info."""
         ...
 
@@ -546,7 +546,7 @@ class TopologyBasedConnectionHandler(ReadWriteConnectionHandler):
         self,
         plugin_service_connect_func: Callable[[HostInfo], Connection],
     ) -> tuple[Optional[Connection], Optional[HostInfo]]:
-        writer_host = self.get_writer()
+        writer_host = self.get_writer_host_info()
         if writer_host is None:
             return None, None
 
@@ -629,7 +629,7 @@ class TopologyBasedConnectionHandler(ReadWriteConnectionHandler):
 
     def has_no_readers(self) -> bool:
         if len(self._hosts) == 1:
-            return self.get_writer() is not None
+            return self.get_writer_host_info() is not None
         return False
 
     def refresh_and_store_host_list(
@@ -665,7 +665,7 @@ class TopologyBasedConnectionHandler(ReadWriteConnectionHandler):
     def is_reader_host(self, current_host) -> bool:
         return current_host.role == HostRole.READER
 
-    def get_writer(self) -> Optional[HostInfo]:
+    def get_writer_host_info(self) -> Optional[HostInfo]:
         for host in self._hosts:
             if host.role == HostRole.WRITER:
                 return host
