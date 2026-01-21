@@ -350,7 +350,7 @@ def test_query_for_dialect_no_update_candidates(mock_dialect, mock_conn, mock_dr
 
     assert mock_dialect == manager.query_for_dialect("url", HostInfo("host"), mock_conn, mock_driver_dialect)
     assert DialectCode.PG == manager._known_endpoint_dialects.get("url")
-    assert DialectCode.PG == manager._known_endpoint_dialects.get("host")
+    assert DialectCode.PG == manager._known_endpoint_dialects.get("host/")
 
 
 def test_query_for_dialect_pg(mock_conn, mock_cursor, mock_driver_dialect):
@@ -364,7 +364,7 @@ def test_query_for_dialect_pg(mock_conn, mock_cursor, mock_driver_dialect):
     result = manager.query_for_dialect("url", HostInfo("host"), mock_conn, mock_driver_dialect)
     assert isinstance(result, AuroraPgDialect)
     assert DialectCode.AURORA_PG == manager._known_endpoint_dialects.get("url")
-    assert DialectCode.AURORA_PG == manager._known_endpoint_dialects.get("host")
+    assert DialectCode.AURORA_PG == manager._known_endpoint_dialects.get("host/")
 
 
 def test_query_for_dialect_mysql(mock_conn, mock_cursor, mock_driver_dialect):
@@ -378,4 +378,4 @@ def test_query_for_dialect_mysql(mock_conn, mock_cursor, mock_driver_dialect):
     result = manager.query_for_dialect("url", HostInfo("host"), mock_conn, mock_driver_dialect)
     assert isinstance(result, AuroraMysqlDialect)
     assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("url")
-    assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("host")
+    assert DialectCode.AURORA_MYSQL == manager._known_endpoint_dialects.get("host/")

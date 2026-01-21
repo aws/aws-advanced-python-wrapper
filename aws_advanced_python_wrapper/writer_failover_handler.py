@@ -300,7 +300,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         if host_info is None or current_host_info is None:
             return False
 
-        return host_info.url == current_host_info.url
+        return host_info.get_host_and_port() == current_host_info.get_host_and_port()
 
     def connect_to_writer(self, writer_candidate: Optional[HostInfo]) -> bool:
         if self.is_same(writer_candidate, self._current_reader_host):

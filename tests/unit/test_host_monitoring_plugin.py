@@ -173,7 +173,7 @@ def test_connect(mocker, plugin, host_info, props, mock_conn, mock_plugin_servic
 def test_notify_host_list_changed(
         mocker, plugin, host_info, props, mock_conn, mock_plugin_service, mock_monitor_service, host_events):
     mock_host_info = mocker.MagicMock()
-    mock_host_info.url = "instance-1.xyz.us-east-2.rds.amazonaws.com"
+    mock_host_info.host = "instance-1.xyz.us-east-2.rds.amazonaws.com"
     aliases = frozenset({"instance-1.xyz.us-east-2.rds.amazonaws.com", "alias1", "alias2"})
     mock_host_info.all_aliases = aliases
     plugin._is_connection_initialized = True

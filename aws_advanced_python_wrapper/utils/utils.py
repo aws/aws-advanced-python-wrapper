@@ -20,6 +20,8 @@ from logging import DEBUG, Formatter, Logger, StreamHandler
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Optional, Tuple
 
+from aws_advanced_python_wrapper.hostinfo import HostRole
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
 
@@ -89,9 +91,16 @@ class Utils:
             return None
 
     @staticmethod
-    def contains_url(hosts: Tuple[HostInfo, ...], url: str) -> bool:
+    def contains_host_and_port(hosts: Tuple[HostInfo, ...], host_and_port: str) -> bool:
         for host in hosts:
-            if host.url == url:
+            if host.get_host_and_port() == host_and_port:
                 return True
 
         return False
+
+    @staticmethod
+    def get_writer(hosts: Tuple[HostInfo, ...]) -> Optional[HostInfo]:
+        for host in hosts:
+            if host.role == HostRole.WRITER:
+                return host
+        return None
