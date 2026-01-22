@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > Django ORM support is currently only available for **MySQL databases**.
 
-The AWS Advanced Python Driver provides a custom Django database backend that enables Django applications to leverage AWS and Aurora functionalities such as failover handling, IAM authentication, and read/write splitting.
+The AWS ADvanced Python Wrapper provides a custom Django database backend that enables Django applications to leverage AWS and Aurora functionalities such as failover handling, IAM authentication, and read/write splitting.
 
 ## Prerequisites
 
@@ -11,7 +11,7 @@ The AWS Advanced Python Driver provides a custom Django database backend that en
 
 ## Basic Configuration
 
-To use the AWS Advanced Python Driver with Django, configure your database settings in `settings.py` to use the custom backend in the `ENGINE` parameter, as well as any wrapper-specific properties in the `OPTIONS` parameter:
+To use the AWS ADvanced Python Wrapper with Django, configure your database settings in `settings.py` to use the custom backend in the `ENGINE` parameter, as well as any wrapper-specific properties in the `OPTIONS` parameter:
 
 ```python
 DATABASES = {
@@ -40,13 +40,13 @@ DATABASES = {
 
 ### OPTIONS Properties
 
-The `OPTIONS` dictionary supports all standard [AWS Advanced Python Driver parameters](./UsingThePythonDriver.md#aws-advanced-python-driver-parameters) as well as parameters for the underlying driver.
+The `OPTIONS` dictionary supports all standard [AWS ADvanced Python Wrapper parameters](./UsingThePythonDriver.md#aws-advanced-python-driver-parameters) as well as parameters for the underlying driver.
 
 For a complete list of available plugins and their supported parameters, see the [List of Available Plugins](./UsingThePythonDriver.md#list-of-available-plugins).
 
 ## Using Plugins with Django
 
-The AWS Advanced Python Driver supports a variety of plugins that enhance your Django application with features like failover handling, IAM authentication, and more. Most plugins can be enabled simply by adding them to the `plugins` parameter in your database `OPTIONS`.
+The AWS ADvanced Python Wrapper supports a variety of plugins that enhance your Django application with features like failover handling, IAM authentication, and more. Most plugins can be enabled simply by adding them to the `plugins` parameter in your database `OPTIONS`.
 
 For a complete list of available plugins, see the [List of Available Plugins](./UsingThePythonDriver.md#list-of-available-plugins) in the main driver documentation.
 
@@ -222,7 +222,7 @@ For a list of available connection strategies, see the [Read/Write Splitting Plu
 
 ## Resource Management
 
-The AWS Advanced Python Driver creates background threads for monitoring and connection management. To ensure proper cleanup when your Django application shuts down, add cleanup code to your application's shutdown process:
+The AWS ADvanced Python Wrapper creates background threads for monitoring and connection management. To ensure proper cleanup when your Django application shuts down, add cleanup code to your application's shutdown process:
 
 ```python
 # In your Django app's apps.py

@@ -13,10 +13,10 @@
 #  limitations under the License.
 
 """
-Django ORM Failover Example with AWS Advanced Python Driver
+Django ORM Failover Example with AWS Advanced Python Wrapper
 
 This example demonstrates how to handle failover events when using Django ORM
-with the AWS Advanced Python Driver.
+with the AWS Advanced Python Wrapper.
 
 """
 
@@ -81,7 +81,7 @@ def execute_query_with_failover_handling(query_func):
         return query_func()
 
     except FailoverSuccessError:
-        # Query execution failed and AWS Advanced Python Driver successfully failed over to an available instance.
+        # Query execution failed and AWS Advanced Python Wrapper successfully failed over to an available instance.
         # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoversuccesserror
 
         # The connection has been re-established. Retry the query.
@@ -195,7 +195,7 @@ def filter_records():
 
 if __name__ == "__main__":
     try:
-        print("Django ORM Failover Example with AWS Advanced Python Driver")
+        print("Django ORM Failover Example with AWS Advanced Python Wrapper")
         print("=" * 60)
 
         # Create table
@@ -229,5 +229,5 @@ if __name__ == "__main__":
         traceback.print_exc()
 
     finally:
-        # Clean up AWS Advanced Python Driver resources
+        # Clean up AWS Advanced Python Wrapper resources
         release_resources()

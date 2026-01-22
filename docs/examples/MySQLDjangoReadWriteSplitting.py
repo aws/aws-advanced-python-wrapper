@@ -13,9 +13,9 @@
 #  limitations under the License.
 
 """
-Django ORM Read/Write Splitting Example with AWS Advanced Python Driver
+Django ORM Read/Write Splitting Example with AWS Advanced Python Wrapper
 
-This example demonstrates how to use the AWS Advanced Python Driver with Django ORM
+This example demonstrates how to use the AWS Advanced Python Wrapper with Django ORM
 to leverage Aurora features like failover handling and read/write splitting with
 internal connection pooling.
 """
@@ -156,7 +156,7 @@ def execute_query_with_failover_handling(query_func):
         return query_func()
 
     except FailoverSuccessError:
-        # Query execution failed and AWS Advanced Python Driver successfully failed over to an available instance.
+        # Query execution failed and AWS Advanced Python Wrapper successfully failed over to an available instance.
         # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoversuccesserror
 
         # The connection has been re-established. Retry the query.
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     ConnectionProviderManager.set_connection_provider(provider)
 
     try:
-        print("Django ORM Read/Write Splitting Example with AWS Advanced Python Driver")
+        print("Django ORM Read/Write Splitting Example with AWS Advanced Python Wrapper")
         print("=" * 60)
 
         # Create table
@@ -341,5 +341,5 @@ if __name__ == "__main__":
         # Clean up connection pools
         ConnectionProviderManager.release_resources()
 
-        # Clean up AWS Advanced Python Driver resources
+        # Clean up AWS Advanced Python Wrapper resources
         release_resources()
