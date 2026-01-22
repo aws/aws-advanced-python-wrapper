@@ -36,6 +36,7 @@ import pytest
 
 from aws_advanced_python_wrapper.driver_info import DriverInfo
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
+from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from .database_engine import DatabaseEngine
@@ -254,6 +255,25 @@ class RdsTestUtility:
         else:
             raise RuntimeError(Messages.get_formatted(
                 "RdsTestUtility.MethodNotSupportedForDeployment", "query_instance_id", database_deployment))
+
+    def query_host_role(
+            self,
+            conn,
+            database_engine: DatabaseEngine) -> HostRole:
+        if database_engine == DatabaseEngine.MYSQL:
+            is_reader_query = "SELECT @@innodb_read_only"
+        elif database_engine == DatabaseEngine.PG:
+            is_reader_query = "SELECT pg_catalog.pg_is_in_recovery()"
+
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(is_reader_query)
+            record = cursor.fetchone()
+            is_reader = record[0]
+
+            if is_reader in (1, True):
+                return HostRole.READER
+            else:
+                return HostRole.WRITER
 
     def _query_aurora_instance_id(self, conn: Connection, engine: DatabaseEngine) -> str:
         if engine == DatabaseEngine.MYSQL:

@@ -185,7 +185,6 @@ class ReadWriteSplittingConnectionManager(Plugin):
 
     def _initialize_writer_connection(self):
         conn, writer_host = self._connection_handler.open_new_writer_connection(lambda x: self._plugin_service.connect(x, self._properties, self))
-
         if conn is None:
             self.log_and_raise_exception(
                 "ReadWriteSplittingPlugin.FailedToConnectToWriter"
@@ -280,13 +279,18 @@ class ReadWriteSplittingConnectionManager(Plugin):
             # Already connected to the intended writer.
             return
 
+        self._writer_host_info = self._connection_handler.get_writer_host_info()
         self._in_read_write_split = True
         if not self._is_connection_usable(self._writer_connection, driver_dialect):
             self._initialize_writer_connection()
         elif self._writer_connection is not None and self._writer_host_info is not None:
-            self._switch_current_connection_to(
-                self._writer_connection, self._writer_host_info
-            )
+            if self._connection_handler.can_host_be_used(self._writer_host_info):
+                self._switch_current_connection_to(
+                    self._writer_connection, self._writer_host_info
+                )
+            else:
+                ReadWriteSplittingConnectionManager.log_and_raise_exception(
+                    "ReadWriteSplittingPlugin.NoWriterFound")
 
         if self._is_reader_conn_from_internal_pool:
             self._close_connection_if_idle(self._reader_connection)
@@ -508,6 +512,10 @@ class ReadWriteConnectionHandler(Protocol):
         """Refreshes the host list and then stores it."""
         ...
 
+    def get_writer_host_info(self) -> Optional[HostInfo]:
+        """Get the current writer host info."""
+        ...
+
 
 class TopologyBasedConnectionHandler(ReadWriteConnectionHandler):
     """Topology based implementation of connection handling logic."""
@@ -538,7 +546,7 @@ class TopologyBasedConnectionHandler(ReadWriteConnectionHandler):
         self,
         plugin_service_connect_func: Callable[[HostInfo], Connection],
     ) -> tuple[Optional[Connection], Optional[HostInfo]]:
-        writer_host = self._get_writer()
+        writer_host = self.get_writer_host_info()
         if writer_host is None:
             return None, None
 
@@ -621,7 +629,7 @@ class TopologyBasedConnectionHandler(ReadWriteConnectionHandler):
 
     def has_no_readers(self) -> bool:
         if len(self._hosts) == 1:
-            return self._get_writer() is not None
+            return self.get_writer_host_info() is not None
         return False
 
     def refresh_and_store_host_list(
@@ -657,14 +665,11 @@ class TopologyBasedConnectionHandler(ReadWriteConnectionHandler):
     def is_reader_host(self, current_host) -> bool:
         return current_host.role == HostRole.READER
 
-    def _get_writer(self) -> Optional[HostInfo]:
+    def get_writer_host_info(self) -> Optional[HostInfo]:
         for host in self._hosts:
             if host.role == HostRole.WRITER:
                 return host
 
-        ReadWriteSplittingConnectionManager.log_and_raise_exception(
-            "ReadWriteSplittingPlugin.NoWriterFound"
-        )
         return None
 
 
