@@ -98,6 +98,9 @@ class IamAuthUtils:
             region: Optional[str],
             credentials: Optional[Dict[str, str]] = None,
             client_session: Optional[Session] = None) -> str:
+        import time
+        start_time = time.perf_counter()
+        
         telemetry_factory = plugin_service.get_telemetry_factory()
         context = telemetry_factory.open_telemetry_context("fetch authentication token", TelemetryTraceLevel.NESTED)
 
@@ -126,14 +129,21 @@ class IamAuthUtils:
 
             client.close()
 
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            
             logger.debug("IamAuthUtils.GeneratedNewAuthToken", token)
             return token
         except Exception as ex:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            print(f"❌ IAM token generation failed after {elapsed_ms:.2f}ms: {ex}")
+            
             context.set_success(False)
             context.set_exception(ex)
             raise ex
         finally:
             context.close_context()
+            print(f"⏱️  IAM token generation took {elapsed_ms:.2f}ms")
+
 
 
 class TokenInfo:
