@@ -9,7 +9,7 @@ Federated Identity allows users to use the same set of credentials to access mul
 When a user wants access to a resource, it authenticates with the IdP. From this a security token generated and is passed to the SP then grants access to said resource.
 In the case of AD FS, the user signs into the AD FS sign in page. This generates a SAML Assertion which acts as a security token. The user then passes the SAML Assertion to the SP when requesting access to resources. The SP verifies the SAML Assertion and grants access to the user. 
 
-## How to use the Federated Authentication Plugin with the AWS Advanced Python Driver 
+## How to use the Federated Authentication Plugin with the AWS Advanced Python Wrapper 
 
 ### Enabling the Federated Authentication Plugin
 > [!NOTE]\
@@ -21,7 +21,7 @@ In the case of AD FS, the user signs into the AD FS sign in page. This generates
    - If needed, review the documentation about [IAM authentication for MariaDB, MySQL, and PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html).
 2. Set up an IAM Identity Provider and IAM role. The IAM role should be using the IAM policy set up in step 1. 
    - If needed, review the documentation about [creating IAM identity providers](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create.html). For AD FS, see the documentation about [creating IAM SAML identity providers](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_saml.html).
-3. Add the plugin code `federated_auth` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) value, or to the current [driver profile](../UsingThePythonDriver.md#connection-plugin-manager-parameters).
+3. Add the plugin code `federated_auth` to the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) value, or to the current [driver profile](../UsingThePythonWrapper.md#connection-plugin-manager-parameters).
 4. Specify parameters that are required or specific to your case.
 
 ### Federated Authentication Plugin Parameters

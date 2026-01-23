@@ -22,7 +22,7 @@ The connect pipeline performs any additional setup or post connection steps requ
 
 The most common usage of the connect pipeline is to fetch extra credentials from external locations.
 
-An example would be the [IAM connection plugin](../using-the-python-driver/using-plugins/UsingTheIamAuthenticationPlugin.md). The IAM connection plugin generates an IAM authentication token to be used when establishing a connection. Since authentication is only required when establishing a connection and not required for any subsequent execution, the IAM authentication plugin only needs to implement the connect pipeline.
+An example would be the [IAM connection plugin](../using-the-python-wrapper/using-plugins/UsingTheIamAuthenticationPlugin.md). The IAM connection plugin generates an IAM authentication token to be used when establishing a connection. Since authentication is only required when establishing a connection and not required for any subsequent execution, the IAM authentication plugin only needs to implement the connect pipeline.
 
 ## Force Connect Pipeline
 
@@ -60,7 +60,7 @@ For cases where keeping updated information on existing and available readers is
 such as during the failover procedure, it is important to have a host list provider that can re-fetch information once in a while,
 like the RDS host list provider.
 The RDS host list provider should be automatically used by the AWS Advanced Python Driver when the application is connecting to Aurora databases.
-However, you can ensure that the provider is used by specifying a topology-aware dialect. For more information, see [Database Dialects](../using-the-python-driver/DatabaseDialects.md).
+However, you can ensure that the provider is used by specifying a topology-aware dialect. For more information, see [Database Dialects](../using-the-python-wrapper/DatabaseDialects.md).
 
 ## Connection Changed Notification Pipeline
 

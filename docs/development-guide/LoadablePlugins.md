@@ -9,7 +9,7 @@ Plugins let users:
 - measure execution time
 - and more
 
-The AWS Advanced Python Driver has several built-in plugins; you can [see the list here](../../docs/using-the-python-driver/UsingThePythonDriver.md#list-of-available-plugins).
+The AWS Advanced Python Driver has several built-in plugins; you can [see the list here](../using-the-python-wrapper/UsingThePythonWrapper.md#list-of-available-plugins).
 
 ## Available Services
 
@@ -68,7 +68,7 @@ To register a custom plugin, follow these steps:
 - Import and call `PluginManager.register_plugin(plugin_code: str, plugin_factory: Type[PluginFactory], weight: int = WEIGHT_RELATIVE_TO_PRIOR_PLUGIN)` with the appropriate arguments: 
   - The first argument specifies a short name for the plugin that will be used when specifying the `plugins` connection parameter. The name should not contain spaces. In the example below, we will use `custom_plugin`.
   - The second argument should be the `PluginFactory` class you created for the custom plugin. Note that the class itself should be passed rather than an instance of the class.
-  - The third (optional) argument specifies a weight for the custom plugin. The weight will determine the plugin's ordering in the plugin chain if the `auto_sort_wrapper_plugin_order` property is enabled. All plugins with unspecified weight will be ordered according to the `plugins` parameter setting. More information on this property can be found [here](../../docs/using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters).
+  - The third (optional) argument specifies a weight for the custom plugin. The weight will determine the plugin's ordering in the plugin chain if the `auto_sort_wrapper_plugin_order` property is enabled. All plugins with unspecified weight will be ordered according to the `plugins` parameter setting. More information on this property can be found [here](../using-the-python-wrapper/UsingThePythonWrapper.md#connection-plugin-manager-parameters).
 - When creating a connection, in the `plugins` parameter, include the plugin name that you specified as the first argument to `register_plugin`. This will ensure that your plugin is included in the plugin chain.
 
 ### Example

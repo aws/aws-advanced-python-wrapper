@@ -2,37 +2,37 @@
 
 ## Minimum Requirements
 
-Before using the AWS Advanced Python Driver, you must install:
+Before using the AWS Advanced Python Wrapper, you must install:
 
 - Python 3.10 - 3.13 (inclusive).
-- The AWS Advanced Python Driver.
+- The AWS Advanced Python Wrapper.
 - Your choice of underlying Python driver. 
   - To use the wrapper with Aurora with PostgreSQL compatibility, install [Psycopg](https://github.com/psycopg/psycopg).
   - To use the wrapper with Aurora with MySQL compatibility, install [MySQL Connector/Python](https://github.com/mysql/mysql-connector-python).
 > [!NOTE]\
-> The driver has been verified on Psycopg 3.1.12+ and MySQL Connector/Python 8.1.0+. Compatibility with prior versions have not been tested.
+> The wrapper has been verified on Psycopg 3.1.12+ and MySQL Connector/Python 8.1.0+. Compatibility with prior versions have not been tested.
 
-## Obtaining the AWS Advanced Python Driver
+## Obtaining the AWS Advanced Python Wrapper
 
-You can install the AWS Advanced Python Driver and the underlying Python drivers via [pip](https://pip.pypa.io/en/stable/).
+You can install the AWS Advanced Python Wrapper and the underlying Python drivers via [pip](https://pip.pypa.io/en/stable/).
 The order of installation does not matter.
 
-To use the AWS Advanced Python Driver with Psycopg for Aurora PostgreSQL, run:
+To use the AWS Advanced Python Wrapper with Psycopg for Aurora PostgreSQL, run:
 
 ```shell
 pip install aws-advanced-python-wrapper
 pip install psycopg
 ```
 
-To use the AWS Advanced Python Driver with MySQL Connector/Python for Aurora MySQL, run:
+To use the AWS Advanced Python Wrapper with MySQL Connector/Python for Aurora MySQL, run:
 ```shell
 pip install aws-advanced-python-wrapper
 pip install mysql-connector-python
 ```
 
-## Using the AWS Advanced Python Driver
+## Using the AWS Advanced Python Wrapper
 
-To start using the driver with Psycopg, you need to pass Psycopg's connect function to the `AwsWrapperConnection#connect` method as shown in the following example:
+To start using the wrapper with Psycopg, you need to pass Psycopg's connect function to the `AwsWrapperConnection#connect` method as shown in the following example:
 
 ```python
 from aws_advanced_python_wrapper import AwsWrapperConnection
@@ -46,7 +46,7 @@ awsconn = AwsWrapperConnection.connect(
 )
 ```
 
-Similarly, to start using the driver with MySQL Connector/Python, you need to pass the connect function to the `AwsWrapperConnection#connect` method as shown in the following example:
+Similarly, to start using the wrapper with MySQL Connector/Python, you need to pass the connect function to the `AwsWrapperConnection#connect` method as shown in the following example:
 ```python
 awsconn = AwsWrapperConnection.connect(
         mysql.connector.Connect,
@@ -85,11 +85,11 @@ awsconn = AwsWrapperConnection.connect(
 
 > **NOTE**: If the same configuration is specified in both the connection string and the keyword arguments, the keyword argument takes precedence.
 
-The AWS Advanced Python Driver implements the [PEP 249 Database API](https://peps.python.org/pep-0249/).
+The AWS Advanced Python Wrapper implements the [PEP 249 Database API](https://peps.python.org/pep-0249/).
 After establishing a connection, you can use it in the same pattern as you would with the community Python drivers.
-However, the driver introduces some custom errors for the Failover Plugin and the Read/Write Splitting Plugin that need to be explicitly handled.
+However, the wrapper introduces some custom errors for the Failover Plugin and the Read/Write Splitting Plugin that need to be explicitly handled.
 
-For instance, after a successful failover, some session states may not be transferred to the new connection, so the driver throws a `FailoverSuccessError` to notify the application that the connection may need to be reconfigured, or to create a new cursor object.
+For instance, after a successful failover, some session states may not be transferred to the new connection, so the wrapper throws a `FailoverSuccessError` to notify the application that the connection may need to be reconfigured, or to create a new cursor object.
 See this simple PostgreSQL example:
 
 ```python
@@ -106,7 +106,7 @@ with AwsWrapperConnection.connect(
             cursor.execute(sql)
 
     except FailoverSuccessError:
-        # Query execution failed and AWS Advanced Python Driver successfully failed over to an available instance.
+        # Query execution failed and AWS Advanced Python Wrapper successfully failed over to an available instance.
         # The old cursor is no longer reusable and the application needs to reconfigure sessions states.
         reconfigure_session_states(awsconn)
 
@@ -114,8 +114,8 @@ with AwsWrapperConnection.connect(
         with awsconn.cursor() as cursor:
             cursor.execute(sql)
 ```
-A full PostgreSQL example is available at [PGFailover.py](./examples/PGFailover.py) and [MySQLFailover.py](./examples/MySQLFailover.py) 
+A full PostgreSQL example is available at [PGFailover.py](./examples/PGFailover.py). A full MySQL example, [MySQLFailover.py](./examples/MySQLFailover.py), is available as well.
 
-You can learn more about the AWS Advanced Python Driver specific errors in the [Using the Failover Plugin](./using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#Failover-Errors) page.
+You can learn more about the AWS Advanced Python Wrapper specific errors in the [Using the Failover Plugin](using-the-python-wrapper/using-plugins/UsingTheFailoverPlugin.md#Failover-Errors) page.
 
-For more detailed information about how to use and configure the AWS Advanced Python Driver, please visit [this page](./using-the-python-driver/UsingThePythonDriver.md).
+For more detailed information about how to use and configure the AWS Advanced Python Wrapper, please visit [this page](using-the-python-wrapper/UsingThePythonWrapper.md).

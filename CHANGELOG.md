@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### :magic_wand: Added
 * Python 3.12 and 3.13 support ([PR #1052](https://github.com/aws/aws-advanced-python-wrapper/pull/1052)).
-* [Simple Read/Write Splitting Plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) (`srw`). This plugin adds functionality to switch between endpoints via calls to the Connection#setReadOnly method. It does not rely on cluster topology. It relies purely on the provided endpoints and their DNS resolution ([PR #1048](https://github.com/aws/aws-advanced-python-wrapper/pull/1048)).
+* [Simple Read/Write Splitting Plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) (`srw`). This plugin adds functionality to switch between endpoints via calls to the Connection#setReadOnly method. It does not rely on cluster topology. It relies purely on the provided endpoints and their DNS resolution ([PR #1048](https://github.com/aws/aws-advanced-python-wrapper/pull/1048)).
 * Wrapper resource cleanup method `aws_advanced_python_wrapper.release_resources()`. This method should be called at program exit to properly clean up background threads and resources ([PR #1066](https://github.com/aws/aws-advanced-python-wrapper/pull/1066)).
 
 ### :bug: Fixed
@@ -28,7 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [1.4.0] - 2025-10-17
 ### :magic_wand: Added
-* [EFM v2](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md#host-monitoring-plugin-v2), an improved alternate version of the `efm` plugin which addresses issues such as garbage collection and monitoring stability, is now live!
+* [EFM v2](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheHostMonitoringPlugin.md#host-monitoring-plugin-v2), an improved alternate version of the `efm` plugin which addresses issues such as garbage collection and monitoring stability, is now live!
 
 ### :bug: Fixed
 * Update subscribed methods to explicit methods ([PR #960](https://github.com/aws/aws-advanced-python-wrapper/pull/960))
@@ -41,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [1.3.0] - 2025-07-28
 ### :magic_wand: Added
-* [Blue/Green Plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheBlueGreenPlugin.md), which adds support for blue/green deployments ([PR #911](https://github.com/aws/aws-advanced-python-wrapper/pull/911)).
+* [Blue/Green Plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheBlueGreenPlugin.md), which adds support for blue/green deployments ([PR #911](https://github.com/aws/aws-advanced-python-wrapper/pull/911)).
 * Limitless Plugin, which adds support for limitless deployments ([PR #912](https://github.com/aws/aws-advanced-python-wrapper/pull/912)).
 * Add weighted random host selection strategy ([PR #907](https://github.com/aws/aws-advanced-python-wrapper/pull/907)).
 * Add expiration time for secrets cache in the Secrets Manager Plugin ([PR #906](https://github.com/aws/aws-advanced-python-wrapper/pull/906)).
@@ -61,7 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [1.2.0] - 2024-12-12
 ### :magic_wand: Added
-* [Custom endpoint plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheCustomEndpointPlugin.md), which adds support for RDS custom endpoints.
+* [Custom endpoint plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheCustomEndpointPlugin.md), which adds support for RDS custom endpoints.
 
 ## [1.1.1] - 2024-10-18
 ### :magic_wand: Added
@@ -73,7 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [1.1.0] - 2024-07-31
 ### :magic_wand: Added
-* Okta authentication support. See the [documentation](./docs/using-the-python-driver/using-plugins/UsingTheOktaAuthenticationPlugin.md) for more details and sample code.
+* Okta authentication support. See the [documentation](docs/using-the-python-wrapper/using-plugins/UsingTheOktaAuthenticationPlugin.md) for more details and sample code.
 
 ## [1.0.0] - 2024-05-23
 The Amazon Web Services (AWS) Advanced Python Wrapper allows an application to take advantage of the features of clustered Aurora databases.

@@ -8,7 +8,7 @@ The plugin does not rely on cluster topology. It relies purely on the provided e
 
 ## Loading the Simple Read/Write Splitting Plugin
 
-The Simple Read/Write Splitting Plugin is not loaded by default. To load the plugin, include `srw` in the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) connection parameter:
+The Simple Read/Write Splitting Plugin is not loaded by default. To load the plugin, include `srw` in the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) connection parameter:
 
 ```python
 params = {
@@ -54,7 +54,7 @@ When connecting with custom endpoints and other non-standard URLs, role verifica
 ## Limitations When Verifying Connections
 
 #### Non-RDS clusters
-The verification step determines the role of the connection by executing a query against it. The AWS Advanced Python Driver does not support gathering such information for databases that are not Aurora or RDS clusters. Thus, when connecting to non-RDS clusters `verifyNewSrwConnections` must be set to `false`.
+The verification step determines the role of the connection by executing a query against it. The AWS Advanced Python Wrapper does not support gathering such information for databases that are not Aurora or RDS clusters. Thus, when connecting to non-RDS clusters `verifyNewSrwConnections` must be set to `false`.
 
 #### Autocommit
 The verification logic results in errors such as `Cannot change transaction read-only property in the middle of a transaction` from the underlying driver when:
@@ -71,10 +71,10 @@ If autocommit is essential to a workflow, either ensure the plugin has connected
 
 RDS Proxy provides connection pooling and management that significantly improves application scalability by reducing database connection overhead and enabling thousands of concurrent connections through
 connection multiplexing. Connecting exclusively through the proxy endpoint ensures consistent connection management, automatic failover handling, and centralized monitoring, while protecting the underlying database from connection exhaustion
-and providing a stable abstraction layer that remains consistent even when database topology changes. To take full advantage of the benefits of RDS Proxy, it is recommended to only connect through RDS Proxy endpoints. By providing the read/write endpoint and a read-only endpoint to the Simple Read/Write Splitting Plugin, the AWS Advanced Python Driver will connect using 
+and providing a stable abstraction layer that remains consistent even when database topology changes. To take full advantage of the benefits of RDS Proxy, it is recommended to only connect through RDS Proxy endpoints. By providing the read/write endpoint and a read-only endpoint to the Simple Read/Write Splitting Plugin, the AWS Advanced Python Wrapper will connect using 
 these endpoints any time setReadOnly is called. 
 
-There are limitations with the AWS Advanced Python Driver and RDS Proxy. This is currently intended, by design, since RDS Proxy decides which database instance is used based on many criteria (on a per-request basis). Due to this, functionality like [Failover](./UsingTheFailoverPlugin.md), [Enhanced Failure Monitoring](./UsingTheHostMonitoringPlugin.md), and topology-based [Read/Write Splitting](./UsingTheReadWriteSplittingPlugin.md) is not compatible since the driver relies on cluster topology and RDS Proxy handles this automatically. However, the driver can still be used to handle authentication workflows and to perform the endpoint-based read/write splitting of the Simple Read/Write Splitting Plugin. 
+There are limitations with the AWS Advanced Python Wrapper and RDS Proxy. This is currently intended, by design, since RDS Proxy decides which database instance is used based on many criteria (on a per-request basis). Due to this, functionality like [Failover](./UsingTheFailoverPlugin.md), [Enhanced Failure Monitoring](./UsingTheHostMonitoringPlugin.md), and topology-based [Read/Write Splitting](./UsingTheReadWriteSplittingPlugin.md) is not compatible since the wrapper relies on cluster topology and RDS Proxy handles this automatically. However, the driver can still be used to handle authentication workflows and to perform the endpoint-based read/write splitting of the Simple Read/Write Splitting Plugin. 
 
 ## Using the Simple Read/Write Splitting Plugin against non-RDS clusters
 

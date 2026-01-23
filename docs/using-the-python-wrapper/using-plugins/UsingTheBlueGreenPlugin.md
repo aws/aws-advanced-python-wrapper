@@ -4,7 +4,7 @@
 
 The [Blue/Green Deployment](https://docs.aws.amazon.com/whitepapers/latest/blue-green-deployments/introduction.html) technique enables organizations to release applications by seamlessly shifting traffic between two identical environments running different versions of the application. This strategy effectively mitigates common risks associated with software deployment, such as downtime and limited rollback capability.
 
-The AWS Python Driver leverages the Blue/Green Deployment approach by intelligently managing traffic distribution between blue and green hosts, minimizing the impact of stale DNS data and connectivity disruptions on user applications.
+The AWS Advanced Python Wrapper leverages the Blue/Green Deployment approach by intelligently managing traffic distribution between blue and green hosts, minimizing the impact of stale DNS data and connectivity disruptions on user applications.
 
 
 ## Prerequisites
@@ -28,7 +28,7 @@ The AWS Python Driver leverages the Blue/Green Deployment approach by intelligen
 >
 > **Blue/Green Support Behaviour and Version Compatibility:**
 >
-> The AWS Advanced Python Driver now includes enhanced full support for Blue/Green Deployments. This support requires a minimum database version that includes a specific metadata table. The metadata will be accessible provided the green deployment satisfies the minimum version compatibility requirements. This constraint **does not** apply to RDS MySQL.
+> The AWS Advanced Python Wrapper now includes enhanced full support for Blue/Green Deployments. This support requires a minimum database version that includes a specific metadata table. The metadata will be accessible provided the green deployment satisfies the minimum version compatibility requirements. This constraint **does not** apply to RDS MySQL.
 >
 > For RDS Postgres, you will also need to manually install the `rds_tools` extension using the following DDL so that the metadata required by the wrapper is available:
 >
@@ -36,9 +36,9 @@ The AWS Python Driver leverages the Blue/Green Deployment approach by intelligen
 > CREATE EXTENSION rds_tools;
 > ```
 >
-> If your database version does **not** support this table, the driver will automatically detect its absence and fallback to its previous behaviour. In this fallback mode, Blue/Green handling is subject to the same limitations listed above.
+> If your database version does **not** support this table, the wrapper will automatically detect its absence and fallback to its previous behaviour. In this fallback mode, Blue/Green handling is subject to the same limitations listed above.
 >
-> **No action is required** if your database does not include the new metadata table -- the driver will continue to operate as before. If you have questions or encounter issues, please open an issue in this repository.
+> **No action is required** if your database does not include the new metadata table -- the wrapper will continue to operate as before. If you have questions or encounter issues, please open an issue in this repository.
 >
 > Supported RDS PostgreSQL Versions: `rds_tools v1.7 (17.1, 16.5, 15.9, 14.14, 13.17, 12.21)` and above.<br>
 > Supported Aurora PostgreSQL Versions: Engine Release `17.5, 16.9, 15.13, 14.18, 13.21` and above.<br>
@@ -55,7 +55,7 @@ During a [Blue/Green switchover](https://docs.aws.amazon.com/AmazonRDS/latest/Us
 - Internal security certificates are regenerated to accommodate the new host names
 
 
-All factors mentioned above may cause application disruption. The AWS Advanced Python Driver aims to minimize application disruption during Blue/Green switchover by performing the following actions:
+All factors mentioned above may cause application disruption. The AWS Advanced Python Wrapper aims to minimize application disruption during Blue/Green switchover by performing the following actions:
 - Actively monitors Blue/Green switchover status and implements appropriate measures to suspend, pass-through, or re-route database traffic
 - Prior to Blue/Green switchover initiation, compiles a comprehensive inventory of cluster and instance endpoints for both blue and green hosts along with their corresponding IP addresses
 - During the active switchover phase, temporarily suspends database traffic to connected blue hosts, which helps unload database hosts and reduces transaction lag for green hosts, thereby enhancing overall switchover performance
@@ -65,9 +65,9 @@ All factors mentioned above may cause application disruption. The AWS Advanced P
 - Intelligently detects switchover failures and rollbacks to the original state, implementing appropriate connection handling measures to maintain application stability
 
 
-## How do I use the Blue/Green Deployment Plugin with the AWS Python Driver?
+## How do I use the Blue/Green Deployment Plugin with the AWS Python Wrapper?
 
-To enable the Blue/Green Deployment functionality, add the plugin code `bg` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) parameter value.
+To enable the Blue/Green Deployment functionality, add the plugin code `bg` to the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) parameter value.
 The Blue/Green Deployment Plugin supports the following configuration parameters:
 
 | Parameter                         |  Value  |                           Required                           | Description                                                                                                                                                                                                                                                                                                                                                                                                                                             | Example Value            | Default Value |
@@ -77,7 +77,7 @@ The Blue/Green Deployment Plugin supports the following configuration parameters
 | `bg_interval_baseline_ms`         | Integer |                              No                              | The baseline interval (ms) for checking the Blue/Green Deployment status. It's highly recommended to keep this parameter below 900000ms (15 minutes).                                                                                                                                                                                                                                                                                                   | `60000`                  | `60000`       |
 | `bg_interval_increased_ms`        | Integer |                              No                              | The increased-frequency interval (ms) for checking the Blue/Green Deployment status. Configure this parameter within the range of 500-2000 milliseconds.                                                                                                                                                                                                                                                                                                | `1000`                   | `1000`        |
 | `bg_interval_high_ms`             | Integer |                              No                              | The high-frequency interval (ms) for checking the Blue/Green Deployment status. Configure this parameter within the range of 50-500 milliseconds.                                                                                                                                                                                                                                                                                                       | `100`                    | `100`         |
-| `bg_switchover_timeout_ms`        | Integer |                              No                              | Maximum duration (in milliseconds) allowed for switchover completion. If the switchover process stalls or exceeds this timeframe, the driver will automatically assume completion and resume normal operations.                                                                                                                                                                                                                                         | `180000`                 | `180000`      |
+| `bg_switchover_timeout_ms`        | Integer |                              No                              | Maximum duration (in milliseconds) allowed for switchover completion. If the switchover process stalls or exceeds this timeframe, the wrapper will automatically assume completion and resume normal operations.                                                                                                                                                                                                                                        | `180000`                 | `180000`      |
 | `bg_suspend_new_blue_connections` | Boolean |                              No                              | Enables Blue/Green Deployment switchover to suspend new blue connection requests while the switchover process is in progress.                                                                                                                                                                                                                                                                                                                           | `false`                  | `false`       |
 
 The plugin establishes dedicated monitoring connections to track Blue/Green Deployment status. To apply specific configurations to these monitoring connections, add the `blue-green-monitoring-` prefix to any configuration parameter, as shown in the following example:
@@ -107,7 +107,7 @@ props["blue-green-monitoring-connect_timeout"] = 10
 
 ## Plan your Blue/Green switchover in advance
 
-To optimize Blue/Green switchover support with the AWS Python Driver, advance planning is essential. Please follow these recommended steps:
+To optimize Blue/Green switchover support with the AWS Advanced Python Wrapper, advance planning is essential. Please follow these recommended steps:
 
 1. Create a Blue/Green Deployment for your database.
 2. Configure your application by incorporating the `bg` plugin along with any additional parameters of your choice, then deploy your application to the corresponding environment.

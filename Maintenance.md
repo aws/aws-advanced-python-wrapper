@@ -22,7 +22,7 @@ backlog of unreleased changes.
 
 In contrast, `aws-advanced-python-wrapper` releases new major versions only when there are a critical mass of
 breaking changes (e.g. changes that are incompatible with existing APIs). This tends to happen if we need to
-change the way the driver is currently working. Fortunately, the JDBC API is fairly mature and has not changed, however
+change the way the wrapper is currently working. Fortunately, the JDBC API is fairly mature and has not changed, however
 in the event that the API changes we will release a version to be compatible.
 
 Please note: Both the roadmap and the release dates reflect intentions rather than firm commitments and may change
