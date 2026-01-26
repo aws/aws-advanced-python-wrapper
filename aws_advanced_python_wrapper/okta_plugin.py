@@ -19,6 +19,7 @@ from html import unescape
 from re import search
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Set
 
+from aws_advanced_python_wrapper.aws_credentials_manager import AwsCredentialsManager
 from aws_advanced_python_wrapper.credentials_provider_factory import (
     CredentialsProviderFactory, SamlCredentialsProviderFactory)
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
@@ -54,7 +55,6 @@ class OktaAuthPlugin(Plugin):
     def __init__(self, plugin_service: PluginService, credentials_provider_factory: CredentialsProviderFactory, session: Optional[Session] = None):
         self._plugin_service = plugin_service
         self._credentials_provider_factory = credentials_provider_factory
-        self._session = session
 
         self._region_utils = RegionUtils()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
@@ -141,6 +141,7 @@ class OktaAuthPlugin(Plugin):
         credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props)
         if self._fetch_token_counter:
             self._fetch_token_counter.inc()
+        session = AwsCredentialsManager.get_session(host_info, props)
         token: str = IamAuthUtils.generate_authentication_token(
             self._plugin_service,
             user,
@@ -148,8 +149,7 @@ class OktaAuthPlugin(Plugin):
             port,
             region,
             credentials,
-            self._session
-        )
+            session)
         WrapperProperties.PASSWORD.set(props, token)
         OktaAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 

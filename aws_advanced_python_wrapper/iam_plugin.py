@@ -16,6 +16,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import boto3
+
+from aws_advanced_python_wrapper.aws_credentials_manager import AwsCredentialsManager
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
 from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 
@@ -51,7 +54,6 @@ class IamAuthPlugin(Plugin):
 
     def __init__(self, plugin_service: PluginService, session: Optional[Session] = None):
         self._plugin_service = plugin_service
-        self._session = session
 
         self._region_utils = RegionUtils()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
@@ -104,7 +106,9 @@ class IamAuthPlugin(Plugin):
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
             if self._fetch_token_counter is not None:
                 self._fetch_token_counter.inc()
-            token: str = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
+
+            session = AwsCredentialsManager.get_session(host_info, props)
+            token: str = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
