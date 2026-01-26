@@ -19,7 +19,10 @@ from typing import Dict
 from unittest.mock import patch
 
 import pytest
+from boto3 import Session
 
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.federated_plugin import FederatedAuthPlugin
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import TokenInfo
@@ -40,11 +43,12 @@ _token_cache: Dict[str, TokenInfo] = {}
 @pytest.fixture(autouse=True)
 def clear_cache():
     _token_cache.clear()
+    AwsCredentialsManager.release_resources()
 
 
 @pytest.fixture
 def mock_session(mocker):
-    return mocker.MagicMock()
+    return mocker.MagicMock(spec=Session)
 
 
 @pytest.fixture
@@ -91,6 +95,13 @@ def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection,
                                                                           "SecretAccessKey": "test-secret-access",
                                                                           "SessionToken": "test-session-token"}
 
+    def custom_handler(host_info: HostInfo, props: Properties) -> Session:
+        return mock_session
+
+    AwsCredentialsManager.set_custom_handler(custom_handler)
+    yield
+    AwsCredentialsManager.reset_custom_handler()
+
 
 @patch("aws_advanced_python_wrapper.federated_plugin.FederatedAuthPlugin._token_cache", _token_cache)
 def test_pg_connect_valid_token_in_cache(mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
@@ -129,7 +140,7 @@ def test_expired_cached_token(mocker, mock_plugin_service, mock_session, mock_fu
     initial_token = TokenInfo(_TEST_TOKEN, datetime.now() - timedelta(minutes=5))
     _token_cache[_PG_CACHE_KEY] = initial_token
 
-    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory, mock_session)
+    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory)
 
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
@@ -154,7 +165,7 @@ def test_no_cached_token(mocker, mock_plugin_service, mock_session, mock_func, m
     test_props: Properties = Properties({"plugins": "federated_auth", "user": "postgresqlUser", "idp_username": "user", "idp_password": "password"})
     WrapperProperties.DB_USER.set(test_props, _DB_USER)
 
-    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory, mock_session)
+    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory)
 
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
@@ -183,8 +194,7 @@ def test_no_cached_token_raises_exception(mocker, mock_plugin_service, mock_sess
     exception_message = "generic exception"
     mock_func.side_effect = Exception(exception_message)
 
-    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory,
-                                                             mock_session)
+    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory)
     with pytest.raises(Exception) as e_info:
         target_plugin.connect(
             target_driver_func=mocker.MagicMock(),
@@ -229,11 +239,11 @@ def test_connect_with_specified_iam_host_port_region(mocker,
 
     mock_client.generate_db_auth_token.return_value = f"{_TEST_TOKEN}:{expected_region}"
 
-    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory, mock_session)
+    target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory)
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
         driver_dialect=mock_dialect,
-        host_info=HostInfo(expected_host),
+        host_info=HostInfo("foo.com"),
         props=properties,
         is_initial_connection=False,
         connect_func=mock_func)

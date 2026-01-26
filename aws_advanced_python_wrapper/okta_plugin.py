@@ -14,11 +14,14 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timedelta
 from html import unescape
 from re import search
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Set
 
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.credentials_provider_factory import (
     CredentialsProviderFactory, SamlCredentialsProviderFactory)
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
@@ -26,7 +29,6 @@ from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 from aws_advanced_python_wrapper.utils.saml_utils import SamlUtils
 
 if TYPE_CHECKING:
-    from boto3 import Session
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -51,10 +53,9 @@ class OktaAuthPlugin(Plugin):
     _rds_utils: RdsUtils = RdsUtils()
     _token_cache: Dict[str, TokenInfo] = {}
 
-    def __init__(self, plugin_service: PluginService, credentials_provider_factory: CredentialsProviderFactory, session: Optional[Session] = None):
+    def __init__(self, plugin_service: PluginService, credentials_provider_factory: CredentialsProviderFactory):
         self._plugin_service = plugin_service
         self._credentials_provider_factory = credentials_provider_factory
-        self._session = session
 
         self._region_utils = RegionUtils()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
@@ -96,11 +97,13 @@ class OktaAuthPlugin(Plugin):
 
         token_info: Optional[TokenInfo] = OktaAuthPlugin._token_cache.get(cache_key)
 
+        token_host_info = deepcopy(host_info)
+        token_host_info.host = host
         if token_info is not None and not token_info.is_expired():
             logger.debug("OktaAuthPlugin.UseCachedToken", token_info.token)
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
-            self._update_authentication_token(host_info, props, user, region, cache_key)
+            self._update_authentication_token(token_host_info, props, user, region, cache_key)
 
         WrapperProperties.USER.set(props, WrapperProperties.DB_USER.get(props))
 
@@ -110,7 +113,7 @@ class OktaAuthPlugin(Plugin):
             if token_info is None or token_info.is_expired() or not self._plugin_service.is_login_exception(e):
                 raise e
 
-            self._update_authentication_token(host_info, props, user, region, cache_key)
+            self._update_authentication_token(token_host_info, props, user, region, cache_key)
 
             try:
                 return connect_func()
@@ -138,18 +141,18 @@ class OktaAuthPlugin(Plugin):
         token_expiration_sec: int = WrapperProperties.IAM_TOKEN_EXPIRATION.get_int(props)
         token_expiry: datetime = datetime.now() + timedelta(seconds=token_expiration_sec)
         port: int = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
-        credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props)
+        credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props, host_info)
         if self._fetch_token_counter:
             self._fetch_token_counter.inc()
+        session = AwsCredentialsManager.get_session(host_info, props, region)
         token: str = IamAuthUtils.generate_authentication_token(
             self._plugin_service,
             user,
             host_info.host,
             port,
             region,
-            credentials,
-            self._session
-        )
+            session,
+            credentials)
         WrapperProperties.PASSWORD.set(props, token)
         OktaAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 

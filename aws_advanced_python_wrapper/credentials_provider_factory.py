@@ -16,32 +16,29 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Dict, Optional, Protocol
 
-import boto3
-
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.utils.properties import Properties
 
 from abc import abstractmethod
 
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 
 class CredentialsProviderFactory(Protocol):
     @abstractmethod
-    def get_aws_credentials(self, region: str, props: Properties) -> Optional[Dict[str, str]]:
+    def get_aws_credentials(self, region: str, props: Properties, host_info: HostInfo) -> Optional[Dict[str, str]]:
         ...
 
 
 class SamlCredentialsProviderFactory(CredentialsProviderFactory):
 
-    def get_aws_credentials(self, region: str, props: Properties) -> Optional[Dict[str, str]]:
+    def get_aws_credentials(self, region: str, props: Properties, host_info: HostInfo) -> Optional[Dict[str, str]]:
         saml_assertion: str = self.get_saml_assertion(props)
-        session = boto3.Session()
-
-        sts_client = session.client(
-            'sts',
-            region_name=region
-        )
+        session = AwsCredentialsManager.get_session(host_info, props, region)
+        sts_client = AwsCredentialsManager.get_client("sts", session, host_info.host, region)
 
         response: Dict[str, Dict[str, str]] = sts_client.assume_role_with_saml(
             RoleArn=WrapperProperties.IAM_ROLE_ARN.get(props),
