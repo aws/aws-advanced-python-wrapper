@@ -31,6 +31,7 @@ def custom_credentials_handler(host_info, props):
 
 if __name__ == "__main__":
 
+    # Use a custom boto3 Session with a specific set of credentials
     AwsCredentialsManager.set_custom_handler(custom_credentials_handler)
 
     try:

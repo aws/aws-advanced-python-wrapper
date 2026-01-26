@@ -138,18 +138,18 @@ class OktaAuthPlugin(Plugin):
         token_expiration_sec: int = WrapperProperties.IAM_TOKEN_EXPIRATION.get_int(props)
         token_expiry: datetime = datetime.now() + timedelta(seconds=token_expiration_sec)
         port: int = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
-        credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props)
+        credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props, host_info)
         if self._fetch_token_counter:
             self._fetch_token_counter.inc()
-        session = AwsCredentialsManager.get_session(host_info, props)
+        session = AwsCredentialsManager.get_session(host_info, props, region)
         token: str = IamAuthUtils.generate_authentication_token(
             self._plugin_service,
             user,
             host_info.host,
             port,
             region,
-            credentials,
-            session)
+            session,
+            credentials)
         WrapperProperties.PASSWORD.set(props, token)
         OktaAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
@@ -225,6 +225,11 @@ class OktaCredentialsProviderFactory(SamlCredentialsProviderFactory):
             error_message = "OktaAuthPlugin.UnhandledException"
             logger.debug(error_message, e)
             raise AwsWrapperError(Messages.get_formatted(error_message, e))
+
+    @staticmethod
+    def release_resources() -> None:
+        AwsCredentialsManager.release_resources()
+        return None
 
 
 class OktaAuthPluginFactory(PluginFactory):

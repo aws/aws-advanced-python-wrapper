@@ -144,22 +144,27 @@ class FederatedAuthPlugin(Plugin):
         token_expiration_sec: int = WrapperProperties.IAM_TOKEN_EXPIRATION.get_int(props)
         token_expiry: datetime = datetime.now() + timedelta(seconds=token_expiration_sec)
         port: int = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
-        credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props)
+        credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props, host_info)
 
         if self._fetch_token_counter is not None:
             self._fetch_token_counter.inc()
-        session = AwsCredentialsManager.get_session(host_info, props)
+        session = AwsCredentialsManager.get_session(host_info, props, region)
         token: str = IamAuthUtils.generate_authentication_token(
             self._plugin_service,
             user,
             host_info.host,
             port,
             region,
-            credentials,
-            session)
+            session,
+            credentials)
         WrapperProperties.PASSWORD.set(props, token)
         FederatedAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
+    @staticmethod
+    def release_resources() -> None:
+        FederatedAuthPlugin._token_cache.clear()
+        AwsCredentialsManager.release_resources()
+        return None
 
 class FederatedAuthPluginFactory(PluginFactory):
     @staticmethod

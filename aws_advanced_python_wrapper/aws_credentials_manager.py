@@ -15,9 +15,8 @@
 from __future__ import annotations
 
 from threading import Lock
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
-import boto3
 from boto3 import Session
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 if TYPE_CHECKING:
@@ -28,6 +27,8 @@ if TYPE_CHECKING:
 class AwsCredentialsManager:
     _handler: Optional[Callable[[HostInfo, Properties], Optional[Session]]] = None
     _lock = Lock()
+    _sessions: dict[str, Session] = {}
+    _clients: dict[str, Any] = {}
 
     @staticmethod
     def set_custom_handler(custom_handler: Callable[[HostInfo, Properties], Optional[Session]]) -> None:
@@ -40,12 +41,46 @@ class AwsCredentialsManager:
             AwsCredentialsManager._handler = None
 
     @staticmethod
-    def get_session(host_info: HostInfo, props: Properties) -> Session:
+    def get_session(host_info: HostInfo, props: Properties, region: str) -> Session:
+        host_key = f'{host_info.as_alias()}{region}'
+
+        handler = None
         with AwsCredentialsManager._lock:
-            session = AwsCredentialsManager._handler(host_info, props) if AwsCredentialsManager._handler else None
-            
-            if session is None:
-                profile_name = WrapperProperties.AWS_PROFILE.get(props)
-                session = boto3.Session(profile_name=profile_name) if profile_name else boto3.Session()
-            
-            return session
+            if host_key in AwsCredentialsManager._sessions:
+                return AwsCredentialsManager._sessions[host_key]
+            handler = AwsCredentialsManager._handler
+
+        # Initialize session outside of lock.
+        session = handler(host_info, props) if handler else None
+        
+        if session is None:
+            profile_name = WrapperProperties.AWS_PROFILE.get(props)
+            session = Session(profile_name=profile_name, region_name=region) if profile_name else Session(region_name=region)
+        
+        with AwsCredentialsManager._lock:
+            if host_key not in AwsCredentialsManager._sessions:
+                AwsCredentialsManager._sessions[host_key] = session
+            return AwsCredentialsManager._sessions[host_key]
+
+    @staticmethod
+    def get_client(service_name: str, session: Session, host: str, region: str):
+        key = f'{host}{region}{service_name}'
+        
+        with AwsCredentialsManager._lock:
+            if key in AwsCredentialsManager._clients:
+                return AwsCredentialsManager._clients[key]
+
+        # Initialize client outside of lock.
+        client = session.client(service_name)
+        
+        with AwsCredentialsManager._lock:
+            if key not in AwsCredentialsManager._clients:
+                AwsCredentialsManager._clients[key] = client
+            return AwsCredentialsManager._clients[key]
+
+    @staticmethod
+    def release_resources() -> None:
+        with AwsCredentialsManager._lock:
+            AwsCredentialsManager._sessions.clear()
+            AwsCredentialsManager._clients.clear()
+        return None

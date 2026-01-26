@@ -107,8 +107,14 @@ class IamAuthPlugin(Plugin):
             if self._fetch_token_counter is not None:
                 self._fetch_token_counter.inc()
 
-            session = AwsCredentialsManager.get_session(host_info, props)
-            token: str = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=session)
+            session = AwsCredentialsManager.get_session(host_info, props, region)
+            token: str = IamAuthUtils.generate_authentication_token(
+                self._plugin_service,
+                user,
+                host_info.host,
+                port,
+                region,
+                session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
@@ -127,7 +133,8 @@ class IamAuthPlugin(Plugin):
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
             if self._fetch_token_counter is not None:
                 self._fetch_token_counter.inc()
-            token = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, client_session=self._session)
+            session = AwsCredentialsManager.get_session(host_info, props, region)
+            token = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, session)
             self._plugin_service.driver_dialect.set_password(props, token)
             IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
@@ -135,6 +142,12 @@ class IamAuthPlugin(Plugin):
                 return connect_func()
             except Exception as e:
                 raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.UnhandledException", e)) from e
+
+    @staticmethod
+    def release_resources() -> None:
+        IamAuthPlugin._token_cache.clear()
+        AwsCredentialsManager.release_resources()
+        return None
 
     def force_connect(
             self,
