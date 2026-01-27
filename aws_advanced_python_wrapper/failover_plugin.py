@@ -217,7 +217,9 @@ class FailoverPlugin(Plugin):
         if not self._is_failover_enabled():
             return
 
-        if self._plugin_service.current_connection is None:
+        conn = self._plugin_service.current_connection
+        driver_dialect = self._plugin_service.driver_dialect
+        if conn is None or (driver_dialect is not None and driver_dialect.is_closed(conn)):
             return
 
         if force_update:

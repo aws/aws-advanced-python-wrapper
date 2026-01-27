@@ -913,6 +913,8 @@ class TestReadWriteSplitting:
             new_driver_conn = conn.target_connection
             assert initial_driver_conn is not new_driver_conn
 
+        rds_utils.wait_until_cluster_has_desired_status(TestEnvironment.get_current().get_info().get_db_name(), "available")
+
         with AwsWrapperConnection.connect(
             target_driver_connect, **conn_utils.get_connect_params(), **failover_props
         ) as conn:
