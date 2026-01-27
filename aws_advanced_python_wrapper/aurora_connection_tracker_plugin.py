@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from threading import Thread
 from time import perf_counter_ns
 from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, FrozenSet,
@@ -37,7 +36,7 @@ from _weakrefset import WeakSet
 
 from aws_advanced_python_wrapper.errors import FailoverError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
-from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory, CanReleaseResources
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
@@ -46,31 +45,39 @@ logger = Logger(__name__)
 
 class OpenedConnectionTracker:
     _opened_connections: ClassVar[Dict[str, WeakSet]] = {}
+    _lock: ClassVar[threading.Lock] = threading.Lock()
     _rds_utils: ClassVar[RdsUtils] = RdsUtils()
     _prune_thread: ClassVar[Optional[Thread]] = None
+    _prune_thread_started: ClassVar[bool] = False
     _shutdown_event: ClassVar[threading.Event] = threading.Event()
     _safe_to_check_closed_classes: ClassVar[Set[str]] = {"psycopg"}
     _default_sleep_time: ClassVar[int] = 30
 
     @classmethod
     def _start_prune_thread(cls):
-        if cls._prune_thread is None or not cls._prune_thread.is_alive():
-            cls._prune_thread = Thread(daemon=True, target=cls._prune_connections_loop)
-            cls._prune_thread.start()
+        with cls._lock:
+            if not cls._prune_thread_started:
+                cls._prune_thread_started = True
+                cls._prune_thread = Thread(daemon=True, target=cls._prune_connections_loop)
+                cls._prune_thread.start()
 
     @classmethod
     def _prune_connections_loop(cls):
         while not cls._shutdown_event.is_set():
             try:
                 cls._prune_connections()
-                time.sleep(cls._default_sleep_time)
+                if cls._shutdown_event.wait(timeout=cls._default_sleep_time):
+                    break
             except Exception:
                 pass
 
     @classmethod
     def _prune_connections(cls):
-        for host, conn_set in list(cls._opened_connections.items()):
-            # Remove dead references and closed connections
+        with cls._lock:
+            opened_connections = list(cls._opened_connections.items())
+
+        to_remove_by_host = {}
+        for host, conn_set in opened_connections:
             to_remove = []
             for conn in list(conn_set):
                 if conn is None:
@@ -84,12 +91,17 @@ class OpenedConnectionTracker:
                     except Exception:
                         pass
 
-            for conn in to_remove:
-                conn_set.discard(conn)
+            if to_remove:
+                to_remove_by_host[host] = (conn_set, to_remove)
 
-            # Remove empty connection sets
-            if not conn_set:
-                del cls._opened_connections[host]
+        with cls._lock:
+            for host, (conn_set, to_remove) in to_remove_by_host.items():
+                for conn in to_remove:
+                    conn_set.discard(conn)
+
+                # Remove empty connection sets
+                if not conn_set and host in cls._opened_connections:
+                    del cls._opened_connections[host]
 
     def populate_opened_connection_set(self, host_info: HostInfo, conn: Connection):
         """
@@ -138,10 +150,13 @@ class OpenedConnectionTracker:
         if not instance_endpoint:
             return
 
-        connection_set: Optional[WeakSet] = self._opened_connections.get(instance_endpoint)
-        if connection_set is not None:
+        with self._lock:
+            connection_set: Optional[WeakSet] = self._opened_connections.get(instance_endpoint)
+            connections_list = list(connection_set) if connection_set is not None else None
+
+        if connections_list is not None:
             self._log_connection_set(instance_endpoint, connection_set)
-            self._invalidate_connections(connection_set)
+            self._invalidate_connections(connections_list)
 
     def remove_connection_tracking(self, host_info: HostInfo, connection: Connection | None):
         if not connection:
@@ -156,26 +171,21 @@ class OpenedConnectionTracker:
         if not host:
             return
 
-        connection_set = self._opened_connections.get(host)
-        if connection_set:
-            connection_set.discard(connection)
+        with self._lock:
+            connection_set = self._opened_connections.get(host)
+            if connection_set:
+                connection_set.discard(connection)
 
     def _track_connection(self, instance_endpoint: str, conn: Connection):
-        connection_set = self._opened_connections.setdefault(instance_endpoint, WeakSet())
-        connection_set.add(conn)
+        with self._lock:
+            connection_set = self._opened_connections.setdefault(instance_endpoint, WeakSet())
+            connection_set.add(conn)
         self._start_prune_thread()
         self.log_opened_connections()
 
     @staticmethod
-    def _task(connection_set: WeakSet):
-        while connection_set is not None:
-            try:
-                conn_reference = connection_set.pop()
-            except KeyError:
-                # connection_set is empty
-                # use KeyError instead of len() to determine whether connection_set is empty to prevent data race
-                break
-
+    def _task(connections_list: list):
+        for conn_reference in connections_list:
             if conn_reference is None:
                 continue
 
@@ -185,15 +195,19 @@ class OpenedConnectionTracker:
                 # Swallow this exception, current connection should be useless anyway
                 pass
 
-    def _invalidate_connections(self, connection_set: WeakSet):
+    def _invalidate_connections(self, connections_list: list):
         invalidate_connection_thread: Thread = Thread(daemon=True, target=self._task,
-                                                      args=[connection_set])  # type: ignore
+                                                      args=[connections_list])  # type: ignore
         invalidate_connection_thread.start()
 
     def log_opened_connections(self):
+        with self._lock:
+            opened_connections = [(key, list(conn_set)) for key, conn_set in self._opened_connections.items()]
+
+        # Build log message outside lock
         msg_parts = []
-        for key, conn_set in self._opened_connections.items():
-            conn_parts = [f"\n\t\t{item}" for item in list(conn_set)]
+        for key, conn_list in opened_connections:
+            conn_parts = [f"\n\t\t{item}" for item in conn_list]
             conn = "".join(conn_parts)
             msg_parts.append(f"\t[{key} : {conn}]")
 
@@ -209,9 +223,20 @@ class OpenedConnectionTracker:
         msg = host + f"[{conn}\n]"
         logger.debug("OpenedConnectionTracker.InvalidatingConnections", msg)
 
+    def release_resources(self):
+        self._shutdown_event.set()
+        with self._lock:
+            thread_to_join = self._prune_thread
+        if thread_to_join is not None:
+            thread_to_join.join()
+        with self._lock:
+            self._opened_connections.clear()
+            AuroraConnectionTrackerPlugin._prune_thread_started = False
 
-class AuroraConnectionTrackerPlugin(Plugin):
+
+class AuroraConnectionTrackerPlugin(Plugin, CanReleaseResources):
     _host_list_refresh_end_time_nano: ClassVar[int] = 0
+    _refresh_lock: ClassVar[threading.Lock] = threading.Lock()
     _TOPOLOGY_CHANGES_EXPECTED_TIME_NANO: ClassVar[int] = 3 * 60 * 1_000_000_000  # 3 minutes
 
     @property
@@ -264,19 +289,19 @@ class AuroraConnectionTrackerPlugin(Plugin):
 
         try:
             if not method_name == DbApiMethod.CONNECTION_CLOSE.method_name:
-                local_host_list_refresh_end_time_nano = AuroraConnectionTrackerPlugin._host_list_refresh_end_time_nano
                 need_refresh_host_lists = False
-                if local_host_list_refresh_end_time_nano > 0:
-                    if local_host_list_refresh_end_time_nano > perf_counter_ns():
-                        # The time specified in hostListRefreshThresholdTimeNano isn't yet reached.
-                        # Need to continue to refresh host list.
-                        need_refresh_host_lists = True
-                    else:
-                        # The time specified in hostListRefreshThresholdTimeNano is reached, and we can stop further refreshes
-                        # of host list. If hostListRefreshThresholdTimeNano has changed while this thread processes the code,
-                        # we can't override a new value in hostListRefreshThresholdTimeNano.
-                        if AuroraConnectionTrackerPlugin._host_list_refresh_end_time_nano == local_host_list_refresh_end_time_nano:
+                with AuroraConnectionTrackerPlugin._refresh_lock:
+                    local_host_list_refresh_end_time_nano = AuroraConnectionTrackerPlugin._host_list_refresh_end_time_nano
+                    if local_host_list_refresh_end_time_nano > 0:
+                        if local_host_list_refresh_end_time_nano > perf_counter_ns():
+                            # The time specified in hostListRefreshThresholdTimeNano isn't yet reached.
+                            # Need to continue to refresh host list.
+                            need_refresh_host_lists = True
+                        else:
+                            # The time specified in hostListRefreshThresholdTimeNano is reached, and we can stop further refreshes
+                            # of host list.
                             AuroraConnectionTrackerPlugin._host_list_refresh_end_time_nano = 0
+
                 if self._need_update_current_writer or need_refresh_host_lists:
                     # Calling this method may effectively close/abort a current connection
                     self._check_writer_changed(need_refresh_host_lists)
@@ -288,8 +313,9 @@ class AuroraConnectionTrackerPlugin(Plugin):
 
         except Exception as e:
             if isinstance(e, FailoverError):
-                AuroraConnectionTrackerPlugin._host_list_refresh_end_time_nano = (
-                        perf_counter_ns() + AuroraConnectionTrackerPlugin._TOPOLOGY_CHANGES_EXPECTED_TIME_NANO)
+                with AuroraConnectionTrackerPlugin._refresh_lock:
+                    AuroraConnectionTrackerPlugin._host_list_refresh_end_time_nano = (
+                            perf_counter_ns() + AuroraConnectionTrackerPlugin._TOPOLOGY_CHANGES_EXPECTED_TIME_NANO)
                 # Calling this method may effectively close/abort a current connection
                 self._check_writer_changed(True)
             raise
@@ -317,6 +343,9 @@ class AuroraConnectionTrackerPlugin(Plugin):
                 self._tracker.invalidate_all_connections(host=frozenset([node]))
             if HostEvent.CONVERTED_TO_WRITER in node_changes:
                 self._need_update_current_writer = True
+
+    def release_resources(self):
+        self._tracker.release_resources()
 
 
 class AuroraConnectionTrackerPluginFactory(PluginFactory):
