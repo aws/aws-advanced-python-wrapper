@@ -313,7 +313,7 @@ class TestDjangoPlugins:
         # Get configuration from test parameter or use defaults
         if hasattr(request, 'param') and isinstance(request.param, dict):
             config = request.param
-            plugins_config = config.get('plugins', 'aurora_connection_tracker,failover2')
+            plugins_config = config.get('plugins', 'aurora_connection_tracker,failover_v2')
             extra_options = config.get('options', {})
 
             # Check if we need to use custom endpoint
@@ -347,7 +347,7 @@ class TestDjangoPlugins:
             else:
                 host = config.get('host', conn_utils.writer_cluster_host)
         else:
-            plugins_config = 'aurora_connection_tracker,failover2'
+            plugins_config = 'aurora_connection_tracker,failover_v2'
             extra_options = {}
             user = conn_utils.user
             password = conn_utils.password
@@ -448,14 +448,14 @@ class TestDjangoPlugins:
         # Clean up
         TestModel.objects.all().delete()
 
-    @pytest.mark.parametrize('django_setup', [{'plugins': 'failover'}], indirect=True)
+    @pytest.mark.parametrize('django_setup', [{'plugins': 'failover_v2'}], indirect=True)
     def test_django_with_failover_only(self, test_environment: TestEnvironment, django_models, django_setup):
         """Test Django with only failover plugin"""
         TestModel = self.TestModel
         config = django_setup  # Get the config from fixture
 
         # Verify only failover plugin is configured
-        assert config['plugins'] == 'failover'
+        assert config['plugins'] == 'failover_v2'
 
         # Test basic functionality works with failover plugin
         test_obj = TestModel.objects.create(
@@ -470,14 +470,14 @@ class TestDjangoPlugins:
         # Clean up
         TestModel.objects.all().delete()
 
-    @pytest.mark.parametrize('django_setup', [{'plugins': 'aurora_connection_tracker,failover2'}], indirect=True)
+    @pytest.mark.parametrize('django_setup', [{'plugins': 'aurora_connection_tracker,failover_v2'}], indirect=True)
     def test_django_with_multiple_plugins(self, test_environment: TestEnvironment, django_models, django_setup):
         """Test Django with multiple plugins enabled"""
         TestModel = self.TestModel
         config = django_setup  # Get the config from fixture
 
         # Verify multiple plugins are configured
-        assert config['plugins'] == 'aurora_connection_tracker,failover2'
+        assert config['plugins'] == 'aurora_connection_tracker,failover_v2'
 
         # Test basic functionality works with multiple plugins
         test_obj = TestModel.objects.create(
@@ -559,7 +559,7 @@ class TestDjangoPlugins:
         TestModel.objects.all().delete()
 
     @pytest.mark.parametrize('django_setup', [{
-        'plugins': 'failover',
+        'plugins': 'failover_v2',
         'options': {
             'socket_timeout': 10,
             'connect_timeout': 10,
@@ -576,7 +576,7 @@ class TestDjangoPlugins:
         config = django_setup
 
         # Verify failover plugin is configured
-        assert 'failover' in config['plugins']
+        assert 'failover_v2' in config['plugins']
 
         # Get initial writer ID
         initial_writer_id = rds_utils.get_cluster_writer_instance_id()
@@ -616,7 +616,7 @@ class TestDjangoPlugins:
         TestModel.objects.all().delete()
 
     @pytest.mark.parametrize('django_setup', [{
-        'plugins': 'custom_endpoint,failover2',
+        'plugins': 'custom_endpoint,failover_v2',
         'use_custom_endpoint': True,
         'options': {
             'socket_timeout': 10,
@@ -637,7 +637,7 @@ class TestDjangoPlugins:
 
         # Verify custom_endpoint and failover plugins are configured
         assert 'custom_endpoint' in config['plugins']
-        assert 'failover' in config['plugins']
+        assert 'failover_v2' in config['plugins']
 
         # Get initial writer ID
         initial_writer_id = rds_utils.get_cluster_writer_instance_id()
