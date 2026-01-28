@@ -41,6 +41,15 @@ class ExceptionHandler(Protocol):
         """
         pass
 
+    def is_read_only_connection_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        """
+        Checks whether the given error is caused by failing to authenticate the user.
+        :param error: The error raised by the target driver.
+        :param sql_state: The SQL State associated with the error.
+        :return: True if the error is caused by a login issue, False otherwise.
+        """
+        pass
+
 
 class ExceptionManager:
     custom_handler: Optional[ExceptionHandler] = None
@@ -65,6 +74,13 @@ class ExceptionManager:
         handler = self._get_handler(dialect)
         if handler is not None:
             return handler.is_login_exception(error=error, sql_state=sql_state)
+        return False
+
+    def is_read_only_connection_exception(self, dialect: Optional[DatabaseDialect], error: Optional[Exception] = None,
+                                          sql_state: Optional[str] = None) -> bool:
+        handler = self._get_handler(dialect)
+        if handler is not None:
+            return handler.is_read_only_connection_exception(error=error, sql_state=sql_state)
         return False
 
     def _get_handler(self, dialect: Optional[DatabaseDialect]) -> Optional[ExceptionHandler]:

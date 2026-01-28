@@ -90,3 +90,16 @@ class AtomicReference(Generic[T]):
     def set(self, new_value: T) -> None:
         with self._lock:
             self._value = new_value
+
+    def get_and_set(self, new_value: T) -> T:
+        with self._lock:
+            value = self._value
+            self._value = new_value
+            return value
+
+    def compare_and_set(self, old_value: T, new_value: T) -> bool:
+        with self._lock:
+            if self._value == old_value:
+                self._value = new_value
+                return True
+            return False

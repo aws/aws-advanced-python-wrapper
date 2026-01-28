@@ -18,14 +18,16 @@ from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
                     Protocol, Tuple, runtime_checkable)
 
 from aws_advanced_python_wrapper.driver_info import DriverInfo
+from aws_advanced_python_wrapper.failover_v2_plugin import FailoverV2Plugin
 from aws_advanced_python_wrapper.host_list_provider import (
-    AuroraTopologyUtils, MultiAzTopologyUtils)
+    AuroraTopologyUtils, MonitoringRdsHostListProvider, MultiAzTopologyUtils)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from .driver_dialect import DriverDialect
     from .exception_handling import ExceptionHandler
+    from aws_advanced_python_wrapper.plugin_service import PluginService
 
 from abc import ABC, abstractmethod
 from concurrent.futures import TimeoutError
@@ -88,6 +90,7 @@ class TopologyAwareDatabaseDialect(Protocol):
     _TOPOLOGY_QUERY: str
     _HOST_ID_QUERY: str
     _IS_READER_QUERY: str
+    _WRITER_HOST_QUERY: str
 
     @property
     def topology_query(self) -> str:
@@ -100,6 +103,10 @@ class TopologyAwareDatabaseDialect(Protocol):
     @property
     def is_reader_query(self) -> str:
         return self._IS_READER_QUERY
+
+    @property
+    def writer_id_query(self) -> str:
+        return self._WRITER_HOST_QUERY
 
 
 @runtime_checkable
@@ -147,7 +154,7 @@ class DatabaseDialect(Protocol):
         ...
 
     @abstractmethod
-    def get_host_list_provider_supplier(self) -> Callable:
+    def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         ...
 
     @abstractmethod
@@ -213,7 +220,7 @@ class MysqlDatabaseDialect(DatabaseDialect):
 
         return False
 
-    def get_host_list_provider_supplier(self) -> Callable:
+    def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
     def prepare_conn_props(self, props: Properties):
@@ -261,7 +268,7 @@ class PgDatabaseDialect(DatabaseDialect):
 
         return False
 
-    def get_host_list_provider_supplier(self) -> Callable:
+    def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
     def prepare_conn_props(self, props: Properties):
@@ -387,6 +394,9 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, Blu
                        "OR SESSION_ID = 'MASTER_SESSION_ID' ")
     _HOST_ID_QUERY = "SELECT @@aurora_server_id"
     _IS_READER_QUERY = "SELECT @@innodb_read_only"
+    _WRITER_HOST_QUERY = \
+        ("SELECT SERVER_ID FROM information_schema.replica_host_status "
+         "WHERE SESSION_ID = 'MASTER_SESSION_ID' AND SERVER_ID = @@aurora_server_id")
 
     _BG_STATUS_QUERY = "SELECT version, endpoint, port, role, status FROM mysql.rds_topology"
     _BG_STATUS_EXISTS_QUERY = \
@@ -410,7 +420,13 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, Blu
 
         return False
 
-    def get_host_list_provider_supplier(self) -> Callable:
+    def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
+        if plugin_service.is_plugin_in_use(FailoverV2Plugin):
+            return lambda provider_service, props: MonitoringRdsHostListProvider(
+                provider_service,
+                props, AuroraTopologyUtils(self, props),
+                plugin_service)
+
         return lambda provider_service, props: RdsHostListProvider(provider_service, props, AuroraTopologyUtils(self, props))
 
     @property
@@ -449,6 +465,10 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLim
     _BG_STATUS_QUERY = (f"SELECT version, endpoint, port, role, status "
                         f"FROM pg_catalog.get_blue_green_fast_switchover_metadata('aws_advanced_python_wrapper-{DriverInfo.DRIVER_VERSION}')")
     _BG_STATUS_EXISTS_QUERY = "SELECT 'pg_catalog.get_blue_green_fast_switchover_metadata'::regproc"
+    _WRITER_HOST_QUERY = \
+        ("SELECT SERVER_ID FROM pg_catalog.aurora_replica_status() "
+         "WHERE SESSION_ID OPERATOR(pg_catalog.=) 'MASTER_SESSION_ID' "
+         "AND SERVER_ID OPERATOR(pg_catalog.=) pg_catalog.aurora_db_instance_identifier()")
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -483,7 +503,13 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLim
 
         return False
 
-    def get_host_list_provider_supplier(self) -> Callable:
+    def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
+        if plugin_service.is_plugin_in_use(FailoverV2Plugin):
+            return lambda provider_service, props: MonitoringRdsHostListProvider(
+                provider_service,
+                props,
+                AuroraTopologyUtils(self, props), plugin_service)
+
         return lambda provider_service, props: RdsHostListProvider(provider_service, props, AuroraTopologyUtils(self, props))
 
     @property
@@ -533,7 +559,12 @@ class MultiAzClusterMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDial
 
         return False
 
-    def get_host_list_provider_supplier(self) -> Callable:
+    def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
+        if plugin_service.is_plugin_in_use(FailoverV2Plugin):
+            return lambda provider_service, props: MonitoringRdsHostListProvider(
+                provider_service, props,
+                MultiAzTopologyUtils(self, props, self._WRITER_HOST_QUERY, self._WRITER_HOST_COLUMN_INDEX), plugin_service)
+
         return lambda provider_service, props: RdsHostListProvider(
             provider_service,
             props,
@@ -588,7 +619,12 @@ class MultiAzClusterPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
 
         return False
 
-    def get_host_list_provider_supplier(self) -> Callable:
+    def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
+        if plugin_service.is_plugin_in_use(FailoverV2Plugin):
+            return lambda provider_service, props: MonitoringRdsHostListProvider(
+                provider_service, props,
+                MultiAzTopologyUtils(self, props, self._WRITER_HOST_QUERY), plugin_service)
+
         return lambda provider_service, props: RdsHostListProvider(
             provider_service,
             props,
@@ -629,7 +665,7 @@ class UnknownDatabaseDialect(DatabaseDialect):
     def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
         return False
 
-    def get_host_list_provider_supplier(self) -> Callable:
+    def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
     def prepare_conn_props(self, props: Properties):

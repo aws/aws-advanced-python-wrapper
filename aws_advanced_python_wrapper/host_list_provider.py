@@ -24,11 +24,16 @@ from threading import RLock
 from typing import (TYPE_CHECKING, ClassVar, List, Optional, Protocol, Tuple,
                     runtime_checkable)
 
+from aws_advanced_python_wrapper.cluster_topology_monitor import (
+    ClusterTopologyMonitor, ClusterTopologyMonitorImpl)
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
+    SlidingExpirationCacheWithCleanupThread
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
+    from aws_advanced_python_wrapper.plugin_service import PluginService
 
 import aws_advanced_python_wrapper.database_dialect as db_dialect
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
@@ -58,6 +63,9 @@ class HostListProvider(Protocol):
         ...
 
     def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+        ...
+
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
         ...
 
     def get_host_role(self, connection: Connection) -> HostRole:
@@ -245,7 +253,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
             try:
                 driver_dialect = self._host_list_provider_service.driver_dialect
-                hosts = self._topology_utils.query_for_topology(conn, driver_dialect)
+                hosts = self.query_for_topology(conn, driver_dialect)
                 if hosts is not None and len(hosts) > 0:
                     RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
                     if self._is_primary_cluster_id and cached_hosts is None:
@@ -261,6 +269,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             return RdsHostListProvider.FetchTopologyResult(cached_hosts, True)
         else:
             return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
+
+    def query_for_topology(self, conn, driver_dialect) -> Optional[Tuple[HostInfo, ...]]:
+        return self._topology_utils.query_for_topology(conn, driver_dialect)
 
     def _suggest_cluster_id(self, primary_cluster_id_hosts: Tuple[HostInfo, ...]):
         if not primary_cluster_id_hosts:
@@ -316,6 +327,10 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         logger.debug("LogUtils.Topology", LogUtils.log_topology(topology.hosts))
         self._hosts = topology.hosts
         return tuple(self._hosts)
+
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
+        raise AwsWrapperError(
+                Messages.get_formatted("HostListProvider.ForceMonitoringRefreshUnsupported", "RdsHostListProvider"))
 
     def get_host_role(self, connection: Connection) -> HostRole:
         driver_dialect = self._host_list_provider_service.driver_dialect
@@ -406,6 +421,10 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
         self._initialize()
         return tuple(self._hosts)
 
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
+        raise AwsWrapperError(
+                Messages.get_formatted("HostListProvider.ForceMonitoringRefreshUnsupported", "ConnectionStringHostListProvider"))
+
     def get_host_role(self, connection: Connection) -> HostRole:
         raise UnsupportedOperationError(
             Messages.get_formatted("ConnectionStringHostListProvider.UnsupportedMethod", "get_host_role"))
@@ -457,7 +476,7 @@ class TopologyUtils(ABC):
         self._validate_host_pattern(instance_template.host)
 
         self.instance_template: HostInfo = instance_template
-        self._max_timeout = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(props)
+        self._max_timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(props)
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):
@@ -489,8 +508,9 @@ class TopologyUtils(ABC):
         an empty tuple will be returned.
         """
         query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
-                    ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout, driver_dialect, conn)(self._query_for_topology)
-        return query_for_topology_func_with_timeout(conn)
+                    ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, conn)(self._query_for_topology)
+        x = query_for_topology_func_with_timeout(conn)
+        return x
 
     @abstractmethod
     def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
@@ -551,7 +571,7 @@ class TopologyUtils(ABC):
     def get_host_role(self, connection: Connection, driver_dialect: DriverDialect) -> HostRole:
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout, driver_dialect, connection)(self._get_host_role)
+                ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, connection)(self._get_host_role)
             result = cursor_execute_func_with_timeout(connection)
             if result is not None:
                 is_reader = result[0]
@@ -574,7 +594,7 @@ class TopologyUtils(ABC):
         """
 
         cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-            ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout, driver_dialect, connection)(self._get_host_id)
+            ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, connection)(self._get_host_id)
         result = cursor_execute_func_with_timeout(connection)
         if result:
             host_id: str = result[0]
@@ -584,6 +604,23 @@ class TopologyUtils(ABC):
     def _get_host_id(self, conn: Connection):
         with closing(conn.cursor()) as cursor:
             cursor.execute(self._dialect.host_id_query)
+            return cursor.fetchone()
+
+    def get_writer_host_if_connected(self, connection: Connection, driver_dialect: DriverDialect) -> Optional[str]:
+        try:
+            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, connection)(self._get_writer_id)
+            result = cursor_execute_func_with_timeout(connection)
+            if result:
+                host_id: str = result[0]
+                return host_id
+            return None
+        except Exception:
+            return None
+
+    def _get_writer_id(self, conn: Connection):
+        with closing(conn.cursor()) as cursor:
+            cursor.execute(self._dialect.writer_id_query)
             return cursor.fetchone()
 
 
@@ -713,3 +750,61 @@ class MultiAzTopologyUtils(TopologyUtils):
             host=host, port=port, role=role, availability=HostAvailability.AVAILABLE, weight=0, host_id=id)
         host_info.add_alias(host)
         return host_info
+
+
+class MonitoringRdsHostListProvider(RdsHostListProvider):
+    _CACHE_CLEANUP_NANO = 1 * 60 * 1_000_000_000  # 1 minute
+    _MONITOR_CLEANUP_NANO = 15 * 60 * 1_000_000_000  # 15 minutes
+
+    _monitors: ClassVar[SlidingExpirationCacheWithCleanupThread[str, ClusterTopologyMonitor]] = \
+        SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_NANO,
+                                                should_dispose_func=lambda monitor: monitor.can_dispose(),
+                                                item_disposal_func=lambda monitor: monitor.close())
+
+    def __init__(
+            self,
+            host_list_provider_service: HostListProviderService,
+            props: Properties,
+            topology_utils: TopologyUtils,
+            plugin_service: PluginService
+            ):
+        super().__init__(host_list_provider_service, props, topology_utils)
+        self._plugin_service: PluginService = plugin_service
+        self._high_refresh_rate_ns = (
+            WrapperProperties.CLUSTER_TOPOLOGY_HIGH_REFRESH_RATE_MS.get_int(self._props) * 1_000_000)
+
+    def _get_monitor(self) -> Optional[ClusterTopologyMonitor]:
+        return self._monitors.compute_if_absent_with_disposal(self.get_cluster_id(),
+                                                              lambda k: ClusterTopologyMonitorImpl(
+                                                                    self._plugin_service,
+                                                                    self._topology_utils,
+                                                                    self._cluster_id,
+                                                                    self._topology_utils.initial_host_info,
+                                                                    self._props,
+                                                                    self._topology_utils.instance_template,
+                                                                    self._refresh_rate_ns,
+                                                                    self._high_refresh_rate_ns
+                                                ), MonitoringRdsHostListProvider._MONITOR_CLEANUP_NANO)
+
+    def query_for_topology(self, connection: Connection, driver_dialect) -> Optional[Tuple[HostInfo, ...]]:
+        monitor = self._get_monitor()
+
+        if monitor is None:
+            return None
+
+        try:
+            return monitor.force_refresh_with_connection(connection, self._topology_utils._max_timeout_sec)
+        except TimeoutError:
+            return None
+
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
+        monitor = self._get_monitor()
+
+        if monitor is None:
+            return ()
+
+        return monitor.force_refresh(should_verify_writer, timeout_sec)
+
+    @staticmethod
+    def release_resources():
+        MonitoringRdsHostListProvider._monitors.clear()

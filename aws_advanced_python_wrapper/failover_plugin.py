@@ -377,11 +377,10 @@ class FailoverPlugin(Plugin):
             except Exception:
                 pass
 
-        if not driver_dialect.is_closed(conn):
-            try:
-                return driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
-            except Exception:
-                pass
+        try:
+            return driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
+        except Exception:
+            pass
 
         return None
 

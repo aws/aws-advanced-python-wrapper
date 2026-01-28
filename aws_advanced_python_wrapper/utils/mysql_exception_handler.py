@@ -24,6 +24,13 @@ class MySQLExceptionHandler(ExceptionHandler):
     _PAM_AUTHENTICATION_FAILED_MSG = "PAM authentication failed"
     _UNAVAILABLE_CONNECTION = "MySQL Connection not available"
 
+    _READ_ONLY_ERROR_MESSAGES: List[str] = [
+        # ERROR 1290 (HY000): The MySQL server is running with the --read-only option so it cannot execute this statement
+        "running with the --read-only option so it cannot execute this statement",
+        # ERROR 1836 (HY000): Running in read-only mode
+        "Running in read-only mode"
+    ]
+
     _NETWORK_ERRORS: List[int] = [
         2001,  # Can't create UNIX socket
         2002,  # Can't connect to local MySQL server through socket
@@ -69,5 +76,18 @@ class MySQLExceptionHandler(ExceptionHandler):
 
         if "28000" == sql_state:
             return True
+
+        return False
+
+    def is_read_only_connection_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+        if hasattr(error, "errno"):
+            errno = getattr(error, "errno")
+            if errno == "1836":  # ERROR 1836 (HY000): Running in read-only mode
+                return True
+
+        if hasattr(error, "msg"):
+            error_msg = getattr(error, "msg")
+            if any(msg in error_msg for msg in self._READ_ONLY_ERROR_MESSAGES):
+                return True
 
         return False

@@ -199,13 +199,14 @@ class TestAwsSecretsManager:
             ) as conn:
                 conn.cursor()
 
+    @pytest.mark.parametrize("plugins", ["failover,aws_secrets_manager", "failover_v2,aws_secrets_manager"])
     @enable_on_num_instances(min_instances=2)
     @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
                           TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
                           TestEnvironmentFeatures.PERFORMANCE])
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED, TestEnvironmentFeatures.IAM])
     def test_failover_with_secrets_manager(
-            self, test_driver, props, conn_utils, create_secret):
+            self, test_driver, props, conn_utils, create_secret, plugins):
         region = TestEnvironment.get_current().get_info().get_region()
         aurora_utility = RdsTestUtility(region)
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
@@ -213,7 +214,7 @@ class TestAwsSecretsManager:
         secret_name, _ = create_secret
 
         props.update({
-            "plugins": "failover,aws_secrets_manager",
+            "plugins": plugins,
             "secrets_manager_secret_id": secret_name,
             "secrets_manager_region": region,
             "socket_timeout": 10,

@@ -62,3 +62,10 @@ def test_refresh(mock_provider_service, props):
 
     hosts = provider.refresh()
     assert 1 == len(hosts)
+
+
+def test_force_monitoring_refresh(mock_provider_service, props):
+    provider = ConnectionStringHostListProvider(mock_provider_service, props)
+
+    with pytest.raises(AwsWrapperError):
+        provider.force_monitoring_refresh(False, 10)
