@@ -59,7 +59,7 @@ class FastestResponseStrategyPlugin(Plugin):
         self._properties = props
         self._host_response_time_service: HostResponseTimeService = \
             HostResponseTimeService(plugin_service, props, WrapperProperties.RESPONSE_MEASUREMENT_INTERVAL_MS.get_int(props))
-        self._cache_expiration_nanos = WrapperProperties.RESPONSE_MEASUREMENT_INTERVAL_MS.get_int(props) * 10 ^ 6
+        self._cache_expiration_nanos = WrapperProperties.RESPONSE_MEASUREMENT_INTERVAL_MS.get_int(props) * 1_000_000
         self._random_host_selector = RandomHostSelector()
         self._cached_fastest_response_host_by_role: CacheMap[str, HostInfo] = CacheMap()
         self._hosts: Tuple[HostInfo, ...] = ()
@@ -278,8 +278,8 @@ class HostResponseTimeMonitor:
 
 
 class HostResponseTimeService:
-    _CACHE_EXPIRATION_NS: int = 6 * 10 ^ 11  # 10 minutes
-    _CACHE_CLEANUP_NS: int = 6 * 10 ^ 10  # 1 minute
+    _CACHE_EXPIRATION_NS: int = 10 * 60_000_000_000  # 10 minutes
+    _CACHE_CLEANUP_NS: int = 60_000_000_000  # 1 minute
     _lock: Lock = Lock()
     _monitoring_hosts: ClassVar[SlidingExpirationCacheWithCleanupThread[str, HostResponseTimeMonitor]] = \
         SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_NS,

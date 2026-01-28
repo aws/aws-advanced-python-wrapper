@@ -312,7 +312,7 @@ class LimitlessContext:
 
 
 class LimitlessRouterService:
-    _CACHE_CLEANUP_NS: int = 6 * 10 ^ 10  # 1 minute
+    _CACHE_CLEANUP_NS: int = 60_000_000_000  # 1 minute
     _limitless_router_cache: ClassVar[SlidingExpirationCacheWithCleanupThread[str, List[HostInfo]]] = \
         SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_NS)
 
