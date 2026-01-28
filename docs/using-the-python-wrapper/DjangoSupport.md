@@ -40,15 +40,15 @@ DATABASES = {
 
 ### OPTIONS Properties
 
-The `OPTIONS` dictionary supports all standard [AWS ADvanced Python Wrapper parameters](./UsingThePythonDriver.md#aws-advanced-python-driver-parameters) as well as parameters for the underlying driver.
+The `OPTIONS` dictionary supports all standard [AWS ADvanced Python Wrapper parameters](./UsingThePythonWrapper.md#aws-advanced-python-driver-parameters) as well as parameters for the underlying driver.
 
-For a complete list of available plugins and their supported parameters, see the [List of Available Plugins](./UsingThePythonDriver.md#list-of-available-plugins).
+For a complete list of available plugins and their supported parameters, see the [List of Available Plugins](./UsingThePythonWrapper.md#list-of-available-plugins).
 
 ## Using Plugins with Django
 
 The AWS ADvanced Python Wrapper supports a variety of plugins that enhance your Django application with features like failover handling, IAM authentication, and more. Most plugins can be enabled simply by adding them to the `plugins` parameter in your database `OPTIONS`.
 
-For a complete list of available plugins, see the [List of Available Plugins](./UsingThePythonDriver.md#list-of-available-plugins) in the main driver documentation.
+For a complete list of available plugins, see the [List of Available Plugins](./UsingThePythonWrapper.md#list-of-available-plugins) in the main driver documentation.
 
 Below are two examples of plugins that require additional setup or code changes in your Django application:
 

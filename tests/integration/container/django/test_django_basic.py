@@ -157,7 +157,7 @@ class TestDjango:
                 'HOST': conn_utils.writer_cluster_host,
                 'PORT': conn_utils.port,
                 'OPTIONS': {
-                    'plugins': 'failover2,aurora_connection_tracker',
+                    'plugins': 'failover_v2,aurora_connection_tracker',
                     'connect_timeout': 10,
                     'autocommit': True,
                 },

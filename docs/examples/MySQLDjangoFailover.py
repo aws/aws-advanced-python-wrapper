@@ -40,7 +40,7 @@ DJANGO_SETTINGS = {
             'HOST': 'database.cluster-xyz.us-east-1.rds.amazonaws.com',
             'PORT': 3306,
             'OPTIONS': {
-                'plugins': 'failover2',
+                'plugins': 'failover_v2',
                 'connect_timeout': 10,
                 'autocommit': True,
             },
