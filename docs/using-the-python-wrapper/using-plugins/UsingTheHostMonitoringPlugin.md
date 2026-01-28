@@ -10,11 +10,11 @@ The figure that follows shows a simplified Enhanced Failure Monitoring (EFM) wor
 
 Enhanced Failure Monitoring helps user applications detect failures earlier. When a user application executes a query, EFM may detect that the connected database host is unavailable. When this happens, the query is cancelled and the connection will be aborted. This allows queries to fail fast instead of waiting indefinitely or failing due to a timeout.
 
-One use case is to pair EFM with the [Failover Connection Plugin](./UsingTheFailoverPlugin.md). When EFM discovers a database host failure, the connection will be aborted. Without the Failover Connection Plugin, the connection would be terminated up to the user application level. With the Failover Connection Plugin, the AWS Advanced Python Driver can attempt to failover to a different, healthy database host where the query can be executed.
+One use case is to pair EFM with the [Failover Connection Plugin](./UsingTheFailoverPlugin.md). When EFM discovers a database host failure, the connection will be aborted. Without the Failover Connection Plugin, the connection would be terminated up to the user application level. With the Failover Connection Plugin, the AWS Advanced Python Wrapper can attempt to failover to a different, healthy database host where the query can be executed.
 
 ### Using the Host Monitoring Connection Plugin
 
-The Host Monitoring Connection Plugin will be loaded by default if the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) parameter is not specified. The Host Monitoring Connection Plugin can also be explicitly loaded by adding the plugin code `host_monitoring` to the [`plugins`](../UsingThePythonDriver.md#aws-advanced-python-driver-parameters) parameter. Enhanced Failure Monitoring is enabled by default when the Host Monitoring Connection Plugin is loaded, but it can be disabled by setting the `failure_detection_enabled` parameter to `False`.
+The Host Monitoring Connection Plugin will be loaded by default if the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) parameter is not specified. The Host Monitoring Connection Plugin can also be explicitly loaded by adding the plugin code `host_monitoring` to the [`plugins`](../UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters) parameter. Enhanced Failure Monitoring is enabled by default when the Host Monitoring Connection Plugin is loaded, but it can be disabled by setting the `failure_detection_enabled` parameter to `False`.
 
 This plugin only works with drivers that support aborting connections from a separate thread. At this moment, this plugin is incompatible with the MySQL Connector/Python driver.
 
@@ -22,7 +22,7 @@ This plugin only works with drivers that support aborting connections from a sep
 > The Host Monitoring Plugin creates monitoring threads in the background to monitor all connections established to each cluster instance. The monitoring threads can be cleaned up in two ways:
 > 1. If there are no connections to the cluster instance the thread is monitoring for over a period of time, the Host Monitoring Plugin will automatically terminate the thread. This period of time is adjustable via the `monitor_disposal_time_ms` parameter.
 > 2. Client applications can manually call `aws_advanced_python_wrapper.release_resources()` to clean up any dangling resources.
-> It is best practice to call `aws_advanced_python_wrapper.release_resources()` at the end of the application to ensure a graceful exit; otherwise, the application may wait until the `monitor_disposal_time_ms` has been passed before terminating. This is because the Python driver waits for all daemon threads to complete before exiting.
+> It is best practice to call `aws_advanced_python_wrapper.release_resources()` at the end of the application to ensure a graceful exit; otherwise, the application may wait until the `monitor_disposal_time_ms` has been passed before terminating. This is because the Python wrapper waits for all daemon threads to complete before exiting.
 > See [PGFailover](../../examples/PGFailover.py) for an example.
 
 ### Enhanced Failure Monitoring Parameters
@@ -78,10 +78,10 @@ finally:
 > **If specifying a monitoring- prefixed timeout, always ensure you provide a non-zero timeout value**
 
 >[!WARNING]\
-> Warnings About Usage of the AWS Advanced Python Driver with RDS Proxy
+> Warnings About Usage of the AWS Advanced Python Wrapper with RDS Proxy
 > We recommend you either disable the Host Monitoring Connection Plugin or avoid using RDS Proxy endpoints when the Host Monitoring Connection Plugin is active.
 >
-> Although using RDS Proxy endpoints with the AWS Advanced Python Driver with Enhanced Failure Monitoring doesn't cause any critical issues, we don't recommend this approach. The main reason is that RDS Proxy transparently re-routes requests to a single database instance. RDS Proxy decides which database instance is used based on many criteria (on a per-request basis). Switching between different instances makes the Host Monitoring Connection Plugin useless in terms of instance health monitoring because the plugin will be unable to identify which instance it's connected to, and which one it's monitoring. This could result in false positive failure detections. At the same time, the plugin will still proactively monitor network connectivity to RDS Proxy endpoints and report outages back to a user application if they occur.
+> Although using RDS Proxy endpoints with the AWS Advanced Python Wrapper with Enhanced Failure Monitoring doesn't cause any critical issues, we don't recommend this approach. The main reason is that RDS Proxy transparently re-routes requests to a single database instance. RDS Proxy decides which database instance is used based on many criteria (on a per-request basis). Switching between different instances makes the Host Monitoring Connection Plugin useless in terms of instance health monitoring because the plugin will be unable to identify which instance it's connected to, and which one it's monitoring. This could result in false positive failure detections. At the same time, the plugin will still proactively monitor network connectivity to RDS Proxy endpoints and report outages back to a user application if they occur.
 
 # Host Monitoring Plugin v2
 

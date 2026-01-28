@@ -15,7 +15,7 @@ This plugin helps by replacing the out of date endpoint if DNS is updating.
 
 ## Enabling the Aurora Initial Connection Strategy Plugin
 
-To enable the Aurora Initial Connection Strategy Plugin, add `initial_connection` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) value.
+To enable the Aurora Initial Connection Strategy Plugin, add `initial_connection` to the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) value.
 
 ## Aurora Initial Connection Strategy Connection Parameters
 

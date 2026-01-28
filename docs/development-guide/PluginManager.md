@@ -6,7 +6,7 @@ The connection plugin manager has the following main functionalities:
 - Initiate pipelines
 
 ## Load and Initialize Plugins
-The connection plugin manager initializes all plugins registered via the [`plugins`](../using-the-python-driver/UsingThePythonDriver.md#connection-plugin-manager-parameters) configuration parameter.
+The connection plugin manager initializes all plugins registered via the [`plugins`](../using-the-python-wrapper/UsingThePythonWrapper.md#connection-plugin-manager-parameters) configuration parameter.
 
 ## Initiate Pipelines
 <div style="center"><img src="../images/plugin_manager_initiate_pipelines.png" alt="diagram for the plugin service design"/></div>

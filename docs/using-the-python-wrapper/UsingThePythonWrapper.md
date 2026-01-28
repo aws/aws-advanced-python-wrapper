@@ -1,25 +1,25 @@
-# Using the AWS Advanced Python Driver
+# Using the AWS Advanced Python Wrapper
 
-The AWS Advanced Python Driver leverages community Python drivers and enables support of AWS and Aurora functionalities.
+The AWS Advanced Python Wrapper leverages community Python drivers and enables support of AWS and Aurora functionalities.
 Currently, [Psycopg](https://github.com/psycopg/psycopg) 3.1.12+ and [MySQL Connector/Python](https://github.com/mysql/mysql-connector-python) 8.1.0+ are supported. Compatibility with prior versions of these drivers has not been tested.
 
 
-### Using the AWS Advanced Python Driver with RDS Multi-AZ database Clusters
+### Using the AWS Advanced Python Wrapper with RDS Multi-AZ database Clusters
 The [AWS RDS Multi-AZ DB Clusters](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/multi-az-db-clusters-concepts.html) are capable of switching over the current writer host to another host in the cluster within approximately 1 second or less, in case of minor engine version upgrade or OS maintenance operations.
-The AWS Advanced Python Driver has been optimized for such fast-failover when working with AWS RDS Multi-AZ DB Clusters.
+The AWS Advanced Python Wrapper has been optimized for such fast-failover when working with AWS RDS Multi-AZ DB Clusters.
 
 With the Failover plugin, the downtime during certain DB cluster operations, such as engine minor version upgrades, can be reduced to one second or even less with finely tuned parameters. It supports both MySQL and PostgreSQL clusters.
 
 Visit [this page](./SupportForRDSMultiAzDBCluster.md) for more details.
 
 
-## Using the AWS Advanced Python Driver with plain RDS databases
+## Using the AWS Advanced Python Wrapper with plain RDS databases
 
-It is possible to use the AWS Advanced Python Driver with plain RDS databases, but individual features may or may not be compatible. For example, failover handling and enhanced failure monitoring are not compatible with plain RDS databases and the relevant plugins must be disabled. Plugins can be enabled or disabled as seen in the [Connection Plugin Manager Parameters](#connection-plugin-manager-parameters) section. Please note that some plugins have been enabled by default. Plugin compatibility can be verified in the [plugins table](#list-of-available-plugins).
+It is possible to use the AWS Advanced Python Wrapper with plain RDS databases, but individual features may or may not be compatible. For example, failover handling and enhanced failure monitoring are not compatible with plain RDS databases and the relevant plugins must be disabled. Plugins can be enabled or disabled as seen in the [Connection Plugin Manager Parameters](#connection-plugin-manager-parameters) section. Please note that some plugins have been enabled by default. Plugin compatibility can be verified in the [plugins table](#list-of-available-plugins).
 
-## AWS Advanced Python Driver Parameters
+## AWS Advanced Python Wrapper Parameters
 
-These parameters are applicable to any instance of the AWS Advanced Python Driver.
+These parameters are applicable to any instance of the AWS Advanced Python Wrapper.
 
 | Parameter                        | Description                                                                                                                                                                                                                                                                                                                                                                                 | Required | Default Value |
 |----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------|
@@ -73,7 +73,7 @@ finally:
 
 ## Plugins
 
-The AWS Advanced Python Driver uses plugins to execute database API calls. You can think of a plugin as an extensible code module that adds extra logic around any database API calls. The AWS Advanced Python Driver has a number of [built-in plugins](#list-of-available-plugins) available for use. 
+The AWS Advanced Python Wrapper uses plugins to execute database API calls. You can think of a plugin as an extensible code module that adds extra logic around any database API calls. The AWS Advanced Python Wrapper has a number of [built-in plugins](#list-of-available-plugins) available for use. 
 
 Plugins are loaded and managed through the Connection Plugin Manager and may be identified by a `str` name in the form of plugin code.
 
@@ -86,11 +86,12 @@ Plugins are loaded and managed through the Connection Plugin Manager and may be 
 
 ### List of Available Plugins
 
-The AWS Advanced Python Driver has several built-in plugins that are available to use. Please visit the individual plugin page for more details.
+The AWS Advanced Python Wrapper has several built-in plugins that are available to use. Please visit the individual plugin page for more details.
 
 | Plugin name                                                                                            | Plugin Code                               | Database Compatibility   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Additional Required Dependencies                                     |
 |--------------------------------------------------------------------------------------------------------|-------------------------------------------|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------|
 | [Failover Connection Plugin](./using-plugins/UsingTheFailoverPlugin.md)                                | `failover`                                | Aurora                   | Enables the failover functionality supported by Amazon Aurora clusters. Prevents opening a wrong connection to an old writer host dues to stale DNS after failover event. This plugin is enabled by default.                                                                                                                                                                                                                                                                                                      | None                                                                 |                             
+| [Failover Connection Plugin v2](./using-plugins/UsingTheFailover2Plugin.md)                            | `failover_v2`                             | Aurora                   | The next version (v2) of the [Failover Plugin](./using-plugins/UsingTheFailoverPlugin.md)                                                                                                                                                                                                                                                                                                                                                                                                                         | None                                                                 |
 | [Host Monitoring Connection Plugin](./using-plugins/UsingTheHostMonitoringPlugin.md)                   | `host_monitoring_v2` or `host_monitoring` | Aurora                   | Enables enhanced host connection failure monitoring, allowing faster failure detection rates. This plugin is enabled by default.                                                                                                                                                                                                                                                                                                                                                                                  | None                                                                 |
 | [IAM Authentication Connection Plugin](./using-plugins/UsingTheIamAuthenticationPlugin.md)             | `iam`                                     | Any database             | Enables users to connect to their Amazon Aurora clusters using AWS Identity and Access Management (IAM).                                                                                                                                                                                                                                                                                                                                                                                                          | [Boto3 - AWS SDK for Python](https://aws.amazon.com/sdk-for-python/) |
 | [AWS Secrets Manager Connection Plugin](./using-plugins/UsingTheAwsSecretsManagerPlugin.md)            | `aws_secrets_manager`                     | Any database             | Enables fetching database credentials from the AWS Secrets Manager service.                                                                                                                                                                                                                                                                                                                                                                                                                                       | [Boto3 - AWS SDK for Python](https://aws.amazon.com/sdk-for-python/) |
@@ -108,9 +109,9 @@ For more information, see [Custom Plugins](../development-guide/LoadablePlugins.
 
 ## Logging
 
-The AWS Python Driver uses the standard [Python logging module](https://docs.python.org/3/library/logging.html) to log information. To configure logging for the AWS Python Driver, refer to [this section of the Python logging docs](https://docs.python.org/3/howto/logging.html#configuring-logging). Please note the following:
+The AWS Advanced Python Wrapper uses the standard [Python logging module](https://docs.python.org/3/library/logging.html) to log information. To configure logging for the AWS Advanced Python Wrapper, refer to [this section of the Python logging docs](https://docs.python.org/3/howto/logging.html#configuring-logging). Please note the following:
 - As mentioned in a warning in [this section](https://docs.python.org/3/howto/logging.html#configuring-logging), existing loggers will be disabled by default when `fileConfig()` or `dictConfig()` is called. We recommend that you pass `disable_existing_loggers=False` when calling either of these functions.
-- The AWS Python Driver uses module-level loggers, as recommended in the Python docs. You can configure a specific module's logger by referring to its module path. Here is an example `logging.conf` file that configures logging for the failover plugin:
+- The AWS Advanced Python Wrapper uses module-level loggers, as recommended in the Python docs. You can configure a specific module's logger by referring to its module path. Here is an example `logging.conf` file that configures logging for the failover plugin:
 ```
 [loggers]
 keys=root,failover

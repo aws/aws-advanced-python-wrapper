@@ -57,8 +57,8 @@ def execute_queries_with_failover_handling(conn: Connection, sql: str, params: O
         return cursor
 
     except FailoverSuccessError:
-        # Query execution failed and AWS Advanced Python Driver successfully failed over to an available instance.
-        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoversuccesserror
+        # Query execution failed and AWS Advanced Python Wrapper successfully failed over to an available instance.
+        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheFailoverPlugin.md#failoversuccesserror
 
         # The old cursor is no longer reusable and the application needs to reconfigure sessions states.
         configure_initial_session_states(conn)
@@ -69,12 +69,12 @@ def execute_queries_with_failover_handling(conn: Connection, sql: str, params: O
 
     except FailoverFailedError as e:
         # User application should open a new connection, check the results of the failed transaction and re-run it if needed. See:
-        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoverfailederror
+        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheFailoverPlugin.md#failoverfailederror
         raise e
 
     except TransactionResolutionUnknownError as e:
         # User application should check the status of the failed transaction and restart it if needed. See:
-        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#transactionresolutionunknownerror
+        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheFailoverPlugin.md#transactionresolutionunknownerror
         raise e
 
 

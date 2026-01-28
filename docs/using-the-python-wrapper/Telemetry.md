@@ -1,31 +1,31 @@
 # Monitoring
 
 Monitoring is the ability to gather data and insights on the execution of an application. Users will also be able to inspect the gathered data and determine potential actions to take depending on the data collected.
-The AWS Advanced Python Driver has a Telemetry feature allowing you to collect and visualize data of the AWS Advanced Python Driver execution at a global level and at plugin level.
-You can now monitor the performance of the driver as a whole or within specific plugins with your configurations, and determine whether the driver's performance meets your expectations.
+The AWS Advanced Python Wrapper has a Telemetry feature allowing you to collect and visualize data of the AWS Advanced Python Wrapper execution at a global level and at plugin level.
+You can now monitor the performance of the wrapper as a whole or within specific plugins with your configurations, and determine whether the wrapper's performance meets your expectations.
 
 ## Terminology
 
-The AWS Advanced Python Driver provides telemetry data through two different forms: **Traces** and **Metrics**.
+The AWS Advanced Python Wrapper provides telemetry data through two different forms: **Traces** and **Metrics**.
 
 ### Traces
 
 Traces give an overview of what is happening in a specific section of the execution of an application.
 A trace is composed by a hierarchical sequence of segments, each of which contain basic information about the execution (e.g., duration), and whether that section was executed successfully or not.
 
-In the AWS Advanced Python Driver, initially a trace will be generated for every method call made to the driver. Depending on whether the user application has already a trace open, it might be either nested into the opened trace or dropped. And then, for each enabled plugin, another segment will be created only for the plugin execution, linked to the
+In the AWS Advanced Python Wrapper, initially a trace will be generated for every method call made to the wrapper. Depending on whether the user application has already a trace open, it might be either nested into the opened trace or dropped. And then, for each enabled plugin, another segment will be created only for the plugin execution, linked to the
 method call segment.
 
-Traces from the AWS Advanced Python Driver are submitted to [**AWS X-Ray**](https://aws.amazon.com/xray/).
+Traces from the AWS Advanced Python Wrapper are submitted to [**AWS X-Ray**](https://aws.amazon.com/xray/).
 
 ### Metrics
 
 Metrics are numeric data that were measured and collected through the execution of an application. Those metrics can give an insight on how many times some action (e.g., failover) has happened, and for actions that may happen multiple
 times, their success or failure rate (failover, cache hits, etc.), amongst other related information.
 
-The AWS Advanced Python Driver will submit metrics data to [**Amazon Cloudwatch**](https://aws.amazon.com/cloudwatch/).
+The AWS Advanced Python Wrapper will submit metrics data to [**Amazon Cloudwatch**](https://aws.amazon.com/cloudwatch/).
 
-The list of available metrics for the AWS Advanced Python Driver and its plugins is available in the [List of Metrics](#List-Of-Metrics) section of this page.
+The list of available metrics for the AWS Advanced Python Wrapper and its plugins is available in the [List of Metrics](#List-Of-Metrics) section of this page.
 
 ## Setting up the AWS Distro for OpenTelemetry Collector (ADOT Collector)
 
@@ -37,7 +37,7 @@ Before enabling the Telemetry feature, a few setup steps are required to ensure 
    to [AWS X-Ray](https://docs.aws.amazon.com/xray/latest/devguide/security-iam.html)
    and [Amazon CloudWatch](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/auth-and-access-control-cw.html).
 
-2. Download the [AWS Distro for OpenTelemetry Collector](https://aws-otel.github.io/docs/getting-started/collector) and set it up. The AWS Distro for OpenTelemetry Collector is responsible from receiving telemetry data from the application using the AWS Advanced Python Driver and forward it to AWS. Both of those connections happen via HTTP, therefore URLs and ports need to be correctly configured for the collector.
+2. Download the [AWS Distro for OpenTelemetry Collector](https://aws-otel.github.io/docs/getting-started/collector) and set it up. The AWS Distro for OpenTelemetry Collector is responsible from receiving telemetry data from the application using the AWS Advanced Python Wrapper and forward it to AWS. Both of those connections happen via HTTP, therefore URLs and ports need to be correctly configured for the collector.
 
 > [!WARNING]
 > - The AWS Distro for OpenTelemetry Collector can be set up either locally or remotely. It is up to the user to decide
@@ -48,16 +48,16 @@ Before enabling the Telemetry feature, a few setup steps are required to ensure 
 
 ## Using Telemetry
 
-Telemetry for the AWS Advanced Python Driver is a monitoring strategy that overlooks all plugins enabled in [`plugins`](./UsingThePythonDriver.md#connection-plugin-manager-parameters) and is not a plugin in itself.
+Telemetry for the AWS Advanced Python Wrapper is a monitoring strategy that overlooks all plugins enabled in [`plugins`](UsingThePythonWrapper.md#connection-plugin-manager-parameters) and is not a plugin in itself.
 Therefore no changes are required in the `plugins` parameter to enable Telemetry.
 
-In order to enable Telemetry in the AWS Advanced Python Driver, you need to:
+In order to enable Telemetry in the AWS Advanced Python Wrapper, you need to:
 
 1. Set the `enable_telemetry` property to `True`. You can either set it through Properties or directly in the connection string.
 
 2. Set up the recorders that will export the telemetry data from the code to the ADOT Collector.
 
-Setting up the recorders require to instantiate an `TracerProvider` and a `MeterProvider` in the application code prior to executing the driver.
+Setting up the recorders require to instantiate an `TracerProvider` and a `MeterProvider` in the application code prior to executing the wrapper.
 Instantiating the `TracerProvider` requires you to configure the endpoints where traces are being forwarded to, whereas the `MeterProvider` allows you to configure how meters are exported.
 
 The code sample below shows a simple manner to instantiate trace recording in an application using OpenTelemetry.
@@ -89,19 +89,19 @@ We also provide more complete sample application using telemetry in the examples
 
 In addition to the parameter that enables Telemetry, there are other parameters configuring how telemetry data will be forwarded.
 
-| Parameter                    |  Value  | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Default Value |
-|------------------------------|:-------:|:--------:|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `enable_telemetry`           | Boolean |    No    | Telemetry will be enabled when this property is set to `True`, otherwise no telemetry data will be gathered during the execution of the wrapper.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `False`       |
-| `telemetry_traces_backend`   | String  |    No    | Determines to which backend the gathered tracing data will be forwarded to. Possible values include: `NONE`, `XRAY`, and `OTLP`.<br>`NONE` indicates that the application will collect tracing data but this data will not be forwarded anywhere.<br>`XRAY` indicates that the traces will be collected by the AWS XRay Daemon.<br>`OTLP` indicates that the traces will be collected by the AWS OTEL Collector.                                                                                                                                                                                                                | `NONE`        |
-| `telemetry_metrics_backend`  | String  |    No    | Determines to which backend the gathered metrics data will be forwarded to. Possible values include: `NONE` and `OTLP`.<br>`NONE` indicates that the application will collect metrics data but this data will not be forwarded anywhere.<br>`OTLP` indicates that the metrics will be collected by the AWS OTEL COllector.                                                                                                                                                                                                                                                                                                      | `NONE`        |
-| `telemetry_submit_top_level` | Boolean |    No    | By default the driver will look for open traces in the users application prior to record telemetry data. If there is a current open trace, the traces created will be attached to that open trace. If not, all telemetry traces created will be top level. Setting the parameter to `False` means that every method call to the driver will generate a trace with no direct parent trace attached to it. If there is already an open trace being recorded by the application, no driver traces will be created. See the [Nested tracing strategies section](#nested-tracing-strategies-using-amazon-xray) for more information. | `False`       |
+| Parameter                    |  Value  | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Default Value |
+|------------------------------|:-------:|:--------:|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `enable_telemetry`           | Boolean |    No    | Telemetry will be enabled when this property is set to `True`, otherwise no telemetry data will be gathered during the execution of the wrapper.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `False`       |
+| `telemetry_traces_backend`   | String  |    No    | Determines to which backend the gathered tracing data will be forwarded to. Possible values include: `NONE`, `XRAY`, and `OTLP`.<br>`NONE` indicates that the application will collect tracing data but this data will not be forwarded anywhere.<br>`XRAY` indicates that the traces will be collected by the AWS XRay Daemon.<br>`OTLP` indicates that the traces will be collected by the AWS OTEL Collector.                                                                                                                                                                                                                   | `NONE`        |
+| `telemetry_metrics_backend`  | String  |    No    | Determines to which backend the gathered metrics data will be forwarded to. Possible values include: `NONE` and `OTLP`.<br>`NONE` indicates that the application will collect metrics data but this data will not be forwarded anywhere.<br>`OTLP` indicates that the metrics will be collected by the AWS OTEL COllector.                                                                                                                                                                                                                                                                                                         | `NONE`        |
+| `telemetry_submit_top_level` | Boolean |    No    | By default the wrapper will look for open traces in the users application prior to record telemetry data. If there is a current open trace, the traces created will be attached to that open trace. If not, all telemetry traces created will be top level. Setting the parameter to `False` means that every method call to the wrapper will generate a trace with no direct parent trace attached to it. If there is already an open trace being recorded by the application, no wrapper traces will be created. See the [Nested tracing strategies section](#nested-tracing-strategies-using-amazon-xray) for more information. | `False`       |
 
 ## Nested tracing strategies using Amazon XRay
 
-As you could see in the [Telemetry Parameters](#Telemetry-Parameters) section, the AWS Advanced Python Driver allows a user to determine which strategy for nested traces to use when using Telemetry.
+As you could see in the [Telemetry Parameters](#Telemetry-Parameters) section, the AWS Advanced Python Wrapper allows a user to determine which strategy for nested traces to use when using Telemetry.
 
-Traces are hierarchical entities, and it might be that the user application already has an open trace in a given sequence of code that connects to the AWS Advanced Python Driver.
-In this case, the Telemetry feature allows users to determine which strategy to use for the Telemetry traces generated when using the driver.
+Traces are hierarchical entities, and it might be that the user application already has an open trace in a given sequence of code that connects to the AWS Advanced Python Wrapper.
+In this case, the Telemetry feature allows users to determine which strategy to use for the Telemetry traces generated when using the wrapper.
 
 A top level trace is a trace that has no link to any other parent trace, and is directly accessible from the list of submitted traces within XRay. In the following pictures, the top level traces of an application are displayed in AWS X-Ray.
 
@@ -116,7 +116,7 @@ All the individual plugin traces are linked to a parent trace for the method cal
 
 ## List of Metrics
 
-The AWS Advanced Python Driver also submits a set of metrics to Amazon Cloudwatch when the driver is used.
+The AWS Advanced Python Wrapper also submits a set of metrics to Amazon Cloudwatch when the wrapper is used.
 These metrics are predefined, and they help give insight on what is happening inside the plugins when the plugins are used.
 
 Metrics can be one of 3 types: counters, gauges or histograms.

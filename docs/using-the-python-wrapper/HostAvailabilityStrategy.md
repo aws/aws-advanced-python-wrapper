@@ -1,16 +1,16 @@
 # Host Availability Strategy
 
 ## What is Host Availability Strategy
-The AWS Advanced Python Driver keeps track of the availability of database hosts. A host's availability status can be either `AVAILABLE` or `NOT_AVAILABLE`. This information is used by the driver when deciding which hosts to connect to.  
+The AWS Advanced Python Wrapper keeps track of the availability of database hosts. A host's availability status can be either `AVAILABLE` or `NOT_AVAILABLE`. This information is used by the wrapper when deciding which hosts to connect to.  
 
-When database hosts fail, they are marked as `NOT_AVAILABLE` and will not be checked again to see if they have recovered. Host Availability Strategies can help the driver keep host health statuses up to date by checking whether unavailable hosts have become available. For example, the Exponential Backoff strategy will let the driver retry hosts that have had their availability set to `NOT_AVAILABLE` by setting the host availability to `AVAILABLE` after a backoff period. 
+When database hosts fail, they are marked as `NOT_AVAILABLE` and will not be checked again to see if they have recovered. Host Availability Strategies can help the wrapper keep host health statuses up to date by checking whether unavailable hosts have become available. For example, the Exponential Backoff strategy will let the wrapper retry hosts that have had their availability set to `NOT_AVAILABLE` by setting the host availability to `AVAILABLE` after a backoff period. 
 
-Different strategies can be swapped out for different behaviors. The default Host Availability Strategy the driver uses can be configured as specified in the [configuration parameters table](#configuration-parameters).   
+Different strategies can be swapped out for different behaviors. The default Host Availability Strategy the wrapper uses can be configured as specified in the [configuration parameters table](#configuration-parameters).   
 
 ## Configuration Parameters
 | Parameter                                         | Value     | Required | Description                                                                                                                                                              | Default Value |
 |---------------------------------------------------|-----------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `default_host_availability_strategy`              | `String`  | No       | This overrides the driver's default host availability strategy. Possible values are listed in the [Host Availability Strategies](#host-availability-strategies) section. | `None`        |
+| `default_host_availability_strategy`              | `String`  | No       | This overrides the wrapper's default host availability strategy. Possible values are listed in the [Host Availability Strategies](#host-availability-strategies) section. | `None`        |
 | `host_availability_strategy_max_retries`          | `Integer` | No       | Maximum number of times a host availability strategy will retry a host that is not available.                                                                            | `5`           |
 | `host_availability_strategy_initial_backoff_time` | `Integer` | No       | The initial wait time in seconds. This parameter is only applicable for host availability strategies employing a time-based backoff.                                     | `30`          |
 

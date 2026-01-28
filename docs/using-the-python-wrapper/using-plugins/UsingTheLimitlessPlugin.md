@@ -3,7 +3,7 @@
 ## What is Amazon Aurora Limitless Database?
 
 Amazon Aurora Limitless Database is a new type of database that can horizontally scale to handle millions of write transactions per second and manage petabytes of data.
-Users will be able to use the AWS Python Driver with Aurora Limitless Databases and optimize their experience using the Limitless Plugin. 
+Users will be able to use the AWS Advanced Python Wrapper with Aurora Limitless Databases and optimize their experience using the Limitless Plugin. 
 To learn more about Aurora Limitless Database, see the [Amazon Aurora Limitless documentation](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/limitless.html).
 
 ## Why use the Limitless Plugin?
@@ -17,8 +17,8 @@ The Limitless Plugin achieves this with a monitoring thread that periodically po
 When a new connection is made, the plugin directs the connection to a transaction router selected from the cache using a weighted random strategy (See [Reader Selection Strategies](../ReaderSelectionStrategies.md) for more details).
 Routers with a higher load are assigned a lower weight, and routers with a lower load are assigned a higher weight.
 
-## How to use the Limitless Plugin with the AWS Python Driver
-To enable the Limitless Plugin, add the plugin code `limitless` to the [`plugins`](../UsingThePythonDriver.md#connection-plugin-manager-parameters) value.
+## How to use the Limitless Plugin with the AWS Advanced Python Wrapper
+To enable the Limitless Plugin, add the plugin code `limitless` to the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) value.
 
 The URL used to connect to a limitless database is the DB shard group URL.
 

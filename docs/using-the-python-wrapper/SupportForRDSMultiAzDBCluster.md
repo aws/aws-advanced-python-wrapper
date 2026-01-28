@@ -1,14 +1,14 @@
 # Support for Amazon RDS Multi-AZ DB Cluster
 
-In addition to Aurora database clusters, the AWS Advanced Python Driver supports the Amazon RDS Multi-AZ DB Cluster Deployment. By leveraging the topology information within the RDS Multi-AZ DB Cluster, the driver is capable of switching over the connection to a new writer host in approximately 1 second or less, given there is no replica lag during minor version upgrades or OS maintenance upgrades.
+In addition to Aurora database clusters, the AWS Advanced Python Wrapper supports the Amazon RDS Multi-AZ DB Cluster Deployment. By leveraging the topology information within the RDS Multi-AZ DB Cluster, the wrapper is capable of switching over the connection to a new writer host in approximately 1 second or less, given there is no replica lag during minor version upgrades or OS maintenance upgrades.
 
 ## General Usage
 
-The process of using the AWS Advanced Python Driver with RDS Multi-AZ DB Cluster is the same as using it with an RDS Aurora cluster. All properties, configurations, functions, etc., remain consistent. Instead of connecting to a generic database endpoint, simply replace the endpoint with the Cluster Writer Endpoint provided by the RDS Multi-AZ DB Cluster.
+The process of using the AWS Advanced Python Wrapper with RDS Multi-AZ DB Cluster is the same as using it with an RDS Aurora cluster. All properties, configurations, functions, etc., remain consistent. Instead of connecting to a generic database endpoint, simply replace the endpoint with the Cluster Writer Endpoint provided by the RDS Multi-AZ DB Cluster.
 
 ### MySQL
 
-There are permissions that must be granted to all non-administrative users who need database access. Without proper access, these users cannot utilize many of the driver's advanced features, including failover support. To grant the necessary permissions to non-administrative users, execute the following statement:
+There are permissions that must be granted to all non-administrative users who need database access. Without proper access, these users cannot utilize many of the wrapper's advanced features, including failover support. To grant the necessary permissions to non-administrative users, execute the following statement:
 
 ```sql
 GRANT SELECT ON mysql.rds_topology TO 'non-admin-username'@'%'
@@ -38,7 +38,7 @@ Per AWS documentation, the `rds_tools` extension must be manually installed usin
 CREATE EXTENSION rds_tools;
 ```
 
-The extension must be granted to all non-administrative users who need database access. Without access to `rds_tools`, non-admin users cannot utilize many of the driver's advanced features, including failover support. To grant the necessary permissions to non-administrative users, execute the following statement:
+The extension must be granted to all non-administrative users who need database access. Without access to `rds_tools`, non-admin users cannot utilize many of the wrapper's advanced features, including failover support. To grant the necessary permissions to non-administrative users, execute the following statement:
 
 ```sql
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA rds_tools TO non-admin-username;
@@ -67,15 +67,15 @@ For more details on the `failover` plugin configuration, refer to the [Failover 
 
 ## Examples
 
-We have created many examples in the [examples](../examples) folder demonstrating how to use the driver.
+We have created many examples in the [examples](../examples) folder demonstrating how to use the wrapper.
 
 ## Limitations
 
 The following plugins have been tested and confirmed to work with Amazon RDS Multi-AZ DB Clusters:
 
-* [Aurora Connection Tracker Plugin](../using-the-python-driver/using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)
-* [Failover Connection Plugin](../using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md)
-* [Host Monitoring Connection Plugin](../using-the-python-driver/using-plugins/UsingTheHostMonitoringPlugin.md)
+* [Aurora Connection Tracker Plugin](/using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)
+* [Failover Connection Plugin](/using-plugins/UsingTheFailoverPlugin.md)
+* [Host Monitoring Connection Plugin](/using-plugins/UsingTheHostMonitoringPlugin.md)
 
 The compatibility of other plugins has not been tested at this time. They may function as expected or potentially result in unhandled behavior.
 Use at your own discretion.

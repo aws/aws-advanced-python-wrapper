@@ -1,10 +1,10 @@
 # Driver Dialects
 
-The AWS Advanced Python Driver uses two types of dialects: driver dialects and database dialects. This page is on driver dialects. To find out more about database dialects, see [Database Dialects](./DatabaseDialects.md).
+The AWS Advanced Python Wrapper uses two types of dialects: driver dialects and database dialects. This page is on driver dialects. To find out more about database dialects, see [Database Dialects](./DatabaseDialects.md).
 
 ## What are driver dialects?
 
-The AWS Advanced Python Driver is a wrapper that requires an underlying driver, and it is meant to be compatible with any Python driver. Driver dialects help the AWS Advanced Python Driver to properly pass database calls to an underlying Python driver. To function correctly, the AWS Advanced Python Driver requires details unique to specific target driver such as a database name used by the driver or whether to include some specific configuration parameters to a list of properties. These details can be defined and provided to the AWS Advanced Python Driver by using driver dialects.
+The AWS Advanced Python Wrapper is a wrapper that requires an underlying driver, and it is meant to be compatible with any Python driver. Driver dialects help the AWS Advanced Python Wrapper to properly pass database calls to an underlying Python driver. To function correctly, the AWS Advanced Python Wrapper requires details unique to specific target driver such as a database name used by the driver or whether to include some specific configuration parameters to a list of properties. These details can be defined and provided to the AWS Advanced Python Wrapper by using driver dialects.
 
 By default, the driver dialect is determined based on the Connection function passed to the `AwsWrapperConnection#connect` method.
 
@@ -16,7 +16,7 @@ By default, the driver dialect is determined based on the Connection function pa
 
 > **NOTES:**
 >
-> The `wrapper_driver_dialect` parameter is not required. When it is not provided by the user, the AWS Advanced Python Driver will determine which of the existing target driver dialects to use based on the Connect function passed to the driver. If target driver specific implementation is not found, the AWS Advanced Python Driver will use a generic target driver dialect.
+> The `wrapper_driver_dialect` parameter is not required. When it is not provided by the user, the AWS Advanced Python Wrapper will determine which of the existing target driver dialects to use based on the Connect function passed to the wrapper. If target driver specific implementation is not found, the AWS Advanced Python Wrapper will use a generic target driver dialect.
 
 ### List of Available Driver Codes
 
@@ -30,7 +30,7 @@ Driver Dialect codes specify which driver dialect class to use.
 
 ## Custom Driver Dialects
 
-If you are interested in using the AWS Advanced Python Driver but your desired target driver has unique features incompatible with the generic dialect, it is possible to create a custom target driver dialect.
+If you are interested in using the AWS Advanced Python Wrapper but your desired target driver has unique features incompatible with the generic dialect, it is possible to create a custom target driver dialect.
 
 To create a custom target driver dialect, implement the [`DriverDialect`](../../aws_advanced_python_wrapper/driver_dialect.py) interface. See the following classes for examples:
 
@@ -39,7 +39,7 @@ To create a custom target driver dialect, implement the [`DriverDialect`](../../
 - [MysqlDriverDialect](../../aws_advanced_python_wrapper/mysql_driver_dialect.py)
     - This is a dialect that should work with [MySQL Connector/Python](https://github.com/mysql/mysql-connector-python).
 
-Once the custom driver dialect class has been created, tell the AWS Advanced Python Driver to use it by setting the `custom_dialect` attribute in the `DriverDialectManager` class. It is not necessary to set the `wrapper_driver_dialect` parameter. See below for an example:
+Once the custom driver dialect class has been created, tell the AWS Advanced Python Wrapper to use it by setting the `custom_dialect` attribute in the `DriverDialectManager` class. It is not necessary to set the `wrapper_driver_dialect` parameter. See below for an example:
 
 ```python
 custom_driver_dialect: DriverDialect = CustomDriverDialect()
