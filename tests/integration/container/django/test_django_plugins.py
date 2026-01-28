@@ -313,7 +313,7 @@ class TestDjangoPlugins:
         # Get configuration from test parameter or use defaults
         if hasattr(request, 'param') and isinstance(request.param, dict):
             config = request.param
-            plugins_config = config.get('plugins', 'aurora_connection_tracker,failover')
+            plugins_config = config.get('plugins', 'aurora_connection_tracker,failover2')
             extra_options = config.get('options', {})
 
             # Check if we need to use custom endpoint
@@ -347,7 +347,7 @@ class TestDjangoPlugins:
             else:
                 host = config.get('host', conn_utils.writer_cluster_host)
         else:
-            plugins_config = 'aurora_connection_tracker,failover'
+            plugins_config = 'aurora_connection_tracker,failover2'
             extra_options = {}
             user = conn_utils.user
             password = conn_utils.password
@@ -470,14 +470,14 @@ class TestDjangoPlugins:
         # Clean up
         TestModel.objects.all().delete()
 
-    @pytest.mark.parametrize('django_setup', [{'plugins': 'aurora_connection_tracker,failover'}], indirect=True)
+    @pytest.mark.parametrize('django_setup', [{'plugins': 'aurora_connection_tracker,failover2'}], indirect=True)
     def test_django_with_multiple_plugins(self, test_environment: TestEnvironment, django_models, django_setup):
         """Test Django with multiple plugins enabled"""
         TestModel = self.TestModel
         config = django_setup  # Get the config from fixture
 
         # Verify multiple plugins are configured
-        assert config['plugins'] == 'aurora_connection_tracker,failover'
+        assert config['plugins'] == 'aurora_connection_tracker,failover2'
 
         # Test basic functionality works with multiple plugins
         test_obj = TestModel.objects.create(
@@ -616,7 +616,7 @@ class TestDjangoPlugins:
         TestModel.objects.all().delete()
 
     @pytest.mark.parametrize('django_setup', [{
-        'plugins': 'custom_endpoint,failover',
+        'plugins': 'custom_endpoint,failover2',
         'use_custom_endpoint': True,
         'options': {
             'socket_timeout': 10,
