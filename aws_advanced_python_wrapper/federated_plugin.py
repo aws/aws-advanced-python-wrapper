@@ -19,9 +19,8 @@ from re import DOTALL, findall, search
 from typing import TYPE_CHECKING, List
 from urllib.parse import urlencode
 
-import boto3
-
-from aws_advanced_python_wrapper.aws_credentials_manager import AwsCredentialsManager
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.credentials_provider_factory import (
     CredentialsProviderFactory, SamlCredentialsProviderFactory)
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
@@ -165,6 +164,7 @@ class FederatedAuthPlugin(Plugin):
         FederatedAuthPlugin._token_cache.clear()
         AwsCredentialsManager.release_resources()
         return None
+
 
 class FederatedAuthPluginFactory(PluginFactory):
     @staticmethod

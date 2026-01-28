@@ -19,7 +19,8 @@ from time import sleep
 import pytest
 from boto3 import Session
 
-from aws_advanced_python_wrapper.aws_credentials_manager import AwsCredentialsManager
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.properties import Properties
@@ -104,7 +105,7 @@ class TestAwsCredentialsManagerBasic:
         mock_session1.region_name = "us-east-1"
         mock_session2 = mocker.MagicMock(spec=Session)
         mock_session2.region_name = "us-west-2"
-        
+
         mock_session_class = mocker.patch('aws_advanced_python_wrapper.aws_credentials_manager.Session')
         mock_session_class.side_effect = [mock_session1, mock_session2]
 
@@ -121,7 +122,7 @@ class TestAwsCredentialsManagerBasic:
 
         mock_session1 = mocker.MagicMock(spec=Session)
         mock_session2 = mocker.MagicMock(spec=Session)
-        
+
         mock_session_class = mocker.patch('aws_advanced_python_wrapper.aws_credentials_manager.Session')
         mock_session_class.side_effect = [mock_session1, mock_session2]
 
@@ -144,7 +145,7 @@ class TestAwsCredentialsManagerBasic:
     def test_reset_custom_handler(self, host_info, props, region, mocker):
         custom_session = mocker.MagicMock(spec=Session)
         custom_handler = mocker.MagicMock(return_value=custom_session)
-        
+
         mock_default_session = mocker.MagicMock(spec=Session)
         mock_default_session.region_name = region
         mocker.patch('aws_advanced_python_wrapper.aws_credentials_manager.Session', return_value=mock_default_session)
@@ -200,10 +201,10 @@ class TestAwsCredentialsManagerBasic:
         mock_session1 = mocker.MagicMock(spec=Session)
         mock_session2 = mocker.MagicMock(spec=Session)
         mock_client = mocker.MagicMock()
-        
+
         mock_session_class = mocker.patch('aws_advanced_python_wrapper.aws_credentials_manager.Session')
         mock_session_class.side_effect = [mock_session1, mock_session2]
-        
+
         mock_session1.client.return_value = mock_client
 
         session = AwsCredentialsManager.get_session(host_info, props, region)
@@ -218,7 +219,7 @@ class TestAwsCredentialsManagerBasic:
     def test_concurrent_get_session_same_host(self, mock_session, host_info, props, region, counter, concurrent_counter, num_threads):
         barrier = Barrier(num_threads)
         sessions = []
-        
+
         def get_session_thread():
             barrier.wait()
             val = counter.get_and_increment()
@@ -275,13 +276,13 @@ class TestAwsCredentialsManagerBasic:
     def test_concurrent_get_session_different_regions(self, num_threads, host_info, props, counter, concurrent_counter, regions, mocker):
         barrier = Barrier(num_threads)
         results = []
-        
+
         # One session per region
         mock_sessions = {region: mocker.MagicMock(spec=Session) for region in regions}
-        
+
         def session_factory(region_name=None, **kwargs):
             return mock_sessions[region_name]
-        
+
         mocker.patch('aws_advanced_python_wrapper.aws_credentials_manager.Session', side_effect=session_factory)
 
         def get_session_thread(thread_id):

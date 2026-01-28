@@ -18,7 +18,10 @@ from threading import Lock
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from boto3 import Session
+
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.utils.properties import Properties
@@ -32,6 +35,8 @@ class AwsCredentialsManager:
 
     @staticmethod
     def set_custom_handler(custom_handler: Callable[[HostInfo, Properties], Optional[Session]]) -> None:
+        if not callable(custom_handler):
+            raise TypeError("custom_handler must be callable")
         with AwsCredentialsManager._lock:
             AwsCredentialsManager._handler = custom_handler
 
@@ -52,27 +57,30 @@ class AwsCredentialsManager:
 
         # Initialize session outside of lock.
         session = handler(host_info, props) if handler else None
-        
+
+        if session is not None and not isinstance(session, Session):
+            raise TypeError(Messages.get_formatted("AwsCredentialsManager.InvalidHandler", type(session).__name__))
+
         if session is None:
             profile_name = WrapperProperties.AWS_PROFILE.get(props)
             session = Session(profile_name=profile_name, region_name=region) if profile_name else Session(region_name=region)
-        
+
         with AwsCredentialsManager._lock:
             if host_key not in AwsCredentialsManager._sessions:
                 AwsCredentialsManager._sessions[host_key] = session
             return AwsCredentialsManager._sessions[host_key]
 
     @staticmethod
-    def get_client(service_name: str, session: Session, host: str, region: str):
+    def get_client(service_name: str, session: Session, host: Optional[str], region: Optional[str]):
         key = f'{host}{region}{service_name}'
-        
+
         with AwsCredentialsManager._lock:
             if key in AwsCredentialsManager._clients:
                 return AwsCredentialsManager._clients[key]
 
         # Initialize client outside of lock.
-        client = session.client(service_name)
-        
+        client = session.client(service_name)  # type: ignore[call-overload]
+
         with AwsCredentialsManager._lock:
             if key not in AwsCredentialsManager._clients:
                 AwsCredentialsManager._clients[key] = client

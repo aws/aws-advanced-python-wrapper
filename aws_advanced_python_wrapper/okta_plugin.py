@@ -19,7 +19,8 @@ from html import unescape
 from re import search
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Set
 
-from aws_advanced_python_wrapper.aws_credentials_manager import AwsCredentialsManager
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.credentials_provider_factory import (
     CredentialsProviderFactory, SamlCredentialsProviderFactory)
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo

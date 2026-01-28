@@ -18,7 +18,8 @@ import boto3
 import psycopg
 
 from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
-from aws_advanced_python_wrapper.aws_credentials_manager import AwsCredentialsManager
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 
 
 def custom_credentials_handler(host_info, props):

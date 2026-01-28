@@ -16,9 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import boto3
-
-from aws_advanced_python_wrapper.aws_credentials_manager import AwsCredentialsManager
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
 from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 

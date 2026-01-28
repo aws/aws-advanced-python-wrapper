@@ -17,9 +17,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, Optional
 
-import boto3
-
-from aws_advanced_python_wrapper.aws_credentials_manager import AwsCredentialsManager
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages

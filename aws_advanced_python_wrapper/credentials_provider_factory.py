@@ -16,14 +16,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Dict, Optional, Protocol
 
-from aws_advanced_python_wrapper.aws_credentials_manager import AwsCredentialsManager
-from aws_advanced_python_wrapper.hostinfo import HostInfo
-
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.utils.properties import Properties
 
 from abc import abstractmethod
 
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 
