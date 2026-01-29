@@ -17,8 +17,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, Optional
 
-import boto3
-
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -77,16 +77,14 @@ class IamAuthUtils:
             host_name: Optional[str],
             port: Optional[int],
             region: Optional[str],
-            credentials: Optional[Dict[str, str]] = None,
-            client_session: Optional[Session] = None) -> str:
+            client_session: Session,
+            credentials: Optional[Dict[str, str]] = None) -> str:
         telemetry_factory = plugin_service.get_telemetry_factory()
         context = telemetry_factory.open_telemetry_context("fetch authentication token", TelemetryTraceLevel.NESTED)
 
         try:
-            session = client_session if client_session else boto3.Session()
-
             if credentials is not None:
-                client = session.client(
+                client = client_session.client(
                     'rds',
                     region_name=region,
                     aws_access_key_id=credentials.get('AccessKeyId'),
@@ -94,10 +92,7 @@ class IamAuthUtils:
                     aws_session_token=credentials.get('SessionToken')
                 )
             else:
-                client = session.client(
-                    'rds',
-                    region_name=region
-                )
+                client = AwsCredentialsManager.get_client("rds", client_session, host_name, region)
 
             token = client.generate_db_auth_token(
                 DBHostname=host_name,

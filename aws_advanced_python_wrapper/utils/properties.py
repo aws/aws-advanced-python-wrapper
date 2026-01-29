@@ -153,6 +153,10 @@ class WrapperProperties:
         pattern will be automatically created for AWS RDS clusters.""",
     )
 
+    AWS_PROFILE = WrapperProperty(
+        "aws_profile", "Name of the AWS Profile to use for AWS authentication."
+    )
+
     IAM_HOST = WrapperProperty(
         "iam_host", "Overrides the host that is used to generate the IAM token."
     )
