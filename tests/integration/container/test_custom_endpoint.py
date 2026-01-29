@@ -140,10 +140,58 @@ class TestCustomEndpoint:
     def delete_endpoint(self, rds_client):
         try:
             rds_client.delete_db_cluster_endpoint(DBClusterEndpointIdentifier=self.endpoint_id)
+            # Wait for the endpoint to be deleted
+            self._wait_until_endpoint_deleted(rds_client)
         except ClientError as e:
             # If the custom endpoint already does not exist, we can continue. Otherwise, fail the test.
             if e.response['Error']['Code'] != 'DBClusterEndpointNotFoundFault':
                 pytest.fail(e)
+
+    def _wait_until_endpoint_deleted(self, rds_client):
+        """Wait until the custom endpoint is deleted (max 3 minutes)"""
+        end_ns = perf_counter_ns() + 3 * 60 * 1_000_000_000  # 3 minutes
+        deleted = False
+
+        while perf_counter_ns() < end_ns:
+            try:
+                response = rds_client.describe_db_cluster_endpoints(
+                    DBClusterEndpointIdentifier=self.endpoint_id,
+                    Filters=[
+                        {
+                            "Name": "db-cluster-endpoint-type",
+                            "Values": ["custom"]
+                        }
+                    ]
+                )
+
+                response_endpoints = response["DBClusterEndpoints"]
+                if len(response_endpoints) == 0:
+                    deleted = True
+                    break
+
+                # Check if endpoint is in deleting state
+                endpoint_status = response_endpoints[0]["Status"]
+                if endpoint_status == "deleting":
+                    sleep(3)
+                    continue
+
+            except ClientError as e:
+                # If we get DBClusterEndpointNotFoundFault, the endpoint is deleted
+                if e.response['Error']['Code'] == 'DBClusterEndpointNotFoundFault':
+                    deleted = True
+                    break
+                else:
+                    # Some other error occurred
+                    sleep(3)
+                    continue
+
+            sleep(3)
+
+        if not deleted:
+            self.logger.warning(f"Timed out waiting for custom endpoint to be deleted: '{self.endpoint_id}'. "
+                                f"The endpoint may still be in the process of being deleted.")
+        else:
+            self.logger.debug(f"Custom endpoint '{self.endpoint_id}' successfully deleted.")
 
     def wait_until_endpoint_has_members(self, rds_client, expected_members: Set[str]):
         start_ns = perf_counter_ns()

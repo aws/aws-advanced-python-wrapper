@@ -267,6 +267,11 @@ class AwsWrapperCursor(Cursor):
     def arraysize(self) -> int:
         return self.target_cursor.arraysize
 
+    # Optional for PEP249
+    @property
+    def lastrowid(self) -> int:
+        return self.target_cursor.lastrowid  # type: ignore[attr-defined]
+
     def close(self) -> None:
         self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_CLOSE,
                                      lambda: self.target_cursor.close())

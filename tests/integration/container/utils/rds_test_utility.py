@@ -275,14 +275,28 @@ class RdsTestUtility:
             else:
                 return HostRole.WRITER
 
-    def _query_aurora_instance_id(self, conn: Connection, engine: DatabaseEngine) -> str:
+    @staticmethod
+    def get_instance_id_query(engine: Optional[DatabaseEngine] = None) -> str:
+        """Get the SQL query to retrieve the Aurora instance ID based on the database engine.
+
+        Args:
+            engine: The database engine. If None, uses the current test environment's engine.
+
+        Returns:
+            The SQL query string to get the instance ID.
+        """
+        if engine is None:
+            engine = TestEnvironment.get_current().get_engine()
+
         if engine == DatabaseEngine.MYSQL:
-            sql = "SELECT @@aurora_server_id"
+            return "SELECT @@aurora_server_id"
         elif engine == DatabaseEngine.PG:
-            sql = "SELECT pg_catalog.aurora_db_instance_identifier()"
+            return "SELECT pg_catalog.aurora_db_instance_identifier()"
         else:
             raise UnsupportedOperationError(engine.value)
 
+    def _query_aurora_instance_id(self, conn: Connection, engine: DatabaseEngine) -> str:
+        sql = self.get_instance_id_query(engine)
         with closing(conn.cursor()) as cursor:
             cursor.execute(sql)
             record = cursor.fetchone()
