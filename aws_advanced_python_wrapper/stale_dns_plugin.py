@@ -76,7 +76,8 @@ class StaleDnsHelper:
         if cluster_inet_address is None:
             return conn
 
-        if self._plugin_service.get_host_role(conn) == HostRole.READER:
+        connected_to_reader = self._plugin_service.get_host_role(conn) == HostRole.READER
+        if connected_to_reader:
             # This if-statement is only reached if the connection url is a writer cluster endpoint.
             # If the new connection resolves to a reader instance, this means the topology is outdated.
             # Force refresh to update the topology.
@@ -109,7 +110,7 @@ class StaleDnsHelper:
         if self._writer_host_address is None:
             return conn
 
-        if self._writer_host_address != cluster_inet_address:
+        if self._writer_host_address != cluster_inet_address or connected_to_reader:
             logger.debug("StaleDnsHelper.StaleDnsDetected", self._writer_host_info)
 
             allowed_hosts = self._plugin_service.hosts
