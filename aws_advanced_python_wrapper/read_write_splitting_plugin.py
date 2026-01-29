@@ -624,8 +624,8 @@ class TopologyBasedConnectionHandler(ReadWriteConnectionHandler):
         return current_conn
 
     def can_host_be_used(self, host_info: HostInfo) -> bool:
-        hostnames = [host_info.host for host_info in self._hosts]
-        return host_info.host in hostnames
+        hosts = [host_info.get_host_and_port() for host_info in self._hosts]
+        return host_info.get_host_and_port() in hosts
 
     def has_no_readers(self) -> bool:
         if len(self._hosts) == 1:

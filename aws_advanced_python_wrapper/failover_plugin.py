@@ -325,12 +325,12 @@ class FailoverPlugin(Plugin):
 
             writer_host = self._get_writer(result.topology)
             allowed_hosts = self._plugin_service.hosts
-            allowed_hostnames = [host.host for host in allowed_hosts]
-            if writer_host.host not in allowed_hostnames:
+            allowed_hostnames = [host.get_host_and_port() for host in allowed_hosts]
+            if writer_host.get_host_and_port() not in allowed_hostnames:
                 raise FailoverFailedError(
                     Messages.get_formatted(
                         "FailoverPlugin.NewWriterNotAllowed",
-                        "<null>" if writer_host is None else writer_host.host,
+                        "<null>" if writer_host is None else writer_host.get_host_and_port(),
                         LogUtils.log_topology(allowed_hosts)))
 
             self._plugin_service.set_current_connection(result.new_connection, writer_host)

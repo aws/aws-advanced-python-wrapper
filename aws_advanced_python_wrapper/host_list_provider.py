@@ -53,7 +53,7 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.utils.utils import LogUtils
+from aws_advanced_python_wrapper.utils.utils import LogUtils, Utils
 
 logger = Logger(__name__)
 
@@ -277,7 +277,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         if not primary_cluster_id_hosts:
             return
 
-        primary_cluster_id_urls = {host.url for host in primary_cluster_id_hosts}
         for cluster_id, hosts in RdsHostListProvider._topology_cache.get_dict().items():
             is_primary_cluster = RdsHostListProvider._is_primary_cluster_id_cache.get_with_default(
                 cluster_id, False, self._suggested_cluster_id_refresh_ns)
@@ -287,7 +286,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
             # The entry is non-primary
             for host in hosts:
-                if host.url in primary_cluster_id_urls:
+                if Utils.contains_host_and_port(primary_cluster_id_hosts, host.get_host_and_port()):
                     # An instance URL in this topology cache entry matches an instance URL in the primary cluster entry.
                     # The associated cluster ID should be updated to match the primary ID so that they can share
                     # topology info.

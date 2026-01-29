@@ -454,11 +454,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             next((host_info for host_info in all_hosts if host_info.role == HostRole.WRITER), None))
         if self._current_host_info:
             allowed_hosts = self.hosts
-            if not Utils.contains_url(allowed_hosts, self._current_host_info.url):
+            if not Utils.contains_host_and_port(allowed_hosts, self._current_host_info.get_host_and_port()):
                 raise AwsWrapperError(
                     Messages.get_formatted(
                         "PluginServiceImpl.CurrentHostNotAllowed",
-                        self._current_host_info.url, LogUtils.log_topology(allowed_hosts)))
+                        self._current_host_info.get_host_and_port(), LogUtils.log_topology(allowed_hosts)))
         else:
             allowed_hosts = self.hosts
             if len(allowed_hosts) > 0:

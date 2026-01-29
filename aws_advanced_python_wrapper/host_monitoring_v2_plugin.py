@@ -131,7 +131,7 @@ class HostMonitoringV2Plugin(Plugin, CanReleaseResources):
         if current_host_info is None:
             raise AwsWrapperError(Messages.get("HostMonitoringV2Plugin.HostInfoNone"))
         self._monitoring_host_info = current_host_info
-        rds_url_type = self._rds_utils.identify_rds_type(self._monitoring_host_info.url)
+        rds_url_type = self._rds_utils.identify_rds_type(self._monitoring_host_info.host)
 
         try:
             if not rds_url_type.is_rds_cluster:

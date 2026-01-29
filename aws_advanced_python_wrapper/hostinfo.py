@@ -88,10 +88,7 @@ class HostInfo:
 
     @property
     def url(self):
-        if self.is_port_specified():
-            return f"{self.host}:{self.port}"
-        else:
-            return self.host
+        return f"{self.as_alias()}/"
 
     @property
     def aliases(self) -> FrozenSet[str]:
@@ -101,8 +98,11 @@ class HostInfo:
     def all_aliases(self) -> FrozenSet[str]:
         return frozenset(self._all_aliases)
 
-    def as_alias(self) -> str:
+    def get_host_and_port(self):
         return f"{self.host}:{self.port}" if self.is_port_specified() else self.host
+
+    def as_alias(self) -> str:
+        return self.get_host_and_port()
 
     def add_alias(self, *aliases: str):
         if not aliases:
