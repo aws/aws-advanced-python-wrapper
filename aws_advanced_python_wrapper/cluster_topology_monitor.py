@@ -24,6 +24,8 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.atomic import AtomicReference
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.thread_safe_connection_holder import \
+    ThreadSafeConnectionHolder
 from aws_advanced_python_wrapper.utils.utils import LogUtils
 
 if TYPE_CHECKING:
@@ -86,7 +88,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         self._high_refresh_rate_nano = high_refresh_rate_nano
 
         self._writer_host_info: AtomicReference[Optional[HostInfo]] = AtomicReference(None)
-        self._monitoring_connection: AtomicReference[Optional[Connection]] = AtomicReference(None)
+        self._monitoring_connection: ThreadSafeConnectionHolder = ThreadSafeConnectionHolder(None)
 
         self._topology_updated = threading.Event()
         self._request_to_update_topology = threading.Event()
@@ -123,7 +125,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                 return current_hosts
 
         if should_verify_writer:
-            self._close_connection_from_ref(self._monitoring_connection)
+            self._monitoring_connection.clear()
             self._is_verified_writer_connection = False
 
         result = self._wait_till_topology_gets_updated(timeout_sec)
@@ -177,7 +179,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
             self._monitor_thread.join(self.MONITOR_TERMINATION_TIMEOUT_SEC)
 
         # Step 3: Now safe to close connections - no threads are using them
-        self._close_connection_from_ref(self._monitoring_connection)
+        self._monitoring_connection.clear()
         self._close_connection_from_ref(self._host_threads_writer_connection)
         self._close_connection_from_ref(self._host_threads_reader_connection)
 
@@ -220,8 +222,8 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                         writer_connection = self._host_threads_writer_connection.get()
                         if (writer_connection is not None and writer_host_info is not None):
                             logger.debug("ClusterTopologyMonitorImpl.WriterPickedUpFromHostMonitors", self._cluster_id, writer_host_info.host)
-                            self._close_connection_from_ref(self._monitoring_connection)
-                            self._monitoring_connection.set(writer_connection)
+                            # Transfer the writer connection to monitoring connection
+                            self._monitoring_connection.set(writer_connection, close_previous=True)
                             self._writer_host_info.set(writer_host_info)
                             self._is_verified_writer_connection = True
                             self._high_refresh_rate_end_time_nano = (
@@ -259,9 +261,9 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                         self._close_host_monitors()
                         self._submitted_hosts.clear()
 
-                    hosts = self._fetch_topology_and_update_cache(self._monitoring_connection.get())
+                    hosts = self._fetch_topology_and_update_cache_safe()
                     if not hosts:
-                        self._close_connection_from_ref(self._monitoring_connection)
+                        self._monitoring_connection.clear()
                         self._is_verified_writer_connection = False
                         self._writer_host_info.set(None)
                         continue
@@ -282,7 +284,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         finally:
             self._stop.set()
             self._close_host_monitors()
-            self._close_connection_from_ref(self._monitoring_connection)
+            self._monitoring_connection.clear()
             logger.debug("ClusterTopologyMonitor.StopMonitoringThread", self._cluster_id, self._initial_host_info.host)
 
     def _is_in_panic_mode(self) -> bool:
@@ -297,7 +299,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
             # Try to connect to the initial host first
             try:
                 conn = self._plugin_service.force_connect(self._initial_host_info, self._monitoring_properties)
-                self._monitoring_connection.set(conn)
+                self._monitoring_connection.set(conn, close_previous=False)
                 logger.debug("ClusterTopologyMonitorImpl.OpenedMonitoringConnection", self._cluster_id, self._initial_host_info.host)
 
                 try:
@@ -313,7 +315,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
             except Exception:
                 return ()
 
-        hosts = self._fetch_topology_and_update_cache(self._monitoring_connection.get())
+        hosts = self._fetch_topology_and_update_cache_safe()
         if writer_verified_by_this_thread:
             if self._ignore_new_topology_requests_end_time_nano == -1:
                 self._ignore_new_topology_requests_end_time_nano = 0
@@ -322,7 +324,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                     time.time_ns() + self.IGNORE_TOPOLOGY_REQUEST_NANO)
 
         if len(hosts) == 0:
-            self._close_connection_from_ref(self._monitoring_connection)
+            self._monitoring_connection.clear()
             self._is_verified_writer_connection = False
             self._writer_host_info.set(None)
 
@@ -399,6 +401,16 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         except Exception as ex:
             logger.debug("ClusterTopologyMonitorImpl.ErrorFetchingTopology", self._cluster_id, ex)
             return ()
+
+    def _fetch_topology_and_update_cache_safe(self) -> Tuple[HostInfo, ...]:
+        """
+        Safely fetch topology using ThreadSafeConnectionHolder to prevent race conditions.
+        The lock is held during the entire query operation.
+        """
+        result = self._monitoring_connection.use_connection(
+            lambda conn: self._fetch_topology_and_update_cache(conn)
+        )
+        return result if result is not None else ()
 
     def _query_for_topology(self, connection: Connection) -> Tuple[HostInfo, ...]:
         hosts = self._topology_utils.query_for_topology(connection, self._plugin_service.driver_dialect)
