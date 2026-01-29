@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.host_monitoring_plugin import \
     MonitoringThreadContainer
 from aws_advanced_python_wrapper.thread_pool_container import \
@@ -22,3 +24,4 @@ def release_resources() -> None:
     """Release all global resources used by the wrapper."""
     MonitoringThreadContainer.clean_up()
     ThreadPoolContainer.release_resources()
+    AwsCredentialsManager.release_resources()

@@ -232,7 +232,7 @@ class CustomEndpointPlugin(Plugin):
     or removing an instance in the custom endpoint.
     """
     _SUBSCRIBED_METHODS: ClassVar[Set[str]] = {DbApiMethod.CONNECT.method_name}
-    _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 6 * 10 ^ 10  # 1 minute
+    _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 60_000_000_000  # 1 minute
     _monitors: ClassVar[SlidingExpirationCacheWithCleanupThread[str, CustomEndpointMonitor]] = \
         SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_RATE_NS,
                                                 should_dispose_func=lambda _: True,
