@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from html import unescape
 from re import DOTALL, findall, search
 from typing import TYPE_CHECKING, List
@@ -28,7 +29,6 @@ from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 from aws_advanced_python_wrapper.utils.saml_utils import SamlUtils
 
 if TYPE_CHECKING:
-    from boto3 import Session
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -57,7 +57,7 @@ class FederatedAuthPlugin(Plugin):
     _rds_utils: RdsUtils = RdsUtils()
     _token_cache: Dict[str, TokenInfo] = {}
 
-    def __init__(self, plugin_service: PluginService, credentials_provider_factory: CredentialsProviderFactory, session: Optional[Session] = None):
+    def __init__(self, plugin_service: PluginService, credentials_provider_factory: CredentialsProviderFactory):
         self._plugin_service = plugin_service
         self._credentials_provider_factory = credentials_provider_factory
 
@@ -101,11 +101,13 @@ class FederatedAuthPlugin(Plugin):
 
         token_info: Optional[TokenInfo] = FederatedAuthPlugin._token_cache.get(cache_key)
 
+        token_host_info = deepcopy(host_info)
+        token_host_info.host = host
         if token_info is not None and not token_info.is_expired():
             logger.debug("FederatedAuthPlugin.UseCachedToken", token_info.token)
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
-            self._update_authentication_token(host_info, props, user, region, cache_key)
+            self._update_authentication_token(token_host_info, props, user, region, cache_key)
 
         WrapperProperties.USER.set(props, WrapperProperties.DB_USER.get(props))
 
@@ -115,7 +117,7 @@ class FederatedAuthPlugin(Plugin):
             if token_info is None or token_info.is_expired() or not self._plugin_service.is_login_exception(e):
                 raise e
 
-            self._update_authentication_token(host_info, props, user, region, cache_key)
+            self._update_authentication_token(token_host_info, props, user, region, cache_key)
 
             try:
                 return connect_func()

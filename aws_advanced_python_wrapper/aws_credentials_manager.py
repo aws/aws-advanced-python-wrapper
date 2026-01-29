@@ -58,7 +58,7 @@ class AwsCredentialsManager:
         # Initialize session outside of lock.
         session = handler(host_info, props) if handler else None
 
-        if session is not None and not isinstance(session, Session):
+        if session is not None and not isinstance(session, type(Session())):
             raise TypeError(Messages.get_formatted("AwsCredentialsManager.InvalidHandler", type(session).__name__))
 
         if session is None:
