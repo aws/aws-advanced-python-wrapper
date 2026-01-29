@@ -73,9 +73,9 @@ We have created many examples in the [examples](../examples) folder demonstratin
 
 The following plugins have been tested and confirmed to work with Amazon RDS Multi-AZ DB Clusters:
 
-* [Aurora Connection Tracker Plugin](/using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)
-* [Failover Connection Plugin](/using-plugins/UsingTheFailoverPlugin.md)
-* [Host Monitoring Connection Plugin](/using-plugins/UsingTheHostMonitoringPlugin.md)
+* [Aurora Connection Tracker Plugin](./using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)
+* [Failover Connection Plugin](./using-plugins/UsingTheFailoverPlugin.md)
+* [Host Monitoring Connection Plugin](./using-plugins/UsingTheHostMonitoringPlugin.md)
 
 The compatibility of other plugins has not been tested at this time. They may function as expected or potentially result in unhandled behavior.
 Use at your own discretion.
