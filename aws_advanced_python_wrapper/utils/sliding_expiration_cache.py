@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from threading import Thread
 from time import perf_counter_ns, sleep
-from typing import Callable, Generic, ItemsView, KeysView, Optional, TypeVar
+from typing import Callable, Generic, List, Optional, Tuple, TypeVar
 
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
@@ -46,10 +46,10 @@ class SlidingExpirationCache(Generic[K, V]):
     def set_cleanup_interval_ns(self, interval_ns):
         self._cleanup_interval_ns = interval_ns
 
-    def keys(self) -> KeysView:
+    def keys(self) -> List[K]:
         return self._cdict.keys()
 
-    def items(self) -> ItemsView:
+    def items(self) -> List[Tuple[K, CacheItem[V]]]:
         return self._cdict.items()
 
     def compute_if_absent(self, key: K, mapping_func: Callable, item_expiration_ns: int) -> Optional[V]:
@@ -73,22 +73,15 @@ class SlidingExpirationCache(Generic[K, V]):
             self._item_disposal_func(cache_item.item)
 
     def _remove_if_expired(self, key: K):
-        item = None
-
         def _remove_if_expired_internal(_, cache_item):
             if self._should_cleanup_item(cache_item):
-                nonlocal item
-                item = cache_item.item
+                # Dispose while holding the lock to prevent race conditions
+                if self._item_disposal_func is not None:
+                    self._item_disposal_func(cache_item.item)
                 return None
-
             return cache_item
 
         self._cdict.compute_if_present(key, _remove_if_expired_internal)
-
-        if item is None or self._item_disposal_func is None:
-            return
-
-        self._item_disposal_func(item)
 
     def _should_cleanup_item(self, cache_item: CacheItem) -> bool:
         if self._should_dispose_func is not None:
@@ -96,9 +89,12 @@ class SlidingExpirationCache(Generic[K, V]):
         return perf_counter_ns() > cache_item.expiration_time
 
     def clear(self):
-        for _, cache_item in self._cdict.items():
-            if cache_item is not None and self._item_disposal_func is not None:
-                self._item_disposal_func(cache_item.item)
+        # Dispose all items while holding the lock
+        if self._item_disposal_func is not None:
+            self._cdict.apply_if(
+                lambda k, v: True,  # Apply to all items
+                lambda k, cache_item: self._item_disposal_func(cache_item.item)
+            )
         self._cdict.clear()
 
     def _cleanup(self):
@@ -107,7 +103,7 @@ class SlidingExpirationCache(Generic[K, V]):
             return
 
         self._cleanup_time_ns.set(current_time + self._cleanup_interval_ns)
-        keys = [key for key, _ in self._cdict.items()]
+        keys = self._cdict.keys()
         for key in keys:
             self._remove_if_expired(key)
 
@@ -129,29 +125,21 @@ class SlidingExpirationCacheWithCleanupThread(SlidingExpirationCache, Generic[K,
         return None if cache_item is None else cache_item.update_expiration(item_expiration_ns).item
 
     def _remove_if_disposable(self, key: K):
-        item = None
-
         def _remove_if_disposable_internal(_, cache_item):
             if self._should_dispose_func is not None and self._should_dispose_func(cache_item.item):
-                nonlocal item
-                item = cache_item.item
+                if self._item_disposal_func is not None:
+                    self._item_disposal_func(cache_item.item)
                 return None
-
             return cache_item
 
         self._cdict.compute_if_present(key, _remove_if_disposable_internal)
-
-        if item is None or self._item_disposal_func is None:
-            return
-
-        self._item_disposal_func(item)
 
     def _cleanup_thread_internal(self):
         while True:
             try:
                 sleep(self._cleanup_interval_ns / 1_000_000_000)
                 self._cleanup_time_ns.set(perf_counter_ns() + self._cleanup_interval_ns)
-                keys = [key for key, _ in self._cdict.items()]
+                keys = self._cdict.keys()
                 for key in keys:
                     try:
                         self._remove_if_expired(key)

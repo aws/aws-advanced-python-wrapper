@@ -14,13 +14,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Iterator, Set, Union, ValuesView
-
-if TYPE_CHECKING:
-    from typing import ItemsView
-
 from threading import Condition, Lock, RLock
-from typing import Callable, Generic, KeysView, List, Optional, TypeVar
+from typing import (Callable, Dict, Generic, Iterator, List, Optional, Set,
+                    TypeVar, Union)
 
 K = TypeVar('K')
 V = TypeVar('V')
@@ -111,14 +107,20 @@ class ConcurrentDict(Generic[K, V]):
                 if predicate(key, value):
                     apply(key, value)
 
-    def keys(self) -> KeysView:
-        return self._dict.keys()
+    def keys(self) -> List[K]:
+        """Returns a thread-safe snapshot of keys."""
+        with self._lock:
+            return list(self._dict.keys())
 
-    def values(self) -> ValuesView:
-        return self._dict.values()
+    def values(self) -> List[V]:
+        """Returns a thread-safe snapshot of values."""
+        with self._lock:
+            return list(self._dict.values())
 
-    def items(self) -> ItemsView:
-        return self._dict.items()
+    def items(self) -> List[tuple[K, V]]:
+        """Returns a thread-safe snapshot of items."""
+        with self._lock:
+            return list(self._dict.items())
 
 
 class ConcurrentSet(Generic[V]):

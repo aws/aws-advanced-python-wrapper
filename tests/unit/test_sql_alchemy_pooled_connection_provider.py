@@ -65,7 +65,7 @@ def clear_cache():
 
 def test_connect__default_mapping__default_pool_configuration(provider, host_info, mocker, mock_conn, mock_pool):
     expected_urls = {host_info.url}
-    expected_keys = {PoolKey(host_info.url, "user1")}
+    expected_keys = [PoolKey(host_info.url, "user1")]
     props = Properties({WrapperProperties.USER.name: "user1", WrapperProperties.PASSWORD.name: "password"})
 
     conn = provider.connect(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock(), host_info, props)
@@ -76,7 +76,7 @@ def test_connect__default_mapping__default_pool_configuration(provider, host_inf
 
 
 def test_connect__custom_configuration_and_mapping(host_info, mocker, mock_conn, mock_pool):
-    expected_keys = {PoolKey(host_info.url, f"{host_info.url}+some_unique_key")}
+    expected_keys = [PoolKey(host_info.url, f"{host_info.url}+some_unique_key")]
     props = Properties({WrapperProperties.USER.name: "user1", WrapperProperties.PASSWORD.name: "password"})
     attempt_creator_override_func = mocker.MagicMock()
 
