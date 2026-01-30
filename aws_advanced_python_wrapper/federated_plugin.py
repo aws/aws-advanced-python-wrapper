@@ -161,12 +161,6 @@ class FederatedAuthPlugin(Plugin):
         WrapperProperties.PASSWORD.set(props, token)
         FederatedAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
-    @staticmethod
-    def release_resources() -> None:
-        FederatedAuthPlugin._token_cache.clear()
-        AwsCredentialsManager.release_resources()
-        return None
-
 
 class FederatedAuthPluginFactory(PluginFactory):
     @staticmethod

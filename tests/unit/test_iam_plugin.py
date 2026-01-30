@@ -47,7 +47,7 @@ _token_cache: Dict[str, TokenInfo] = {}
 @pytest.fixture(autouse=True)
 def clear_caches():
     _token_cache.clear()
-    IamAuthPlugin.release_resources()
+    AwsCredentialsManager.release_resources()
 
 
 @pytest.fixture

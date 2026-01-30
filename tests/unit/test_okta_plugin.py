@@ -43,7 +43,7 @@ _token_cache: Dict[str, TokenInfo] = {}
 @pytest.fixture(autouse=True)
 def clear_cache():
     _token_cache.clear()
-    OktaAuthPlugin.release_resources()
+    AwsCredentialsManager.release_resources()
 
 
 @pytest.fixture

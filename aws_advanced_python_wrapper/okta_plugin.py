@@ -156,12 +156,6 @@ class OktaAuthPlugin(Plugin):
         WrapperProperties.PASSWORD.set(props, token)
         OktaAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
 
-    @staticmethod
-    def release_resources() -> None:
-        OktaAuthPlugin._token_cache.clear()
-        AwsCredentialsManager.release_resources()
-        return None
-
 
 class OktaCredentialsProviderFactory(SamlCredentialsProviderFactory):
     _SAML_RESPONSE_PATTERN = r"\"SAMLResponse\" .* value=\"(?P<saml>[^\"]+)\""

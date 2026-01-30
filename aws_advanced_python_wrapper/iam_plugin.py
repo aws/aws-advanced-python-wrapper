@@ -147,12 +147,6 @@ class IamAuthPlugin(Plugin):
             except Exception as e:
                 raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.UnhandledException", e)) from e
 
-    @staticmethod
-    def release_resources() -> None:
-        IamAuthPlugin._token_cache.clear()
-        AwsCredentialsManager.release_resources()
-        return None
-
     def force_connect(
             self,
             target_driver_func: Callable,
