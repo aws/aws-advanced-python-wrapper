@@ -62,6 +62,16 @@ class OpenedConnectionTracker:
                 cls._prune_thread.start()
 
     @classmethod
+    def release_resources(cls):
+        cls._shutdown_event.set()
+        with cls._lock:
+            thread_to_join = cls._prune_thread
+        if thread_to_join is not None:
+            thread_to_join.join()
+        with cls._lock:
+            cls._opened_connections.clear()
+
+    @classmethod
     def _prune_connections_loop(cls):
         while not cls._shutdown_event.is_set():
             try:
@@ -204,7 +214,6 @@ class OpenedConnectionTracker:
         with self._lock:
             opened_connections = [(key, list(conn_set)) for key, conn_set in self._opened_connections.items()]
 
-        # Build log message outside lock
         msg_parts = []
         for key, conn_list in opened_connections:
             conn_parts = [f"\n\t\t{item}" for item in conn_list]
@@ -223,18 +232,8 @@ class OpenedConnectionTracker:
         msg = host + f"[{conn}\n]"
         logger.debug("OpenedConnectionTracker.InvalidatingConnections", msg)
 
-    def release_resources(self):
-        self._shutdown_event.set()
-        with self._lock:
-            thread_to_join = self._prune_thread
-        if thread_to_join is not None:
-            thread_to_join.join()
-        with self._lock:
-            self._opened_connections.clear()
-            AuroraConnectionTrackerPlugin._prune_thread_started = False
 
-
-class AuroraConnectionTrackerPlugin(Plugin, CanReleaseResources):
+class AuroraConnectionTrackerPlugin(Plugin):
     _host_list_refresh_end_time_nano: ClassVar[int] = 0
     _refresh_lock: ClassVar[threading.Lock] = threading.Lock()
     _TOPOLOGY_CHANGES_EXPECTED_TIME_NANO: ClassVar[int] = 3 * 60 * 1_000_000_000  # 3 minutes
@@ -343,9 +342,6 @@ class AuroraConnectionTrackerPlugin(Plugin, CanReleaseResources):
                 self._tracker.invalidate_all_connections(host=frozenset([node]))
             if HostEvent.CONVERTED_TO_WRITER in node_changes:
                 self._need_update_current_writer = True
-
-    def release_resources(self):
-        self._tracker.release_resources()
 
 
 class AuroraConnectionTrackerPluginFactory(PluginFactory):
