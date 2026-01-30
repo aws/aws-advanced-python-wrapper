@@ -340,7 +340,7 @@ def test_connect_with_specified_region(mocker, mock_plugin_service, mock_session
         is_initial_connection=False,
         connect_func=mock_func)
 
-    mock_session.client.assert_called_with("rds")
+    mock_session.client.assert_called_with(service_name="rds")
     mock_client.generate_db_auth_token.assert_called_with(
         DBHostname="pg.testdb.us-east-2.rds.amazonaws.com",
         Port=5432,

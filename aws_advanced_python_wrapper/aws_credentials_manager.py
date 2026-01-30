@@ -71,15 +71,18 @@ class AwsCredentialsManager:
             return AwsCredentialsManager._sessions[host_key]
 
     @staticmethod
-    def get_client(service_name: str, session: Session, host: Optional[str], region: Optional[str]):
-        key = f'{host}{region}{service_name}'
+    def get_client(service_name: str, session: Session, host: Optional[str], region: Optional[str], endpoint_url: Optional[str] = None):
+        key = f'{host}{region}{service_name}{endpoint_url}'
 
         with AwsCredentialsManager._lock:
             if key in AwsCredentialsManager._clients:
                 return AwsCredentialsManager._clients[key]
 
         # Initialize client outside of lock.
-        client = session.client(service_name)  # type: ignore[call-overload]
+        if endpoint_url:
+            client = session.client(service_name=service_name, endpoint_url=endpoint_url)  # type: ignore[call-overload]
+        else:
+            client = session.client(service_name=service_name)  # type: ignore[call-overload]
 
         with AwsCredentialsManager._lock:
             if key not in AwsCredentialsManager._clients:
@@ -89,6 +92,8 @@ class AwsCredentialsManager:
     @staticmethod
     def release_resources() -> None:
         with AwsCredentialsManager._lock:
-            AwsCredentialsManager._sessions.clear()
+            for key, client in AwsCredentialsManager._clients.items():
+                client.close()
             AwsCredentialsManager._clients.clear()
+            AwsCredentialsManager._sessions.clear()
         return None

@@ -161,12 +161,12 @@ class TestAwsCredentialsManagerBasic:
     def test_get_client_creates_client(self, host_info, props, region, mocker):
         session = AwsCredentialsManager.get_session(host_info, props, region)
         mock_client = mocker.MagicMock()
-        mocker.patch.object(session, 'client', return_value=mock_client)
+        mocker.patch.object(session, "client", return_value=mock_client)
 
         client = AwsCredentialsManager.get_client("rds", session, host_info.host, region)
 
         assert client is mock_client
-        session.client.assert_called_once_with("rds")
+        session.client.assert_called_once_with(service_name="rds")
 
     def test_get_client_caches_client(self, mock_client, host_info, props, region):
         session = AwsCredentialsManager.get_session(host_info, props, region)
@@ -188,7 +188,7 @@ class TestAwsCredentialsManagerBasic:
             elif service_name == "secretsmanager":
                 return mock_secrets_client
 
-        mocker.patch.object(session, 'client', side_effect=client_side_effect)
+        mocker.patch.object(session, "client", side_effect=client_side_effect)
 
         rds_client = AwsCredentialsManager.get_client("rds", session, host_info.host, region)
         secrets_client = AwsCredentialsManager.get_client("secretsmanager", session, host_info.host, region)
@@ -347,7 +347,7 @@ class TestAwsCredentialsManagerBasic:
 
         assert len(clients) == num_threads
         assert all(client is clients[0] for client in clients)
-        session.client.assert_called_once_with("rds")
+        session.client.assert_called_once_with(service_name="rds")
         assert concurrent_counter.get() > 0
 
     def test_concurrent_get_client_different_services(self, host_info, props, region, counter, concurrent_counter, mocker):
@@ -396,3 +396,34 @@ class TestAwsCredentialsManagerBasic:
         unique_clients = [clients[0] for clients in clients_by_service.values()]
         assert len(set(id(c) for c in unique_clients)) == len(services)
         assert concurrent_counter.get() > 0
+
+    def test_release_resources_closes_all_clients(self, host_info, props, region, mocker):
+        session = AwsCredentialsManager.get_session(host_info, props, region)
+
+        mock_rds_client = mocker.MagicMock()
+        mock_secrets_client = mocker.MagicMock()
+        mock_sts_client = mocker.MagicMock()
+
+        def client_side_effect(service_name):
+            if service_name == "rds":
+                return mock_rds_client
+            elif service_name == "secretsmanager":
+                return mock_secrets_client
+            elif service_name == "sts":
+                return mock_sts_client
+
+        mocker.patch.object(session, "client", side_effect=client_side_effect)
+
+        rds_client = AwsCredentialsManager.get_client("rds", session, host_info.host, region)
+        secrets_client = AwsCredentialsManager.get_client("secretsmanager", session, host_info.host, region)
+        sts_client = AwsCredentialsManager.get_client("sts", session, host_info.host, region)
+
+        assert rds_client is mock_rds_client
+        assert secrets_client is mock_secrets_client
+        assert sts_client is mock_sts_client
+
+        AwsCredentialsManager.release_resources()
+
+        mock_rds_client.close.assert_called_once()
+        mock_secrets_client.close.assert_called_once()
+        mock_sts_client.close.assert_called_once()
