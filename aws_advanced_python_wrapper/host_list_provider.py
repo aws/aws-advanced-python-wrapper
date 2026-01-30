@@ -807,9 +807,3 @@ class MonitoringRdsHostListProvider(RdsHostListProvider):
             return ()
 
         return monitor.force_refresh(should_verify_writer, timeout_sec)
-
-    @staticmethod
-    def release_resources():
-        # Note: Monitors are now managed by SlidingExpirationCacheContainer
-        # and will be cleaned up via cleanup.release_resources()
-        pass

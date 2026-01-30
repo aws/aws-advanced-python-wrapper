@@ -314,7 +314,7 @@ class LimitlessContext:
 class LimitlessRouterService:
     _CACHE_CLEANUP_NS: int = 6 * 10 ^ 10  # 1 minute
     _ROUTER_CACHE_NAME: str = "limitless_router_cache"
-    _MONITOR_CACHE_NAME: str = "limitless_router_monitor"
+    _MONITOR_CACHE_NAME: str = "limitless_monitor_cache"
     _force_get_limitless_routers_lock_map: ClassVar[ConcurrentDict[str, RLock]] = ConcurrentDict()
 
     def __init__(self, plugin_service: PluginService, query_helper: LimitlessQueryHelper):
