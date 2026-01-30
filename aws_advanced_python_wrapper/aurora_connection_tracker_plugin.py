@@ -36,7 +36,7 @@ from _weakrefset import WeakSet
 
 from aws_advanced_python_wrapper.errors import FailoverError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
-from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory, CanReleaseResources
+from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 
