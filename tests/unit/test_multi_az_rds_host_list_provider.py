@@ -365,7 +365,7 @@ def test_initialize__rds_proxy(mock_provider_service):
     props = Properties({"host": "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com", "port": 5432})
     provider = create_provider(mock_provider_service, props)
     provider._initialize()
-    assert provider._cluster_id == "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com:5432"
+    assert provider._cluster_id == "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com:5432/"
 
 
 def test_query_for_topology__empty_writer_query_results(

@@ -386,7 +386,7 @@ def test_initialize_rds_proxy(mock_provider_service):
     topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
     provider = RdsHostListProvider(mock_provider_service, props, topology_utils)
     provider._initialize()
-    assert provider._cluster_id == "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com"
+    assert provider._cluster_id == "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com/"
 
 
 def test_get_topology_returns_last_writer(mocker, mock_provider_service, mock_conn, mock_cursor):

@@ -37,7 +37,7 @@ from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
     SlidingExpirationCacheWithCleanupThread
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryContext, TelemetryFactory, TelemetryTraceLevel)
-from aws_advanced_python_wrapper.utils.utils import LogUtils
+from aws_advanced_python_wrapper.utils.utils import LogUtils, Utils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -343,7 +343,7 @@ class LimitlessRouterService:
                     context.set_connection(context.get_connect_func()())
                     return
 
-        if context.get_host_info() in context.get_limitless_routers():
+        if Utils.contains_host_and_port(tuple(context.get_limitless_routers()), context.get_host_info().get_host_and_port()):
             logger.debug(Messages.get_formatted("LimitlessRouterService.ConnectWithHost", context.get_host_info().host))
             if context.get_connection() is None:
                 try:
