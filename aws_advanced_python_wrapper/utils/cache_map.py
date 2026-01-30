@@ -30,7 +30,8 @@ class CacheMap(Generic[K, V]):
         self._lock = threading.RLock()
 
     def __len__(self):
-        return len(self._cache)
+        with self._lock:
+            return len(self._cache)
 
     def get(self, key: K) -> Optional[V]:
         with self._lock:
@@ -62,15 +63,18 @@ class CacheMap(Generic[K, V]):
             return None
 
     def put(self, key: K, item: V, item_expiration_ns: int):
-        self._cache[key] = CacheItem(item, time.perf_counter_ns() + item_expiration_ns)
-        self._cleanup()
+        with self._lock:
+            self._cache[key] = CacheItem(item, time.perf_counter_ns() + item_expiration_ns)
+            self._cleanup()
 
     def remove(self, key: K):
-        self._cache.pop(key, None)
-        self._cleanup()
+        with self._lock:
+            self._cache.pop(key, None)
+            self._cleanup()
 
     def clear(self):
-        self._cache.clear()
+        with self._lock:
+            self._cache.clear()
 
     def get_dict(self) -> Dict[K, V]:
         with self._lock:

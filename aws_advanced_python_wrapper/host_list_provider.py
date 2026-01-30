@@ -28,8 +28,8 @@ from aws_advanced_python_wrapper.cluster_topology_monitor import (
     ClusterTopologyMonitor, ClusterTopologyMonitorImpl)
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
-    SlidingExpirationCacheWithCleanupThread
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
+    SlidingExpirationCacheContainer
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -754,11 +754,7 @@ class MultiAzTopologyUtils(TopologyUtils):
 class MonitoringRdsHostListProvider(RdsHostListProvider):
     _CACHE_CLEANUP_NANO = 1 * 60 * 1_000_000_000  # 1 minute
     _MONITOR_CLEANUP_NANO = 15 * 60 * 1_000_000_000  # 15 minutes
-
-    _monitors: ClassVar[SlidingExpirationCacheWithCleanupThread[str, ClusterTopologyMonitor]] = \
-        SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_NANO,
-                                                should_dispose_func=lambda monitor: monitor.can_dispose(),
-                                                item_disposal_func=lambda monitor: monitor.close())
+    _MONITOR_CACHE_NAME: str = "cluster_topology_monitors"
 
     def __init__(
             self,
@@ -771,6 +767,13 @@ class MonitoringRdsHostListProvider(RdsHostListProvider):
         self._plugin_service: PluginService = plugin_service
         self._high_refresh_rate_ns = (
             WrapperProperties.CLUSTER_TOPOLOGY_HIGH_REFRESH_RATE_MS.get_int(self._props) * 1_000_000)
+        
+        self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
+            name=self._MONITOR_CACHE_NAME,
+            cleanup_interval_ns=self._CACHE_CLEANUP_NANO,
+            should_dispose_func=lambda monitor: monitor.can_dispose(),
+            item_disposal_func=lambda monitor: monitor.close()
+        )
 
     def _get_monitor(self) -> Optional[ClusterTopologyMonitor]:
         return self._monitors.compute_if_absent_with_disposal(self.get_cluster_id(),
@@ -806,4 +809,6 @@ class MonitoringRdsHostListProvider(RdsHostListProvider):
 
     @staticmethod
     def release_resources():
-        MonitoringRdsHostListProvider._monitors.clear()
+        # Note: Monitors are now managed by SlidingExpirationCacheContainer
+        # and will be cleaned up via cleanup.release_resources()
+        pass

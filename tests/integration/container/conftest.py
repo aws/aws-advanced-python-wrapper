@@ -36,6 +36,8 @@ from aws_advanced_python_wrapper.thread_pool_container import \
     ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
+    SlidingExpirationCacheContainer
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
@@ -54,7 +56,6 @@ from .utils.proxy_helper import ProxyHelper
 from .utils.rds_test_utility import RdsTestUtility
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
-
 logger = Logger(__name__)
 
 
@@ -145,11 +146,10 @@ def pytest_runtest_setup(item):
         RdsHostListProvider._cluster_ids_to_update.clear()
         PluginServiceImpl._host_availability_expiring_cache.clear()
         DatabaseDialectManager._known_endpoint_dialects.clear()
-        CustomEndpointPlugin._monitors.clear()
         CustomEndpointMonitor._custom_endpoint_info_cache.clear()
         MonitoringThreadContainer.clean_up()
         ThreadPoolContainer.release_resources(wait=True)
-        MonitoringRdsHostListProvider._monitors.clear()
+        SlidingExpirationCacheContainer.release_resources()
 
         ConnectionProviderManager.release_resources()
         ConnectionProviderManager.reset_provider()

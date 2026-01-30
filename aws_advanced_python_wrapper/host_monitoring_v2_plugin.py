@@ -36,8 +36,8 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
-    SlidingExpirationCacheWithCleanupThread
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
+    SlidingExpirationCacheContainer
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryCounter, TelemetryFactory, TelemetryTraceLevel)
 
@@ -451,17 +451,20 @@ class HostMonitorV2:
 class MonitorServiceV2:
     # 1 Minute to Nanoseconds
     _CACHE_CLEANUP_NANO = 1 * 60 * 1_000_000_000
-
-    _monitors: ClassVar[SlidingExpirationCacheWithCleanupThread[str, HostMonitorV2]] = \
-        SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_NANO,
-                                                should_dispose_func=lambda monitor: monitor.can_dispose(),
-                                                item_disposal_func=lambda monitor: monitor.close())
+    _MONITOR_CACHE_NAME: str = "host_monitors_v2"
 
     def __init__(self, plugin_service: PluginService):
         self._plugin_service: PluginService = plugin_service
 
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._aborted_connections_counter = telemetry_factory.create_counter("efm2.connections.aborted")
+        
+        self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
+            name=self._MONITOR_CACHE_NAME,
+            cleanup_interval_ns=self._CACHE_CLEANUP_NANO,
+            should_dispose_func=lambda monitor: monitor.can_dispose(),
+            item_disposal_func=lambda monitor: monitor.close()
+        )
 
     def start_monitoring(
             self,
