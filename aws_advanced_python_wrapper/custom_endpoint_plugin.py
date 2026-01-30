@@ -251,7 +251,7 @@ class CustomEndpointPlugin(Plugin):
         self._custom_endpoint_id: Optional[str] = None
         telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
         self._wait_for_info_counter: TelemetryCounter | None = telemetry_factory.create_counter("customEndpoint.waitForInfo.counter")
-        
+
         # Get cache reference once during initialization
         self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
             name=self._MONITOR_CACHE_NAME,

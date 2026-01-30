@@ -69,7 +69,8 @@ def test_get_or_create_monitor__monitor_created(
         container, mock_monitor_supplier, mock_stopped_monitor, mock_monitor1, mock_future, mocker):
     mock_thread_pool = mocker.MagicMock()
     mock_thread_pool.submit.return_value = mock_future
-    mocker.patch('aws_advanced_python_wrapper.host_monitoring_plugin.ThreadPoolContainer.get_thread_pool', return_value=mock_thread_pool)
+    # Mock the _thread_pool directly on the container instance since it's now cached in __init__
+    container._thread_pool = mock_thread_pool
 
     result = container.get_or_create_monitor(frozenset({"alias-1", "alias-2"}), mock_monitor_supplier)
     assert mock_monitor1 == result

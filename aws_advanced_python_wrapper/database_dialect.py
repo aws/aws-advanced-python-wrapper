@@ -695,6 +695,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
         self._can_update: bool = False
         self._dialect: DatabaseDialect = UnknownDatabaseDialect()
         self._dialect_code: DialectCode = DialectCode.UNKNOWN
+        self._thread_pool = ThreadPoolContainer.get_thread_pool(self._executor_name)
 
     @staticmethod
     def get_custom_dialect():
@@ -814,7 +815,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
                 timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
                 try:
                     cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                        ThreadPoolContainer.get_thread_pool(DatabaseDialectManager._executor_name),
+                        self._thread_pool,
                         timeout_sec,
                         driver_dialect,
                         conn)(dialect_candidate.is_dialect)

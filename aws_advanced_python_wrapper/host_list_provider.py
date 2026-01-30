@@ -476,6 +476,7 @@ class TopologyUtils(ABC):
 
         self.instance_template: HostInfo = instance_template
         self._max_timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(props)
+        self._thread_pool = ThreadPoolContainer.get_thread_pool(self._executor_name)
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):
@@ -507,7 +508,7 @@ class TopologyUtils(ABC):
         an empty tuple will be returned.
         """
         query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
-                    ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, conn)(self._query_for_topology)
+                    self._thread_pool, self._max_timeout_sec, driver_dialect, conn)(self._query_for_topology)
         x = query_for_topology_func_with_timeout(conn)
         return x
 
@@ -570,7 +571,7 @@ class TopologyUtils(ABC):
     def get_host_role(self, connection: Connection, driver_dialect: DriverDialect) -> HostRole:
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, connection)(self._get_host_role)
+                self._thread_pool, self._max_timeout_sec, driver_dialect, connection)(self._get_host_role)
             result = cursor_execute_func_with_timeout(connection)
             if result is not None:
                 is_reader = result[0]
@@ -593,7 +594,7 @@ class TopologyUtils(ABC):
         """
 
         cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-            ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, connection)(self._get_host_id)
+            self._thread_pool, self._max_timeout_sec, driver_dialect, connection)(self._get_host_id)
         result = cursor_execute_func_with_timeout(connection)
         if result:
             host_id: str = result[0]
@@ -608,7 +609,7 @@ class TopologyUtils(ABC):
     def get_writer_host_if_connected(self, connection: Connection, driver_dialect: DriverDialect) -> Optional[str]:
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, connection)(self._get_writer_id)
+                self._thread_pool, self._max_timeout_sec, driver_dialect, connection)(self._get_writer_id)
             result = cursor_execute_func_with_timeout(connection)
             if result:
                 host_id: str = result[0]
@@ -767,7 +768,7 @@ class MonitoringRdsHostListProvider(RdsHostListProvider):
         self._plugin_service: PluginService = plugin_service
         self._high_refresh_rate_ns = (
             WrapperProperties.CLUSTER_TOPOLOGY_HIGH_REFRESH_RATE_MS.get_int(self._props) * 1_000_000)
-        
+
         self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
             name=self._MONITOR_CACHE_NAME,
             cleanup_interval_ns=self._CACHE_CLEANUP_NANO,

@@ -20,7 +20,8 @@ from aws_advanced_python_wrapper.limitless_plugin import (
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import SlidingExpirationCacheContainer
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
+    SlidingExpirationCacheContainer
 
 CLUSTER_ID: str = "some_cluster_id"
 EXPIRATION_NANO_SECONDS: int = 60 * 60 * 1_000_000_000
@@ -209,7 +210,7 @@ def test_establish_connection_host_info_in_router_cache_then_call_connection_fun
                                                                                       mock_plugin_service,
                                                                                       limitless_routers):
     get_router_cache().compute_if_absent(CLUSTER_ID, lambda _: limitless_routers,
-                                                                     EXPIRATION_NANO_SECONDS)
+                                         EXPIRATION_NANO_SECONDS)
 
     mock_connect_func = mocker.MagicMock()
     mock_connect_func.return_value = mock_conn
@@ -272,7 +273,7 @@ def test_establish_connection_router_cache_then_select_host(mocker,
                                                             limitless_router1,
                                                             limitless_routers):
     get_router_cache().compute_if_absent(CLUSTER_ID, lambda _: limitless_routers,
-                                                                     EXPIRATION_NANO_SECONDS)
+                                         EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
     mock_plugin_service.connect.return_value = mock_conn
 
@@ -352,7 +353,7 @@ def test_establish_connection_host_info_in_router_cache_can_call_connection_func
         limitless_router1,
         limitless_routers):
     get_router_cache().compute_if_absent(CLUSTER_ID, lambda _: limitless_routers,
-                                                                     EXPIRATION_NANO_SECONDS)
+                                         EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
     mock_plugin_service.connect.return_value = mock_conn
 
@@ -392,7 +393,7 @@ def test_establish_connection_selected_host_raises_exception_and_retries(mocker,
                                                                          limitless_router1,
                                                                          limitless_routers):
     get_router_cache().compute_if_absent(CLUSTER_ID, lambda _: limitless_routers,
-                                                                     EXPIRATION_NANO_SECONDS)
+                                         EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.side_effect = [
         Exception(),
         limitless_router1
@@ -436,7 +437,7 @@ def test_establish_connection_selected_host_none_then_retry(mocker,
                                                             limitless_router1,
                                                             limitless_routers):
     get_router_cache().compute_if_absent(CLUSTER_ID, lambda _: limitless_routers,
-                                                                     EXPIRATION_NANO_SECONDS)
+                                         EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.side_effect = [
         None,
         limitless_router1
@@ -481,7 +482,7 @@ def test_establish_connection_plugin_service_connect_raises_exception_then_retry
                                                                                  limitless_router2,
                                                                                  limitless_routers):
     get_router_cache().compute_if_absent(CLUSTER_ID, lambda _: limitless_routers,
-                                                                     EXPIRATION_NANO_SECONDS)
+                                         EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.side_effect = [
         limitless_router1,
         limitless_router2
@@ -528,7 +529,7 @@ def test_establish_connection_retry_and_max_retries_exceeded_then_raise_exceptio
                                                                                   limitless_router1,
                                                                                   limitless_routers):
     get_router_cache().compute_if_absent(CLUSTER_ID, lambda _: limitless_routers,
-                                                                     EXPIRATION_NANO_SECONDS)
+                                         EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
     mock_plugin_service.connect.side_effect = Exception()
 

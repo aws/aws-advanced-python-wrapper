@@ -320,12 +320,12 @@ class LimitlessRouterService:
     def __init__(self, plugin_service: PluginService, query_helper: LimitlessQueryHelper):
         self._plugin_service = plugin_service
         self._query_helper = query_helper
-        
+
         self._limitless_router_cache = SlidingExpirationCacheContainer.get_or_create_cache(
             name=self._ROUTER_CACHE_NAME,
             cleanup_interval_ns=self._CACHE_CLEANUP_NS
         )
-        
+
         self._limitless_router_monitor = SlidingExpirationCacheContainer.get_or_create_cache(
             name=self._MONITOR_CACHE_NAME,
             cleanup_interval_ns=self._CACHE_CLEANUP_NS,

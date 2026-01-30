@@ -19,8 +19,7 @@ from copy import copy
 from dataclasses import dataclass
 from threading import Event, Lock, Thread
 from time import sleep
-from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, List, Optional,
-                    Set, Tuple)
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import RandomHostSelector
@@ -289,16 +288,16 @@ class HostResponseTimeService:
         self._interval_ms = interval_ms
         self._hosts: Tuple[HostInfo, ...] = ()
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
-        
+
         self._monitoring_hosts = SlidingExpirationCacheContainer.get_or_create_cache(
             name=self._CACHE_NAME,
             cleanup_interval_ns=self._CACHE_CLEANUP_NS,
             should_dispose_func=lambda monitor: True,
             item_disposal_func=lambda monitor: HostResponseTimeService._monitor_close(monitor)
         )
-        
+
         self._host_count_gauge: TelemetryGauge | None = self._telemetry_factory.create_gauge(
-            "frt.hosts.count", 
+            "frt.hosts.count",
             lambda: len(self._monitoring_hosts)
         )
 

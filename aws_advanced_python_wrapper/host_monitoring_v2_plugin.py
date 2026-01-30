@@ -18,7 +18,7 @@ import weakref
 from queue import Queue
 from threading import Thread
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Optional, Set
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
@@ -458,7 +458,7 @@ class MonitorServiceV2:
 
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._aborted_connections_counter = telemetry_factory.create_counter("efm2.connections.aborted")
-        
+
         self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
             name=self._MONITOR_CACHE_NAME,
             cleanup_interval_ns=self._CACHE_CLEANUP_NANO,

@@ -14,11 +14,11 @@
 
 import threading
 from threading import Event, Thread
-from time import perf_counter_ns, sleep
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Optional
 
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import SlidingExpirationCache
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
+    SlidingExpirationCache
 
 logger = Logger(__name__)
 
@@ -27,7 +27,7 @@ class SlidingExpirationCacheContainer:
     """
     A container class for managing multiple named sliding expiration caches.
     Provides static methods for getting, creating, and releasing caches.
-    
+
     This container manages SlidingExpirationCache instances and provides a single
     cleanup thread that periodically cleans up all managed caches.
     """
@@ -48,7 +48,7 @@ class SlidingExpirationCacheContainer:
     ) -> SlidingExpirationCache:
         """
         Get an existing cache or create a new one if it doesn't exist.
-        
+
         The cleanup thread is started lazily when the first cache is created.
 
         Args:
@@ -67,7 +67,7 @@ class SlidingExpirationCacheContainer:
                     should_dispose_func=should_dispose_func,
                     item_disposal_func=item_disposal_func
                 )
-                
+
                 # Start cleanup thread if not already running
                 if cls._cleanup_thread is None or not cls._cleanup_thread.is_alive():
                     cls._is_stopped.clear()
@@ -77,7 +77,7 @@ class SlidingExpirationCacheContainer:
                         name="SlidingExpirationCacheContainer-Cleanup"
                     )
                     cls._cleanup_thread.start()
-                    
+
             return cls._caches[name]
 
     @classmethod
@@ -89,16 +89,16 @@ class SlidingExpirationCacheContainer:
         with cls._lock:
             # Stop the cleanup thread
             cls._is_stopped.set()
-            
+
             # Clear all caches (will dispose items if disposal function is set)
             for name, cache in cls._caches.items():
                 try:
                     cache.clear()
                 except Exception as e:
                     logger.warning("SlidingExpirationCacheContainer.ErrorReleasingCache", name, e)
-            
+
             cls._caches.clear()
-        
+
         # Wait for cleanup thread to stop (outside the lock)
         if cls._cleanup_thread is not None and cls._cleanup_thread.is_alive():
             cls._cleanup_thread.join(timeout=2.0)
@@ -110,11 +110,11 @@ class SlidingExpirationCacheContainer:
             # Wait for the cleanup interval or until stopped
             if cls._is_stopped.wait(timeout=cls._cleanup_interval_ns / 1_000_000_000):
                 break
-            
+
             # Cleanup all caches
             with cls._lock:
                 cache_items = list(cls._caches.items())
-            
+
             for name, cache in cache_items:
                 try:
                     cache.cleanup()
