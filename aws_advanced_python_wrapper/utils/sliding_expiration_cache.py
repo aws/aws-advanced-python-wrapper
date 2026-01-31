@@ -53,19 +53,54 @@ class SlidingExpirationCache(Generic[K, V]):
         return self._cdict.items()
 
     def compute_if_absent(self, key: K, mapping_func: Callable, item_expiration_ns: int) -> Optional[V]:
-        self._cleanup()
+        self.cleanup()
+        cache_item = self._cdict.compute_if_absent(
+            key, lambda k: CacheItem(mapping_func(k), perf_counter_ns() + item_expiration_ns))
+        return None if cache_item is None else cache_item.update_expiration(item_expiration_ns).item
+
+    def compute_if_absent_with_disposal(self, key: K, mapping_func: Callable, item_expiration_ns: int) -> Optional[V]:
+        self.cleanup()
+        self._remove_if_disposable(key)
         cache_item = self._cdict.compute_if_absent(
             key, lambda k: CacheItem(mapping_func(k), perf_counter_ns() + item_expiration_ns))
         return None if cache_item is None else cache_item.update_expiration(item_expiration_ns).item
 
     def get(self, key: K) -> Optional[V]:
-        self._cleanup()
+        self.cleanup()
         cache_item = self._cdict.get(key)
         return cache_item.item if cache_item is not None else None
 
     def remove(self, key: K):
         self._remove_and_dispose(key)
-        self._cleanup()
+        self.cleanup()
+
+    def clear(self):
+        if self._item_disposal_func is not None:
+            # Dispose all items atomically
+            self._cdict.clear(lambda k, cache_item: self._item_disposal_func(cache_item.item))
+        else:
+            # Just clear without disposal
+            self._cdict.clear()
+
+    def cleanup(self):
+        current_time = perf_counter_ns()
+        if self._cleanup_time_ns.get() > current_time:
+            return
+
+        self._cleanup_time_ns.set(current_time + self._cleanup_interval_ns)
+        keys = self._cdict.keys()
+        for key in keys:
+            self._remove_if_expired(key)
+
+    def _remove_if_disposable(self, key: K):
+        def _remove_if_disposable_internal(_, cache_item):
+            if self._should_dispose_func is not None and self._should_dispose_func(cache_item.item):
+                if self._item_disposal_func is not None:
+                    self._item_disposal_func(cache_item.item)
+                return None
+            return cache_item
+
+        self._cdict.compute_if_present(key, _remove_if_disposable_internal)
 
     def _remove_and_dispose(self, key: K):
         cache_item = self._cdict.remove(key)
@@ -88,25 +123,6 @@ class SlidingExpirationCache(Generic[K, V]):
             return perf_counter_ns() > cache_item.expiration_time and self._should_dispose_func(cache_item.item)
         return perf_counter_ns() > cache_item.expiration_time
 
-    def clear(self):
-        # Dispose all items while holding the lock
-        if self._item_disposal_func is not None:
-            self._cdict.apply_if(
-                lambda k, v: True,  # Apply to all items
-                lambda k, cache_item: self._item_disposal_func(cache_item.item)
-            )
-        self._cdict.clear()
-
-    def _cleanup(self):
-        current_time = perf_counter_ns()
-        if self._cleanup_time_ns.get() > current_time:
-            return
-
-        self._cleanup_time_ns.set(current_time + self._cleanup_interval_ns)
-        keys = self._cdict.keys()
-        for key in keys:
-            self._remove_if_expired(key)
-
 
 class SlidingExpirationCacheWithCleanupThread(SlidingExpirationCache, Generic[K, V]):
     def __init__(
@@ -118,38 +134,15 @@ class SlidingExpirationCacheWithCleanupThread(SlidingExpirationCache, Generic[K,
         self._cleanup_thread = Thread(target=self._cleanup_thread_internal, daemon=True)
         self._cleanup_thread.start()
 
-    def compute_if_absent_with_disposal(self, key: K, mapping_func: Callable, item_expiration_ns: int) -> Optional[V]:
-        self._remove_if_disposable(key)
-        cache_item = self._cdict.compute_if_absent(
-            key, lambda k: CacheItem(mapping_func(k), perf_counter_ns() + item_expiration_ns))
-        return None if cache_item is None else cache_item.update_expiration(item_expiration_ns).item
-
-    def _remove_if_disposable(self, key: K):
-        def _remove_if_disposable_internal(_, cache_item):
-            if self._should_dispose_func is not None and self._should_dispose_func(cache_item.item):
-                if self._item_disposal_func is not None:
-                    self._item_disposal_func(cache_item.item)
-                return None
-            return cache_item
-
-        self._cdict.compute_if_present(key, _remove_if_disposable_internal)
-
     def _cleanup_thread_internal(self):
         while True:
             try:
                 sleep(self._cleanup_interval_ns / 1_000_000_000)
-                self._cleanup_time_ns.set(perf_counter_ns() + self._cleanup_interval_ns)
-                keys = self._cdict.keys()
-                for key in keys:
-                    try:
-                        self._remove_if_expired(key)
-                    except Exception:
-                        pass  # ignore
+                # Force cleanup by resetting the interval timer
+                self._cleanup_time_ns.set(0)
+                self.cleanup()
             except Exception:
                 break
-
-    def _cleanup(self):
-        pass  # cleanup thread handles this
 
 
 class CacheItem(Generic[V]):

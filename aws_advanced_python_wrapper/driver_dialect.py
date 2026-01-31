@@ -51,6 +51,7 @@ class DriverDialect(ABC):
 
     def __init__(self, props: Properties):
         self._props = props
+        self._thread_pool = ThreadPoolContainer.get_thread_pool(self._executor_name)
 
     @property
     def driver_name(self):
@@ -138,7 +139,7 @@ class DriverDialect(ABC):
 
         if exec_timeout > 0:
             try:
-                execute_with_timeout = timeout(ThreadPoolContainer.get_thread_pool(DriverDialect._executor_name), exec_timeout)(exec_func)
+                execute_with_timeout = timeout(self._thread_pool, exec_timeout)(exec_func)
                 return execute_with_timeout()
             except TimeoutError as e:
                 raise QueryTimeoutError(Messages.get_formatted("DriverDialect.ExecuteTimeout", method_name)) from e

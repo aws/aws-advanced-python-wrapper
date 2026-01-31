@@ -21,14 +21,13 @@ from aws_xray_sdk.core import xray_recorder
 
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
-from aws_advanced_python_wrapper.custom_endpoint_plugin import (
-    CustomEndpointMonitor, CustomEndpointPlugin)
+from aws_advanced_python_wrapper.custom_endpoint_plugin import \
+    CustomEndpointMonitor
 from aws_advanced_python_wrapper.database_dialect import DatabaseDialectManager
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
-from aws_advanced_python_wrapper.host_list_provider import (
-    MonitoringRdsHostListProvider, RdsHostListProvider)
+from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.host_monitoring_plugin import \
     MonitoringThreadContainer
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
@@ -36,6 +35,8 @@ from aws_advanced_python_wrapper.thread_pool_container import \
     ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
+    SlidingExpirationCacheContainer
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
@@ -145,11 +146,10 @@ def pytest_runtest_setup(item):
         RdsHostListProvider._cluster_ids_to_update.clear()
         PluginServiceImpl._host_availability_expiring_cache.clear()
         DatabaseDialectManager._known_endpoint_dialects.clear()
-        CustomEndpointPlugin._monitors.clear()
         CustomEndpointMonitor._custom_endpoint_info_cache.clear()
         MonitoringThreadContainer.clean_up()
         ThreadPoolContainer.release_resources(wait=True)
-        MonitoringRdsHostListProvider._monitors.clear()
+        SlidingExpirationCacheContainer.release_resources()
 
         ConnectionProviderManager.release_resources()
         ConnectionProviderManager.reset_provider()

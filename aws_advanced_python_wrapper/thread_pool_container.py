@@ -14,7 +14,7 @@
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
+from typing import ClassVar, Dict, List, Optional
 
 from aws_advanced_python_wrapper.utils.log import Logger
 
@@ -27,9 +27,9 @@ class ThreadPoolContainer:
     Provides static methods for getting, creating, and releasing thread pools.
     """
 
-    _pools: Dict[str, ThreadPoolExecutor] = {}
-    _lock: threading.Lock = threading.Lock()
-    _default_max_workers: Optional[int] = None  # Uses Python's default
+    _pools: ClassVar[Dict[str, ThreadPoolExecutor]] = {}
+    _lock: ClassVar[threading.Lock] = threading.Lock()
+    _default_max_workers: ClassVar[Optional[int]] = None  # Uses Python's default
 
     @classmethod
     def get_thread_pool(

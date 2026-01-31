@@ -22,8 +22,6 @@ import pytest  # type: ignore
 
 from aws_advanced_python_wrapper.errors import (
     FailoverSuccessError, TransactionResolutionUnknownError)
-from aws_advanced_python_wrapper.host_list_provider import \
-    MonitoringRdsHostListProvider
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from .utils.conditions import (disable_on_features, enable_on_deployments,
@@ -61,7 +59,6 @@ class TestAuroraFailover:
         yield
         # Clean up global resources created by wrapper
         release_resources()
-        MonitoringRdsHostListProvider.release_resources()
         self.logger.info(f"Ending test: {request.node.name}")
         release_resources()
         gc.collect()

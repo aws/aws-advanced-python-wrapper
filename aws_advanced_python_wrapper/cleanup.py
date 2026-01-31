@@ -18,6 +18,8 @@ from aws_advanced_python_wrapper.host_monitoring_plugin import \
     MonitoringThreadContainer
 from aws_advanced_python_wrapper.thread_pool_container import \
     ThreadPoolContainer
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
+    SlidingExpirationCacheContainer
 
 
 def release_resources() -> None:
@@ -25,3 +27,4 @@ def release_resources() -> None:
     MonitoringThreadContainer.clean_up()
     ThreadPoolContainer.release_resources()
     OpenedConnectionTracker.release_resources()
+    SlidingExpirationCacheContainer.release_resources()

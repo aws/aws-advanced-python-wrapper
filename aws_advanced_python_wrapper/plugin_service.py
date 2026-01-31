@@ -351,6 +351,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._driver_dialect = driver_dialect
         self._database_dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
         self._session_state_service = session_state_service if session_state_service is not None else SessionStateServiceImpl(self, props)
+        self._thread_pool = ThreadPoolContainer.get_thread_pool(self._executor_name)
 
     @property
     def all_hosts(self) -> Tuple[HostInfo, ...]:
@@ -631,7 +632,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         try:
             timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                ThreadPoolContainer.get_thread_pool(PluginServiceImpl._executor_name), timeout_sec, driver_dialect, connection)(self._fill_aliases)
+                self._thread_pool, timeout_sec, driver_dialect, connection)(self._fill_aliases)
             cursor_execute_func_with_timeout(connection, host_info)
         except TimeoutError as e:
             raise QueryTimeoutError(Messages.get("PluginServiceImpl.FillAliasesTimeout")) from e
