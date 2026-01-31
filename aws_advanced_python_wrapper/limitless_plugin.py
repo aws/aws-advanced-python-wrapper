@@ -312,9 +312,9 @@ class LimitlessContext:
 
 
 class LimitlessRouterService:
-    _CACHE_CLEANUP_NS: int = 6 * 10 ^ 10  # 1 minute
-    _ROUTER_CACHE_NAME: str = "limitless_router_cache"
-    _MONITOR_CACHE_NAME: str = "limitless_monitor_cache"
+    _CACHE_CLEANUP_NS: ClassVar[int] = 60_000_000_000  # 1 minute
+    _ROUTER_CACHE_NAME: ClassVar[str] = "limitless_router_cache"
+    _MONITOR_CACHE_NAME: ClassVar[str] = "limitless_monitor_cache"
     _force_get_limitless_routers_lock_map: ClassVar[ConcurrentDict[str, RLock]] = ConcurrentDict()
 
     def __init__(self, plugin_service: PluginService, query_helper: LimitlessQueryHelper):
@@ -322,13 +322,13 @@ class LimitlessRouterService:
         self._query_helper = query_helper
 
         self._limitless_router_cache = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=self._ROUTER_CACHE_NAME,
-            cleanup_interval_ns=self._CACHE_CLEANUP_NS
+            name=LimitlessRouterService._ROUTER_CACHE_NAME,
+            cleanup_interval_ns=LimitlessRouterService._CACHE_CLEANUP_NS
         )
 
         self._limitless_router_monitor = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=self._MONITOR_CACHE_NAME,
-            cleanup_interval_ns=self._CACHE_CLEANUP_NS,
+            name=LimitlessRouterService._MONITOR_CACHE_NAME,
+            cleanup_interval_ns=LimitlessRouterService._CACHE_CLEANUP_NS,
             should_dispose_func=lambda monitor: True,
             item_disposal_func=lambda monitor: monitor.close()
         )

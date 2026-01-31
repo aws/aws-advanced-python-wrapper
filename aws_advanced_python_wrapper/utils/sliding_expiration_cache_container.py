@@ -14,7 +14,7 @@
 
 import threading
 from threading import Event, Thread
-from typing import Callable, Dict, Optional
+from typing import Callable, ClassVar, Dict, Optional
 
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
@@ -32,11 +32,11 @@ class SlidingExpirationCacheContainer:
     cleanup thread that periodically cleans up all managed caches.
     """
 
-    _caches: Dict[str, SlidingExpirationCache] = {}
-    _lock: threading.Lock = threading.Lock()
-    _cleanup_thread: Optional[Thread] = None
-    _cleanup_interval_ns: int = 300_000_000_000  # 5 minutes default
-    _is_stopped: Event = Event()
+    _caches: ClassVar[Dict[str, SlidingExpirationCache]] = {}
+    _lock: ClassVar[threading.Lock] = threading.Lock()
+    _cleanup_thread: ClassVar[Optional[Thread]] = None
+    _cleanup_interval_ns: ClassVar[int] = 300_000_000_000  # 5 minutes default
+    _is_stopped: ClassVar[Event] = Event()
 
     @classmethod
     def get_or_create_cache(

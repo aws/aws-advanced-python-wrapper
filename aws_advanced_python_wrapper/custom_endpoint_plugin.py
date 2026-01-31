@@ -232,8 +232,8 @@ class CustomEndpointPlugin(Plugin):
     or removing an instance in the custom endpoint.
     """
     _SUBSCRIBED_METHODS: ClassVar[Set[str]] = {DbApiMethod.CONNECT.method_name}
-    _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 6 * 10 ^ 10  # 1 minute
-    _MONITOR_CACHE_NAME: str = "custom_endpoint_monitors"
+    _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 60_000_000_000  # 1 minute
+    _MONITOR_CACHE_NAME: ClassVar[str] = "custom_endpoint_monitors"
 
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
@@ -252,10 +252,9 @@ class CustomEndpointPlugin(Plugin):
         telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
         self._wait_for_info_counter: TelemetryCounter | None = telemetry_factory.create_counter("customEndpoint.waitForInfo.counter")
 
-        # Get cache reference once during initialization
         self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=self._MONITOR_CACHE_NAME,
-            cleanup_interval_ns=self._CACHE_CLEANUP_RATE_NS,
+            name=CustomEndpointPlugin._MONITOR_CACHE_NAME,
+            cleanup_interval_ns=CustomEndpointPlugin._CACHE_CLEANUP_RATE_NS,
             should_dispose_func=lambda _: True,
             item_disposal_func=lambda monitor: monitor.close()
         )

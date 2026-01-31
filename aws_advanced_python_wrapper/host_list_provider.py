@@ -753,9 +753,9 @@ class MultiAzTopologyUtils(TopologyUtils):
 
 
 class MonitoringRdsHostListProvider(RdsHostListProvider):
-    _CACHE_CLEANUP_NANO = 1 * 60 * 1_000_000_000  # 1 minute
-    _MONITOR_CLEANUP_NANO = 15 * 60 * 1_000_000_000  # 15 minutes
-    _MONITOR_CACHE_NAME: str = "cluster_topology_monitors"
+    _CACHE_CLEANUP_NANO: ClassVar[int] = 1 * 60 * 1_000_000_000  # 1 minute
+    _MONITOR_CLEANUP_NANO: ClassVar[int] = 15 * 60 * 1_000_000_000  # 15 minutes
+    _MONITOR_CACHE_NAME: ClassVar[str] = "cluster_topology_monitors"
 
     def __init__(
             self,
@@ -770,8 +770,8 @@ class MonitoringRdsHostListProvider(RdsHostListProvider):
             WrapperProperties.CLUSTER_TOPOLOGY_HIGH_REFRESH_RATE_MS.get_int(self._props) * 1_000_000)
 
         self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=self._MONITOR_CACHE_NAME,
-            cleanup_interval_ns=self._CACHE_CLEANUP_NANO,
+            name=MonitoringRdsHostListProvider._MONITOR_CACHE_NAME,
+            cleanup_interval_ns=MonitoringRdsHostListProvider._CACHE_CLEANUP_NANO,
             should_dispose_func=lambda monitor: monitor.can_dispose(),
             item_disposal_func=lambda monitor: monitor.close()
         )

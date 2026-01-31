@@ -18,7 +18,7 @@ import weakref
 from queue import Queue
 from threading import Thread
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Any, Callable, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
@@ -450,8 +450,8 @@ class HostMonitorV2:
 
 class MonitorServiceV2:
     # 1 Minute to Nanoseconds
-    _CACHE_CLEANUP_NANO = 1 * 60 * 1_000_000_000
-    _MONITOR_CACHE_NAME: str = "host_monitors_v2"
+    _CACHE_CLEANUP_NANO: ClassVar[int] = 1 * 60 * 1_000_000_000
+    _MONITOR_CACHE_NAME: ClassVar[str] = "host_monitors_v2"
 
     def __init__(self, plugin_service: PluginService):
         self._plugin_service: PluginService = plugin_service
@@ -460,8 +460,8 @@ class MonitorServiceV2:
         self._aborted_connections_counter = telemetry_factory.create_counter("efm2.connections.aborted")
 
         self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=self._MONITOR_CACHE_NAME,
-            cleanup_interval_ns=self._CACHE_CLEANUP_NANO,
+            name=MonitorServiceV2._MONITOR_CACHE_NAME,
+            cleanup_interval_ns=MonitorServiceV2._CACHE_CLEANUP_NANO,
             should_dispose_func=lambda monitor: monitor.can_dispose(),
             item_disposal_func=lambda monitor: monitor.close()
         )

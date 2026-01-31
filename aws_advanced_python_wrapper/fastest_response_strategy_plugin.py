@@ -19,7 +19,8 @@ from copy import copy
 from dataclasses import dataclass
 from threading import Event, Lock, Thread
 from time import sleep
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
+from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, List, Optional,
+                    Set, Tuple)
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import RandomHostSelector
@@ -58,7 +59,7 @@ class FastestResponseStrategyPlugin(Plugin):
         self._properties = props
         self._host_response_time_service: HostResponseTimeService = \
             HostResponseTimeService(plugin_service, props, WrapperProperties.RESPONSE_MEASUREMENT_INTERVAL_MS.get_int(props))
-        self._cache_expiration_nanos = WrapperProperties.RESPONSE_MEASUREMENT_INTERVAL_MS.get_int(props) * 10 ^ 6
+        self._cache_expiration_nanos = WrapperProperties.RESPONSE_MEASUREMENT_INTERVAL_MS.get_int(props) * 1_000_000
         self._random_host_selector = RandomHostSelector()
         self._cached_fastest_response_host_by_role: CacheMap[str, HostInfo] = CacheMap()
         self._hosts: Tuple[HostInfo, ...] = ()
@@ -277,10 +278,10 @@ class HostResponseTimeMonitor:
 
 
 class HostResponseTimeService:
-    _CACHE_EXPIRATION_NS: int = 6 * 10 ^ 11  # 10 minutes
-    _CACHE_CLEANUP_NS: int = 6 * 10 ^ 10  # 1 minute
-    _CACHE_NAME: str = "host_response_time_monitors"
-    _lock: Lock = Lock()
+    _CACHE_EXPIRATION_NS: ClassVar[int] = 10 * 60_000_000_000  # 10 minutes
+    _CACHE_CLEANUP_NS: ClassVar[int] = 60_000_000_000  # 1 minute
+    _CACHE_NAME: ClassVar[str] = "host_response_time_monitors"
+    _lock: ClassVar[Lock] = Lock()
 
     def __init__(self, plugin_service: PluginService, props: Properties, interval_ms: int):
         self._plugin_service = plugin_service
@@ -290,8 +291,8 @@ class HostResponseTimeService:
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
 
         self._monitoring_hosts = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=self._CACHE_NAME,
-            cleanup_interval_ns=self._CACHE_CLEANUP_NS,
+            name=HostResponseTimeService._CACHE_NAME,
+            cleanup_interval_ns=HostResponseTimeService._CACHE_CLEANUP_NS,
             should_dispose_func=lambda monitor: True,
             item_disposal_func=lambda monitor: HostResponseTimeService._monitor_close(monitor)
         )
@@ -334,4 +335,4 @@ class HostResponseTimeService:
                                                                  self._plugin_service,
                                                                  host,
                                                                  self._properties,
-                                                                 self._interval_ms), self._CACHE_EXPIRATION_NS)
+                                                                 self._interval_ms), HostResponseTimeService._CACHE_EXPIRATION_NS)
