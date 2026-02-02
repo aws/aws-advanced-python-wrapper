@@ -14,7 +14,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Tuple
+from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
+                    Protocol, Tuple)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
@@ -131,8 +132,8 @@ class DriverConnectionProvider(ConnectionProvider):
 
 
 class ConnectionProviderManager:
-    _lock: Lock = Lock()
-    _conn_provider: Optional[ConnectionProvider] = None
+    _lock: ClassVar[Lock] = Lock()
+    _conn_provider: ClassVar[Optional[ConnectionProvider]] = None
 
     def __init__(self, default_provider: ConnectionProvider = DriverConnectionProvider()):
         self._default_provider: ConnectionProvider = default_provider

@@ -42,8 +42,8 @@ from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
-    SlidingExpirationCacheWithCleanupThread
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
+    SlidingExpirationCacheContainer
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryCounter, TelemetryFactory)
 
@@ -232,11 +232,8 @@ class CustomEndpointPlugin(Plugin):
     or removing an instance in the custom endpoint.
     """
     _SUBSCRIBED_METHODS: ClassVar[Set[str]] = {DbApiMethod.CONNECT.method_name}
-    _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 6 * 10 ^ 10  # 1 minute
-    _monitors: ClassVar[SlidingExpirationCacheWithCleanupThread[str, CustomEndpointMonitor]] = \
-        SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_RATE_NS,
-                                                should_dispose_func=lambda _: True,
-                                                item_disposal_func=lambda monitor: monitor.close())
+    _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 60_000_000_000  # 1 minute
+    _MONITOR_CACHE_NAME: ClassVar[str] = "custom_endpoint_monitors"
 
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
@@ -254,6 +251,13 @@ class CustomEndpointPlugin(Plugin):
         self._custom_endpoint_id: Optional[str] = None
         telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
         self._wait_for_info_counter: TelemetryCounter | None = telemetry_factory.create_counter("customEndpoint.waitForInfo.counter")
+
+        self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
+            name=CustomEndpointPlugin._MONITOR_CACHE_NAME,
+            cleanup_interval_ns=CustomEndpointPlugin._CACHE_CLEANUP_RATE_NS,
+            should_dispose_func=lambda _: True,
+            item_disposal_func=lambda monitor: monitor.close()
+        )
 
         CustomEndpointPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
@@ -298,7 +302,7 @@ class CustomEndpointPlugin(Plugin):
         host_info = cast('HostInfo', self._custom_endpoint_host_info)
         endpoint_id = cast('str', self._custom_endpoint_id)
         region = cast('str', self._region)
-        monitor = CustomEndpointPlugin._monitors.compute_if_absent(
+        monitor = self._monitors.compute_if_absent(
             host_info.host,
             lambda key: CustomEndpointMonitor(
                 self._plugin_service,

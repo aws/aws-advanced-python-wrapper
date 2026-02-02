@@ -28,8 +28,8 @@ from aws_advanced_python_wrapper.cluster_topology_monitor import (
     ClusterTopologyMonitor, ClusterTopologyMonitorImpl)
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
-    SlidingExpirationCacheWithCleanupThread
+from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
+    SlidingExpirationCacheContainer
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -476,6 +476,7 @@ class TopologyUtils(ABC):
 
         self.instance_template: HostInfo = instance_template
         self._max_timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(props)
+        self._thread_pool = ThreadPoolContainer.get_thread_pool(self._executor_name)
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):
@@ -507,7 +508,7 @@ class TopologyUtils(ABC):
         an empty tuple will be returned.
         """
         query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
-                    ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, conn)(self._query_for_topology)
+                    self._thread_pool, self._max_timeout_sec, driver_dialect, conn)(self._query_for_topology)
         x = query_for_topology_func_with_timeout(conn)
         return x
 
@@ -570,7 +571,7 @@ class TopologyUtils(ABC):
     def get_host_role(self, connection: Connection, driver_dialect: DriverDialect) -> HostRole:
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, connection)(self._get_host_role)
+                self._thread_pool, self._max_timeout_sec, driver_dialect, connection)(self._get_host_role)
             result = cursor_execute_func_with_timeout(connection)
             if result is not None:
                 is_reader = result[0]
@@ -593,7 +594,7 @@ class TopologyUtils(ABC):
         """
 
         cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-            ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, connection)(self._get_host_id)
+            self._thread_pool, self._max_timeout_sec, driver_dialect, connection)(self._get_host_id)
         result = cursor_execute_func_with_timeout(connection)
         if result:
             host_id: str = result[0]
@@ -608,7 +609,7 @@ class TopologyUtils(ABC):
     def get_writer_host_if_connected(self, connection: Connection, driver_dialect: DriverDialect) -> Optional[str]:
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                ThreadPoolContainer.get_thread_pool(self._executor_name), self._max_timeout_sec, driver_dialect, connection)(self._get_writer_id)
+                self._thread_pool, self._max_timeout_sec, driver_dialect, connection)(self._get_writer_id)
             result = cursor_execute_func_with_timeout(connection)
             if result:
                 host_id: str = result[0]
@@ -752,13 +753,9 @@ class MultiAzTopologyUtils(TopologyUtils):
 
 
 class MonitoringRdsHostListProvider(RdsHostListProvider):
-    _CACHE_CLEANUP_NANO = 1 * 60 * 1_000_000_000  # 1 minute
-    _MONITOR_CLEANUP_NANO = 15 * 60 * 1_000_000_000  # 15 minutes
-
-    _monitors: ClassVar[SlidingExpirationCacheWithCleanupThread[str, ClusterTopologyMonitor]] = \
-        SlidingExpirationCacheWithCleanupThread(_CACHE_CLEANUP_NANO,
-                                                should_dispose_func=lambda monitor: monitor.can_dispose(),
-                                                item_disposal_func=lambda monitor: monitor.close())
+    _CACHE_CLEANUP_NANO: ClassVar[int] = 1 * 60 * 1_000_000_000  # 1 minute
+    _MONITOR_CLEANUP_NANO: ClassVar[int] = 15 * 60 * 1_000_000_000  # 15 minutes
+    _MONITOR_CACHE_NAME: ClassVar[str] = "cluster_topology_monitors"
 
     def __init__(
             self,
@@ -771,6 +768,13 @@ class MonitoringRdsHostListProvider(RdsHostListProvider):
         self._plugin_service: PluginService = plugin_service
         self._high_refresh_rate_ns = (
             WrapperProperties.CLUSTER_TOPOLOGY_HIGH_REFRESH_RATE_MS.get_int(self._props) * 1_000_000)
+
+        self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
+            name=MonitoringRdsHostListProvider._MONITOR_CACHE_NAME,
+            cleanup_interval_ns=MonitoringRdsHostListProvider._CACHE_CLEANUP_NANO,
+            should_dispose_func=lambda monitor: monitor.can_dispose(),
+            item_disposal_func=lambda monitor: monitor.close()
+        )
 
     def _get_monitor(self) -> Optional[ClusterTopologyMonitor]:
         return self._monitors.compute_if_absent_with_disposal(self.get_cluster_id(),
@@ -803,7 +807,3 @@ class MonitoringRdsHostListProvider(RdsHostListProvider):
             return ()
 
         return monitor.force_refresh(should_verify_writer, timeout_sec)
-
-    @staticmethod
-    def release_resources():
-        MonitoringRdsHostListProvider._monitors.clear()

@@ -96,9 +96,9 @@ def test_start_monitoring(
 def test_start_monitoring__multiple_calls(monitor_service_with_container, mock_monitor, mock_conn, mocker):
     aliases = frozenset({"instance-1"})
 
-    # Mock ThreadPoolContainer.get_thread_pool
+    # Mock the _thread_pool directly on the container instance since it's now cached in __init__
     mock_thread_pool = mocker.MagicMock()
-    mocker.patch('aws_advanced_python_wrapper.host_monitoring_plugin.ThreadPoolContainer.get_thread_pool', return_value=mock_thread_pool)
+    monitor_service_with_container._monitor_container._thread_pool = mock_thread_pool
 
     num_calls = 5
     for _ in range(num_calls):

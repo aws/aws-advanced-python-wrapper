@@ -28,22 +28,31 @@ class ConcurrentDict(Generic[K, V]):
         self._lock = Lock()
 
     def __len__(self):
-        return len(self._dict)
+        with self._lock:
+            return len(self._dict)
 
     def __contains__(self, key):
-        return key in self._dict
+        with self._lock:
+            return key in self._dict
 
     def __str__(self):
-        return f"ConcurrentDict{str(self._dict)}"
+        with self._lock:
+            return f"ConcurrentDict{str(self._dict)}"
 
     def __repr__(self):
-        return f"ConcurrentDict{str(self._dict)}"
+        with self._lock:
+            return f"ConcurrentDict{str(self._dict)}"
 
     def get(self, key: K, default_value: Optional[V] = None) -> Optional[V]:
-        return self._dict.get(key, default_value)
+        with self._lock:
+            return self._dict.get(key, default_value)
 
-    def clear(self):
-        self._dict.clear()
+    def clear(self, disposal_func: Optional[Callable] = None):
+        with self._lock:
+            if disposal_func is not None:
+                for key, value in self._dict.items():
+                    disposal_func(key, value)
+            self._dict.clear()
 
     def compute_if_present(self, key: K, remapping_func: Callable) -> Optional[V]:
         with self._lock:
