@@ -45,6 +45,7 @@ _TEST_HOST = "test-domain"
 _SECRET_CACHE_KEY = (_TEST_SECRET_ID, _TEST_REGION, _TEST_ENDPOINT)
 _TEST_HOST_INFO = HostInfo(_TEST_HOST, _TEST_PORT)
 _TEST_SECRET = SimpleNamespace(username="testUser", password="testPassword")
+_INVALID_TEST_SECRET = SimpleNamespace(username="oldUser", password="oldPassword")
 _ONE_YEAR_IN_NANOSECONDS = 60 * 60 * 24 * 365 * 1000
 
 _MYSQL_HOST_INFO = HostInfo("mysql.testdb.us-east-2.rds.amazonaws.com")
@@ -178,13 +179,44 @@ def test_missing_required_params(key: str, mock_plugin_service, mock_session):
 @patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
 def test_failed_initial_connection_with_unhandled_error(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    ...
+    exception_msg = "Unhandled error during connection"
+
+    # Simulate an unhandled exception (neither a login exception nor a network exception)
+    unhandled_exception = RuntimeError(exception_msg)
+    mock_func.side_effect = unhandled_exception
+    mock_plugin_service.is_login_exception.return_value = False
+
+    target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(mock_plugin_service, test_properties, mock_session)
+
+    with pytest.raises(AwsWrapperError):
+        target_plugin.connect(
+            mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
+
+    assert 1 == len(_secrets_cache)
+    mock_client.get_secret_value.assert_called_once()
+    mock_func.assert_called_once()
+    assert _TEST_USERNAME == test_properties.get("user")
+    assert _TEST_PASSWORD == test_properties.get("password")
 
 
 @patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
 def test_connect_with_new_secrets_after_trying_with_cached_secrets(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    ...
+    _secrets_cache.put(_SECRET_CACHE_KEY, _INVALID_TEST_SECRET, _ONE_YEAR_IN_NANOSECONDS)
+
+    login_exception = Exception("Login failed with cached credentials")
+    mock_func.side_effect = [login_exception, mocker.MagicMock()]
+    mock_plugin_service.is_login_exception.return_value = True
+
+    target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(mock_plugin_service, test_properties, mock_session)
+
+    target_plugin.connect(mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
+
+    assert 1 == len(_secrets_cache)
+    mock_client.get_secret_value.assert_called_once()
+    assert 2 == mock_func.call_count
+    assert _TEST_USERNAME == test_properties.get("user")
+    assert _TEST_PASSWORD == test_properties.get("password")
 
 
 @patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
