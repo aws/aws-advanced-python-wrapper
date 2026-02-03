@@ -81,7 +81,7 @@ def mock_dialect(mocker):
 
 
 @pytest.fixture(autouse=True)
-def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection, mock_plugin_service, mock_dialect):
+def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection, mock_plugin_service, mock_dialect, mocker):
     mock_session.client.return_value = mock_client
     mock_client.generate_db_auth_token.return_value = _GENERATED_TOKEN
     mock_session.get_available_regions.return_value = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2']
@@ -90,12 +90,8 @@ def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection,
     mock_plugin_service.database_dialect = mock_dialect
     mock_dialect.default_port = _DEFAULT_PG_PORT
 
-    def custom_handler(host_info: HostInfo, props: Properties) -> Session:
-        return mock_session
-
-    AwsCredentialsManager.set_custom_handler(custom_handler)
+    mocker.patch('aws_advanced_python_wrapper.iam_plugin.AwsCredentialsManager.get_session', return_value=mock_session)
     yield
-    AwsCredentialsManager.reset_custom_handler()
 
 
 @pytest.fixture

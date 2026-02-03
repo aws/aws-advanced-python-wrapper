@@ -108,7 +108,7 @@ def mock_dialect(mocker):
 
 
 @pytest.fixture(autouse=True)
-def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection):
+def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection, mocker):
     mock_session.client.return_value = mock_client
     mock_client.get_secret_value.return_value = _VALID_SECRET_STRING
     mock_session.get_available_regions.return_value = [
@@ -116,12 +116,8 @@ def mock_default_behavior(mock_session, mock_client, mock_func, mock_connection)
     ]
     mock_func.return_value = mock_connection
 
-    def custom_handler(host_info: HostInfo, props: Properties) -> Session:
-        return mock_session
-
-    AwsCredentialsManager.set_custom_handler(custom_handler)
+    mocker.patch('aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsCredentialsManager.get_session', return_value=mock_session)
     yield
-    AwsCredentialsManager.reset_custom_handler()
 
 
 @pytest.fixture

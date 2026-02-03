@@ -15,11 +15,10 @@
 from __future__ import annotations
 
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from boto3 import Session
 
-from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 if TYPE_CHECKING:
@@ -28,42 +27,21 @@ if TYPE_CHECKING:
 
 
 class AwsCredentialsManager:
-    _handler: Optional[Callable[[HostInfo, Properties], Optional[Session]]] = None
     _lock = Lock()
     _sessions: dict[str, Session] = {}
     _clients: dict[str, Any] = {}
 
     @staticmethod
-    def set_custom_handler(custom_handler: Callable[[HostInfo, Properties], Optional[Session]]) -> None:
-        if not callable(custom_handler):
-            raise TypeError("custom_handler must be callable")
-        with AwsCredentialsManager._lock:
-            AwsCredentialsManager._handler = custom_handler
-
-    @staticmethod
-    def reset_custom_handler() -> None:
-        with AwsCredentialsManager._lock:
-            AwsCredentialsManager._handler = None
-
-    @staticmethod
     def get_session(host_info: HostInfo, props: Properties, region: str) -> Session:
-        host_key = f'{host_info.as_alias()}{region}'
+        profile_name = WrapperProperties.AWS_PROFILE.get(props)
+        host_key = f'{host_info.as_alias()}{region}{profile_name}'
 
-        handler = None
         with AwsCredentialsManager._lock:
             if host_key in AwsCredentialsManager._sessions:
                 return AwsCredentialsManager._sessions[host_key]
-            handler = AwsCredentialsManager._handler
 
         # Initialize session outside of lock.
-        session = handler(host_info, props) if handler else None
-
-        if session is not None and not isinstance(session, type(Session())):
-            raise TypeError(Messages.get_formatted("AwsCredentialsManager.InvalidHandler", type(session).__name__))
-
-        if session is None:
-            profile_name = WrapperProperties.AWS_PROFILE.get(props)
-            session = Session(profile_name=profile_name, region_name=region) if profile_name else Session(region_name=region)
+        session = Session(profile_name=profile_name, region_name=region) if profile_name else Session(region_name=region)
 
         with AwsCredentialsManager._lock:
             if host_key not in AwsCredentialsManager._sessions:

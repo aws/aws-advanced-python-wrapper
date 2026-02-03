@@ -29,10 +29,8 @@ from aws_advanced_python_wrapper.utils.properties import Properties
 @pytest.fixture(autouse=True)
 def cleanup():
     AwsCredentialsManager.release_resources()
-    AwsCredentialsManager.reset_custom_handler()
     yield
     AwsCredentialsManager.release_resources()
-    AwsCredentialsManager.reset_custom_handler()
 
 
 @pytest.fixture
@@ -130,33 +128,6 @@ class TestAwsCredentialsManagerBasic:
         session2 = AwsCredentialsManager.get_session(host2, props, region)
 
         assert session1 is not session2
-
-    def test_get_session_with_custom_handler(self, mock_session, host_info, props, region, mocker):
-        custom_session = mock_session
-        custom_session.region_name = "custom-region"
-        custom_handler = mocker.MagicMock(return_value=custom_session)
-
-        AwsCredentialsManager.set_custom_handler(custom_handler)
-        session = AwsCredentialsManager.get_session(host_info, props, region)
-
-        assert session is custom_session
-        custom_handler.assert_called_once_with(host_info, props)
-
-    def test_reset_custom_handler(self, host_info, props, region, mocker):
-        custom_session = mocker.MagicMock(spec=Session)
-        custom_handler = mocker.MagicMock(return_value=custom_session)
-
-        mock_default_session = mocker.MagicMock(spec=Session)
-        mock_default_session.region_name = region
-        mocker.patch('aws_advanced_python_wrapper.aws_credentials_manager.Session', return_value=mock_default_session)
-
-        AwsCredentialsManager.set_custom_handler(custom_handler)
-        AwsCredentialsManager.reset_custom_handler()
-        session = AwsCredentialsManager.get_session(host_info, props, region)
-
-        assert session is not custom_session
-        assert session is mock_default_session
-        assert session.region_name == region
 
     def test_get_client_creates_client(self, host_info, props, region, mocker):
         session = AwsCredentialsManager.get_session(host_info, props, region)
