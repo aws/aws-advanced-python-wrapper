@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -113,6 +113,9 @@ class AwsSecretsManagerPlugin(Plugin):
             return connect_func()
 
         except Exception as e:
+            if self._plugin_service.is_network_exception(error=e):
+                raise AwsConnectError(Messages.get_formatted("AwsSecretsManagerPlugin.ConnectException", e)) from e
+
             if not self._plugin_service.is_login_exception(error=e) or secret_fetched:
                 raise AwsWrapperError(
                     Messages.get_formatted("AwsSecretsManagerPlugin.ConnectException", e)) from e

@@ -23,9 +23,11 @@ from boto3 import Session
 
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import TokenInfo
 from aws_advanced_python_wrapper.okta_plugin import OktaAuthPlugin
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -185,6 +187,7 @@ def test_no_cached_token_raises_exception(mocker, mock_plugin_service, mock_sess
 
     exception_message = "generic exception"
     mock_func.side_effect = Exception(exception_message)
+    mock_plugin_service.is_network_exception.return_value = False
 
     target_plugin: OktaAuthPlugin = OktaAuthPlugin(mock_plugin_service, mock_credentials_provider_factory)
 
@@ -203,8 +206,8 @@ def test_no_cached_token_raises_exception(mocker, mock_plugin_service, mock_sess
         DBUsername="postgresqlUser"
     )
 
-    assert e_info.type == Exception
-    assert str(e_info.value) == exception_message
+    assert e_info.type == AwsWrapperError
+    assert str(e_info.value) == Messages.get_formatted("OktaAuthPlugin.ConnectException", exception_message)
 
 
 @patch("aws_advanced_python_wrapper.okta_plugin.OktaAuthPlugin._token_cache", _token_cache)

@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 import requests
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -110,8 +110,11 @@ class OktaAuthPlugin(Plugin):
         try:
             return connect_func()
         except Exception as e:
+            if self._plugin_service.is_network_exception(e):
+                raise AwsConnectError(Messages.get_formatted("OktaAuthPlugin.ConnectException", e)) from e
+
             if token_info is None or token_info.is_expired() or not self._plugin_service.is_login_exception(e):
-                raise e
+                raise AwsWrapperError(Messages.get_formatted("OktaAuthPlugin.ConnectException", e)) from e
 
             self._update_authentication_token(token_host_info, props, user, region, cache_key)
 
