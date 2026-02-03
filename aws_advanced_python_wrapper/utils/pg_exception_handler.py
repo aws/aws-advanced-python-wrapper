@@ -18,7 +18,9 @@ from psycopg.errors import (ConnectionTimeout, InternalError,
                             InvalidAuthorizationSpecification, InvalidPassword,
                             OperationalError, ReadOnlySqlTransaction)
 
-from aws_advanced_python_wrapper.errors import QueryTimeoutError
+from aws_advanced_python_wrapper.errors import (AwsConnectError,
+                                                AwsWrapperError,
+                                                QueryTimeoutError)
 from aws_advanced_python_wrapper.exception_handling import ExceptionHandler
 
 
@@ -47,16 +49,23 @@ class PgExceptionHandler(ExceptionHandler):
     _READ_ONLY_ERROR_CODE: str = "25006"  # read only sql transaction
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        if isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
+        if isinstance(error, (AwsConnectError, QueryTimeoutError)):
             return True
+
+        if isinstance(error, AwsWrapperError):
+            return self._is_network_error(error.driver_error, sql_state)
+
+        return self._is_network_error(error, sql_state)
+
+    def _is_network_error(self, error: Optional[BaseException], sql_state: Optional[str] = None):
+        if error is None:
+            return False
+
+        if isinstance(error, (AwsConnectError, QueryTimeoutError, ConnectionTimeout)):
+            return True
+
         if sql_state is None:
-            try:
-                error_sql_state = getattr(error, "sqlstate")
-                if error_sql_state is not None:
-                    sql_state = error_sql_state
-            except AttributeError:
-                # getattr may throw an AttributeError if the error does not have a `sqlstate` attribute
-                pass
+            sql_state = getattr(error, "sqlstate", None)
 
         if sql_state is not None and sql_state in self._NETWORK_ERROR_CODES:
             return True
@@ -66,51 +75,66 @@ class PgExceptionHandler(ExceptionHandler):
                 return False
             # Check the error message if this is a generic error
             error_msg: str = error.args[0]
-            return any(msg in error_msg for msg in self._NETWORK_ERROR_MESSAGES)
+            return any(error_msg.startswith(msg) for msg in self._NETWORK_ERROR_MESSAGES)
 
         return False
 
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        if error:
-            if isinstance(error, InvalidAuthorizationSpecification) or isinstance(error, InvalidPassword):
+        if isinstance(error, AwsWrapperError):
+            return self._is_login_error(error.driver_error, sql_state)
+
+        return self._is_login_error(error, sql_state)
+
+    def _is_login_error(self, error: Optional[BaseException] = None, sql_state: Optional[str] = None) -> bool:
+        if error is None:
+            return False
+
+        if isinstance(error, (InvalidAuthorizationSpecification, InvalidPassword)):
+            return True
+
+        if sql_state is None:
+            sql_state = getattr(error, "sqlstate", None)
+
+        if sql_state is not None and sql_state in self._ACCESS_ERROR_CODES:
+            return True
+
+        if isinstance(error, OperationalError):
+            if len(error.args) == 0:
+                return False
+
+            # Check the error message if this is a generic error
+            error_msg: str = error.args[0]
+            if any(msg in error_msg for msg in self._ACCESS_ERROR_MESSAGES):
                 return True
-
-            if sql_state is None and hasattr(error, "sqlstate") and error.sqlstate is not None:
-                sql_state = error.sqlstate
-
-            if sql_state is not None and sql_state in self._ACCESS_ERROR_CODES:
-                return True
-
-            if isinstance(error, OperationalError):
-                if len(error.args) == 0:
-                    return False
-
-                # Check the error message if this is a generic error
-                error_msg: str = error.args[0]
-                if any(msg in error_msg for msg in self._ACCESS_ERROR_MESSAGES):
-                    return True
 
         return False
 
     def is_read_only_connection_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        if error:
-            if isinstance(error, ReadOnlySqlTransaction):
+        if isinstance(error, AwsWrapperError):
+            return self._is_read_only_error(error.driver_error, sql_state)
+        return self._is_read_only_error(error, sql_state)
+
+    def _is_read_only_error(self, error: Optional[BaseException] = None, sql_state: Optional[str] = None) -> bool:
+        if error is None:
+            return False
+
+        if isinstance(error, ReadOnlySqlTransaction):
+            return True
+
+        if sql_state is None:
+            sql_state = getattr(error, "sqlstate", None)
+
+        if sql_state is not None and sql_state == self._READ_ONLY_ERROR_CODE:
+            return True
+
+        if isinstance(error, InternalError):
+            if len(error.args) == 0:
+                return False
+
+            # Check the error message
+            error_msg: str = error.args[0]
+            if self._READ_ONLY_ERROR_MSG in error_msg:
                 return True
-
-            if sql_state is None and hasattr(error, "sqlstate") and error.sqlstate is not None:
-                sql_state = error.sqlstate
-
-            if sql_state is not None and sql_state == self._READ_ONLY_ERROR_CODE:
-                return True
-
-            if isinstance(error, InternalError):
-                if len(error.args) == 0:
-                    return False
-
-                # Check the error message
-                error_msg: str = error.args[0]
-                if self._READ_ONLY_ERROR_MSG in error_msg:
-                    return True
 
         return False
 

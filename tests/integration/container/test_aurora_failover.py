@@ -75,7 +75,8 @@ class TestAuroraFailover:
             "connect_timeout": 10,
             "monitoring-connect_timeout": 5,
             "monitoring-socket_timeout": 5,
-            "autocommit": True
+            "autocommit": True,
+            "cluster_id": "cluster1"
         })
 
         features = TestEnvironment.get_current().get_features()
@@ -327,6 +328,7 @@ class TestAuroraFailover:
 
     @pytest.mark.parametrize("plugins", ["aurora_connection_tracker,failover", "aurora_connection_tracker,failover_v2"])
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
+    @pytest.mark.repeat(5)
     def test_writer_failover_in_idle_connections(
             self, test_driver: TestDriver, props, conn_utils, aurora_utility, plugins):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)

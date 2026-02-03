@@ -75,8 +75,8 @@ class DialectCode(Enum):
     def from_string(value: str) -> DialectCode:
         try:
             return DialectCode(value)
-        except ValueError:
-            raise AwsWrapperError(Messages.get_formatted("DialectCode.InvalidStringValue", value))
+        except ValueError as e:
+            raise AwsWrapperError(Messages.get_formatted("DialectCode.InvalidStringValue", value), e) from e
 
 
 class TargetDriverType(Enum):

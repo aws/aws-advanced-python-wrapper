@@ -137,6 +137,7 @@ class TestReadWriteSplitting:
             "socket_timeout": 10,
             "connect_timeout": 10,
             "autocommit": True,
+            "cluster_id": "cluster1"
         }
         # Add simple plugin specific configuration
         if plugin_name == "srw":

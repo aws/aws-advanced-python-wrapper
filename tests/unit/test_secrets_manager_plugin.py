@@ -207,6 +207,7 @@ def test_connect_with_new_secrets_after_trying_with_cached_secrets(
     login_exception = Exception("Login failed with cached credentials")
     mock_func.side_effect = [login_exception, mocker.MagicMock()]
     mock_plugin_service.is_login_exception.return_value = True
+    mock_plugin_service.is_network_exception.return_value = False
 
     target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(mock_plugin_service, test_properties, mock_session)
 

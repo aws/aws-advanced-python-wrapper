@@ -115,6 +115,7 @@ class TestPerformance:
             "monitoring-socket_timeout": TestPerformance.TIMEOUT_SEC,
             "connect_timeout": TestPerformance.CONNECT_TIMEOUT_SEC,
             "autocommit": "True",
+            "cluster_id": "cluster1",
             WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.name: f"?.{endpoint_suffix}"
         })
 

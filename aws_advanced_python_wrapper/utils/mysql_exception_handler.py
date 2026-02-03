@@ -16,7 +16,9 @@ from typing import List, Optional
 
 from mysql.connector import DatabaseError, InterfaceError
 
-from aws_advanced_python_wrapper.errors import QueryTimeoutError
+from aws_advanced_python_wrapper.errors import (AwsConnectError,
+                                                AwsWrapperError,
+                                                QueryTimeoutError)
 from aws_advanced_python_wrapper.exception_handling import ExceptionHandler
 
 
@@ -44,7 +46,19 @@ class MySQLExceptionHandler(ExceptionHandler):
     ]
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        if isinstance(error, QueryTimeoutError):
+        if isinstance(error, AwsConnectError) or isinstance(error, QueryTimeoutError):
+            return True
+
+        if isinstance(error, AwsWrapperError):
+            return self._is_network_error(error.driver_error, sql_state)
+
+        return self._is_network_error(error)
+
+    def _is_network_error(self, error: Optional[BaseException] = None, sql_state: Optional[str] = None):
+        if error is None:
+            return False
+
+        if isinstance(error, AwsConnectError) or isinstance(error, QueryTimeoutError):
             return True
 
         if isinstance(error, InterfaceError):
@@ -62,31 +76,48 @@ class MySQLExceptionHandler(ExceptionHandler):
         if isinstance(error, DatabaseError):
             if error.errno in self._NETWORK_ERRORS:
                 return True
-            if error.msg is not None and self._UNAVAILABLE_CONNECTION in error.msg:
-                return True
+        if hasattr(error, 'msg') and error.msg is not None and self._UNAVAILABLE_CONNECTION in error.msg:
+            return True
 
-            if len(error.args) == 1:
-                return self._UNAVAILABLE_CONNECTION in error.args[0]
+        if hasattr(error, 'args') and len(error.args) == 1:
+            return self._UNAVAILABLE_CONNECTION in error.args[0]
 
         return False
 
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        if sql_state is None and hasattr(error, "sqlstate"):
-            sql_state = getattr(error, "sqlstate")
+        if isinstance(error, AwsWrapperError):
+            return self._is_login_error(error.driver_error, sql_state)
 
-        if "28000" == sql_state:
+        return self._is_login_error(error, sql_state)
+
+    def _is_login_error(self, error: Optional[BaseException] = None, sql_state: Optional[str] = None) -> bool:
+        if error is None:
+            return False
+
+        if sql_state is None:
+            sql_state = getattr(error, "sqlstate", None)
+
+        if sql_state == "28000":
             return True
 
         return False
 
     def is_read_only_connection_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        if hasattr(error, "errno"):
-            errno = getattr(error, "errno")
-            if errno == "1836":  # ERROR 1836 (HY000): Running in read-only mode
-                return True
+        if isinstance(error, AwsWrapperError):
+            return self._is_read_only_error(error.driver_error, sql_state)
 
-        if hasattr(error, "msg"):
-            error_msg = getattr(error, "msg")
+        return self._is_read_only_error(error, sql_state)
+
+    def _is_read_only_error(self, error: Optional[BaseException] = None, sql_state: Optional[str] = None) -> bool:
+        if error is None:
+            return False
+
+        errno = getattr(error, "errno", None)
+        if errno == 1836:  # ERROR 1836 (HY000): Running in read-only mode
+            return True
+
+        error_msg = getattr(error, "msg", None)
+        if error_msg is not None:
             if any(msg in error_msg for msg in self._READ_ONLY_ERROR_MESSAGES):
                 return True
 

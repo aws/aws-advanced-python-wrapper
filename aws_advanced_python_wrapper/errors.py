@@ -12,11 +12,22 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from typing import Optional
+
 from .pep249 import Error
 
 
 class AwsWrapperError(Error):
     __module__ = "aws_advanced_python_wrapper"
+    driver_error: Optional[Exception]
+
+    def __init__(self, message: str = "", original_error: Optional[Exception] = None):
+        super().__init__(message)
+        # If wrapping another AwsWrapperError, preserve the original driver exception
+        if isinstance(original_error, AwsWrapperError) and original_error.driver_error is not None:
+            self.driver_error = original_error.driver_error
+        else:
+            self.driver_error = original_error
 
 
 class UnsupportedOperationError(AwsWrapperError):
@@ -44,4 +55,8 @@ class FailoverSuccessError(FailoverError):
 
 
 class ReadWriteSplittingError(AwsWrapperError):
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class AwsConnectError(AwsWrapperError):
     __module__ = "aws_advanced_python_wrapper"

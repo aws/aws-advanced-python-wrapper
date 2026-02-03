@@ -175,7 +175,7 @@ class FailoverPlugin(Plugin):
 
                 self._pick_new_connection()
                 self._last_exception = ex
-            raise AwsWrapperError(Messages.get_formatted("FailoverPlugin.DetectedException", str(ex))) from ex
+            raise AwsWrapperError(Messages.get_formatted("FailoverPlugin.DetectedException", str(ex)), ex) from ex
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
         if not self._enable_failover_setting:

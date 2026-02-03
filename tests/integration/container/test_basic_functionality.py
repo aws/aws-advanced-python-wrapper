@@ -58,7 +58,11 @@ class TestBasicFunctionality:
 
     @pytest.fixture(scope='class')
     def props(self):
-        p: Properties = Properties({"plugins": "aurora_connection_tracker,failover", "connect_timeout": 10})
+        p: Properties = Properties({
+            "plugins": "aurora_connection_tracker,failover",
+            "connect_timeout": 10,
+            "autocommit": True,
+            "cluster_id": "cluster1"})
 
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
                 or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
