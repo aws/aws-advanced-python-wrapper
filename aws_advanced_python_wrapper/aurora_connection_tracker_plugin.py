@@ -124,7 +124,7 @@ class OpenedConnectionTracker:
         aliases: FrozenSet[str] = host_info.as_aliases()
 
         if self._rds_utils.is_rds_instance(host_info.host):
-            self._track_connection(host_info.as_alias(), conn)
+            self._track_connection(host_info.url, conn)
             return
 
         instance_endpoint: Optional[str] = next(
@@ -133,6 +133,7 @@ class OpenedConnectionTracker:
             logger.debug("OpenedConnectionTracker.UnableToPopulateOpenedConnectionSet")
             return
 
+        instance_endpoint = instance_endpoint if instance_endpoint.endswith("/") else instance_endpoint + "/"
         self._track_connection(instance_endpoint, conn)
 
     def invalidate_all_connections(self, host_info: Optional[HostInfo] = None, host: Optional[FrozenSet[str]] = None):
@@ -144,7 +145,7 @@ class OpenedConnectionTracker:
         """
 
         if host_info:
-            self.invalidate_all_connections(host=frozenset([host_info.as_alias()]))
+            self.invalidate_all_connections(host=frozenset([host_info.url]))
             self.invalidate_all_connections(host=host_info.as_aliases())
             return
 
@@ -160,6 +161,8 @@ class OpenedConnectionTracker:
         if not instance_endpoint:
             return
 
+        instance_endpoint = instance_endpoint if instance_endpoint.endswith("/") else instance_endpoint + "/"
+
         with self._lock:
             connection_set: Optional[WeakSet] = self._opened_connections.get(instance_endpoint)
             connections_list = list(connection_set) if connection_set is not None else None
@@ -173,13 +176,15 @@ class OpenedConnectionTracker:
             return
 
         if self._rds_utils.is_rds_instance(host_info.host):
-            host = host_info.as_alias()
+            host = host_info.url
         else:
             host = next((alias for alias in host_info.as_aliases()
                          if self._rds_utils.is_rds_instance(self._rds_utils.remove_port(alias))), "")
 
         if not host:
             return
+
+        host = host if host.endswith("/") else host + "/"
 
         with self._lock:
             connection_set = self._opened_connections.get(host)

@@ -149,7 +149,7 @@ class FailoverV2Plugin(Plugin):
                 break
 
         conn = None
-        if (host_with_availability is None or host_with_availability.availability != HostAvailability.UNAVAILABLE):
+        if host_with_availability is None or host_with_availability.availability != HostAvailability.UNAVAILABLE:
             try:
                 conn = self._stale_dns_helper.get_verified_connection(
                     is_initial_connection, self._host_list_provider_service,
