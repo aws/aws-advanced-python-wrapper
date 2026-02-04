@@ -22,8 +22,7 @@ if TYPE_CHECKING:
 
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
-from aws_advanced_python_wrapper.errors import (AwsWrapperError,
-                                                FailoverSuccessError)
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.pep249 import Connection, Cursor, Error
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
@@ -285,12 +284,8 @@ class AwsWrapperCursor(Cursor):
             *args: Any,
             **kwargs: Any
     ) -> AwsWrapperCursor:
-        try:
-            return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTE,
-                                                lambda: self.target_cursor.execute(*args, **kwargs), *args, **kwargs)
-        except FailoverSuccessError as e:
-            self._target_cursor = self.connection.target_connection.cursor()
-            raise e
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTE,
+                                            lambda: self.target_cursor.execute(*args, **kwargs), *args, **kwargs)
 
     def executemany(
             self,

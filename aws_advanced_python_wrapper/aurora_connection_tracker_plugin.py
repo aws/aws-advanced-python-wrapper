@@ -125,6 +125,7 @@ class OpenedConnectionTracker:
 
         if self._rds_utils.is_rds_instance(host_info.host):
             self._track_connection(host_info.as_alias(), conn)
+            self._track_connection(host_info.url, conn)
             return
 
         instance_endpoint: Optional[str] = next(

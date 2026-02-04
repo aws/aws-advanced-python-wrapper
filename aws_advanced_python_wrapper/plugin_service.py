@@ -627,6 +627,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             return
 
         host_info.add_alias(host_info.as_alias())
+        host_info.add_alias(host_info.url)
 
         driver_dialect = self._driver_dialect
         try:
