@@ -9,6 +9,19 @@ Federated Identity allows users to use the same set of credentials to access mul
 When a user wants access to a resource, it authenticates with the IdP. From this a security token generated and is passed to the SP then grants access to said resource.
 In the case of AD FS, the user signs into the AD FS sign in page. This generates a SAML Assertion which acts as a security token. The user then passes the SAML Assertion to the SP when requesting access to resources. The SP verifies the SAML Assertion and grants access to the user. 
 
+## Prerequisites
+> [!WARNING]\
+> This plugin requires the AWS SDK for Python - [Boto3](https://pypi.org/project/boto3/). Boto3 is a runtime dependency and must be resolved. It can be installed via `pip install boto3`.
+
+> [!WARNING]\
+> To use this plugin, you must provide valid AWS credentials. The AWS SDK relies on the AWS SDK credential provider chain to authenticate with AWS services. If you are using temporary credentials (such as those obtained through AWS STS, IAM roles, or SSO), be aware that these credentials have an expiration time. AWS SDK exceptions will occur and the plugin will not work properly if your credentials expire without being refreshed or replaced. To avoid interruptions:
+> - Ensure your credential provider supports automatic refresh (most AWS SDK credential providers do this automatically)
+> - Monitor credential expiration times in production environments
+> - Configure appropriate session durations for temporary credentials
+> - Implement proper error handling for credential-related failures
+> 
+> For more information on configuring AWS credentials, see our [AWS credentials documentation](../AwsCredentials.md).
+
 ## How to use the Federated Authentication Plugin with the AWS Advanced Python Wrapper 
 
 ### Enabling the Federated Authentication Plugin

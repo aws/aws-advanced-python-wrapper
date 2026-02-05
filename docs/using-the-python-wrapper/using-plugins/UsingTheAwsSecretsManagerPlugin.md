@@ -4,10 +4,16 @@ The AWS Advanced Python Wrapper supports usage of database credentials stored as
 
 ## Enabling the AWS Secrets Manager Connection Plugin
 > [!WARNING]\
-> To use this plugin, you must install [`boto3`](https://aws.amazon.com/sdk-for-python/) in your project. These parameters are required for the AWS Advanced Python Wrapper to pass database credentials to the underlying driver.
-> You can install it via `pip install boto3`.
+> This plugin requires the AWS SDK for Python - [Boto3](https://pypi.org/project/boto3/). Boto3 is a runtime dependency and must be resolved. It can be installed via `pip install boto3`.
 
-The AWS Secret Manager plugin requires authentication via AWS Credentials. These credentials can be defined in `~/.aws/credentials` or set as environment variables. All users must set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Users who are using temporary security credentials will also need to additionally set `AWS_SESSION_TOKEN`.
+> [!WARNING]\
+> To use this plugin, you must provide valid AWS credentials. The AWS SDK relies on the AWS SDK credential provider chain to authenticate with AWS services. If you are using temporary credentials (such as those obtained through AWS STS, IAM roles, or SSO), be aware that these credentials have an expiration time. AWS SDK exceptions will occur and the plugin will not work properly if your credentials expire without being refreshed or replaced. To avoid interruptions:
+> - Ensure your credential provider supports automatic refresh (most AWS SDK credential providers do this automatically)
+> - Monitor credential expiration times in production environments
+> - Configure appropriate session durations for temporary credentials
+> - Implement proper error handling for credential-related failures
+> 
+> For more information on configuring AWS credentials, see our [AWS credentials documentation](../AwsCredentials.md).
 
 To enable the AWS Secrets Manager Connection Plugin, add the plugin code `aws_secrets_manager` to the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) value.
 
