@@ -420,8 +420,8 @@ class LimitlessRouterService:
                             if self._is_login_exception(e):
                                 raise e
 
-                            raise AwsWrapperError(Messages.get_formatted("LimitlessRouterService.UnableToConnectNoRoutersAvailable"),
-                                                  context.get_host_info().host) from e
+                            raise AwsWrapperError(Messages.get_formatted("LimitlessRouterService.UnableToConnectNoRoutersAvailable",
+                                                  context.get_host_info().host), e) from e
 
             try:
                 selected_host_info = self._plugin_service.get_host_info_by_strategy(
@@ -466,7 +466,7 @@ class LimitlessRouterService:
 
                 time.sleep(retry_interval_ms)
             except InterruptedError as e:
-                raise AwsWrapperError(Messages.get("LimitlessRouterService.InterruptedSynchronousGetRouter"), e)
+                raise AwsWrapperError(Messages.get("LimitlessRouterService.InterruptedSynchronousGetRouter"), e) from e
             except Exception as e:
                 if self._is_login_exception(e):
                     raise e

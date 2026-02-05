@@ -641,7 +641,7 @@ class AuroraTopologyUtils(TopologyUtils):
                 cursor.execute(self._dialect.topology_query)
                 return self._process_query_results(cursor)
         except ProgrammingError as e:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery"), e) from e
 
     def _process_query_results(self, cursor: Cursor) -> Tuple[HostInfo, ...]:
         """
@@ -707,7 +707,7 @@ class MultiAzTopologyUtils(TopologyUtils):
                 cursor.execute(self._dialect.topology_query)
                 return self._process_multi_az_query_results(cursor, writer_id)
         except ProgrammingError as e:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery")) from e
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery"), e) from e
 
     def _process_multi_az_query_results(self, cursor: Cursor, writer_id: str) -> Tuple[HostInfo, ...]:
         hosts_dict = {}

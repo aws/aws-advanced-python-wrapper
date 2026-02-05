@@ -47,27 +47,17 @@ class PgExceptionHandler(ExceptionHandler):
     _READ_ONLY_ERROR_CODE: str = "25006"  # read only sql transaction
 
     def is_network_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
-        if isinstance(error, AwsConnectError) or isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
-            return True
-
         if isinstance(error, AwsWrapperError):
-            base_error = error.__cause__
-            seen_errors = {id(error)}  # Track visited errors to prevent infinite loops
-            while base_error is not None:
-                error_id = id(base_error)
-                if error_id in seen_errors:
-                    break  # Circular reference detected
-                seen_errors.add(error_id)
-
-                if self._is_network_error(base_error, sql_state):
-                    return True
-                base_error = base_error.__cause__
+            return self._is_network_error(error.driver_error, sql_state)
 
         return self._is_network_error(error, sql_state)
 
     def _is_network_error(self, error: Optional[BaseException], sql_state: Optional[str] = None):
         if error is None:
             return False
+
+        if isinstance(error, AwsConnectError) or isinstance(error, QueryTimeoutError) or isinstance(error, ConnectionTimeout):
+            return True
 
         if sql_state is None:
             sql_state = getattr(error, "sqlstate", None)
@@ -86,17 +76,7 @@ class PgExceptionHandler(ExceptionHandler):
 
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         if isinstance(error, AwsWrapperError):
-            base_error = error.__cause__
-            seen_errors = {id(error)}  # Track visited errors to prevent infinite loops
-            while base_error is not None:
-                error_id = id(base_error)
-                if error_id in seen_errors:
-                    break  # Circular reference detected
-                seen_errors.add(error_id)
-
-                if self._is_login_error(base_error, sql_state):
-                    return True
-                base_error = base_error.__cause__
+            return self._is_login_error(error.driver_error, sql_state)
 
         return self._is_login_error(error, sql_state)
 
@@ -126,18 +106,7 @@ class PgExceptionHandler(ExceptionHandler):
 
     def is_read_only_connection_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         if isinstance(error, AwsWrapperError):
-            base_error = error.__cause__
-            seen_errors = {id(error)}  # Track visited errors to prevent infinite loops
-            while base_error is not None:
-                error_id = id(base_error)
-                if error_id in seen_errors:
-                    break  # Circular reference detected
-                seen_errors.add(error_id)
-
-                if self._is_read_only_error(base_error, sql_state):
-                    return True
-                base_error = base_error.__cause__
-
+            return self._is_read_only_error(error.driver_error, sql_state)
         return self._is_read_only_error(error, sql_state)
 
     def _is_read_only_error(self, error: Optional[BaseException] = None, sql_state: Optional[str] = None) -> bool:

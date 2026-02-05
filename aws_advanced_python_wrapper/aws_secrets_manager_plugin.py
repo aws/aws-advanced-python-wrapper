@@ -118,7 +118,7 @@ class AwsSecretsManagerPlugin(Plugin):
 
             if not self._plugin_service.is_login_exception(error=e) or secret_fetched:
                 raise AwsWrapperError(
-                    Messages.get_formatted("AwsSecretsManagerPlugin.ConnectException", e)) from e
+                    Messages.get_formatted("AwsSecretsManagerPlugin.ConnectException", e), e) from e
 
             secret_fetched = self._update_secret(host_info, props, token_expiration_ns=token_expiration_ns, force_refetch=True)
 
@@ -129,8 +129,8 @@ class AwsSecretsManagerPlugin(Plugin):
                 except Exception as unhandled_error:
                     raise AwsWrapperError(
                         Messages.get_formatted("AwsSecretsManagerPlugin.UnhandledException",
-                                               unhandled_error)) from unhandled_error
-            raise AwsWrapperError(Messages.get_formatted("AwsSecretsManagerPlugin.FailedLogin", e)) from e
+                                               unhandled_error), unhandled_error) from unhandled_error
+            raise AwsWrapperError(Messages.get_formatted("AwsSecretsManagerPlugin.FailedLogin", e), e) from e
 
     def _update_secret(self, host_info: HostInfo, props: Properties, token_expiration_ns: int, force_refetch: bool = False) -> bool:
         """
@@ -157,19 +157,19 @@ class AwsSecretsManagerPlugin(Plugin):
                 except (ClientError, AttributeError) as e:
                     logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)
                     raise AwsWrapperError(
-                        Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)) from e
+                        Messages.get_formatted("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e), e) from e
                 except JSONDecodeError as e:
                     logger.debug("AwsSecretsManagerPlugin.JsonDecodeError", e)
                     raise AwsWrapperError(
-                        Messages.get_formatted("AwsSecretsManagerPlugin.JsonDecodeError", e))
-                except EndpointConnectionError:
+                        Messages.get_formatted("AwsSecretsManagerPlugin.JsonDecodeError", e), e) from e
+                except EndpointConnectionError as e:
                     logger.debug("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint)
                     raise AwsWrapperError(
-                        Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint))
-                except ValueError:
+                        Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideInvalidConnection", endpoint), e) from e
+                except ValueError as e:
                     logger.debug("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint)
                     raise AwsWrapperError(
-                        Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint))
+                        Messages.get_formatted("AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint), e) from e
 
             return fetched
         except Exception as ex:

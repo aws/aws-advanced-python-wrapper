@@ -130,7 +130,7 @@ class IamAuthPlugin(Plugin):
 
             is_cached_token = (token_info is not None and not token_info.is_expired())
             if not self._plugin_service.is_login_exception(error=e) or not is_cached_token:
-                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.ConnectException", e)) from e
+                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.ConnectException", e), e) from e
             # Login unsuccessful with cached token
             # Try to generate a new token and try to connect again
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
@@ -147,7 +147,7 @@ class IamAuthPlugin(Plugin):
             try:
                 return connect_func()
             except Exception as e:
-                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.UnhandledException", e)) from e
+                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.UnhandledException", e), e) from e
 
     def force_connect(
             self,

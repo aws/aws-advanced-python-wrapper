@@ -114,7 +114,7 @@ class OktaAuthPlugin(Plugin):
                 raise AwsConnectError(Messages.get_formatted("OktaAuthPlugin.ConnectException", e)) from e
 
             if token_info is None or token_info.is_expired() or not self._plugin_service.is_login_exception(e):
-                raise AwsWrapperError(Messages.get_formatted("OktaAuthPlugin.ConnectException", e)) from e
+                raise AwsWrapperError(Messages.get_formatted("OktaAuthPlugin.ConnectException", e), e) from e
 
             self._update_authentication_token(token_host_info, props, user, region, cache_key)
 
@@ -123,7 +123,7 @@ class OktaAuthPlugin(Plugin):
             except Exception as e:
                 error_message = "OktaAuthPlugin.UnhandledException"
                 logger.debug(error_message, e)
-                raise AwsWrapperError(Messages.get_formatted(error_message, e)) from e
+                raise AwsWrapperError(Messages.get_formatted(error_message, e), e) from e
 
     def force_connect(
             self,
@@ -197,7 +197,7 @@ class OktaCredentialsProviderFactory(SamlCredentialsProviderFactory):
         except IOError as e:
             error_message = "OktaAuthPlugin.UnhandledException"
             logger.debug(error_message, e)
-            raise AwsWrapperError(Messages.get_formatted(error_message, e))
+            raise AwsWrapperError(Messages.get_formatted(error_message, e), e) from e
 
     def _get_saml_url(self, props: Properties) -> str:
         idp_endpoint = WrapperProperties.IDP_ENDPOINT.get(props)
@@ -230,7 +230,7 @@ class OktaCredentialsProviderFactory(SamlCredentialsProviderFactory):
         except IOError as e:
             error_message = "OktaAuthPlugin.UnhandledException"
             logger.debug(error_message, e)
-            raise AwsWrapperError(Messages.get_formatted(error_message, e))
+            raise AwsWrapperError(Messages.get_formatted(error_message, e), e) from e
 
 
 class OktaAuthPluginFactory(PluginFactory):

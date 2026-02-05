@@ -39,29 +39,18 @@ def pg_handler():
     return PgExceptionHandler()
 
 
-def create_nested_error(*inner_errors):
-    """Wrap errors in AwsWrapperError. Returns outermost AwsWrapperError."""
-    current = inner_errors[0]
-    outer = AwsWrapperError("Wrapper error")
-    outer.__cause__ = current
-
-    for i in range(1, len(inner_errors)):
-        current.__cause__ = inner_errors[i]
-        current = inner_errors[i]
-
-    return outer
+def create_nested_error(inner_error):
+    return AwsWrapperError("Wrapper error", inner_error)
 
 
 def test_is_network_exception_with_nested_aws_wrapper_error(mysql_handler):
-    wrapper_error = create_nested_error(DatabaseError(errno=2006, msg="MySQL server has gone away"))
+    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper", DatabaseError(errno=2006, msg="MySQL server has gone away")))
 
     assert mysql_handler.is_network_exception(error=wrapper_error) is True
 
 
 def test_is_network_exception_with_deeply_nested_error(mysql_handler):
-    wrapper_error = create_nested_error(
-        AwsWrapperError("Middle wrapper"),
-        DatabaseError(errno=2013, msg="Lost connection to MySQL server"))
+    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper", DatabaseError(errno=2013, msg="Lost connection to MySQL server")))
 
     assert mysql_handler.is_network_exception(error=wrapper_error) is True
 
@@ -79,51 +68,44 @@ def test_is_network_exception_with_nested_aws_wrapper_error_pg(pg_handler):
 
 
 def test_is_network_exception_with_deeply_nested_error_pg(pg_handler):
-    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper"), OperationalError("connection socket closed"))
+    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper", OperationalError("connection socket closed")))
 
     assert pg_handler.is_network_exception(error=wrapper_error) is True
 
 
 def test_is_network_exception_with_nested_non_network_error_mysql(mysql_handler):
-    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper"), OperationalError("some other error"))
+    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper", OperationalError("some other error")))
 
     assert mysql_handler.is_network_exception(error=wrapper_error) is False
 
 
 def test_triple_nested_mysql_exception(mysql_handler):
     wrapper_error = create_nested_error(
-        AwsWrapperError("Level 2"),
-        AwsWrapperError("Level 3"),
-        DatabaseError(errno=2003, msg="Can't connect to MySQL server"))
+        AwsWrapperError("Level 2", AwsWrapperError("Level 3", DatabaseError(errno=2003, msg="Can't connect to MySQL server"))))
 
     assert mysql_handler.is_network_exception(error=wrapper_error) is True
 
 
 def test_triple_nested_pg_exception(pg_handler):
-    wrapper_error = create_nested_error(
-        AwsWrapperError("Level 2"),
-        AwsWrapperError("Level 3"),
-        OperationalError("connection failed"))
+    wrapper_error = create_nested_error(AwsWrapperError("Level 2", AwsWrapperError("Level 3", OperationalError("connection failed"))))
 
     assert pg_handler.is_network_exception(error=wrapper_error) is True
 
 
 def test_nested_with_mixed_error_types_mysql(mysql_handler):
-    wrapper_error = create_nested_error(QueryTimeoutError("Timeout"), DatabaseError(errno=2006, msg="MySQL server has gone away"))
+    wrapper_error = create_nested_error(QueryTimeoutError("Timeout"))
 
     assert mysql_handler.is_network_exception(error=wrapper_error) is True
 
 
 def test_nested_with_mixed_error_types_pg(pg_handler):
-    wrapper_error = create_nested_error(AwsConnectError("Connect error"), OperationalError("consuming input failed"))
+    wrapper_error = create_nested_error(AwsConnectError("Connect error", OperationalError("consuming input failed")))
 
     assert pg_handler.is_network_exception(error=wrapper_error) is True
 
 
 def test_nested_exception_stops_at_first_non_wrapper(mysql_handler):
-    wrapper_error = create_nested_error(
-        DatabaseError(errno=1234, msg="Some error"),
-        DatabaseError(errno=2006, msg="MySQL server has gone away"))
+    wrapper_error = create_nested_error(DatabaseError(errno=2001, msg="Some error"))
 
     assert mysql_handler.is_network_exception(error=wrapper_error) is True
 
@@ -141,9 +123,7 @@ def test_is_login_exception_with_nested_aws_wrapper_error_mysql(mysql_handler):
         def __init__(self):
             self.sqlstate = "28000"
 
-    inner_error = MockLoginError()
-    wrapper_error = AwsWrapperError("Wrapper error")
-    wrapper_error.__cause__ = inner_error
+    wrapper_error = AwsWrapperError("Wrapper error", MockLoginError())
 
     assert mysql_handler.is_login_exception(error=wrapper_error) is True
 
@@ -153,7 +133,7 @@ def test_is_login_exception_with_deeply_nested_error_mysql(mysql_handler):
         def __init__(self):
             self.sqlstate = "28000"
 
-    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper"), MockLoginError())
+    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper", MockLoginError()))
 
     assert mysql_handler.is_login_exception(error=wrapper_error) is True
 
@@ -171,29 +151,24 @@ def test_is_login_exception_with_nested_aws_wrapper_error_pg(pg_handler):
 
 
 def test_is_login_exception_with_deeply_nested_error_pg(pg_handler):
-    wrapper_error = create_nested_error(
-        AwsWrapperError("Middle wrapper"),
-        InvalidAuthorizationSpecification("PAM authentication failed"))
+    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper", InvalidAuthorizationSpecification("PAM authentication failed")))
 
     assert pg_handler.is_login_exception(error=wrapper_error) is True
 
 
 def test_is_login_exception_with_nested_non_login_error_pg(pg_handler):
-    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper"), OperationalError("some other error"))
+    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper", OperationalError("some other error")))
 
     assert pg_handler.is_login_exception(error=wrapper_error) is False
 
 
-# Tests for is_read_only_connection_exception with nested AwsWrapperError
 def test_is_read_only_exception_with_nested_aws_wrapper_error_mysql(mysql_handler):
     class MockReadOnlyError(Exception):
         def __init__(self):
             self.errno = "1836"
             self.msg = "Running in read-only mode"
 
-    inner_error = MockReadOnlyError()
-    wrapper_error = AwsWrapperError("Wrapper error")
-    wrapper_error.__cause__ = inner_error
+    wrapper_error = AwsWrapperError("Wrapper error", MockReadOnlyError())
 
     assert mysql_handler.is_read_only_connection_exception(error=wrapper_error) is True
 
@@ -204,7 +179,7 @@ def test_is_read_only_exception_with_deeply_nested_error_mysql(mysql_handler):
             self.errno = "1836"
             self.msg = "Running in read-only mode"
 
-    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper"), MockReadOnlyError())
+    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper", MockReadOnlyError()))
 
     assert mysql_handler.is_read_only_connection_exception(error=wrapper_error) is True
 
@@ -222,9 +197,7 @@ def test_is_read_only_exception_with_nested_aws_wrapper_error_pg(pg_handler):
 
 
 def test_is_read_only_exception_with_deeply_nested_error_pg(pg_handler):
-    wrapper_error = create_nested_error(
-        AwsWrapperError("Middle wrapper"),
-        InternalError("cannot execute UPDATE in a read-only transaction"))
+    wrapper_error = create_nested_error(AwsWrapperError("Middle wrapper", InternalError("cannot execute UPDATE in a read-only transaction")))
 
     assert pg_handler.is_read_only_connection_exception(error=wrapper_error) is True
 
@@ -234,30 +207,10 @@ def test_is_read_only_exception_with_nested_non_readonly_error_pg(pg_handler):
     assert pg_handler.is_read_only_connection_exception(error=wrapper_error) is False
 
 
-def test_circular_reference_mysql(mysql_handler):
-    wrapper1 = AwsWrapperError("Wrapper 1")
-    wrapper2 = AwsWrapperError("Wrapper 2")
-    wrapper1.__cause__ = wrapper2
-    wrapper2.__cause__ = wrapper1
-
-    assert mysql_handler.is_network_exception(error=wrapper1) is False
-
-
-def test_circular_reference_pg(pg_handler):
-    wrapper1 = AwsWrapperError("Wrapper 1")
-    wrapper2 = AwsWrapperError("Wrapper 2")
-    wrapper1.__cause__ = wrapper2
-    wrapper2.__cause__ = wrapper1
-
-    assert pg_handler.is_network_exception(error=wrapper1) is False
-
-
 def test_circular_reference_no_match_mysql(mysql_handler):
     inner_error = DatabaseError(errno=1234, msg="Some other error")
-    wrapper1 = AwsWrapperError("Wrapper 1")
-    wrapper1.__cause__ = inner_error
-    wrapper2 = AwsWrapperError("Wrapper 2")
-    wrapper2.__cause__ = wrapper1
+    wrapper1 = AwsWrapperError("Wrapper 1", inner_error)
+    wrapper2 = AwsWrapperError("Wrapper 2", wrapper1)
     inner_error.__cause__ = wrapper2
 
     assert mysql_handler.is_network_exception(error=wrapper2) is False

@@ -204,7 +204,7 @@ class FailoverV2Plugin(Plugin):
             self._pick_new_connection()
             self._last_exception_dealt_with = original_exception
 
-        raise AwsWrapperError(Messages.get_formatted("FailoverPlugin.DetectedException", str(original_exception))) \
+        raise AwsWrapperError(Messages.get_formatted("FailoverPlugin.DetectedException", str(original_exception)), original_exception) \
             from original_exception
 
     def _failover(self) -> None:
