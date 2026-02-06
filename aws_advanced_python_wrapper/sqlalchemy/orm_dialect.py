@@ -3,21 +3,30 @@ from psycopg import Connection
 from sqlalchemy.dialects.postgresql.psycopg import PGDialect_psycopg
 import re
 
+from aws_advanced_python_wrapper import AwsWrapperConnection
+
+
 class SqlAlchemyOrmPgDialect(PGDialect_psycopg):
     """
-    SQLAlchemy dialect for AWS Advanced Python Wrapper.
-    Extends PostgreSQL psycopg dialect with Aurora-aware connection handling.
+    SQLAlchemy dialect for AWS Advanced Python Wrapper with psycopg. Extends the SQLAlchemy PostgreSQL psycopg dialect.
+    This dialect is not related to the DriverDialect or DatabaseDialect classes used by our driver. Instead, it is used
+    directly by SQLAlchemy. This dialect is registered in pyproject.toml and is selected by prefixing the connection
+    string passed to create_engine with "postgresql+aws_wrapper://" ("[name]+[driver]").
     """
 
     name = 'postgresql'
     driver = 'aws_wrapper'
 
     def __init__(self, **kwargs):
-        # Skip parent's version check since we're a wrapper, not psycopg itself
+        # PGDialect_psycopg's __init__ function checks the driver version and raises an exception if it is lower than
+        # 3.0.2. If we call it, the exception is raised because it mistakenly interprets our driver version as its own.
+        # As a workaround we call the grandparent __init__ instead of the parent's __init__.
+        # TODO: since we are calling the grandparent's __init__ instead of the parent's __init__, we should investigate
+        #  whether any important code in the parent's __init__ needs to be executed.
         super(PGDialect_psycopg, self).__init__(**kwargs)
 
-        # Dynamically detect the actual psycopg version we're wrapping to ensure
-        # SQLAlchemy uses the correct feature set and SQL generation
+        # Dynamically detect the actual psycopg version installed and set it as self.psycopg_version. Note that setting
+        # this field before calling super().__init__ does not avoid the issue noted above.
         try:
             import psycopg
             m = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", psycopg.__version__)
@@ -26,8 +35,10 @@ class SqlAlchemyOrmPgDialect(PGDialect_psycopg):
                     int(x) for x in m.group(1, 2, 3) if x is not None
                 )
             else:
-                self.psycopg_version = (3, 0, 2)  # Minimum supported
+                # Fallback to 3.0.2 if version parsing fails, which is the minimum required psycopg version.
+                self.psycopg_version = (3, 0, 2)
         except (ImportError, AttributeError):
+            # Fallback to 3.0.2 if version parsing fails, which is the minimum required psycopg version.
             self.psycopg_version = (3, 0, 2)
 
     @classmethod
@@ -42,7 +53,7 @@ class SqlAlchemyOrmPgDialect(PGDialect_psycopg):
     def create_connect_args(self, url):
         """
         Transform SQLAlchemy URL into connection arguments.
-        Must include 'target' parameter for the wrapper.
+        Must include the 'target' parameter for our wrapper driver.
         """
         # Extract standard connection parameters
         opts = url.translate_connect_args(username='user')
@@ -50,7 +61,7 @@ class SqlAlchemyOrmPgDialect(PGDialect_psycopg):
         # Add query string parameters
         opts.update(url.query)
 
-        # Add the required 'target' parameter for your wrapper
+        # Add the required 'target' parameter for our wrapper
         if 'target' not in opts:
             opts['target'] = Connection.connect
 
@@ -62,7 +73,6 @@ class SqlAlchemyOrmPgDialect(PGDialect_psycopg):
         Return a callable that will be executed on new connections. This can be used if we need to set any session-level
         parameters.
         """
-
         def set_session_params(conn):
             # Set any Aurora-specific session parameters
             cursor = conn.cursor()
@@ -75,15 +85,13 @@ class SqlAlchemyOrmPgDialect(PGDialect_psycopg):
         return set_session_params
 
     def get_isolation_level(self, dbapi_connection):
-        """Get the current isolation level"""
         cursor = dbapi_connection.cursor()
         try:
             cursor.execute("SHOW transaction_isolation")
             val = cursor.fetchone()
             if val:
-                # Extract first element from tuple and format
                 return val.upper().replace(' ', '_')
-            return 'READ_COMMITTED'  # PostgreSQL's default
+            return 'READ_COMMITTED'  # return Postgres' default isolation level.
         finally:
             cursor.close()
 
@@ -91,48 +99,50 @@ class SqlAlchemyOrmPgDialect(PGDialect_psycopg):
         """
         Override initialization to handle type introspection.
         The parent class tries to use TypeInfo.fetch() which requires
-        a native psycopg connection, not our wrapper.
+        a native psycopg connection, not AwsWrapperConnection.
         """
-        # Find the AwsWrapperConnection at whatever nesting level
-        wrapper_conn = self._get_wrapper_connection(connection)
+        # Unwrap SQLAlchemy's connection object
+        wrapper_conn, wrapper_parent = self._get_wrapper_connection_and_parent(connection)
 
-        if wrapper_conn and hasattr(wrapper_conn, 'connection'):
-            # Get the underlying psycopg connection
-            underlying_conn = wrapper_conn.connection
-
-            # Temporarily swap the entire connection chain
-            original_dbapi_conn = connection.connection
-            connection.connection = underlying_conn
+        # Check if wrapper_conn and wrapper_parent expose their underlying connections
+        if wrapper_conn and hasattr(wrapper_conn, 'connection') and wrapper_parent and hasattr(wrapper_parent.connection, 'connection'):
+            # Temporarily remove the AwsWrapperConnection from the connection chain
+            psycopg_conn = wrapper_conn.connection
+            wrapper_parent.connection = psycopg_conn
 
             try:
-                # Call parent initialization with native psycopg connection
                 super().initialize(connection)
             finally:
-                # Restore original connection chain
-                connection.connection = original_dbapi_conn
+                # Restore wrapper connection in the connection chain.
+                wrapper_parent.connection = wrapper_conn
         else:
-            # If we can't find wrapper or it doesn't expose underlying connection,
-            # skip type introspection (custom types won't be auto-configured)
+            # If unable to swap underlying pscyopg connection, skip type introspection.
+            # This means custom types (hstore, json, etc.) won't be auto-configured.
             pass
 
-    def _get_wrapper_connection(self, connection):
+    def _get_wrapper_connection_and_parent(self, connection):
         """
-        Traverse the connection chain to find AwsWrapperConnection.
-        Handles variable nesting depths depending on pool configuration.
-        """
-        from aws_advanced_python_wrapper import AwsWrapperConnection
+        Traverse the connection chain to find AwsWrapperConnection and its parent connection.
 
+        Args:
+            connection: SQLAlchemy Connection object
+
+        Returns:
+            AwsWrapperConnection instance or None, parent connection of AwsWrapperConnection or None
+        """
         # Start with the DBAPI connection
-        current = connection.connection
+        parent = connection
+        child = connection.connection
 
         # Traverse up to 5 levels deep (reasonable limit)
         for _ in range(5):
-            if isinstance(current, AwsWrapperConnection):
-                return current
+            if isinstance(child, AwsWrapperConnection):
+                return child, parent
 
             # Try to go deeper if there's a .connection attribute
-            if hasattr(current, 'connection'):
-                current = current.connection
+            if hasattr(child, 'connection'):
+                parent = child
+                child = child.connection
             else:
                 break
 
