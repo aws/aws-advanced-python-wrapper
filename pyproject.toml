@@ -82,3 +82,5 @@ filterwarnings = [
     'ignore:Exception during reset or similar:pytest.PytestUnhandledThreadExceptionWarning'
 ]
 
+[tool.poetry.plugins."sqlalchemy.dialects"]
+"postgresql.aws_wrapper" = "aws_advanced_python_wrapper.sqlalchemy.orm_dialect:SqlAlchemyOrmPgDialect"
