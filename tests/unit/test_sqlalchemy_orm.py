@@ -39,28 +39,24 @@ class TestSqlAlchemyORM:
         Session = sessionmaker(bind=engine)
 
         # Step 6: Use session for database operations
-        session = Session()
+        with Session() as session:
+            # INSERT - Create new object and add to session
+            new_user = User(name='John Doe', email='john@example.com')
+            session.add(new_user)
+            session.commit()  # Explicit commit required
 
-        # INSERT - Create new object and add to session
-        new_user = User(name='John Doe', email='john@example.com')
-        session.add(new_user)
-        session.commit()  # Explicit commit required
-
-        # SELECT - Query using session
-        users = session.query(User).filter(User.name == 'John Doe').all()
-        for user in users:
-            print(f"{user.name}: {user.email}")
+            # SELECT - Query using session
+            users = session.query(User).filter(User.name == 'John Doe').all()
+            for user in users:
+                print(f"{user.name}: {user.email}")
 
 
-        # UPDATE - Modify object and commit
-        user = session.query(User).filter(User.name == "John Doe").first()
-        user.email = 'newemail@example.com'
-        session.commit()  # Changes tracked by session
+            # UPDATE - Modify object and commit
+            user = session.query(User).filter(User.name == "John Doe").first()
+            user.email = 'newemail@example.com'
+            session.commit()
 
-        # DELETE - Remove object from session
-        user_to_delete = session.query(User).filter(User.name == "John Doe").first()
-        session.delete(user_to_delete)
-        session.commit()
-
-        # Always close session when done
-        session.close()
+            # DELETE - Remove object from session
+            user_to_delete = session.query(User).filter(User.name == "John Doe").first()
+            session.delete(user_to_delete)
+            session.commit()
