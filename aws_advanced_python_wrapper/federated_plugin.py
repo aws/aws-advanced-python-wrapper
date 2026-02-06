@@ -39,7 +39,7 @@ from typing import Callable, Dict, Optional, Set
 
 import requests
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -114,8 +114,11 @@ class FederatedAuthPlugin(Plugin):
         try:
             return connect_func()
         except Exception as e:
+            if self._plugin_service.is_network_exception(e):
+                raise AwsConnectError(Messages.get_formatted("FederatedAuthPlugin.ConnectException", e)) from e
+
             if token_info is None or token_info.is_expired() or not self._plugin_service.is_login_exception(e):
-                raise e
+                raise AwsWrapperError(Messages.get_formatted("FederatedAuthPlugin.ConnectException", e), e) from e
 
             self._update_authentication_token(token_host_info, props, user, region, cache_key)
 
@@ -124,7 +127,7 @@ class FederatedAuthPlugin(Plugin):
             except Exception as e:
                 error_message = "FederatedAuthPlugin.UnhandledException"
                 logger.debug(error_message, e)
-                raise AwsWrapperError(Messages.get_formatted(error_message, e)) from e
+                raise AwsWrapperError(Messages.get_formatted(error_message, e), e) from e
 
     def force_connect(
             self,
@@ -211,7 +214,7 @@ class AdfsCredentialsProviderFactory(SamlCredentialsProviderFactory):
         except IOError as e:
             error_message = "FederatedAuthPlugin.UnhandledException"
             logger.debug(error_message, e)
-            raise AwsWrapperError(Messages.get_formatted(error_message, e))
+            raise AwsWrapperError(Messages.get_formatted(error_message, e), e) from e
 
     def _get_sign_in_page_body(self, url: str, props: Properties) -> str:
         logger.debug("AdfsCredentialsProviderFactory.SignOnPageUrl", url)

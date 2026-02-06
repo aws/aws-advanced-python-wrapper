@@ -945,7 +945,7 @@ class PluginManager(CanReleaseResources):
             raise AwsWrapperError(Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target))
 
         if conn is None and method in [DbApiMethod.CONNECTION_CLOSE, DbApiMethod.CURSOR_CLOSE]:
-            return
+            return None
 
         context: TelemetryContext | None
         context = self._telemetry_factory.open_telemetry_context(method.method_name, TelemetryTraceLevel.TOP_LEVEL)

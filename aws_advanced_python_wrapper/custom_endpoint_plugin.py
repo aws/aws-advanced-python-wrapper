@@ -330,8 +330,8 @@ class CustomEndpointPlugin(Plugin):
             while not has_info and perf_counter_ns() < wait_for_info_timeout_ns:
                 sleep(0.1)
                 has_info = monitor.has_custom_endpoint_info()
-        except InterruptedError:
-            raise AwsWrapperError(Messages.get_formatted("CustomEndpointPlugin.InterruptedThread", hostname))
+        except InterruptedError as e:
+            raise AwsWrapperError(Messages.get_formatted("CustomEndpointPlugin.InterruptedThread", hostname), e) from e
 
         if not has_info:
             raise AwsWrapperError(

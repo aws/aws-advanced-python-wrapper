@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Set
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -125,10 +125,12 @@ class IamAuthPlugin(Plugin):
         except Exception as e:
             logger.debug("IamAuthPlugin.ConnectException", e)
 
+            if self._plugin_service.is_network_exception(error=e):
+                raise AwsConnectError(Messages.get_formatted("IamAuthPlugin.ConnectException", e)) from e
+
             is_cached_token = (token_info is not None and not token_info.is_expired())
             if not self._plugin_service.is_login_exception(error=e) or not is_cached_token:
-                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.ConnectException", e)) from e
-
+                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.ConnectException", e), e) from e
             # Login unsuccessful with cached token
             # Try to generate a new token and try to connect again
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)
@@ -145,7 +147,7 @@ class IamAuthPlugin(Plugin):
             try:
                 return connect_func()
             except Exception as e:
-                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.UnhandledException", e)) from e
+                raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.UnhandledException", e), e) from e
 
     def force_connect(
             self,

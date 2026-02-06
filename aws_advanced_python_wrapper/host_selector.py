@@ -257,9 +257,9 @@ class WeightedRandomHostSelector(HostSelector):
                             raise AwsWrapperError(Messages.get_formatted(message, pair))
 
                         self._host_weight_map[host_name] = weight
-                    except ValueError:
+                    except ValueError as e:
                         logger.error(message, pair)
-                        raise AwsWrapperError(Messages.get_formatted(message, pair))
+                        raise AwsWrapperError(Messages.get_formatted(message, pair), e) from e
 
 
 class HighestWeightHostSelector(HostSelector):
