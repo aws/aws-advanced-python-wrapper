@@ -28,11 +28,13 @@ class PgExceptionHandler(ExceptionHandler):
     _CONNECTION_FAILED = "connection failed"
     _CONSUMING_INPUT_FAILED = "consuming input failed"
     _CONNECTION_SOCKET_CLOSED = "connection socket closed"
+    _CONNECTION_CLOSED = "the connection is closed"
 
     _NETWORK_ERROR_MESSAGES: List[str] = [
         _CONNECTION_FAILED,
         _CONSUMING_INPUT_FAILED,
-        _CONNECTION_SOCKET_CLOSED
+        _CONNECTION_SOCKET_CLOSED,
+        _CONNECTION_CLOSED,
     ]
     _ACCESS_ERROR_MESSAGES: List[str] = [
         _PASSWORD_AUTHENTICATION_FAILED_MSG,
