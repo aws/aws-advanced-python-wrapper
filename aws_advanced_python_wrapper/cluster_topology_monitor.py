@@ -20,10 +20,12 @@ from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
+from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.atomic import AtomicReference
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.thread_safe_connection_holder import \
     ThreadSafeConnectionHolder
 from aws_advanced_python_wrapper.utils.utils import LogUtils
@@ -87,6 +89,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         self._refresh_rate_nano = refresh_rate_nano
         self._high_refresh_rate_nano = high_refresh_rate_nano
 
+        self._rds_utils = RdsUtils()
         self._writer_host_info: AtomicReference[Optional[HostInfo]] = AtomicReference(None)
         self._monitoring_connection: ThreadSafeConnectionHolder = ThreadSafeConnectionHolder(None)
 
@@ -300,16 +303,34 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
             try:
                 conn = self._plugin_service.force_connect(self._initial_host_info, self._monitoring_properties)
                 self._monitoring_connection.set(conn, close_previous=False)
-                logger.debug("ClusterTopologyMonitorImpl.OpenedMonitoringConnection", self._cluster_id, self._initial_host_info.host)
+                logger.debug("ClusterTopologyMonitorImpl.OpenedMonitoringConnection",
+                             self._cluster_id, self._initial_host_info.host)
 
                 try:
-                    writer_host = self._topology_utils.get_writer_host_if_connected(
-                            conn, self._plugin_service.driver_dialect)
-                    if writer_host:
+                    writer_id = self._topology_utils.get_writer_host_if_connected(
+                        conn, self._plugin_service.driver_dialect)
+                    if writer_id:
                         self._is_verified_writer_connection = True
                         writer_verified_by_this_thread = True
-                        self._writer_host_info.set(HostInfo(writer_host, self._initial_host_info.port))
-                        logger.debug("ClusterTopologyMonitorImpl.WriterMonitoringConnection", self._cluster_id, writer_host)
+
+                        if self._rds_utils.is_rds_instance(self._initial_host_info.host):
+                            writer_host_info = self._initial_host_info
+                            self._writer_host_info.set(writer_host_info)
+                        else:
+                            writer_host = self._instance_template.host.replace("?", writer_id)
+                            port = self._instance_template.port \
+                                if self._instance_template.is_port_specified() \
+                                else self._initial_host_info.port
+                            writer_host_info = HostInfo(
+                                writer_host,
+                                port,
+                                HostRole.WRITER,
+                                HostAvailability.AVAILABLE,
+                                host_id=writer_id)
+                            self._writer_host_info.set(writer_host_info)
+
+                        logger.debug("ClusterTopologyMonitorImpl.WriterMonitoringConnection",
+                                     self._cluster_id, writer_host_info.host)
                 except Exception:
                     pass
             except Exception:
@@ -321,7 +342,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                 self._ignore_new_topology_requests_end_time_nano = 0
             else:
                 self._ignore_new_topology_requests_end_time_nano = (
-                    time.time_ns() + self.IGNORE_TOPOLOGY_REQUEST_NANO)
+                        time.time_ns() + self.IGNORE_TOPOLOGY_REQUEST_NANO)
 
         if len(hosts) == 0:
             self._monitoring_connection.clear()
