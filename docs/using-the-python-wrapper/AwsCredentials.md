@@ -5,14 +5,15 @@ Valid AWS credentials are required by the wrapper plugins that use the AWS SDK. 
 ## Credential Configuration
 
 There are several ways to provide AWS credentials to the AWS SDK, some which support automatic refresh, and some which do not (see below). The AWS SDK automatically searches for credentials in the following order:
-1. Java system properties (`aws.accessKeyId`, `aws.secretAccessKey`)
-2. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`)
-3. Web identity token credentials
-4. Shared credentials file (`~/.aws/credentials`)
-5. Shared configuration file (`~/.aws/config`)
-6. IAM Identity Center (SSO) credentials
-7. Container credentials (ECS task roles)
-8. EC2 instance profile credentials
+1. Environment variables
+2. Assume role provider
+3. Assume role with web identity provider
+4. AWS IAM Identity Center credential provider
+5. Shared credential file (~/.aws/credentials)
+6. AWS config file (~/.aws/config)
+7. Boto2 config file (/etc/boto.cfg and ~/.boto)
+8. Container credential provider
+9. Instance metadata service on an Amazon EC2 instance that has an IAM role configured.
 
 ## Credential Types
 
@@ -33,13 +34,13 @@ The AWS SDK can automatically refresh temporary credentials before they expire, 
 
 **Auto-refresh is NOT supported for:**
 - **Environment variables** - Even if they contain temporary credentials with a session token, these are static values that won't refresh
-- **Java system properties** - Static values that don't change
 - **Hardcoded credentials in `~/.aws/credentials` or `~/.aws/config`** - Even if these contain temporary credentials with expiration times, they're treated as static values and won't auto-refresh
+- **Boto2 config file (/etc/boto.cfg and ~/.boto)**
 
 ## Important Notes
 
 - Operations will fail with authentication errors if temporary credentials expire without being refreshed.
-- Environment variables and Java system properties take precedence over configuration files. If using a credential process or assume role configuration for automatic refresh, ensure these higher-priority sources are not set with static credentials.
+- Environment variables take precedence over configuration files. If using a credential process or assume role configuration for automatic refresh, ensure these higher-priority sources are not set with static credentials.
 - For production deployments, use IAM roles (EC2 instance profiles, ECS task roles, Lambda execution roles) rather than long-term access keys or manually configured temporary credentials.
 
 ## Common Pitfalls to Avoid
@@ -47,7 +48,6 @@ The AWS SDK can automatically refresh temporary credentials before they expire, 
 - **Setting temporary credentials in environment variables** - If you set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` as environment variables (e.g., from `aws sts assume-role` output), these credentials will not auto-refresh when they expire. Use IAM roles or configure assume role in `~/.aws/config` instead.
 - **Mixing credential sources** - Having both environment variables and a credential process configured will cause the environment variables to be used (higher priority), bypassing your credential process entirely.
 - **Hardcoding temporary credentials** - Storing temporary credentials in `~/.aws/credentials` (e.g., from `aws sso login`) creates static credentials that won't refresh automatically, even though they have an expiration time. Configure SSO properly in `~/.aws/config` instead.
-- **Using Java system properties with temporary credentials** - Setting `-Daws.accessKeyId` and `-Daws.secretAccessKey` with temporary credentials will override all other sources and won't auto-refresh.
 - **Forgetting session tokens** - When manually configuring temporary credentials, omitting the session token will cause authentication failures even if the access key and secret key are correct.
 
 For more information on configuring AWS credentials, see the [AWS docs](https://docs.aws.amazon.com/sdkref/latest/guide/standardized-credentials.html).
