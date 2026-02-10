@@ -3,6 +3,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/#semantic-versioning-200).
 
+## [2.1.0] - 2026-02-11
+### :magic_wand: Added
+* [Failover v2 Plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheFailoverPlugin.md), an improved version of the failover plugin with enhanced reliability ([PR #1079](https://github.com/aws/aws-advanced-python-wrapper/pull/1079)).
+* [Django support for MySQL](https://github.com/aws/aws-advanced-python-wrapper/blob/c1e33f9d4468993063439bacaae7993ebe89d691/docs/using-the-python-wrapper/DjangoSupport.md) ([PR #1077](https://github.com/aws/aws-advanced-python-wrapper/pull/1077)).
+
+### :bug: Fixed
+* Properly handling nested errors in auth plugins ([PR #1092](https://github.com/aws/aws-advanced-python-wrapper/pull/1092)).
+* Populate opened connection queue with url ([PR #1094](https://github.com/aws/aws-advanced-python-wrapper/pull/1094)).
+* Spawning unnecessary threads due to ClassVars ([PR #1090](https://github.com/aws/aws-advanced-python-wrapper/pull/1090)).
+* [Incorrect cleanup thread sleep time issue](https://github.com/aws/aws-advanced-python-wrapper/issues/1087) ([PR #1090](https://github.com/aws/aws-advanced-python-wrapper/pull/1090)).
+* Aurora connection tracker and writer host comparison ([PR #1081](https://github.com/aws/aws-advanced-python-wrapper/pull/1081)).
+* Sliding expiration cache concurrent access exceptions ([PR #1089](https://github.com/aws/aws-advanced-python-wrapper/pull/1089)).
+* Stale DNS plugin when connected to reader ([PR #1086](https://github.com/aws/aws-advanced-python-wrapper/pull/1086)).
+* Read/write splitting + custom endpoint plugin issue when switching to writer ([PR #1080](https://github.com/aws/aws-advanced-python-wrapper/pull/1080)).
+* Move `conn.release_resources()` to close method instead of `__del__` to avoid relying on GC to release resources ([PR #1078](https://github.com/aws/aws-advanced-python-wrapper/pull/1078)).
+
+### :crab: Changed
+* Performance optimization for auth plugins by caching clients and sessions ([PR #1084](https://github.com/aws/aws-advanced-python-wrapper/pull/1084)).
+* Update documentation for AWS credentials requirements for plugins using the AWS SDK ([PR #1093](https://github.com/aws/aws-advanced-python-wrapper/pull/1093)).
+
 ## [2.0.0] - 2026-01-14
 ### :crab: Breaking Changes
 > [!WARNING]
@@ -82,6 +102,7 @@ The Amazon Web Services (AWS) Advanced Python Wrapper allows an application to t
 * Support for PostgreSQL
 * Support for MySQL
 
+[2.1.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/2.0.0...2.1.0
 [2.0.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.4.0...2.0.0
 [1.4.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.3.0...1.4.0
 [1.3.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.2.0...1.3.0
