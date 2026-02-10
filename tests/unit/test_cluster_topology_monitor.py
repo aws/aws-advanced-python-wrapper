@@ -44,7 +44,7 @@ def topology_utils_mock():
         HostInfo("reader1.com", 5432, HostRole.READER),
         HostInfo("reader2.com", 5432, HostRole.READER)
     )
-    mock.get_writer_host_if_connected.return_value = "writer.com"
+    mock.get_writer_id_if_connected.return_value = "writer.com"
     mock.get_host_role.return_value = HostRole.WRITER
     return mock
 
@@ -204,7 +204,7 @@ class TestClusterTopologyMonitorImpl:
         connection_mock = MagicMock()
         cluster_monitor._writer_host_info.set(None)
         cluster_monitor._plugin_service.force_connect.return_value = connection_mock
-        topology_utils_mock.get_writer_host_if_connected.return_value = "writer"
+        topology_utils_mock.get_writer_id_if_connected.return_value = "writer"
         cluster_monitor._fetch_topology_and_update_cache = MagicMock(return_value=expected_hosts)
 
         result = cluster_monitor._open_any_connection_and_update_topology()
@@ -248,7 +248,7 @@ class TestHostMonitor:
         monitor = HostMonitor(monitor_impl_mock, host_info, None)
         connection_mock = MagicMock()
         monitor_impl_mock._plugin_service.force_connect.return_value = connection_mock
-        topology_utils_mock.get_writer_host_if_connected.return_value = "writer.com"
+        topology_utils_mock.get_writer_id_if_connected.return_value = "writer.com"
         topology_utils_mock.get_host_role.return_value = HostRole.WRITER
 
         call_count = [0]
@@ -272,7 +272,7 @@ class TestHostMonitor:
         monitor = HostMonitor(monitor_impl_mock, host_info, None)
         connection_mock = MagicMock()
         monitor_impl_mock._plugin_service.force_connect.return_value = connection_mock
-        topology_utils_mock.get_writer_host_if_connected.return_value = None
+        topology_utils_mock.get_writer_id_if_connected.return_value = None
 
         call_count = [0]
 

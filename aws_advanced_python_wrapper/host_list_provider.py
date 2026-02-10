@@ -606,7 +606,7 @@ class TopologyUtils(ABC):
             cursor.execute(self._dialect.host_id_query)
             return cursor.fetchone()
 
-    def get_writer_host_if_connected(self, connection: Connection, driver_dialect: DriverDialect) -> Optional[str]:
+    def get_writer_id_if_connected(self, connection: Connection, driver_dialect: DriverDialect) -> Optional[str]:
         try:
             cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
                 self._thread_pool, self._max_timeout_sec, driver_dialect, connection)(self._get_writer_id)
