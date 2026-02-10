@@ -63,7 +63,7 @@ class TestCustomEndpoint:
     @pytest.fixture(scope='class')
     def props(self):
         p: Properties = Properties(
-            {"plugins": "custom_endpoint,read_write_splitting,failover", "connect_timeout": 10_000, "autocommit": True})
+            {"plugins": "custom_endpoint,read_write_splitting,failover", "connect_timeout": 10_000, "autocommit": True, "cluster_id": "cluster1"})
 
         features = TestEnvironment.get_current().get_features()
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in features \

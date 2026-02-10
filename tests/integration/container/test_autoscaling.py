@@ -68,7 +68,7 @@ class TestAutoScaling:
 
     @pytest.fixture
     def failover_props(self):
-        p = {"plugins": "read_write_splitting,failover", "connect_timeout": 10, "autocommit": True}
+        p = {"plugins": "read_write_splitting,failover", "connect_timeout": 10, "autocommit": True, "cluster_id": "cluster1"}
 
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
                 or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():

@@ -51,7 +51,11 @@ class TestBasicConnectivity:
     @pytest.fixture(scope='class')
     def props(self):
         # By default, don't load the host_monitoring plugin so that the test doesn't require abort connection support
-        p: Properties = Properties({WrapperProperties.PLUGINS.name: "aurora_connection_tracker,failover", "connect_timeout": 3})
+        p: Properties = Properties({
+            WrapperProperties.PLUGINS.name: "aurora_connection_tracker,failover",
+            "connect_timeout": 3,
+            "autocommit": True,
+            "cluster_id": "cluster1"})
 
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
                 or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():
