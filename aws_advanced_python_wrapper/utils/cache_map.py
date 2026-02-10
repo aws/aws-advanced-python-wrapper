@@ -23,7 +23,7 @@ V = TypeVar('V')
 
 
 class CacheMap(Generic[K, V]):
-    _DEFAULT_EXPIRATION_TIME = 300_000_000_000 # 5 minutes
+    _DEFAULT_EXPIRATION_TIME = 300_000_000_000  # 5 minutes
 
     def __init__(self):
         self._cache: Dict[K, CacheItem[V]] = {}

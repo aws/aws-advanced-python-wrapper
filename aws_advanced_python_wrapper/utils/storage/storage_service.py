@@ -13,14 +13,16 @@
 #  limitations under the License.
 
 import threading
-from typing import (Any, ClassVar, Dict, Optional, Tuple, Type, TypeAlias,
-                    TypeVar)
+from typing import (TYPE_CHECKING, Any, ClassVar, Dict, Optional, Tuple, Type,
+                    TypeAlias, TypeVar)
 
-from aws_advanced_python_wrapper.hostinfo import HostInfo
+if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
+
 from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 
 V = TypeVar('V')
-Topology: TypeAlias = Tuple[HostInfo, ...]
+Topology: TypeAlias = Tuple["HostInfo", ...]
 
 
 class StorageService:
