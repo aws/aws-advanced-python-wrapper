@@ -439,7 +439,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         return ()
 
     def _update_topology_cache(self, hosts: Topology) -> None:
-        StorageService.set(self._cluster_id, hosts)
+        StorageService.set(self._cluster_id, hosts, Topology)
         # Notify waiting threads
         self._request_to_update_topology.clear()
         self._topology_updated.set()

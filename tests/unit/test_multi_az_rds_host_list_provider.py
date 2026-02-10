@@ -27,11 +27,13 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import ProgrammingError
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
+from aws_advanced_python_wrapper.utils.storage.storage_service import (
+    StorageService, Topology)
 
 
 @pytest.fixture(autouse=True)
 def clear_caches():
-    RdsHostListProvider._topology_cache.clear()
+    StorageService.clear_all()
     RdsHostListProvider._is_primary_cluster_id_cache.clear()
     RdsHostListProvider._cluster_ids_to_update.clear()
 
@@ -100,7 +102,7 @@ def create_provider(mock_provider_service, props):
 
 def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, props, cache_hosts, refresh_ns):
     provider = create_provider(mock_provider_service, props)
-    RdsHostListProvider._topology_cache.put(provider._cluster_id, cache_hosts, refresh_ns)
+    StorageService.set(provider._cluster_id, cache_hosts, Topology)
     spy = mocker.spy(provider._topology_utils, "_query_for_topology")
 
     result = provider.refresh(mock_conn)
@@ -112,7 +114,7 @@ def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, 
 def test_get_topology_force_update(
         mocker, mock_provider_service, mock_conn, cache_hosts, queried_hosts, props, refresh_ns):
     provider = create_provider(mock_provider_service, props)
-    RdsHostListProvider._topology_cache.put(provider._cluster_id, cache_hosts, refresh_ns)
+    StorageService.set(provider._cluster_id, cache_hosts, Topology)
     spy = mocker.spy(provider._topology_utils, "_query_for_topology")
 
     result = provider.force_refresh(mock_conn)
@@ -135,7 +137,7 @@ def test_get_topology_timeout(mocker, mock_cursor, mock_provider_service, initia
 def test_get_topology_invalid_topology(
         mocker, mock_provider_service, mock_conn, mock_cursor, props, cache_hosts, refresh_ns):
     provider = create_provider(mock_provider_service, props)
-    RdsHostListProvider._topology_cache.put(provider._cluster_id, cache_hosts, refresh_ns)
+    StorageService.set(provider._cluster_id, cache_hosts, Topology)
     spy = mocker.spy(provider._topology_utils, "_query_for_topology")
     mock_topology_query(
         mock_conn,
@@ -187,7 +189,7 @@ def test_no_cluster_id_suggestion_for_separate_clusters(mock_provider_service, m
 
     actual_hosts_b = provider_b.refresh()
     assert expected_hosts_b == actual_hosts_b
-    assert 2 == len(RdsHostListProvider._topology_cache)
+    assert 2 == len(StorageService.get_all(Topology))
 
 
 def test_cluster_id_suggestion_for_new_provider_with_cluster_url(mocker, mock_provider_service, mock_conn, mock_cursor):
@@ -209,7 +211,7 @@ def test_cluster_id_suggestion_for_new_provider_with_cluster_url(mocker, mock_pr
 
     actual_hosts = provider2.refresh()
     assert expected_hosts == actual_hosts
-    assert 1 == len(RdsHostListProvider._topology_cache)
+    assert 1 == len(StorageService.get_all(Topology))
     spy.assert_not_called()
 
 
@@ -234,7 +236,7 @@ def test_cluster_id_suggestion_for_new_provider_with_instance_url(
 
     actual_hosts = provider2.refresh()
     assert expected_hosts == actual_hosts
-    assert 1 == len(RdsHostListProvider._topology_cache)
+    assert 1 == len(StorageService.get_all(Topology))
     spy.assert_not_called()
 
 
@@ -260,7 +262,7 @@ def test_cluster_id_suggestion_for_existing_provider(mocker, mock_provider_servi
     assert provider2._cluster_id != provider1._cluster_id
     assert provider2._is_primary_cluster_id
     assert not provider1._is_primary_cluster_id
-    assert 1 == len(RdsHostListProvider._topology_cache)
+    assert 1 == len(StorageService.get_all(Topology))
 
     provider2.refresh()
     assert "my-cluster.cluster-xyz.us-east-2.rds.amazonaws.com:5432" == \
@@ -268,7 +270,7 @@ def test_cluster_id_suggestion_for_existing_provider(mocker, mock_provider_servi
 
     spy = mocker.spy(provider1._topology_utils, "_query_for_topology")
     actual_hosts = provider1.refresh()
-    assert 2 == len(RdsHostListProvider._topology_cache)
+    assert 2 == len(StorageService.get_all(Topology))
     assert list(expected_hosts).sort(key=lambda h: h.host) == list(actual_hosts).sort(key=lambda h: h.host)
     assert provider2._cluster_id == provider1._cluster_id
     assert provider2._is_primary_cluster_id

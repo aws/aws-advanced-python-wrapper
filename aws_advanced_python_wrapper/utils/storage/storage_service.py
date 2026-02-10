@@ -48,9 +48,9 @@ class StorageService:
         return cache
 
     @staticmethod
-    def set(key: Any, item: V) -> None:
+    def set(key: Any, item: V, item_class: Type[V]) -> None:
         with StorageService._lock:
-            cache = StorageService._storage_map.get(type(item))
+            cache = StorageService._storage_map.get(item_class)
         if cache is not None:
             cache.put(key, item)
 

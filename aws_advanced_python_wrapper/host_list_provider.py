@@ -259,7 +259,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 driver_dialect = self._host_list_provider_service.driver_dialect
                 hosts = self.query_for_topology(conn, driver_dialect)
                 if hosts is not None and len(hosts) > 0:
-                    StorageService.set(self._cluster_id, hosts)
+                    StorageService.set(self._cluster_id, hosts, Topology)
                     if self._is_primary_cluster_id and cached_hosts is None:
                         # This cluster_id is primary and a new entry was just created in the cache. When this happens,
                         # we check for non-primary cluster IDs associated with the same cluster so that the topology
