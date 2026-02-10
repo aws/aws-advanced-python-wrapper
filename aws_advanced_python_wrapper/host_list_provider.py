@@ -30,6 +30,8 @@ from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
     SlidingExpirationCacheContainer
+from aws_advanced_python_wrapper.utils.storage.storage_service import (
+    StorageService, Topology)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -59,13 +61,13 @@ logger = Logger(__name__)
 
 
 class HostListProvider(Protocol):
-    def refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+    def refresh(self, connection: Optional[Connection] = None) -> Topology:
         ...
 
-    def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+    def force_refresh(self, connection: Optional[Connection] = None) -> Topology:
         ...
 
-    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
         ...
 
     def get_host_role(self, connection: Connection) -> HostRole:
@@ -149,7 +151,6 @@ class HostListProviderService(Protocol):
 
 
 class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
-    _topology_cache: CacheMap[str, Tuple[HostInfo, ...]] = CacheMap()
     # Maps cluster IDs to a boolean representing whether they are a primary cluster ID or not. A primary cluster ID is a
     # cluster ID that is equivalent to a cluster URL. Topology info is shared between RdsHostListProviders that have
     # the same cluster ID.
@@ -164,9 +165,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         self._topology_utils = topology_utils
 
         self._rds_utils: RdsUtils = RdsUtils()
-        self._hosts: Tuple[HostInfo, ...] = ()
+        self._hosts: Topology = ()
         self._cluster_id: str = str(uuid.uuid4())
-        self._initial_hosts: Tuple[HostInfo, ...] = ()
+        self._initial_hosts: Topology = ()
         self._rds_url_type: Optional[RdsUrlType] = None
 
         self._is_primary_cluster_id: bool = False
@@ -182,7 +183,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             if self._is_initialized:
                 return
 
-            self._initial_hosts: Tuple[HostInfo, ...] = (self._topology_utils.initial_host_info,)
+            self._initial_hosts: Topology = (self._topology_utils.initial_host_info,)
             self._host_list_provider_service.initial_connection_host_info = self._topology_utils.initial_host_info
 
             self._rds_url_type: RdsUrlType = self._rds_utils.identify_rds_type(self._topology_utils.initial_host_info.host)
@@ -210,7 +211,10 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                     self._is_initialized = True
 
     def _get_suggested_cluster_id(self, url: str) -> Optional[ClusterIdSuggestion]:
-        for key, hosts in RdsHostListProvider._topology_cache.get_dict().items():
+        topology_cache = StorageService.get_all(Topology)
+        if topology_cache is None:
+            return None
+        for key, hosts in topology_cache.get_dict().items():
             is_primary_cluster_id = \
                 RdsHostListProvider._is_primary_cluster_id_cache.get_with_default(
                     key, False, self._suggested_cluster_id_refresh_ns)
@@ -244,7 +248,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             self._cluster_id = suggested_primary_cluster_id
             self._is_primary_cluster_id = True
 
-        cached_hosts = RdsHostListProvider._topology_cache.get(self._cluster_id)
+        cached_hosts = StorageService.get(Topology, self._cluster_id)
         if not cached_hosts or force_update:
             if not conn:
                 # Cannot fetch topology without a connection
@@ -255,7 +259,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 driver_dialect = self._host_list_provider_service.driver_dialect
                 hosts = self.query_for_topology(conn, driver_dialect)
                 if hosts is not None and len(hosts) > 0:
-                    RdsHostListProvider._topology_cache.put(self._cluster_id, hosts, self._refresh_rate_ns)
+                    StorageService.set(self._cluster_id, hosts)
                     if self._is_primary_cluster_id and cached_hosts is None:
                         # This cluster_id is primary and a new entry was just created in the cache. When this happens,
                         # we check for non-primary cluster IDs associated with the same cluster so that the topology
@@ -270,14 +274,18 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         else:
             return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
-    def query_for_topology(self, conn, driver_dialect) -> Optional[Tuple[HostInfo, ...]]:
+    def query_for_topology(self, conn, driver_dialect) -> Optional[Topology]:
         return self._topology_utils.query_for_topology(conn, driver_dialect)
 
-    def _suggest_cluster_id(self, primary_cluster_id_hosts: Tuple[HostInfo, ...]):
+    def _suggest_cluster_id(self, primary_cluster_id_hosts: Topology):
         if not primary_cluster_id_hosts:
-            return
+            return None
 
-        for cluster_id, hosts in RdsHostListProvider._topology_cache.get_dict().items():
+        topology_cache = StorageService.get_all(Topology)
+        if topology_cache is None:
+            return None
+
+        for cluster_id, hosts in topology_cache.get_dict().items():
             is_primary_cluster = RdsHostListProvider._is_primary_cluster_id_cache.get_with_default(
                 cluster_id, False, self._suggested_cluster_id_refresh_ns)
             suggested_primary_cluster_id = RdsHostListProvider._cluster_ids_to_update.get(cluster_id)
@@ -293,8 +301,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                     RdsHostListProvider._cluster_ids_to_update.put(
                         cluster_id, self._cluster_id, self._suggested_cluster_id_refresh_ns)
                     break
+        return None
 
-    def refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+    def refresh(self, connection: Optional[Connection] = None) -> Topology:
         """
         Get topology information for the database cluster.
         This method executes a database query if there is no information for the cluster in the cache, or if the cached topology is outdated.
@@ -311,7 +320,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         self._hosts = topology.hosts
         return tuple(self._hosts)
 
-    def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+    def force_refresh(self, connection: Optional[Connection] = None) -> Topology:
         """
         Execute a database query to retrieve information for the current cluster topology. Any cached topology information will be ignored.
 
@@ -327,7 +336,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         self._hosts = topology.hosts
         return tuple(self._hosts)
 
-    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
         raise AwsWrapperError(
                 Messages.get_formatted("HostListProvider.ForceMonitoringRefreshUnsupported", "RdsHostListProvider"))
 
@@ -385,7 +394,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
     @dataclass()
     class FetchTopologyResult:
-        hosts: Tuple[HostInfo, ...]
+        hosts: Topology
         is_cached_data: bool
 
 
@@ -394,7 +403,7 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
     def __init__(self, host_list_provider_service: HostListProviderService, props: Properties):
         self._host_list_provider_service: HostListProviderService = host_list_provider_service
         self._props: Properties = props
-        self._hosts: Tuple[HostInfo, ...] = ()
+        self._hosts: Topology = ()
         self._is_initialized: bool = False
         self._initial_host_info: Optional[HostInfo] = None
 
@@ -412,15 +421,15 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
         self._host_list_provider_service.initial_connection_host_info = self._initial_host_info
         self._is_initialized = True
 
-    def refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+    def refresh(self, connection: Optional[Connection] = None) -> Topology:
         self._initialize()
         return tuple(self._hosts)
 
-    def force_refresh(self, connection: Optional[Connection] = None) -> Tuple[HostInfo, ...]:
+    def force_refresh(self, connection: Optional[Connection] = None) -> Topology:
         self._initialize()
         return tuple(self._hosts)
 
-    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
         raise AwsWrapperError(
                 Messages.get_formatted("HostListProvider.ForceMonitoringRefreshUnsupported", "ConnectionStringHostListProvider"))
 
@@ -499,7 +508,7 @@ class TopologyUtils(ABC):
         self,
         conn: Connection,
         driver_dialect: DriverDialect,
-    ) -> Optional[Tuple[HostInfo, ...]]:
+    ) -> Optional[Topology]:
         """
         Query the database for topology information.
 
@@ -513,7 +522,7 @@ class TopologyUtils(ABC):
         return x
 
     @abstractmethod
-    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+    def _query_for_topology(self, conn: Connection) -> Optional[Topology]:
         pass
 
     def _create_host(self, record: Tuple) -> HostInfo:
@@ -628,7 +637,7 @@ class AuroraTopologyUtils(TopologyUtils):
 
     _executor_name: ClassVar[str] = "AuroraTopologyUtils"
 
-    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+    def _query_for_topology(self, conn: Connection) -> Optional[Topology]:
         """
         Query the database for topology information.
 
@@ -643,7 +652,7 @@ class AuroraTopologyUtils(TopologyUtils):
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery"), e) from e
 
-    def _process_query_results(self, cursor: Cursor) -> Tuple[HostInfo, ...]:
+    def _process_query_results(self, cursor: Cursor) -> Topology:
         """
         Form a list of hosts from the results of the topology query.
         :param cursor: The Cursor object containing a reference to the results of the topology query.
@@ -692,7 +701,7 @@ class MultiAzTopologyUtils(TopologyUtils):
         self._writer_host_query = writer_host_query
         self._writer_host_column_index = writer_host_column_index
 
-    def _query_for_topology(self, conn: Connection) -> Optional[Tuple[HostInfo, ...]]:
+    def _query_for_topology(self, conn: Connection) -> Optional[Topology]:
         try:
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._writer_host_query)
@@ -709,7 +718,7 @@ class MultiAzTopologyUtils(TopologyUtils):
         except ProgrammingError as e:
             raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidQuery"), e) from e
 
-    def _process_multi_az_query_results(self, cursor: Cursor, writer_id: str) -> Tuple[HostInfo, ...]:
+    def _process_multi_az_query_results(self, cursor: Cursor, writer_id: str) -> Topology:
         hosts_dict = {}
         for record in cursor:
             host: HostInfo = self._create_multi_az_host(record, writer_id)
@@ -789,7 +798,7 @@ class MonitoringRdsHostListProvider(RdsHostListProvider):
                                                                     self._high_refresh_rate_ns
                                                 ), MonitoringRdsHostListProvider._MONITOR_CLEANUP_NANO)
 
-    def query_for_topology(self, connection: Connection, driver_dialect) -> Optional[Tuple[HostInfo, ...]]:
+    def query_for_topology(self, connection: Connection, driver_dialect) -> Optional[Topology]:
         monitor = self._get_monitor()
 
         if monitor is None:
@@ -800,7 +809,7 @@ class MonitoringRdsHostListProvider(RdsHostListProvider):
         except TimeoutError:
             return None
 
-    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
         monitor = self._get_monitor()
 
         if monitor is None:

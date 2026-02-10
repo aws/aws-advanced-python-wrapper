@@ -18,14 +18,15 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional
 
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.atomic import AtomicReference
-from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.storage.storage_service import (
+    StorageService, Topology)
 from aws_advanced_python_wrapper.utils.thread_safe_connection_holder import \
     ThreadSafeConnectionHolder
 from aws_advanced_python_wrapper.utils.utils import LogUtils
@@ -46,11 +47,11 @@ logger = Logger(__name__)
 
 class ClusterTopologyMonitor(ABC):
     @abstractmethod
-    def force_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
+    def force_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
         pass
 
     @abstractmethod
-    def force_refresh_with_connection(self, connection: Connection, timeout_sec: int) -> Tuple[HostInfo, ...]:
+    def force_refresh_with_connection(self, connection: Connection, timeout_sec: int) -> Topology:
         pass
 
     @abstractmethod
@@ -74,8 +75,6 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
 
     INITIAL_BACKOFF_MS = 100
     MAX_BACKOFF_MS = 10000
-
-    _topology_map: CacheMap[str, Tuple[HostInfo, ...]] = CacheMap()
 
     def __init__(self, plugin_service: PluginService, topology_utils: TopologyUtils, cluster_id: str,
                  initial_host_info: HostInfo, properties: Properties, instance_template: HostInfo,
@@ -103,7 +102,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         self._host_threads_writer_connection: AtomicReference[Optional[Connection]] = AtomicReference(None)
         self._host_threads_writer_host_info: AtomicReference[Optional[HostInfo]] = AtomicReference(None)
         self._host_threads_reader_connection: AtomicReference[Optional[Connection]] = AtomicReference(None)
-        self._host_threads_latest_topology: AtomicReference[Optional[Tuple[HostInfo, ...]]] = AtomicReference(None)
+        self._host_threads_latest_topology: AtomicReference[Optional[Topology]] = AtomicReference(None)
 
         self._is_verified_writer_connection = False
         self._high_refresh_rate_end_time_nano = 0
@@ -118,7 +117,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
 
         self._start_monitoring()
 
-    def force_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Tuple[HostInfo, ...]:
+    def force_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
         current_time_nano = time.time_ns()
         if (self._ignore_new_topology_requests_end_time_nano > 0 and
                 current_time_nano < self._ignore_new_topology_requests_end_time_nano):
@@ -134,12 +133,12 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         result = self._wait_till_topology_gets_updated(timeout_sec)
         return result
 
-    def force_refresh_with_connection(self, connection: Connection, timeout_sec: int) -> Tuple[HostInfo, ...]:
+    def force_refresh_with_connection(self, connection: Connection, timeout_sec: int) -> Topology:
         if self._is_verified_writer_connection:
             return self._wait_till_topology_gets_updated(timeout_sec)
         return self._fetch_topology_and_update_cache(connection)
 
-    def _wait_till_topology_gets_updated(self, timeout_sec: int) -> Tuple[HostInfo, ...]:
+    def _wait_till_topology_gets_updated(self, timeout_sec: int) -> Topology:
         current_hosts = self._get_stored_hosts()
 
         self._request_to_update_topology.set()
@@ -162,8 +161,8 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                         "ClusterTopologyMonitorImpl.TopologyNotUpdated",
                         self._cluster_id, timeout_sec * 1000))
 
-    def _get_stored_hosts(self) -> Tuple[HostInfo, ...]:
-        hosts = ClusterTopologyMonitorImpl._topology_map.get(self._cluster_id)
+    def _get_stored_hosts(self) -> Topology:
+        hosts = StorageService.get(Topology, self._cluster_id)
         if hosts is None:
             return ()
         return hosts
@@ -296,7 +295,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
     def _get_host_monitor(self, host_info: HostInfo, writer_host_info: Optional[HostInfo]):
         return HostMonitor(self, host_info, writer_host_info)
 
-    def _open_any_connection_and_update_topology(self) -> Tuple[HostInfo, ...]:
+    def _open_any_connection_and_update_topology(self) -> Topology:
         writer_verified_by_this_thread = False
         if self._monitoring_connection.get() is None:
             # Try to connect to the initial host first
@@ -409,7 +408,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         while not self._request_to_update_topology.is_set() and time.time() < end_time and not self._stop.is_set():
             time.sleep(0.05)
 
-    def _fetch_topology_and_update_cache(self, connection: Optional[Connection]) -> Tuple[HostInfo, ...]:
+    def _fetch_topology_and_update_cache(self, connection: Optional[Connection]) -> Topology:
         if connection is None:
             return ()
 
@@ -423,7 +422,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
             logger.debug("ClusterTopologyMonitorImpl.ErrorFetchingTopology", self._cluster_id, ex)
             return ()
 
-    def _fetch_topology_and_update_cache_safe(self) -> Tuple[HostInfo, ...]:
+    def _fetch_topology_and_update_cache_safe(self) -> Topology:
         """
         Safely fetch topology using ThreadSafeConnectionHolder to prevent race conditions.
         The lock is held during the entire query operation.
@@ -433,16 +432,14 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         )
         return result if result is not None else ()
 
-    def _query_for_topology(self, connection: Connection) -> Tuple[HostInfo, ...]:
+    def _query_for_topology(self, connection: Connection) -> Topology:
         hosts = self._topology_utils.query_for_topology(connection, self._plugin_service.driver_dialect)
         if hosts is not None:
             return hosts
         return ()
 
-    def _update_topology_cache(self, hosts: Tuple[HostInfo, ...]) -> None:
-        ClusterTopologyMonitorImpl._topology_map.put(
-            self._cluster_id, hosts, ClusterTopologyMonitorImpl.TOPOLOGY_CACHE_EXPIRATION_NANO)
-
+    def _update_topology_cache(self, hosts: Topology) -> None:
+        StorageService.set(self._cluster_id, hosts)
         # Notify waiting threads
         self._request_to_update_topology.clear()
         self._topology_updated.set()

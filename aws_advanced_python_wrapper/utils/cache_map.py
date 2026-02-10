@@ -23,6 +23,8 @@ V = TypeVar('V')
 
 
 class CacheMap(Generic[K, V]):
+    _DEFAULT_EXPIRATION_TIME = 300_000_000_000 # 5 minutes
+
     def __init__(self):
         self._cache: Dict[K, CacheItem[V]] = {}
         self._cleanup_interval_ns: int = 600_000_000_000  # 10 minutes
@@ -62,7 +64,7 @@ class CacheMap(Generic[K, V]):
 
             return None
 
-    def put(self, key: K, item: V, item_expiration_ns: int):
+    def put(self, key: K, item: V, item_expiration_ns: int = _DEFAULT_EXPIRATION_TIME):
         with self._lock:
             self._cache[key] = CacheItem(item, time.perf_counter_ns() + item_expiration_ns)
             self._cleanup()
