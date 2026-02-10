@@ -307,7 +307,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                              self._cluster_id, self._initial_host_info.host)
 
                 try:
-                    writer_id = self._topology_utils.get_writer_host_if_connected(
+                    writer_id = self._topology_utils.get_writer_id_if_connected(
                         conn, self._plugin_service.driver_dialect)
                     if writer_id:
                         self._is_verified_writer_connection = True
@@ -493,7 +493,7 @@ class HostMonitor:
                 if connection is not None:
                     is_writer = False
                     try:
-                        is_writer = self._monitor._topology_utils.get_writer_host_if_connected(
+                        is_writer = self._monitor._topology_utils.get_writer_id_if_connected(
                             connection, self._monitor._plugin_service.driver_dialect) is not None
                     except Exception:
                         self._monitor._close_connection(connection)
