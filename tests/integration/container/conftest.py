@@ -61,6 +61,30 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 logger = Logger(__name__)
 
 
+def _reset_wrapper_state():
+    """Reset all wrapper caches, thread pools, and global state.
+    
+    This should be called after each test to ensure clean state and prevent
+    background threads from interfering with subsequent tests.
+    """
+    RdsUtils.clear_cache()
+    StorageService.clear_all()
+    RdsHostListProvider._is_primary_cluster_id_cache.clear()
+    RdsHostListProvider._cluster_ids_to_update.clear()
+    PluginServiceImpl._host_availability_expiring_cache.clear()
+    DatabaseDialectManager._known_endpoint_dialects.clear()
+    CustomEndpointMonitor._custom_endpoint_info_cache.clear()
+    MonitoringThreadContainer.clean_up()
+    ThreadPoolContainer.release_resources(wait=True)
+    SlidingExpirationCacheContainer.release_resources()
+
+    ConnectionProviderManager.release_resources()
+    ConnectionProviderManager.reset_provider()
+    DatabaseDialectManager.reset_custom_dialect()
+    DriverDialectManager.reset_custom_dialect()
+    ExceptionManager.reset_custom_handler()
+
+
 @pytest.fixture(scope='module')
 def conn_utils():
     return ConnectionUtils()
@@ -142,22 +166,7 @@ def pytest_runtest_setup(item):
 
         assert cluster_ip == writer_ip
 
-        RdsUtils.clear_cache()
-        StorageService.clear_all()
-        RdsHostListProvider._is_primary_cluster_id_cache.clear()
-        RdsHostListProvider._cluster_ids_to_update.clear()
-        PluginServiceImpl._host_availability_expiring_cache.clear()
-        DatabaseDialectManager._known_endpoint_dialects.clear()
-        CustomEndpointMonitor._custom_endpoint_info_cache.clear()
-        MonitoringThreadContainer.clean_up()
-        ThreadPoolContainer.release_resources(wait=True)
-        SlidingExpirationCacheContainer.release_resources()
-
-        ConnectionProviderManager.release_resources()
-        ConnectionProviderManager.reset_provider()
-        DatabaseDialectManager.reset_custom_dialect()
-        DriverDialectManager.reset_custom_dialect()
-        ExceptionManager.reset_custom_handler()
+        _reset_wrapper_state()
 
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
                 and segment is not None:
@@ -177,9 +186,21 @@ def pytest_sessionstart(session):
     TestEnvironment.get_current()
 
 
+def pytest_runtest_teardown(item, nextitem):
+    """Clean up resources after each test to prevent threads from previous tests
+    interfering with subsequent tests or causing segfaults."""
+    request = TestEnvironment.get_current().get_info().get_request()
+
+    if TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED in request.get_features():
+        ProxyHelper.enable_all_connectivity()
+
+    _reset_wrapper_state()
+
+
 def pytest_sessionfinish(session, exitstatus):
     # Enable all connectivity in case any helper threads are still trying to execute against a disabled host
     ProxyHelper.enable_all_connectivity()
+    
 
 
 def log_exit():
