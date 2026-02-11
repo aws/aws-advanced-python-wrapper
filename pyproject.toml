@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aws_advanced_python_wrapper"
-version = "2.0.0"
+version = "2.1.0"
 description = "Amazon Web Services (AWS) Advanced Python Wrapper"
 authors = ["Amazon Web Services"]
 readme = "README.md"
