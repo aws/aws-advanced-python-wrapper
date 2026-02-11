@@ -63,7 +63,7 @@ logger = Logger(__name__)
 
 def _reset_wrapper_state():
     """Reset all wrapper caches, thread pools, and global state.
-    
+
     This should be called after each test to ensure clean state and prevent
     background threads from interfering with subsequent tests.
     """
@@ -198,10 +198,10 @@ def pytest_runtest_teardown(item, nextitem):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    # Enable all connectivity in case any helper threads are still trying to execute against a disabled host
+    # Enable all connectivity and wait in case any helper threads are still trying to execute against a disabled host
     ProxyHelper.enable_all_connectivity()
-    
-
+    _reset_wrapper_state()
+    sleep(10)
 
 def log_exit():
     print("Python program is exiting...")
