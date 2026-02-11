@@ -20,10 +20,12 @@ from aws_advanced_python_wrapper.driver_dialect_manager import \
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
 from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
+from aws_advanced_python_wrapper.utils.storage.storage_service import \
+    StorageService
 
 
 def pytest_runtest_setup(item):
-    RdsHostListProvider._topology_cache.clear()
+    StorageService.clear_all()
     RdsHostListProvider._is_primary_cluster_id_cache.clear()
     RdsHostListProvider._cluster_ids_to_update.clear()
     PluginServiceImpl._host_availability_expiring_cache.clear()

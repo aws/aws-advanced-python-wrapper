@@ -37,6 +37,8 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
 from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
     SlidingExpirationCacheContainer
+from aws_advanced_python_wrapper.utils.storage.storage_service import \
+    StorageService
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
@@ -141,7 +143,7 @@ def pytest_runtest_setup(item):
         assert cluster_ip == writer_ip
 
         RdsUtils.clear_cache()
-        RdsHostListProvider._topology_cache.clear()
+        StorageService.clear_all()
         RdsHostListProvider._is_primary_cluster_id_cache.clear()
         RdsHostListProvider._cluster_ids_to_update.clear()
         PluginServiceImpl._host_availability_expiring_cache.clear()
