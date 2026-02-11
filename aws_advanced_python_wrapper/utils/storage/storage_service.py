@@ -12,8 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import threading
-from typing import (TYPE_CHECKING, Any, ClassVar, Dict, Optional, Tuple, Type,
+from types import MappingProxyType
+from typing import (TYPE_CHECKING, Any, ClassVar, Optional, Tuple, Type,
                     TypeAlias, TypeVar)
 
 if TYPE_CHECKING:
@@ -26,14 +26,13 @@ Topology: TypeAlias = Tuple["HostInfo", ...]
 
 
 class StorageService:
-    _topology: ClassVar[CacheMap[str, Topology]] = CacheMap()
-    _storage_map: ClassVar[Dict[Type, CacheMap]] = {Topology: _topology}
-    _lock: ClassVar[threading.RLock] = threading.RLock()
+    _storage_map: ClassVar[MappingProxyType] = MappingProxyType({
+        Topology: CacheMap()
+    })
 
     @staticmethod
     def get(item_class: Type[V], key: Any) -> Optional[V]:
-        with StorageService._lock:
-            cache = StorageService._storage_map.get(item_class)
+        cache = StorageService._storage_map.get(item_class)
         if cache is None:
             return None
 
@@ -43,34 +42,28 @@ class StorageService:
 
     @staticmethod
     def get_all(item_class: Type[V]) -> Optional[CacheMap[Any, V]]:
-        with StorageService._lock:
-            cache = StorageService._storage_map.get(item_class)
+        cache = StorageService._storage_map.get(item_class)
         return cache
 
     @staticmethod
     def set(key: Any, item: V, item_class: Type[V]) -> None:
-        with StorageService._lock:
-            cache = StorageService._storage_map.get(item_class)
+        cache = StorageService._storage_map.get(item_class)
         if cache is not None:
             cache.put(key, item)
 
     @staticmethod
     def remove(item_class: Type, key: Any) -> None:
-        with StorageService._lock:
-            cache = StorageService._storage_map.get(item_class)
+        cache = StorageService._storage_map.get(item_class)
         if cache is not None:
             cache.remove(key)
 
     @staticmethod
     def clear(item_class: Type) -> None:
-        with StorageService._lock:
-            cache = StorageService._storage_map.get(item_class)
+        cache = StorageService._storage_map.get(item_class)
         if cache is not None:
             cache.clear()
 
     @staticmethod
     def clear_all() -> None:
-        with StorageService._lock:
-            caches = list(StorageService._storage_map.values())
-        for cache in caches:
+        for cache in StorageService._storage_map.values():
             cache.clear()

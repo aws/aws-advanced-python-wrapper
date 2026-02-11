@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - chore/simple-storage-service
 
 permissions:
   id-token: write   # This is required for requesting the JWT
@@ -19,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [ "3.11", "3.12", "3.13"  ]
-        environment: [ "pg" ]
+        environment: [ "mysql", "pg" ]
 
     steps:
       - name: 'Clone repository'
@@ -56,7 +55,6 @@ jobs:
           RDS_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
           AURORA_MYSQL_DB_ENGINE_VERSION: lts
           AURORA_PG_ENGINE_VERSION: lts
-          FILTER: "test_writer_failover_in_idle_connections"
 
       - name: 'Archive LTS results'
         if: always()
@@ -74,7 +72,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [ "3.11", "3.12", "3.13" ]
-        environment: [ "pg" ]
+        environment: [ "mysql", "pg" ]
 
     steps:
       - name: 'Clone repository'
@@ -111,7 +109,6 @@ jobs:
           RDS_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
           AURORA_MYSQL_DB_ENGINE_VERSION: latest
           AURORA_PG_ENGINE_VERSION: latest
-          FILTER: "test_writer_failover_in_idle_connections"
 
       - name: 'Archive Latest results'
         if: always()
