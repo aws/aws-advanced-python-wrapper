@@ -36,7 +36,7 @@ boto3-stubs = "~=1.37.38"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.9.0"
-flake8 = "^6.0.0"
+flake8 = ">=6,<8"
 flake8-type-checking = "^2.9.0"
 isort = "^5.13.2"
 pep8-naming = "^0.14.1"
