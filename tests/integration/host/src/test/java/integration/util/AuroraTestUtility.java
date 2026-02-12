@@ -49,7 +49,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import org.checkerframework.checker.nullness.qual.Nullable;
-import org.testcontainers.shaded.org.apache.commons.lang3.NotImplementedException;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -897,7 +896,7 @@ public class AuroraTestUtility {
       case RDS_MULTI_AZ_CLUSTER:
         return "db.m5d.large";
       default:
-        throw new NotImplementedException(request.getDatabaseEngineDeployment().toString());
+        throw new UnsupportedOperationException(request.getDatabaseEngineDeployment().toString());
     }
   }
 

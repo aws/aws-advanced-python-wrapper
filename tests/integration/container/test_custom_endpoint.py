@@ -61,9 +61,9 @@ class TestCustomEndpoint:
         return RdsTestUtility(region)
 
     @pytest.fixture(scope='class')
-    def props(self):
+    def default_props(self):
         p: Properties = Properties(
-            {"plugins": "custom_endpoint,read_write_splitting,failover", "connect_timeout": 10_000, "autocommit": True, "cluster_id": "cluster1"})
+            {"connect_timeout": 10_000, "autocommit": True, "cluster_id": "cluster1"})
 
         features = TestEnvironment.get_current().get_features()
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in features \
@@ -75,6 +75,18 @@ class TestCustomEndpoint:
         if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in features:
             WrapperProperties.TELEMETRY_METRICS_BACKEND.set(p, "OTLP")
 
+        return p
+
+    @pytest.fixture(scope='class')
+    def props_with_failover(self, default_props):
+        p = default_props.copy()
+        p["plugins"] = "custom_endpoint,read_write_splitting,failover"
+        return p
+
+    @pytest.fixture(scope='class')
+    def props(self, default_props):
+        p = default_props.copy()
+        p["plugins"] = "custom_endpoint,read_write_splitting"
         return p
 
     @pytest.fixture(scope='class', autouse=True)
@@ -221,13 +233,13 @@ class TestCustomEndpoint:
         duration_sec = (perf_counter_ns() - start_ns) / 1_000_000_000
         self.logger.debug(f"wait_until_endpoint_has_specified_members took {duration_sec} seconds.")
 
-    def test_custom_endpoint_failover(self, test_driver: TestDriver, conn_utils, props, rds_utils):
-        props["failover_mode"] = "reader_or_writer"
+    def test_custom_endpoint_failover(self, test_driver: TestDriver, conn_utils, props_with_failover, rds_utils):
+        props_with_failover["failover_mode"] = "reader_or_writer"
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         kwargs = conn_utils.get_connect_params()
         kwargs["host"] = self.endpoint_info["Endpoint"]
-        conn = AwsWrapperConnection.connect(target_driver_connect, **kwargs, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, **kwargs, **props_with_failover)
 
         endpoint_members = self.endpoint_info["StaticMembers"]
         instance_id = rds_utils.query_instance_id(conn)
@@ -281,7 +293,7 @@ class TestCustomEndpoint:
         self.logger.debug("Custom endpoint instance successfully set to role: " + host_role.name)
 
     def test_custom_endpoint_read_write_splitting__with_custom_endpoint_changes__with_reader_as_init_conn(
-            self, test_driver: TestDriver, conn_utils, props, rds_utils):
+            self, test_driver: TestDriver, conn_utils, props_with_failover, rds_utils):
         '''
         Will test for the following scenario:
         1. Initially connect to a reader instance via the custom endpoint.
@@ -297,13 +309,13 @@ class TestCustomEndpoint:
         kwargs["host"] = self.endpoint_info["Endpoint"]
         # This setting is not required for the test, but it allows us to also test re-creation of expired monitors since
         # it takes more than 30 seconds to modify the cluster endpoint (usually around 140s).
-        props["custom_endpoint_idle_monitor_expiration_ms"] = 30_000
-        props["wait_for_custom_endpoint_info_timeout_ms"] = 30_000
+        props_with_failover["custom_endpoint_idle_monitor_expiration_ms"] = 30_000
+        props_with_failover["wait_for_custom_endpoint_info_timeout_ms"] = 30_000
 
         # Ensure that we are starting with a reader connection
         self._setup_custom_endpoint_role(target_driver_connect, kwargs, rds_utils, HostRole.READER)
 
-        conn = AwsWrapperConnection.connect(target_driver_connect, **kwargs, **props)
+        conn = AwsWrapperConnection.connect(target_driver_connect, **kwargs, **props_with_failover)
         endpoint_members = self.endpoint_info["StaticMembers"]
         original_reader_id = rds_utils.query_instance_id(conn)
         assert original_reader_id in endpoint_members
@@ -350,16 +362,16 @@ class TestCustomEndpoint:
 
     def test_custom_endpoint_read_write_splitting__with_custom_endpoint_changes__with_writer_as_init_conn(
             self, test_driver: TestDriver, conn_utils, props, rds_utils):
-        '''
+        """
         Will test for the following scenario:
-        1. Iniitially connect to the writer instance via the custom endpoint.
+        1. Initially connect to the writer instance via the custom endpoint.
         2. Attempt to switch to reader instance - should succeed, but will still use writer instance as reader.
         3. Modify the custom endpoint to add a reader instance as a static member.
         4. Switch to reader instance - should succeed.
         5. Switch back to writer instance - should succeed.
         6. Modify the custom endpoint to remove the reader instance as a static member.
         7. Attempt to switch to reader instance - should fail since the custom endpoint no longer has the reader instance.
-        '''
+        """
 
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         kwargs = conn_utils.get_connect_params()
