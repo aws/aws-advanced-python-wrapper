@@ -55,7 +55,9 @@ class XRayTelemetryContext(TelemetryContext):
 
     def set_attribute(self, key: str, value: AttributeValue):
         if self._trace_entity is not None:
-            self._trace_entity.put_annotation(key, value)
+            # XRay only supports str, bool, int, float - not sequences
+            if isinstance(value, (str, bool, int, float)):
+                self._trace_entity.put_annotation(key, value)
 
     def set_exception(self, exception: Exception):
         if self._trace_entity is not None and exception is not None:
@@ -90,8 +92,7 @@ def _clone_and_close_context(context: XRayTelemetryContext, trace_level: Telemet
 
     clone._trace_entity.start_time = context._trace_entity.start_time
 
-    for key in context._trace_entity.annotations.items():
-        value = context._trace_entity.annotations[key]
+    for key, value in context._trace_entity.annotations.items():
         if key != TelemetryConst.TRACE_NAME_ANNOTATION and value is not None:
             clone.set_attribute(key, value)
 

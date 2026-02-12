@@ -20,7 +20,6 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.logging.Logger;
-import org.testcontainers.shaded.org.apache.commons.lang3.NotImplementedException;
 
 public class DriverHelper {
 
@@ -33,7 +32,7 @@ public class DriverHelper {
       case PG:
         return "jdbc:postgresql://";
       default:
-        throw new NotImplementedException(databaseEngine.toString());
+        throw new UnsupportedOperationException(databaseEngine.toString());
     }
   }
 
@@ -44,7 +43,7 @@ public class DriverHelper {
       case PG:
         return getDriverClassname(TestDriver.PG);
       default:
-        throw new NotImplementedException(databaseEngine.toString());
+        throw new UnsupportedOperationException(databaseEngine.toString());
     }
   }
 
@@ -55,7 +54,7 @@ public class DriverHelper {
       case PG:
         return "org.postgresql.Driver";
       default:
-        throw new NotImplementedException(testDriver.toString());
+        throw new UnsupportedOperationException(testDriver.toString());
     }
   }
 

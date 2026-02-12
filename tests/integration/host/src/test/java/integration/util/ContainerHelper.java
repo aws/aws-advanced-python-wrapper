@@ -49,10 +49,10 @@ import org.testcontainers.utility.TestEnvironment;
 
 public class ContainerHelper {
 
-  private static final String MYSQL_CONTAINER_IMAGE_NAME = "mysql:8.0.36";
+  private static final String MYSQL_CONTAINER_IMAGE_NAME = "mysql:lts";
   private static final String POSTGRES_CONTAINER_IMAGE_NAME = "postgres:latest";
   private static final DockerImageName TOXIPROXY_IMAGE =
-      DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.11.0");
+      DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.12.0");
 
   private static final int PROXY_CONTROL_PORT = 8474;
   private static final int PROXY_PORT = 8666;
@@ -317,12 +317,10 @@ public class ContainerHelper {
             "--local_infile=1",
             "--max_allowed_packet=40M",
             "--max-connections=2048",
-            "--secure-file-priv=/var/lib/mysql",
             "--log_bin_trust_function_creators=1",
             "--character-set-server=utf8mb4",
             "--collation-server=utf8mb4_0900_as_cs",
-            "--skip-character-set-client-handshake",
-            "--log-error-verbosity=4");
+            "--log-error-verbosity=3");
   }
 
   public PostgreSQLContainer<?> createPostgresContainer(

@@ -49,6 +49,18 @@ class ReadWriteSplittingConnectionManager(Plugin):
         DbApiMethod.CONNECT.method_name,
         DbApiMethod.NOTIFY_CONNECTION_CHANGED.method_name,
         DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
+
+        DbApiMethod.CONNECTION_COMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT_SETTER.method_name,
+        DbApiMethod.CONNECTION_IS_READ_ONLY.method_name,
+        DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
+        DbApiMethod.CONNECTION_ROLLBACK.method_name,
+
+        DbApiMethod.CURSOR_EXECUTE.method_name,
+        DbApiMethod.CURSOR_FETCHONE.method_name,
+        DbApiMethod.CURSOR_FETCHMANY.method_name,
+        DbApiMethod.CURSOR_FETCHALL.method_name
     }
     _POOL_PROVIDER_CLASS_NAME = "aws_advanced_python_wrapper.sql_alchemy_connection_provider.SqlAlchemyPooledConnectionProvider"
 
@@ -390,31 +402,28 @@ class ReadWriteSplittingConnectionManager(Plugin):
         current_conn = self._plugin_service.current_connection
         driver_dialect = self._plugin_service.driver_dialect
 
+        if internal_conn == current_conn:
+            # Connection is in use, do not close
+            return
+
         try:
-            if internal_conn != current_conn and self._is_connection_usable(
-                internal_conn, driver_dialect
-            ):
+            if self._is_connection_usable(internal_conn, driver_dialect):
                 driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: internal_conn.close())
-                if internal_conn == self._writer_connection:
-                    self._writer_connection = None
-                    self._writer_host_info = None
-                if internal_conn == self._reader_connection:
-                    self._reader_connection = None
-                    self._reader_host_info = None
         except Exception:
             # Ignore exceptions during cleanup - connection might already be dead
             pass
+        finally:
+            if internal_conn == self._writer_connection:
+                self._writer_connection = None
+                self._writer_host_info = None
+            if internal_conn == self._reader_connection:
+                self._reader_connection = None
+                self._reader_host_info = None
 
     def _close_idle_connections(self):
         logger.debug("ReadWriteSplittingPlugin.ClosingInternalConnections")
         self._close_connection_if_idle(self._reader_connection)
         self._close_connection_if_idle(self._writer_connection)
-
-        # Always clear cached references even if connections couldn't be closed
-        self._reader_connection = None
-        self._reader_host_info = None
-        self._writer_connection = None
-        self._writer_host_info = None
 
     @staticmethod
     def log_and_raise_exception(log_msg: str):
@@ -450,7 +459,7 @@ class ReadWriteConnectionHandler(Protocol):
         ...
 
     @host_list_provider_service.setter
-    def host_list_provider_service(self, new_value: int) -> None:
+    def host_list_provider_service(self, new_value: HostListProviderService) -> None:
         """The setter for the 'host_list_provider_service' attribute."""
         ...
 
