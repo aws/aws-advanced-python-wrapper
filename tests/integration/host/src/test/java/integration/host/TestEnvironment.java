@@ -50,7 +50,6 @@ import java.util.logging.Logger;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
-import org.testcontainers.shaded.org.apache.commons.lang3.NotImplementedException;
 import software.amazon.awssdk.services.rds.model.BlueGreenDeployment;
 import software.amazon.awssdk.services.rds.model.DBCluster;
 import software.amazon.awssdk.services.rds.model.DBInstance;
@@ -149,7 +148,7 @@ public class TestEnvironment implements AutoCloseable {
         break;
 
       default:
-        throw new NotImplementedException(request.getDatabaseEngineDeployment().toString());
+        throw new UnsupportedOperationException(request.getDatabaseEngineDeployment().toString());
     }
 
     if (request.getFeatures().contains(TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED)) {
@@ -272,7 +271,7 @@ public class TestEnvironment implements AutoCloseable {
           configureIamAccess(env);
           break;
         default:
-          throw new NotImplementedException(request.getDatabaseEngineDeployment().toString());
+          throw new UnsupportedOperationException(request.getDatabaseEngineDeployment().toString());
       }
 
       return env;
@@ -404,7 +403,7 @@ public class TestEnvironment implements AutoCloseable {
         }
         break;
       default:
-        throw new NotImplementedException(env.info.getRequest().getDatabaseInstances().toString());
+        throw new UnsupportedOperationException(env.info.getRequest().getDatabaseInstances().toString());
     }
 
     switch (env.info.getRequest().getDatabaseEngine()) {
@@ -453,7 +452,7 @@ public class TestEnvironment implements AutoCloseable {
         break;
 
       default:
-        throw new NotImplementedException(env.info.getRequest().getDatabaseEngine().toString());
+        throw new UnsupportedOperationException(env.info.getRequest().getDatabaseEngine().toString());
     }
   }
 
@@ -489,7 +488,7 @@ public class TestEnvironment implements AutoCloseable {
         createDbCluster(env, env.numOfInstances);
         break;
       default:
-        throw new NotImplementedException(env.info.getRequest().getDatabaseEngine().toString());
+        throw new UnsupportedOperationException(env.info.getRequest().getDatabaseEngine().toString());
     }
   }
 
@@ -852,7 +851,7 @@ public class TestEnvironment implements AutoCloseable {
       case RDS_MULTI_AZ_INSTANCE:
         return getRdsEngine(request);
       default:
-        throw new NotImplementedException(request.getDatabaseEngineDeployment().toString());
+        throw new UnsupportedOperationException(request.getDatabaseEngineDeployment().toString());
     }
   }
 
@@ -863,7 +862,7 @@ public class TestEnvironment implements AutoCloseable {
       case PG:
         return "aurora-postgresql";
       default:
-        throw new NotImplementedException(request.getDatabaseEngine().toString());
+        throw new UnsupportedOperationException(request.getDatabaseEngine().toString());
     }
   }
 
@@ -874,7 +873,7 @@ public class TestEnvironment implements AutoCloseable {
       case PG:
         return "postgres";
       default:
-        throw new NotImplementedException(request.getDatabaseEngine().toString());
+        throw new UnsupportedOperationException(request.getDatabaseEngine().toString());
     }
   }
 
@@ -889,7 +888,7 @@ public class TestEnvironment implements AutoCloseable {
         systemPropertyVersion = config.pgVersion;
         break;
       default:
-        throw new NotImplementedException(request.getDatabaseEngine().toString());
+        throw new UnsupportedOperationException(request.getDatabaseEngine().toString());
     }
     return findEngineVersion(env, engineName, systemPropertyVersion);
   }
@@ -919,7 +918,7 @@ public class TestEnvironment implements AutoCloseable {
       case PG:
         return 5432;
       default:
-        throw new NotImplementedException(request.getDatabaseEngine().toString());
+        throw new UnsupportedOperationException(request.getDatabaseEngine().toString());
     }
   }
 
@@ -1148,7 +1147,7 @@ public class TestEnvironment implements AutoCloseable {
       case PYTHON_3_13:
         return "python:3.13";
       default:
-        throw new NotImplementedException(request.getTargetPythonVersion().toString());
+        throw new UnsupportedOperationException(request.getTargetPythonVersion().toString());
     }
   }
 
@@ -1315,7 +1314,7 @@ public class TestEnvironment implements AutoCloseable {
         // do nothing
         break;
       default:
-        throw new NotImplementedException(this.info.getRequest().getDatabaseEngineDeployment().toString());
+        throw new UnsupportedOperationException(this.info.getRequest().getDatabaseEngineDeployment().toString());
     }
   }
 
@@ -1490,7 +1489,7 @@ public class TestEnvironment implements AutoCloseable {
                 configureIamAccess(env);
                 break;
               default:
-                throw new NotImplementedException(env.info.getRequest().getDatabaseEngineDeployment().toString());
+                throw new UnsupportedOperationException(env.info.getRequest().getDatabaseEngineDeployment().toString());
             }
             return env;
 

@@ -102,7 +102,7 @@ class TestEnvironment:
                 xray_recorder.configure(daemon_address=xray_daemon_endpoint,
                                         context_missing="IGNORE_ERROR",
                                         sampler=LocalSampler(
-                                            {"version": 1, "default": {"fixed_target": 1, "rate": 1.0}}))
+                                            {"version": 1, "default": {"fixed_target": 1, "rate": 1.0}, "rules": []}))
                 global_sdk_config.set_sdk_enabled(True)
 
             if TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in env.get_features():

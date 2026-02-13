@@ -63,7 +63,7 @@ class DbApiMethod(Enum):
     CURSOR_NEXT = (30, "Cursor.__next__", False)
     CURSOR_LASTROWID = (31, "Cursor.lastrowid", False)
 
-    # AWS Advaced Python Wrapper Methods for
+    # AWS Advanced Python Wrapper Methods for the execution pipelines.
     CONNECT = (32, "connect", True)
     FORCE_CONNECT = (33, "force_connect", True)
     INIT_HOST_PROVIDER = (34, "init_host_provider", True)
