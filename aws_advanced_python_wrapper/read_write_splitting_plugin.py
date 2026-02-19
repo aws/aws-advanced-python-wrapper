@@ -28,7 +28,8 @@ if TYPE_CHECKING:
     )
 
 from aws_advanced_python_wrapper.errors import (AwsWrapperError, FailoverError,
-                                                ReadWriteSplittingError, FailoverFailedError)
+                                                FailoverFailedError,
+                                                ReadWriteSplittingError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory

@@ -205,7 +205,7 @@ class TestCustomEndpoint:
         else:
             self.logger.debug(f"Custom endpoint '{self.endpoint_id}' successfully deleted.")
 
-    def wait_until_endpoint_has_members(self, rds_client, expected_members: Set[str]):
+    def wait_until_endpoint_has_members(self, rds_client, expected_members: Set[str], rds_utils):
         start_ns = perf_counter_ns()
         end_ns = perf_counter_ns() + 20 * 60 * 1_000_000_000  # 20 minutes
         has_correct_state = False
@@ -230,6 +230,7 @@ class TestCustomEndpoint:
             pytest.fail(f"Timed out while waiting for the custom endpoint to stabilize: "
                         f"'{TestCustomEndpoint.endpoint_id}'.")
 
+        rds_utils.make_sure_instances_up(list(expected_members))
         duration_sec = (perf_counter_ns() - start_ns) / 1_000_000_000
         self.logger.debug(f"wait_until_endpoint_has_specified_members took {duration_sec} seconds.")
 
@@ -335,7 +336,7 @@ class TestCustomEndpoint:
         )
 
         try:
-            self.wait_until_endpoint_has_members(rds_client, {original_reader_id, writer_id})
+            self.wait_until_endpoint_has_members(rds_client, {original_reader_id, writer_id}, rds_utils)
 
             # We should now be able to switch to writer.
             conn.read_only = False
@@ -351,7 +352,7 @@ class TestCustomEndpoint:
             rds_client.modify_db_cluster_endpoint(
                 DBClusterEndpointIdentifier=self.endpoint_id,
                 StaticMembers=[original_reader_id])
-            self.wait_until_endpoint_has_members(rds_client, {original_reader_id})
+            self.wait_until_endpoint_has_members(rds_client, {original_reader_id}, rds_utils)
 
         # We should not be able to switch again because new_member was removed from the custom endpoint.
         # We are connected to the reader. Attempting to switch to the writer will throw an exception.
@@ -413,7 +414,7 @@ class TestCustomEndpoint:
         )
 
         try:
-            self.wait_until_endpoint_has_members(rds_client, {original_writer_id, reader_id_to_add})
+            self.wait_until_endpoint_has_members(rds_client, {original_writer_id, reader_id_to_add}, rds_utils)
             # We should now be able to switch to new_member.
             conn.read_only = True
             new_instance_id = rds_utils.query_instance_id(conn)
@@ -426,7 +427,7 @@ class TestCustomEndpoint:
             rds_client.modify_db_cluster_endpoint(
                 DBClusterEndpointIdentifier=self.endpoint_id,
                 StaticMembers=[original_writer_id])
-            self.wait_until_endpoint_has_members(rds_client, {original_writer_id})
+            self.wait_until_endpoint_has_members(rds_client, {original_writer_id}, rds_utils)
 
         # We should not be able to switch again because new_member was removed from the custom endpoint.
         # We are connected to the writer. Attempting to switch to the reader will not work but will intentionally
