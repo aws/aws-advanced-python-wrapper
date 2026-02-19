@@ -328,7 +328,7 @@ class TestAuroraFailover:
 
     @pytest.mark.parametrize("plugins", ["aurora_connection_tracker,failover", "aurora_connection_tracker,failover_v2"])
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
-    @pytest.mark.repeat(5)
+    @pytest.mark.repeat(5) # Run this test case a few more times since it is a flakey test
     def test_writer_failover_in_idle_connections(
             self, test_driver: TestDriver, props, conn_utils, aurora_utility, plugins):
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
