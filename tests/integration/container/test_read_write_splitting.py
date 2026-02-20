@@ -832,6 +832,7 @@ class TestReadWriteSplitting:
                          TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                          TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     @disable_on_engines([DatabaseEngine.MYSQL])
+    @pytest.mark.repeat(10)  # Run this test case a few more times since it is a flakey test
     def test_pooled_connection__failover_failed(
         self,
         test_environment: TestEnvironment,

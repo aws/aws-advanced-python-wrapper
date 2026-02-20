@@ -29,7 +29,7 @@ if __name__ == "__main__":
     print("-- running application")
     logging.basicConfig(level=logging.DEBUG)
 
-    xray_recorder.configure(sampler=LocalSampler({"version": 1, "default": {"fixed_target": 1, "rate": 1.0}}))
+    xray_recorder.configure(sampler=LocalSampler({"version": 1, "default": {"fixed_target": 1, "rate": 1.0}, "rules": []}))
     global_sdk_config.set_sdk_enabled(True)
 
     with xray_recorder.in_segment("python_xray_telemetry_app") as segment:

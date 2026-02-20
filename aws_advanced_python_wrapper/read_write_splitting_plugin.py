@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     )
 
 from aws_advanced_python_wrapper.errors import (AwsWrapperError, FailoverError,
+                                                FailoverFailedError,
                                                 ReadWriteSplittingError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
@@ -49,6 +50,18 @@ class ReadWriteSplittingConnectionManager(Plugin):
         DbApiMethod.CONNECT.method_name,
         DbApiMethod.NOTIFY_CONNECTION_CHANGED.method_name,
         DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
+
+        DbApiMethod.CONNECTION_COMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT_SETTER.method_name,
+        DbApiMethod.CONNECTION_IS_READ_ONLY.method_name,
+        DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
+        DbApiMethod.CONNECTION_ROLLBACK.method_name,
+
+        DbApiMethod.CURSOR_EXECUTE.method_name,
+        DbApiMethod.CURSOR_FETCHONE.method_name,
+        DbApiMethod.CURSOR_FETCHMANY.method_name,
+        DbApiMethod.CURSOR_FETCHALL.method_name
     }
     _POOL_PROVIDER_CLASS_NAME = "aws_advanced_python_wrapper.sql_alchemy_connection_provider.SqlAlchemyPooledConnectionProvider"
 
@@ -137,12 +150,15 @@ class ReadWriteSplittingConnectionManager(Plugin):
         try:
             return execute_func()
         except Exception as ex:
+            if isinstance(ex, FailoverFailedError):
+                # Evict the current connection from the pool right away since it is not reusable
+                self._close_connections(False)
             if isinstance(ex, FailoverError):
                 logger.debug(
                     "ReadWriteSplittingPlugin.FailoverExceptionWhileExecutingCommand",
                     method_name
                 )
-                self._close_idle_connections()
+                self._close_connections(True)
             else:
                 logger.debug(
                     "ReadWriteSplittingPlugin.ExceptionWhileExecutingCommand",
@@ -200,6 +216,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
         )
         self._set_writer_connection(conn, writer_host)
         self._switch_current_connection_to(conn, writer_host)
+        return None
 
     def _switch_connection_if_required(self, read_only: bool):
         current_conn = self._plugin_service.current_connection
@@ -293,7 +310,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
                     "ReadWriteSplittingPlugin.NoWriterFound")
 
         if self._is_reader_conn_from_internal_pool:
-            self._close_connection_if_idle(self._reader_connection)
+            self._close_connection(self._reader_connection)
 
         logger.debug(
             "ReadWriteSplittingPlugin.SwitchedFromReaderToWriter",
@@ -319,7 +336,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
             )
         ):
             # The old reader cannot be used anymore, close it.
-            self._close_connection_if_idle(self._reader_connection)
+            self._close_connection(self._reader_connection)
 
         self._in_read_write_split = True
         if not self._is_connection_usable(self._reader_connection, driver_dialect):
@@ -345,7 +362,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
                 self._initialize_reader_connection()
 
         if self._is_writer_conn_from_internal_pool:
-            self._close_connection_if_idle(self._writer_connection)
+            self._close_connection(self._writer_connection)
 
     def _initialize_reader_connection(self):
         if self._connection_handler.has_no_readers():
@@ -383,38 +400,35 @@ class ReadWriteSplittingConnectionManager(Plugin):
             "ReadWriteSplittingPlugin.SwitchedFromWriterToReader", reader_host.url
         )
 
-    def _close_connection_if_idle(self, internal_conn: Optional[Connection]):
+    def _close_connection(self, internal_conn: Optional[Connection], close_only_if_idle: bool = True):
         if internal_conn is None:
             return
 
         current_conn = self._plugin_service.current_connection
         driver_dialect = self._plugin_service.driver_dialect
 
+        if close_only_if_idle and internal_conn == current_conn:
+            # Connection is in use, do not close
+            return
+
         try:
-            if internal_conn != current_conn and self._is_connection_usable(
-                internal_conn, driver_dialect
-            ):
+            if self._is_connection_usable(internal_conn, driver_dialect):
                 driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: internal_conn.close())
-                if internal_conn == self._writer_connection:
-                    self._writer_connection = None
-                    self._writer_host_info = None
-                if internal_conn == self._reader_connection:
-                    self._reader_connection = None
-                    self._reader_host_info = None
         except Exception:
             # Ignore exceptions during cleanup - connection might already be dead
             pass
+        finally:
+            if internal_conn == self._writer_connection:
+                self._writer_connection = None
+                self._writer_host_info = None
+            if internal_conn == self._reader_connection:
+                self._reader_connection = None
+                self._reader_host_info = None
 
-    def _close_idle_connections(self):
+    def _close_connections(self, close_only_if_idle: bool = True):
         logger.debug("ReadWriteSplittingPlugin.ClosingInternalConnections")
-        self._close_connection_if_idle(self._reader_connection)
-        self._close_connection_if_idle(self._writer_connection)
-
-        # Always clear cached references even if connections couldn't be closed
-        self._reader_connection = None
-        self._reader_host_info = None
-        self._writer_connection = None
-        self._writer_host_info = None
+        self._close_connection(self._reader_connection, close_only_if_idle)
+        self._close_connection(self._writer_connection, close_only_if_idle)
 
     @staticmethod
     def log_and_raise_exception(log_msg: str):
@@ -450,7 +464,7 @@ class ReadWriteConnectionHandler(Protocol):
         ...
 
     @host_list_provider_service.setter
-    def host_list_provider_service(self, new_value: int) -> None:
+    def host_list_provider_service(self, new_value: HostListProviderService) -> None:
         """The setter for the 'host_list_provider_service' attribute."""
         ...
 
