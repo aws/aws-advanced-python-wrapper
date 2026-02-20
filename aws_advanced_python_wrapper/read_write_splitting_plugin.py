@@ -216,6 +216,7 @@ class ReadWriteSplittingConnectionManager(Plugin):
         )
         self._set_writer_connection(conn, writer_host)
         self._switch_current_connection_to(conn, writer_host)
+        return None
 
     def _switch_connection_if_required(self, read_only: bool):
         current_conn = self._plugin_service.current_connection

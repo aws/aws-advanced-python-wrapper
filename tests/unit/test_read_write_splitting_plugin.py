@@ -327,7 +327,7 @@ def test_close_pooled_reader_connection_after_set_read_only(
     )
 
     provider = SqlAlchemyPooledConnectionProvider(
-        lambda _, __: {"pool_size": 3}, None, 180000000000, 600000000000  # 3 minutes
+        lambda _, __: {"pool_size": 3}, None, None, 180000000000, 600000000000  # 3 minutes
     )  # 10 minutes
 
     conn_provider_manager_mock = mocker.MagicMock()
@@ -345,7 +345,7 @@ def test_close_pooled_reader_connection_after_set_read_only(
         )
         plugin = SimpleReadWriteSplittingPlugin(plugin_service_mock, srw_props)
 
-    spy = mocker.spy(plugin, "_close_connection_if_idle")
+    spy = mocker.spy(plugin, "_close_connection")
 
     plugin._switch_connection_if_required(True)
     plugin._switch_connection_if_required(False)
@@ -373,7 +373,7 @@ def test_close_pooled_writer_connection_after_set_read_only(
     )
 
     provider = SqlAlchemyPooledConnectionProvider(
-        lambda _, __: {"pool_size": 3}, None, 180000000000, 600000000000  # 3 minutes
+        lambda _, __: {"pool_size": 3}, None, None, 180000000000, 600000000000  # 3 minutes
     )  # 10 minutes
 
     conn_provider_manager_mock = mocker.MagicMock()
@@ -391,7 +391,7 @@ def test_close_pooled_writer_connection_after_set_read_only(
         )
         plugin = SimpleReadWriteSplittingPlugin(plugin_service_mock, srw_props)
 
-    spy = mocker.spy(plugin, "_close_connection_if_idle")
+    spy = mocker.spy(plugin, "_close_connection")
 
     plugin._switch_connection_if_required(True)
     plugin._switch_connection_if_required(False)
@@ -476,7 +476,7 @@ def test_connect_non_initial_connection_read_write_splitting(
     connect_func_mock.assert_called()
 
 
-def test_set_read_only_true_one_host_read_write_splitting(plugin_service_mock, read_write_splitting_plugin):
+def test_set_read_only_true_one_host_read_write_splitting(plugin_service_mock, read_write_splitting_plugin, writer_conn_mock):
     plugin_service_mock.hosts = [writer_host]
 
     read_write_splitting_plugin._writer_connection = writer_conn_mock
@@ -490,7 +490,7 @@ def test_set_read_only_true_one_host_read_write_splitting(plugin_service_mock, r
 
 
 def test_connect_error_updating_host_read_write_splitting(
-        plugin_service_mock, read_write_splitting_plugin, host_list_provider_service_mock, connect_func_mock, mocker):
+        plugin_service_mock, read_write_splitting_plugin, host_list_provider_service_mock, connect_func_mock, mocker, reader_conn_mock):
     def get_host_role_side_effect(conn):
         if conn == reader_conn_mock:
             return None
@@ -516,7 +516,7 @@ def test_connect_error_updating_host_read_write_splitting(
 
 
 # Tests for the Simple Read/Write Splitting Plugin
-def test_set_read_only_true_srw(srw_plugin, plugin_service_mock, reader_conn_mock):
+def test_set_read_only_true_srw(srw_plugin, plugin_service_mock, reader_conn_mock, writer_conn_mock):
     plugin_service_mock.current_connection = writer_conn_mock
     plugin_service_mock.connect.return_value = reader_conn_mock
 
@@ -534,7 +534,7 @@ def test_set_read_only_true_srw(srw_plugin, plugin_service_mock, reader_conn_moc
 
 
 def test_set_read_only_false_srw(
-        srw_plugin, plugin_service_mock, reader_conn_mock, writer_conn_mock,):
+        srw_plugin, plugin_service_mock, reader_conn_mock, writer_conn_mock):
     plugin_service_mock.current_connection = reader_conn_mock
     plugin_service_mock.connect.return_value = writer_conn_mock
 
@@ -719,7 +719,7 @@ def test_connect_non_rds_cluster_endpoint_srw(
 
 
 def test_connect_non_rds_cluster_endpoint_with_verification_srw(
-        plugin_service_mock, connect_func_mock, writer_conn_mock, mocker,):
+        plugin_service_mock, connect_func_mock, writer_conn_mock, mocker, host_list_provider_service_mock):
     custom_host = HostInfo(
         host="custom-db.example.com", port=TEST_PORT, role=HostRole.WRITER
     )
