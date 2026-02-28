@@ -82,7 +82,7 @@ version = "1.42.58"
 description = "Type annotations for boto3 1.42.58 generated with mypy-boto3-builder 8.12.0"
 optional = false
 python-versions = ">=3.9"
-groups = ["main"]
+groups = ["dev"]
 files = [
     {file = "boto3_stubs-1.42.58-py3-none-any.whl", hash = "sha256:e9255ea0e43024789cb4f16414c76ad1890d260bcae3da44f1c9e8f0f9299a14"},
     {file = "boto3_stubs-1.42.58.tar.gz", hash = "sha256:c42e0b0ab5435b9c0f8b9f4d9d11372a9d413443340fa5601e7750c6e3feae2a"},
@@ -539,7 +539,7 @@ version = "1.38.30"
 description = "Type annotations and code completion for botocore"
 optional = false
 python-versions = ">=3.8"
-groups = ["main", "test"]
+groups = ["dev", "test"]
 files = [
     {file = "botocore_stubs-1.38.30-py3-none-any.whl", hash = "sha256:2efb8bdf36504aff596c670d875d8f7dd15205277c15c4cea54afdba8200c266"},
     {file = "botocore_stubs-1.38.30.tar.gz", hash = "sha256:291d7bf39a316c00a8a55b7255489b02c0cea1a343482e7784e8d1e235bae995"},
@@ -2336,7 +2336,7 @@ version = "0.27.2"
 description = "Type annotations and code completion for awscrt"
 optional = false
 python-versions = ">=3.8"
-groups = ["main", "test"]
+groups = ["dev", "test"]
 files = [
     {file = "types_awscrt-0.27.2-py3-none-any.whl", hash = "sha256:49a045f25bbd5ad2865f314512afced933aed35ddbafc252e2268efa8a787e4e"},
     {file = "types_awscrt-0.27.2.tar.gz", hash = "sha256:acd04f57119eb15626ab0ba9157fc24672421de56e7bd7b9f61681fedee44e91"},
@@ -2797,7 +2797,7 @@ version = "0.13.0"
 description = "Type annotations and code completion for s3transfer"
 optional = false
 python-versions = ">=3.8"
-groups = ["main", "test"]
+groups = ["dev", "test"]
 files = [
     {file = "types_s3transfer-0.13.0-py3-none-any.whl", hash = "sha256:79c8375cbf48a64bff7654c02df1ec4b20d74f8c5672fc13e382f593ca5565b3"},
     {file = "types_s3transfer-0.13.0.tar.gz", hash = "sha256:203dadcb9865c2f68fb44bc0440e1dc05b79197ba4a641c0976c26c9af75ef52"},
@@ -2949,4 +2949,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10.0"
-content-hash = "5e61f8b2bbcd984dda9bf67a1b0c91ee524f62f13025da25cdb8cfbb176590e4"
+content-hash = "70c8a0bfeaac239e1bebd7ed927ec679d842e5a9979c0990da8402437e782b05"
