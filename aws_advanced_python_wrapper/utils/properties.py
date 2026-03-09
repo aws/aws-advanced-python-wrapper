@@ -143,7 +143,8 @@ class WrapperProperties:
     CLUSTER_ID = WrapperProperty(
         "cluster_id",
         """A unique identifier for the cluster. Connections with the same cluster id share a cluster topology cache. If
-        unspecified, a cluster id is automatically created for AWS RDS clusters.""",
+        unspecified, cluster id will be '1'.""",
+        "1",
     )
     CLUSTER_INSTANCE_HOST_PATTERN = WrapperProperty(
         "cluster_instance_host_pattern",
@@ -151,6 +152,13 @@ class WrapperProperties:
         this pattern should be used as a placeholder for cluster instance names. This pattern is required to be
         specified for IP address or custom domain connections to AWS RDS clusters. Otherwise, if unspecified, the
         pattern will be automatically created for AWS RDS clusters.""",
+    )
+    GLOBAL_CLUSTER_INSTANCE_HOST_PATTERNS = WrapperProperty(
+        "global_cluster_instance_host_patterns",
+        """Comma-separated list of the cluster instance DNS patterns that will be used to build complete instance
+        endpoints. A "?" character in these patterns should be used as a placeholder for cluster instance names.
+        This parameter is required for Global Aurora Databases. Each region in the Global Aurora Database should be
+        specified in the list in the format: region:host:port or region:host.""",
     )
 
     AWS_PROFILE = WrapperProperty(

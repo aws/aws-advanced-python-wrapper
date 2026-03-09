@@ -14,7 +14,7 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
+import pytest  # type: ignore
 
 
 class TestDatabaseWrapper:
@@ -23,21 +23,18 @@ class TestDatabaseWrapper:
     @pytest.fixture
     def database_wrapper(self):
         """Create a DatabaseWrapper instance with mocked dependencies"""
-        with patch('aws_advanced_python_wrapper.django.backends.mysql_connector.base.base.DatabaseWrapper.__init__'):
-            from aws_advanced_python_wrapper.django.backends.mysql_connector.base import \
-                DatabaseWrapper
-            wrapper = DatabaseWrapper.__new__(DatabaseWrapper)
-            wrapper._read_only = False
-            return wrapper
+        from aws_advanced_python_wrapper.django.backends.mysql_connector.base import \
+            DatabaseWrapper
+        wrapper = DatabaseWrapper.__new__(DatabaseWrapper)
+        wrapper._read_only = False
+        return wrapper
 
     def test_get_connection_params_extracts_read_only(self, database_wrapper):
         """Test that get_connection_params extracts and removes read_only parameter"""
-        with patch('aws_advanced_python_wrapper.django.backends.mysql_connector.base.base.DatabaseWrapper.get_connection_params') as mock_super:
-            mock_super.return_value = {
-                'host': 'localhost',
-                'read_only': True
-            }
-
+        with patch('mysql.connector.django.base.DatabaseWrapper.get_connection_params', return_value={
+            'host': 'localhost',
+            'read_only': True
+        }):
             result = database_wrapper.get_connection_params()
 
             assert database_wrapper._read_only is True
@@ -45,9 +42,11 @@ class TestDatabaseWrapper:
 
     @patch('aws_advanced_python_wrapper.django.backends.mysql_connector.base.AwsWrapperConnection.connect')
     @patch('aws_advanced_python_wrapper.django.backends.mysql_connector.base.mysql.connector.Connect')
-    @patch('aws_advanced_python_wrapper.django.backends.mysql_connector.base.base.DjangoMySQLConverter')
-    def test_get_new_connection_adds_converter_and_creates_wrapper(self, mock_converter, mock_connector, mock_wrapper_connect, database_wrapper):
+    def test_get_new_connection_adds_converter_and_creates_wrapper(self, mock_connector, mock_wrapper_connect, database_wrapper):
         """Test that get_new_connection adds converter_class and creates AwsWrapperConnection"""
+        import mysql.connector.django.base as base  # type: ignore
+        mock_converter = base.DjangoMySQLConverter
+
         mock_conn = MagicMock()
         mock_wrapper_connect.return_value = mock_conn
         database_wrapper._read_only = False

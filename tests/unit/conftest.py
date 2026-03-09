@@ -18,7 +18,6 @@ from aws_advanced_python_wrapper.database_dialect import DatabaseDialectManager
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
-from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
 from aws_advanced_python_wrapper.utils.storage.storage_service import \
     StorageService
@@ -26,8 +25,6 @@ from aws_advanced_python_wrapper.utils.storage.storage_service import \
 
 def pytest_runtest_setup(item):
     StorageService.clear_all()
-    RdsHostListProvider._is_primary_cluster_id_cache.clear()
-    RdsHostListProvider._cluster_ids_to_update.clear()
     PluginServiceImpl._host_availability_expiring_cache.clear()
     DatabaseDialectManager._known_endpoint_dialects.clear()
 

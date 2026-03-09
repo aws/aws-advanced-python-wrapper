@@ -16,8 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Tuple
 
-import mysql.connector
-import psycopg
+import mysql.connector  # type: ignore
+import psycopg  # type: ignore
 
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from threading import Event, Thread
 from time import perf_counter_ns, sleep
 
-import pytest
+import pytest  # type: ignore
 from tabulate import tabulate  # type: ignore
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
@@ -48,7 +48,7 @@ from aws_advanced_python_wrapper.utils.concurrent import (ConcurrentDict,
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from .utils.conditions import enable_on_deployments, enable_on_features
 from .utils.database_engine import DatabaseEngine
 from .utils.database_engine_deployment import DatabaseEngineDeployment

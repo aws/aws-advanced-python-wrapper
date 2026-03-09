@@ -14,7 +14,7 @@
 
 import pytest
 
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
 us_east_region_cluster = "database-test-name.cluster-XYZ.us-east-2.rds.amazonaws.com"
 us_east_region_cluster_read_only = "database-test-name.cluster-ro-XYZ.us-east-2.rds.amazonaws.com"
@@ -53,6 +53,8 @@ us_iso_east_region_proxy = "proxy-test-name.proxy-XYZ.rds.us-iso-east-1.c2s.ic.g
 us_iso_east_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.us-iso-east-1.c2s.ic.gov"
 
 us_iso_east_region_limitless_db_shard_group = "database-test-name.shardgrp-XYZ.rds.us-iso-east-1.c2s.ic.gov"
+
+global_db_writer_cluster = "global-cluster-test-name.global-XYZ.global.rds.amazonaws.com"
 
 
 @pytest.mark.parametrize("test_value", [
@@ -261,6 +263,45 @@ def test_is_not_reader_cluster_dns(test_value):
     target = RdsUtils()
 
     assert target.is_reader_cluster_dns(test_value) is False
+
+
+@pytest.mark.parametrize("test_value", [
+    global_db_writer_cluster
+])
+def test_is_global_db_writer_cluster_dns(test_value):
+    target = RdsUtils()
+
+    assert target.is_global_db_writer_cluster_dns(test_value) is True
+
+
+@pytest.mark.parametrize("test_value", [
+    us_east_region_cluster,
+    us_east_region_cluster_read_only,
+    us_east_region_instance,
+    us_east_region_proxy,
+    us_east_region_custom_domain,
+    china_region_cluster,
+    china_region_cluster_read_only,
+    china_region_instance,
+    china_region_proxy,
+    china_region_custom_domain,
+    china_region_cluster,
+    china_region_instance,
+    china_region_proxy,
+    china_region_custom_domain,
+    china_alt_region_limitless_db_shard_group,
+    us_isob_east_region_cluster,
+    us_isob_east_region_cluster_read_only,
+    us_isob_east_region_instance,
+    us_isob_east_region_proxy,
+    us_isob_east_region_custom_domain,
+    us_isob_east_region_limitless_db_shard_group,
+    us_gov_east_region_cluster,
+])
+def test_is_not_global_db_writer_cluster_dns(test_value):
+    target = RdsUtils()
+
+    assert target.is_global_db_writer_cluster_dns(test_value) is False
 
 
 def test_get_rds_cluster_host_url():
