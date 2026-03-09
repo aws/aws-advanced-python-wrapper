@@ -31,7 +31,7 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
 
 class AuroraInitialConnectionStrategyPlugin(Plugin):
@@ -45,7 +45,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
     def __init__(self, plugin_service: PluginService):
         super()
-        self._plugin_service = plugin_service
+        self._plugin_service: PluginService = plugin_service
         self._rds_utils = RdsUtils()
 
     def connect(self, target_driver_func: Callable, driver_dialect: DriverDialect, host_info: HostInfo, props: Properties,
@@ -207,6 +207,19 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
                 and strategy is not None
                 and self._plugin_service.accepts_strategy(HostRole.READER, strategy)):
             try:
+                original_host = self._plugin_service.current_host_info
+                url_type = self._rds_utils.identify_rds_type(original_host.host) if original_host else None
+
+                if url_type and url_type.has_region:
+                    aws_region = self._rds_utils.get_rds_region(original_host.host)
+                    if aws_region:
+                        hosts_in_region = [
+                            h for h in self._plugin_service.all_hosts
+                            if aws_region.lower() == self._rds_utils.get_rds_region(h.host).lower()
+                        ]
+                        return self._plugin_service.get_host_info_by_strategy(
+                            HostRole.READER, strategy, hosts_in_region)
+
                 return self._plugin_service.get_host_info_by_strategy(HostRole.READER, strategy)
             except Exception:
                 # Host isn't found.

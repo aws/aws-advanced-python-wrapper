@@ -124,6 +124,7 @@ def test_reconnect_to_writer_task_b_reader_exception(
             raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
+    plugin_service_mock.host_list_provider.get_current_topology.return_value = topology
 
     plugin_service_mock.all_hosts = topology
     reader_failover_mock.get_reader_connection.side_effect = FailoverError("error")
@@ -167,6 +168,7 @@ def test_reconnect_to_writer_slow_task_b(
             raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
+    plugin_service_mock.host_list_provider.get_current_topology.return_value = topology
 
     def get_reader_connection_side_effect(_):
         sleep(5)
@@ -204,6 +206,7 @@ def test_reconnect_to_writer_task_b_defers(
             raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
+    plugin_service_mock.host_list_provider.get_current_topology.return_value = topology
 
     def get_reader_connection_side_effect(_):
         return ReaderFailoverResult(reader_a_connection_mock, True, reader_a, None)
@@ -250,6 +253,7 @@ def test_connect_to_new_writer_slow_task_a(
             raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
+    plugin_service_mock.host_list_provider.get_current_topology.return_value = new_topology
 
     def get_reader_connection_side_effect(_):
         return ReaderFailoverResult(reader_a_connection_mock, True, reader_a, None)
@@ -298,6 +302,7 @@ def test_connect_to_new_writer_task_a_defers(
             raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
+    plugin_service_mock.host_list_provider.get_current_topology.return_value = updated_topology
 
     def get_reader_connection_side_effect(_):
         return ReaderFailoverResult(reader_a_connection_mock, True, reader_a, None)
@@ -324,7 +329,6 @@ def test_connect_to_new_writer_task_a_defers(
                 call(new_writer_host.as_aliases(), HostAvailability.AVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected, any_order=True)
-    plugin_service_mock.force_refresh_host_list.assert_called()
 
 
 def test_failed_to_connect_failover_timeout(
@@ -350,6 +354,7 @@ def test_failed_to_connect_failover_timeout(
             raise exception
 
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
+    plugin_service_mock.host_list_provider.get_current_topology.return_value = new_topology
 
     def get_reader_connection_side_effect(_):
         return ReaderFailoverResult(reader_a_connection_mock, True, reader_a, None)
@@ -375,7 +380,6 @@ def test_failed_to_connect_failover_timeout(
     expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected)
-    plugin_service_mock.force_refresh_host_list.assert_called()
 
     # Confirm we timed out after 5 seconds (plus some extra time for breathing room)
     assert elapsed_time < 6.1
@@ -396,6 +400,7 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(
 
     plugin_service_mock.is_network_exception.return_value = True
     plugin_service_mock.force_connect.side_effect = force_connect_side_effect
+    plugin_service_mock.host_list_provider.get_current_topology.return_value = new_topology
 
     def get_reader_connection_side_effect(_):
         return ReaderFailoverResult(reader_a_connection_mock, True, reader_a, None)

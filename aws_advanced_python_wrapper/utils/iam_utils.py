@@ -23,14 +23,14 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.plugin_service import PluginService
-    from boto3 import Session
+    from boto3 import Session  # type: ignore
 
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)

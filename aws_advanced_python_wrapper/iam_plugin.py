@@ -20,7 +20,9 @@ from typing import TYPE_CHECKING
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
-from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
+from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
+from aws_advanced_python_wrapper.utils.region_utils import (GdbRegionUtils,
+                                                            RegionUtils)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -38,7 +40,7 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
 logger = Logger(__name__)
 
@@ -54,7 +56,6 @@ class IamAuthPlugin(Plugin):
     def __init__(self, plugin_service: PluginService):
         self._plugin_service = plugin_service
 
-        self._region_utils = RegionUtils()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = telemetry_factory.create_counter("iam.fetch_token.count")
         self._cache_size_gauge = telemetry_factory.create_gauge(
@@ -80,7 +81,14 @@ class IamAuthPlugin(Plugin):
             raise AwsWrapperError(Messages.get_formatted("IamAuthPlugin.IsNoneOrEmpty", WrapperProperties.USER.name))
 
         host = IamAuthUtils.get_iam_host(props, host_info)
-        region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host)
+
+        rds_type = self._rds_utils.identify_rds_type(host)
+        if rds_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER:
+            self._region_utils: RegionUtils = GdbRegionUtils()
+        else:
+            self._region_utils = RegionUtils()
+
+        region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host, host_info)
         if not region:
             error_message = "RdsUtils.UnsupportedHostname"
             logger.debug(error_message, host)

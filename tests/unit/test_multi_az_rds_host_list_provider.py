@@ -34,8 +34,6 @@ from aws_advanced_python_wrapper.utils.storage.storage_service import (
 @pytest.fixture(autouse=True)
 def clear_caches():
     StorageService.clear_all()
-    RdsHostListProvider._is_primary_cluster_id_cache.clear()
-    RdsHostListProvider._cluster_ids_to_update.clear()
 
 
 def mock_topology_query(mock_conn, mock_cursor, records, writer_id=None):
@@ -97,185 +95,85 @@ def refresh_ns():
 def create_provider(mock_provider_service, props):
     dialect = MultiAzClusterPgDialect()
     topology_utils = MultiAzTopologyUtils(dialect, props, "writer_host_query", 0)
-    return RdsHostListProvider(mock_provider_service, props, topology_utils)
+    return RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
 
 
 def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, props, cache_hosts, refresh_ns):
     provider = create_provider(mock_provider_service, props)
+    provider._initialize()
     StorageService.set(provider._cluster_id, cache_hosts, Topology)
-    spy = mocker.spy(provider._topology_utils, "_query_for_topology")
+    mock_monitor = mocker.MagicMock()
+    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
 
     result = provider.refresh(mock_conn)
 
     assert cache_hosts == result
-    spy.assert_not_called()
+    mock_monitor.force_refresh_with_connection.assert_not_called()
 
 
 def test_get_topology_force_update(
         mocker, mock_provider_service, mock_conn, cache_hosts, queried_hosts, props, refresh_ns):
     provider = create_provider(mock_provider_service, props)
     StorageService.set(provider._cluster_id, cache_hosts, Topology)
-    spy = mocker.spy(provider._topology_utils, "_query_for_topology")
+    mock_monitor = mocker.MagicMock()
+    mock_monitor.force_refresh_with_connection.return_value = queried_hosts
+    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
 
     result = provider.force_refresh(mock_conn)
 
     assert queried_hosts == result
-    spy.assert_called_once()
+    mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
 def test_get_topology_timeout(mocker, mock_cursor, mock_provider_service, initial_hosts, props):
     provider = create_provider(mock_provider_service, props)
-    spy = mocker.spy(provider._topology_utils, "_query_for_topology")
+    mock_monitor = mocker.MagicMock()
+    mock_monitor.force_refresh_with_connection.side_effect = TimeoutError()
+    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
 
-    mock_cursor.execute.side_effect = TimeoutError()
     with pytest.raises(QueryTimeoutError):
         provider.force_refresh()
 
-    spy.assert_called_once()
+    mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
 def test_get_topology_invalid_topology(
         mocker, mock_provider_service, mock_conn, mock_cursor, props, cache_hosts, refresh_ns):
     provider = create_provider(mock_provider_service, props)
+    provider._initialize()
     StorageService.set(provider._cluster_id, cache_hosts, Topology)
-    spy = mocker.spy(provider._topology_utils, "_query_for_topology")
-    mock_topology_query(
-        mock_conn,
-        mock_cursor,
-        [("reader", "reader.xyz.us-east-2.rds.amazonaws.com", 5432)],  # Invalid topology: no writer instance
-        "missing-writer")
+    mock_monitor = mocker.MagicMock()
+    mock_monitor.force_refresh_with_connection.return_value = ()
+    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
 
     result = provider.force_refresh()
 
     assert cache_hosts == result
-    spy.assert_called_once()
+    mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
 def test_get_topology_invalid_query(mocker, mock_provider_service, mock_conn, mock_cursor, props):
     provider = create_provider(mock_provider_service, props)
-    mock_cursor.execute.side_effect = ProgrammingError()
-    spy = mocker.spy(provider._topology_utils, "_query_for_topology")
+    mock_monitor = mocker.MagicMock()
+    mock_monitor.force_refresh_with_connection.side_effect = ProgrammingError()
+    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
 
-    with pytest.raises(AwsWrapperError):
+    with pytest.raises(ProgrammingError):
         provider.force_refresh(mock_conn)
-    spy.assert_called_once()
+    mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
 def test_get_topology_no_connection(mocker, mock_provider_service, initial_hosts, props):
     provider = create_provider(mock_provider_service, props)
-    spy = mocker.spy(provider._topology_utils, "_query_for_topology")
+    mock_monitor = mocker.MagicMock()
+    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
     mock_provider_service.database_dialect = None
     mock_provider_service.current_connection = None
 
     result = provider.refresh()
 
     assert initial_hosts == result
-    spy.assert_not_called()
-
-
-def test_no_cluster_id_suggestion_for_separate_clusters(mock_provider_service, mock_conn, mock_cursor):
-    props_a = Properties({"host": "instance-A-1.xyz.us-east-2.rds.amazonaws.com", "port": 5432})
-    provider_a = create_provider(mock_provider_service, props_a)
-    mock_topology_query(mock_conn, mock_cursor, [("instance-A-1", "instance-A-1.xyz.us-east-2.rds.amazonaws.com", 5432)])
-    expected_hosts_a = (HostInfo("instance-A-1.xyz.us-east-2.rds.amazonaws.com", 5432, role=HostRole.WRITER),)
-
-    actual_hosts_a = provider_a.refresh()
-    assert expected_hosts_a == actual_hosts_a
-
-    props_b = Properties({"host": "instance-B-1.xyz.us-east-2.rds.amazonaws.com", "port": 5432})
-    provider_b = create_provider(mock_provider_service, props_b)
-    mock_topology_query(mock_conn, mock_cursor, [("instance-B-1", "instance-B-1.xyz.us-east-2.rds.amazonaws.com", 5432)])
-    expected_hosts_b = (HostInfo("instance-B-1.xyz.us-east-2.rds.amazonaws.com", 5432, role=HostRole.WRITER),)
-
-    actual_hosts_b = provider_b.refresh()
-    assert expected_hosts_b == actual_hosts_b
-    assert 2 == len(StorageService.get_all(Topology))
-
-
-def test_cluster_id_suggestion_for_new_provider_with_cluster_url(mocker, mock_provider_service, mock_conn, mock_cursor):
-    props = Properties({"host": "my-cluster.cluster-xyz.us-east-2.rds.amazonaws.com", "port": 5432})
-    provider1 = create_provider(mock_provider_service, props)
-    mock_topology_query(mock_conn, mock_cursor, [("instance-1", "instance-1.xyz.us-east-2.rds.amazonaws.com", 5432)])
-    expected_hosts = (HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", 5432, role=HostRole.WRITER),)
-
-    actual_hosts = provider1.refresh()
-    assert expected_hosts == actual_hosts
-    assert provider1._is_primary_cluster_id
-
-    provider2 = create_provider(mock_provider_service, props)
-    spy = mocker.spy(provider2._topology_utils, "_query_for_topology")
-    provider2._initialize()
-
-    assert provider1._cluster_id == provider2._cluster_id
-    assert provider2._is_primary_cluster_id
-
-    actual_hosts = provider2.refresh()
-    assert expected_hosts == actual_hosts
-    assert 1 == len(StorageService.get_all(Topology))
-    spy.assert_not_called()
-
-
-def test_cluster_id_suggestion_for_new_provider_with_instance_url(
-        mocker, mock_provider_service, mock_conn, mock_cursor):
-    props1 = Properties({"host": "my-cluster.cluster-xyz.us-east-2.rds.amazonaws.com", "port": 5432})
-    provider1 = create_provider(mock_provider_service, props1)
-    mock_topology_query(mock_conn, mock_cursor, [("instance-1", "instance-1.xyz.us-east-2.rds.amazonaws.com", 5432)])
-    expected_hosts = (HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", 5432, role=HostRole.WRITER),)
-
-    actual_hosts = provider1.refresh()
-    assert expected_hosts == actual_hosts
-    assert provider1._is_primary_cluster_id
-
-    props2 = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com", "port": 5432})
-    provider2 = create_provider(mock_provider_service, props2)
-    spy = mocker.spy(provider2._topology_utils, "_query_for_topology")
-    provider2._initialize()
-
-    assert provider1._cluster_id == provider2._cluster_id
-    assert provider2._is_primary_cluster_id
-
-    actual_hosts = provider2.refresh()
-    assert expected_hosts == actual_hosts
-    assert 1 == len(StorageService.get_all(Topology))
-    spy.assert_not_called()
-
-
-def test_cluster_id_suggestion_for_existing_provider(mocker, mock_provider_service, mock_conn, mock_cursor):
-    props1 = Properties({"host": "instance-2.xyz.us-east-2.rds.amazonaws.com", "port": 5432})
-    provider1 = create_provider(mock_provider_service, props1)
-    records = [("instance-1", "instance-1.xyz.us-east-2.rds.amazonaws.com", 5432),
-               ("instance-2", "instance-2.xyz.us-east-2.rds.amazonaws.com", 5432),
-               ("instance-3", "instance-3.xyz.us-east-2.rds.amazonaws.com", 5432)]
-    mock_topology_query(mock_conn, mock_cursor, records)
-    expected_hosts = (HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", 5432, role=HostRole.READER),
-                      HostInfo("instance-2.xyz.us-east-2.rds.amazonaws.com", 5432, role=HostRole.WRITER),
-                      HostInfo("instance-3.xyz.us-east-2.rds.amazonaws.com", 5432, role=HostRole.READER))
-
-    actual_hosts = provider1.refresh()
-    assert list(expected_hosts).sort(key=lambda h: h.host) == list(actual_hosts).sort(key=lambda h: h.host)
-    assert not provider1._is_primary_cluster_id
-
-    props2 = Properties({"host": "my-cluster.cluster-xyz.us-east-2.rds.amazonaws.com", "port": 5432})
-    provider2 = create_provider(mock_provider_service, props2)
-    provider2._initialize()
-
-    assert provider2._cluster_id != provider1._cluster_id
-    assert provider2._is_primary_cluster_id
-    assert not provider1._is_primary_cluster_id
-    assert 1 == len(StorageService.get_all(Topology))
-
-    provider2.refresh()
-    assert "my-cluster.cluster-xyz.us-east-2.rds.amazonaws.com:5432" == \
-           RdsHostListProvider._cluster_ids_to_update.get(provider1._cluster_id)
-
-    spy = mocker.spy(provider1._topology_utils, "_query_for_topology")
-    actual_hosts = provider1.refresh()
-    assert 2 == len(StorageService.get_all(Topology))
-    assert list(expected_hosts).sort(key=lambda h: h.host) == list(actual_hosts).sort(key=lambda h: h.host)
-    assert provider2._cluster_id == provider1._cluster_id
-    assert provider2._is_primary_cluster_id
-    assert provider1._is_primary_cluster_id
-    spy.assert_not_called()
+    mock_monitor.force_refresh_with_connection.assert_not_called()
 
 
 def test_identify_connection_errors(mock_provider_service, mock_conn, mock_cursor, props):
@@ -290,9 +188,12 @@ def test_identify_connection_errors(mock_provider_service, mock_conn, mock_curso
         provider.identify_connection(mock_conn)
 
 
-def test_identify_connection_no_match_in_topology(mock_provider_service, mock_conn, mock_cursor, props):
+def test_identify_connection_no_match_in_topology(mocker, mock_provider_service, mock_conn, mock_cursor, props):
     mock_cursor.fetchone.return_value = ("non-matching-host",)
     provider = create_provider(mock_provider_service, props)
+    mock_monitor = mocker.MagicMock()
+    mock_monitor.force_refresh_with_connection.return_value = ()
+    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
 
     assert provider.identify_connection(mock_conn) is None
 
@@ -367,7 +268,7 @@ def test_initialize__rds_proxy(mock_provider_service):
     props = Properties({"host": "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com", "port": 5432})
     provider = create_provider(mock_provider_service, props)
     provider._initialize()
-    assert provider._cluster_id == "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com:5432/"
+    assert provider._cluster_id == "1"
 
 
 def test_query_for_topology__empty_writer_query_results(

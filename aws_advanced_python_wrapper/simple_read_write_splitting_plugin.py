@@ -21,7 +21,7 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.read_write_splitting_plugin import (
     ReadWriteConnectionHandler, ReadWriteSplittingConnectionManager)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect

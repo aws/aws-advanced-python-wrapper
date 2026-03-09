@@ -23,15 +23,17 @@ class RdsUrlType(Enum):
         obj._value_ = value
         return obj
 
-    def __init__(self, is_rds: bool, is_rds_cluster: bool):
+    def __init__(self, is_rds: bool, is_rds_cluster: bool, has_region: bool):
         self.is_rds: bool = is_rds
         self.is_rds_cluster: bool = is_rds_cluster
+        self.has_region: bool = has_region
 
-    IP_ADDRESS = False, False,
-    RDS_WRITER_CLUSTER = True, True,
-    RDS_READER_CLUSTER = True, True,
-    RDS_CUSTOM_CLUSTER = True, True,
-    RDS_PROXY = True, False,
-    RDS_INSTANCE = True, False,
-    RDS_AURORA_LIMITLESS_DB_SHARD_GROUP = True, False,
-    OTHER = False, False
+    IP_ADDRESS = False, False, False,
+    RDS_WRITER_CLUSTER = True, True, True,
+    RDS_READER_CLUSTER = True, True, True,
+    RDS_CUSTOM_CLUSTER = True, True, True,
+    RDS_PROXY = True, False, True,
+    RDS_INSTANCE = True, False, True,
+    RDS_AURORA_LIMITLESS_DB_SHARD_GROUP = True, False, True,
+    RDS_GLOBAL_WRITER_CLUSTER = True, True, False,
+    OTHER = False, False, False,

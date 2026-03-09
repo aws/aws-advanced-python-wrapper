@@ -14,13 +14,17 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.utils.properties import Properties
 
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
 logger = Logger(__name__)
 
@@ -32,7 +36,8 @@ class RegionUtils:
     def get_region(self,
                    props: Properties,
                    prop_key: str,
-                   hostname: Optional[str] = None) -> Optional[str]:
+                   hostname: Optional[str] = None,
+                   host_info: Optional[HostInfo] = None) -> Optional[str]:
         region = props.get(prop_key)
         if region:
             return region
@@ -41,3 +46,59 @@ class RegionUtils:
 
     def get_region_from_hostname(self, hostname: Optional[str]) -> Optional[str]:
         return self._rds_utils.get_rds_region(hostname)
+
+
+class GdbRegionUtils(RegionUtils):
+    _GDB_CLUSTER_ARN_PATTERN = r"^arn:aws:rds:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
+    _REGION_GROUP = "region"
+
+    def get_region(self,
+                   props: Properties,
+                   prop_key: str,
+                   hostname: Optional[str] = None,
+                   host_info: Optional[HostInfo] = None) -> Optional[str]:
+        region = props.get(prop_key)
+        if region:
+            return region
+
+        if not host_info:
+            return None
+
+        cluster_id = self._rds_utils.get_cluster_id(host_info.host)
+        if not cluster_id:
+            return None
+
+        writer_cluster_arn = self._find_writer_cluster_arn(host_info, props, cluster_id)
+        if not writer_cluster_arn:
+            return None
+
+        return self._get_region_from_cluster_arn(writer_cluster_arn)
+
+    def _find_writer_cluster_arn(self, host_info: HostInfo, props: Properties, global_cluster_identifier: str) -> Optional[str]:
+        region = self.get_region_from_hostname(host_info.host)
+        if not region:
+            return None
+
+        session = AwsCredentialsManager.get_session(host_info, props, region)
+        rds_client = AwsCredentialsManager.get_client("rds", session, host_info.host, region)
+
+        try:
+            response = rds_client.describe_global_clusters(GlobalClusterIdentifier=global_cluster_identifier)
+            global_clusters = response.get("GlobalClusters", [])
+
+            for cluster in global_clusters:
+                members = cluster.get("GlobalClusterMembers", [])
+                for member in members:
+                    if member.get("IsWriter"):
+                        return member.get("DBClusterArn")
+
+            return None
+        except Exception as e:
+            logger.debug("GdbRegionUtils._find_writer_cluster_arn", e)
+            return None
+
+    def _get_region_from_cluster_arn(self, cluster_arn: str) -> Optional[str]:
+        match = re.match(self._GDB_CLUSTER_ARN_PATTERN, cluster_arn)
+        if match:
+            return match.group(self._REGION_GROUP)
+        return None

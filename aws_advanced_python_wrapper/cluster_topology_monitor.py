@@ -20,11 +20,12 @@ from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Dict, Optional
 
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.atomic import AtomicReference
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.storage.storage_service import (
     StorageService, Topology)
 from aws_advanced_python_wrapper.utils.thread_safe_connection_holder import \
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
     from aws_advanced_python_wrapper.utils.properties import Properties
-    from aws_advanced_python_wrapper.host_list_provider import TopologyUtils
+    from aws_advanced_python_wrapper.host_list_provider import TopologyUtils, GlobalAuroraTopologyUtils
 
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -316,9 +317,10 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                             writer_host_info = self._initial_host_info
                             self._writer_host_info.set(writer_host_info)
                         else:
-                            writer_host = self._instance_template.host.replace("?", writer_id)
-                            port = self._instance_template.port \
-                                if self._instance_template.is_port_specified() \
+                            instance_template = self._get_instance_template(writer_id, conn)
+                            writer_host = instance_template.host.replace("?", writer_id)
+                            port = instance_template.port \
+                                if instance_template.is_port_specified() \
                                 else self._initial_host_info.port
                             writer_host_info = HostInfo(
                                 writer_host,
@@ -437,6 +439,9 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         if hosts is not None:
             return hosts
         return ()
+
+    def _get_instance_template(self, instance_id: str, connection: Connection) -> HostInfo:
+        return self._instance_template
 
     def _update_topology_cache(self, hosts: Topology) -> None:
         StorageService.set(self._cluster_id, hosts, Topology)
@@ -565,3 +570,45 @@ class HostMonitor:
         backoff = ClusterTopologyMonitorImpl.INITIAL_BACKOFF_MS * (2 ** min(attempt, 6))
         backoff = min(backoff, ClusterTopologyMonitorImpl.MAX_BACKOFF_MS)
         return int(backoff * (0.5 + random.random() * 0.5))
+
+
+class GlobalAuroraTopologyMonitor(ClusterTopologyMonitorImpl):
+    def __init__(
+            self,
+            plugin_service: PluginService,
+            topology_utils: GlobalAuroraTopologyUtils,
+            cluster_id: str,
+            initial_host_info: HostInfo,
+            props: Properties,
+            instance_template: HostInfo,
+            refresh_rate_ns: int,
+            high_refresh_rate_ns: int,
+            instance_templates_by_region: dict[str, HostInfo]
+    ):
+        super().__init__(
+            plugin_service,
+            topology_utils,
+            cluster_id,
+            initial_host_info,
+            props,
+            instance_template,
+            refresh_rate_ns,
+            high_refresh_rate_ns
+        )
+        self._instance_templates_by_region = instance_templates_by_region
+        self._global_topology_utils = topology_utils
+
+    def _get_instance_template(self, instance_id: str, connection: Connection) -> HostInfo:
+        region = self._global_topology_utils.get_region(instance_id, connection)
+        if region:
+            instance_template = self._instance_templates_by_region.get(region)
+            if instance_template is None:
+                raise AwsWrapperError(
+                    Messages.get_formatted("GlobalAuroraTopologyMonitor.cannotFindRegionTemplate", region))
+            return instance_template
+        return self._instance_template
+
+    def _query_for_topology(self, connection: Connection) -> Topology:
+        result = self._global_topology_utils.query_for_topology_with_regions(
+            connection, self._instance_templates_by_region)
+        return result if result is not None else ()
