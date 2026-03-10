@@ -304,10 +304,28 @@ def test_get_topology_returns_last_writer(mocker, mock_provider_service, mock_co
     mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
-def test_force_monitoring_refresh(mock_provider_service, props):
+def test_force_monitoring_refresh(mocker, mock_provider_service, props):
     topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
     provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
+
+    mock_monitor = mocker.MagicMock()
+    mock_monitor.force_refresh.return_value = None
+    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
 
     # force_monitoring_refresh returns empty tuple when monitor cannot refresh topology
     result = provider.force_monitoring_refresh(True, 5)
     assert result == ()
+
+
+def test_force_monitoring_refresh_with_topology(mocker, mock_provider_service, props):
+    topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
+    provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
+
+    expected_topology = (HostInfo("host1.xyz.us-east-2.rds.amazonaws.com", role=HostRole.WRITER),)
+    mock_monitor = mocker.MagicMock()
+    mock_monitor.force_refresh.return_value = expected_topology
+    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
+
+    result = provider.force_monitoring_refresh(True, 5)
+    assert result == expected_topology
+    mock_monitor.force_refresh.assert_called_once_with(True, 5)
