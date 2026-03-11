@@ -427,7 +427,7 @@ def test_query_for_dialect_mysql(mock_conn, mock_cursor, mock_driver_dialect):
 def test_global_aurora_is_dialect_with_global_tables(mock_conn, mock_cursor, mock_driver_dialect):
     mock_conn.cursor.return_value = mock_cursor
     mock_cursor.__enter__.return_value = mock_cursor
-    mock_cursor.fetchone.side_effect = [(1,), (1,), (None, 2)]
+    mock_cursor.fetchone.side_effect = [(1,), (1,), (2,)]
 
     dialect = GlobalAuroraMysqlDialect()
     assert dialect.is_dialect(mock_conn, mock_driver_dialect) is True

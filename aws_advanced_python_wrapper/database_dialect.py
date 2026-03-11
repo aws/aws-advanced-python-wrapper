@@ -64,7 +64,7 @@ class DialectCode(Enum):
     MYSQL = "mysql"
 
     MULTI_AZ_CLUSTER_PG = "multi-az-pg"
-    GLOBAL_AURORA_PG = "aurora-pg"
+    GLOBAL_AURORA_PG = "global-aurora-pg"
     AURORA_PG = "aurora-pg"
     RDS_PG = "rds-pg"
     PG = "pg"
@@ -547,7 +547,7 @@ class GlobalAuroraMysqlDialect(AuroraMysqlDialect, GlobalAuroraTopologyDialect):
          "FROM information_schema.aurora_global_db_instance_status ")
     _REGION_COUNT_QUERY = "SELECT count(1) FROM information_schema.aurora_global_db_status"
     _REGION_BY_INSTANCE_ID_QUERY = \
-        "SELECT AWS_REGION FROM information_schema.aurora_global_db_instance_status WHERE SERVER_ID = ?"
+        "SELECT AWS_REGION FROM information_schema.aurora_global_db_instance_status WHERE SERVER_ID = %s"
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -564,10 +564,10 @@ class GlobalAuroraMysqlDialect(AuroraMysqlDialect, GlobalAuroraTopologyDialect):
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._REGION_COUNT_QUERY)
                 record = cursor.fetchone()
-                if record is None or len(record) < 2:
+                if record is None or len(record) < 1:
                     return False
 
-                aws_region_count = record[1]
+                aws_region_count = record[0]
                 return aws_region_count is not None and aws_region_count > 1
         except Exception:
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
@@ -592,7 +592,7 @@ class GlobalAuroraPgDialect(AuroraPgDialect, GlobalAuroraTopologyDialect):
          "FROM aurora_global_db_instance_status()")
     _REGION_COUNT_QUERY = "SELECT count(1) FROM aurora_global_db_status()"
     _REGION_BY_INSTANCE_ID_QUERY = \
-        "SELECT AWS_REGION FROM aurora_global_db_instance_status() WHERE SERVER_ID = ?"
+        "SELECT AWS_REGION FROM aurora_global_db_instance_status() WHERE SERVER_ID = %s"
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -620,10 +620,10 @@ class GlobalAuroraPgDialect(AuroraPgDialect, GlobalAuroraTopologyDialect):
             with closing(conn.cursor()) as cursor:
                 cursor.execute(self._REGION_COUNT_QUERY)
                 record = cursor.fetchone()
-                if record is None or len(record) < 2:
+                if record is None or len(record) < 1:
                     return False
 
-                aws_region_count = record[1]
+                aws_region_count = record[0]
                 return aws_region_count is not None and aws_region_count > 1
 
         except Exception:
