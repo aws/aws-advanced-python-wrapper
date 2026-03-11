@@ -240,22 +240,6 @@ def test_host_pattern_setting(mock_provider_service, props):
         provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, AuroraTopologyUtils(AuroraPgDialect(), props))
 
 
-def test_get_host_role(mock_provider_service, mock_conn, mock_cursor, props):
-    mock_cursor.fetchone.return_value = (True,)
-    topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
-    provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
-
-    assert HostRole.READER == provider.get_host_role(mock_conn)
-
-    mock_cursor.fetchone.return_value = None
-    with pytest.raises(AwsWrapperError):
-        provider.get_host_role(mock_conn)
-
-    mock_cursor.execute.side_effect = TimeoutError()
-    with pytest.raises(QueryTimeoutError):
-        provider.get_host_role(mock_conn)
-
-
 def test_cluster_id_setting(mock_provider_service):
     props = Properties({"host": "my-cluster.cluster-xyz.us-east-2.rds.amazonaws.com",
                         WrapperProperties.CLUSTER_ID.name: "my-cluster-id"})

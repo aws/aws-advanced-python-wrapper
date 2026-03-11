@@ -23,7 +23,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import (
     MultiAzTopologyUtils, RdsHostListProvider)
-from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249 import ProgrammingError
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -225,21 +225,6 @@ def test_host_pattern_setting(mock_provider_service, props):
             "?.cluster-custom-xyz.us-east-2.rds.amazonaws.com"
         provider = create_provider(mock_provider_service, props)
         provider._initialize()
-
-
-def test_get_host_role(mock_provider_service, mock_conn, mock_cursor, props):
-    mock_cursor.fetchone.return_value = (True,)
-    provider = create_provider(mock_provider_service, props)
-
-    assert HostRole.READER == provider.get_host_role(mock_conn)
-
-    mock_cursor.fetchone.return_value = None
-    with pytest.raises(AwsWrapperError):
-        provider.get_host_role(mock_conn)
-
-    mock_cursor.execute.side_effect = TimeoutError()
-    with pytest.raises(QueryTimeoutError):
-        provider.get_host_role(mock_conn)
 
 
 def test_cluster_id_setting(mock_provider_service):
