@@ -57,7 +57,7 @@ from aws_advanced_python_wrapper.connect_time_plugin import \
 from aws_advanced_python_wrapper.connection_provider import (
     ConnectionProvider, ConnectionProviderManager)
 from aws_advanced_python_wrapper.database_dialect import (
-    DatabaseDialect, DatabaseDialectManager, TopologyAwareDatabaseDialect,
+    DatabaseDialect, DatabaseDialectManager, DialectUtils,
     UnknownDatabaseDialect)
 from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
 from aws_advanced_python_wrapper.developer_plugin import DeveloperPluginFactory
@@ -566,7 +566,13 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         if connection is None:
             raise AwsWrapperError(Messages.get("PluginServiceImpl.GetHostRoleConnectionNone"))
 
-        return self._host_list_provider.get_host_role(connection)
+        timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_float(self._props)
+        return DialectUtils.get_host_role(
+                connection,
+                self._driver_dialect,
+                self.database_dialect.is_reader_query,
+                self._thread_pool,
+                timeout_sec)
 
     def refresh_host_list(self, connection: Optional[Connection] = None):
         connection = self.current_connection if connection is None else connection
@@ -610,11 +616,51 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def identify_connection(self, connection: Optional[Connection] = None) -> Optional[HostInfo]:
         connection = self.current_connection if connection is None else connection
+        if connection is None:
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.ErrorIdentifyConnection"))
 
-        if not isinstance(self.database_dialect, TopologyAwareDatabaseDialect):
-            return None
+        try:
+            timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_float(self._props)
+            instance_ids = DialectUtils.get_instance_id(
+                connection,
+                self._driver_dialect,
+                self.database_dialect.host_id_query,
+                self._thread_pool,
+                timeout_sec)
 
-        return self.host_list_provider.identify_connection(connection)
+            if instance_ids is None:
+                raise AwsWrapperError(Messages.get("PluginServiceImpl.ErrorIdentifyConnection"))
+
+            topology = self.host_list_provider.refresh(connection)
+            is_force_refresh = False
+            if topology is None:
+                topology = self.host_list_provider.force_refresh(connection)
+                is_force_refresh = True
+
+            if topology is None:
+                return None
+
+            instance_name = instance_ids[1]
+            found_host: Optional[HostInfo] = next(
+                (host for host in topology if host.host_id == instance_name),
+                None)
+
+            if found_host is None and not is_force_refresh:
+                topology = self.host_list_provider.force_refresh(connection)
+                if topology is None:
+                    return None
+
+                found_host = next(
+                    (host for host in topology if host.host_id == instance_name),
+                    None)
+
+            return found_host
+        except TimeoutError as e:
+            raise QueryTimeoutError(Messages.get("PluginServiceImpl.IdentifyConnectionTimeout")) from e
+        except UnsupportedOperationError as e:
+            raise e
+        except Exception as e:
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.ErrorIdentifyConnection")) from e
 
     def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
         connection = self.current_connection if connection is None else connection

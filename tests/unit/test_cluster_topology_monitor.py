@@ -248,8 +248,8 @@ class TestHostMonitor:
         monitor = HostMonitor(monitor_impl_mock, host_info, None)
         connection_mock = MagicMock()
         monitor_impl_mock._plugin_service.force_connect.return_value = connection_mock
+        monitor_impl_mock._plugin_service.get_host_role.return_value = HostRole.WRITER
         topology_utils_mock.get_writer_id_if_connected.return_value = "writer.com"
-        topology_utils_mock.get_host_role.return_value = HostRole.WRITER
 
         call_count = [0]
 

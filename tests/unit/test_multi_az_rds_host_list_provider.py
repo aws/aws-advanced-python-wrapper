@@ -23,7 +23,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
 from aws_advanced_python_wrapper.host_list_provider import (
     MultiAzTopologyUtils, RdsHostListProvider)
-from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249 import ProgrammingError
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -176,46 +176,6 @@ def test_get_topology_no_connection(mocker, mock_provider_service, initial_hosts
     mock_monitor.force_refresh_with_connection.assert_not_called()
 
 
-def test_identify_connection_errors(mock_provider_service, mock_conn, mock_cursor, props):
-    mock_cursor.fetchone.return_value = None
-    provider = create_provider(mock_provider_service, props)
-
-    with pytest.raises(AwsWrapperError):
-        provider.identify_connection(mock_conn)
-
-    mock_cursor.execute.side_effect = TimeoutError()
-    with pytest.raises(QueryTimeoutError):
-        provider.identify_connection(mock_conn)
-
-
-def test_identify_connection_no_match_in_topology(mocker, mock_provider_service, mock_conn, mock_cursor, props):
-    mock_cursor.fetchone.return_value = ("non-matching-host",)
-    provider = create_provider(mock_provider_service, props)
-    mock_monitor = mocker.MagicMock()
-    mock_monitor.force_refresh_with_connection.return_value = ()
-    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
-
-    assert provider.identify_connection(mock_conn) is None
-
-
-def test_identify_connection_empty_topology(mocker, mock_provider_service, mock_conn, mock_cursor, props):
-    provider = create_provider(mock_provider_service, props)
-    mock_cursor.fetchone.return_value = ("instance-1",)
-
-    provider.refresh = mocker.MagicMock(return_value=[])
-    assert provider.identify_connection(mock_conn) is None
-
-
-def test_identify_connection_host_in_topology(mock_provider_service, mock_conn, mock_cursor, props):
-    provider = create_provider(mock_provider_service, props)
-    mock_cursor.fetchone.return_value = ("instance-1",)
-    mock_topology_query(mock_conn, mock_cursor, [("instance-1", "instance-1.xyz.us-east-2.rds.amazonaws.com", 5432)])
-
-    host_info = provider.identify_connection(mock_conn)
-    assert "instance-1.xyz.us-east-2.rds.amazonaws.com" == host_info.host
-    assert "instance-1" == host_info.host_id
-
-
 def test_host_pattern_setting(mock_provider_service, props):
     props = Properties({"host": "127:0:0:1", "port": 5432,
                         WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.name: "?.custom-domain.com"})
@@ -239,21 +199,6 @@ def test_host_pattern_setting(mock_provider_service, props):
             "?.cluster-custom-xyz.us-east-2.rds.amazonaws.com"
         provider = create_provider(mock_provider_service, props)
         provider._initialize()
-
-
-def test_get_host_role(mock_provider_service, mock_conn, mock_cursor, props):
-    mock_cursor.fetchone.return_value = (True,)
-    provider = create_provider(mock_provider_service, props)
-
-    assert HostRole.READER == provider.get_host_role(mock_conn)
-
-    mock_cursor.fetchone.return_value = None
-    with pytest.raises(AwsWrapperError):
-        provider.get_host_role(mock_conn)
-
-    mock_cursor.execute.side_effect = TimeoutError()
-    with pytest.raises(QueryTimeoutError):
-        provider.get_host_role(mock_conn)
 
 
 def test_cluster_id_setting(mock_provider_service):
