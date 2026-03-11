@@ -213,10 +213,11 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
                 if url_type and url_type.has_region:
                     aws_region = self._rds_utils.get_rds_region(original_host.host)
                     if aws_region:
-                        hosts_in_region = [
-                            h for h in self._plugin_service.all_hosts
-                            if aws_region.lower() == self._rds_utils.get_rds_region(h.host).lower()
-                        ]
+                        hosts_in_region = []
+                        for h in self._plugin_service.all_hosts:
+                            h_region = self._rds_utils.get_rds_region(h.host)
+                            if h_region and aws_region.lower() == h_region.lower():
+                                hosts_in_region.append(h)
                         return self._plugin_service.get_host_info_by_strategy(
                             HostRole.READER, strategy, hosts_in_region)
 

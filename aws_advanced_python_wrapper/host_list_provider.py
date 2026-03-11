@@ -848,14 +848,14 @@ class GlobalAuroraTopologyUtils(AuroraTopologyUtils):
             else:
                 hosts.append(host)
 
-        if len(writers) == 0:
+        if not writers:
             logger.error("RdsHostListProvider.InvalidTopology")
             hosts.clear()
         elif len(writers) == 1:
             hosts.append(writers[0])
         else:
             existing_writers: List[HostInfo] = [x for x in writers if x is not None]
-            existing_writers.sort(reverse=True, key=lambda h: h.last_update_time is not None and h.last_update_time)
+            existing_writers.sort(reverse=True, key=lambda h: h.last_update_time or datetime.min)
             hosts.append(existing_writers[0])
 
         return tuple(hosts)

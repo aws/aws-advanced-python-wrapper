@@ -49,7 +49,7 @@ class RegionUtils:
 
 
 class GdbRegionUtils(RegionUtils):
-    _GDB_CLUSTER_ARN_PATTERN = r"^arn:aws:rds:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
+    _GDB_CLUSTER_ARN_PATTERN = r"^arn:aws[^:]*:rds:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
     _REGION_GROUP = "region"
 
     def get_region(self,
