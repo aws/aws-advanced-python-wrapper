@@ -81,18 +81,6 @@ class HostListProvider(Protocol):
     def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
         ...
 
-    def get_host_role(self, connection: Connection) -> HostRole:
-        """
-        Evaluates the host role of the given connection - either a writer or a reader.
-
-        :param connection: a connection to the database instance whose role should be determined.
-        :return: the role of the given connection - either a writer or a reader.
-        """
-        ...
-
-    def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
-        ...
-
     def get_cluster_id(self) -> str:
         ...
 
@@ -336,49 +324,6 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         self._hosts = topology.hosts
         return tuple(self._hosts)
 
-    def get_host_role(self, connection: Connection) -> HostRole:
-        driver_dialect = self._host_list_provider_service.driver_dialect
-
-        return self._topology_utils.get_host_role(connection, driver_dialect)
-
-    def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
-        """
-        Identify which host the given connection points to.
-        :param connection: an opened connection.
-        :return: a :py:class:`HostInfo` object containing host information for the given connection.
-        """
-        if connection is None:
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection"))
-
-        driver_dialect = self._host_list_provider_service.driver_dialect
-        try:
-            host_id = self._topology_utils.get_host_id(connection, driver_dialect)
-            if host_id is not None:
-                hosts = self.refresh(connection)
-                is_force_refresh = False
-                if not hosts:
-                    hosts = self.force_refresh(connection)
-                    is_force_refresh = True
-
-                if not hosts:
-                    return None
-
-                found_host: Optional[HostInfo] = next((host_info for host_info in hosts if host_info.host_id == host_id), None)
-                if not found_host and not is_force_refresh:
-                    hosts = self.force_refresh(connection)
-                    if not hosts:
-                        return None
-
-                    found_host = next(
-                        (host_info for host_info in hosts if host_info.host_id == host_id),
-                        None)
-
-                return found_host
-        except TimeoutError as e:
-            raise QueryTimeoutError(Messages.get("RdsHostListProvider.IdentifyConnectionTimeout")) from e
-
-        raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorIdentifyConnection"))
-
     def get_cluster_id(self):
         self._initialize()
         return self._cluster_id
@@ -427,14 +372,6 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
     def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
         raise AwsWrapperError(
                 Messages.get_formatted("HostListProvider.ForceMonitoringRefreshUnsupported", "ConnectionStringHostListProvider"))
-
-    def get_host_role(self, connection: Connection) -> HostRole:
-        raise UnsupportedOperationError(
-            Messages.get_formatted("ConnectionStringHostListProvider.UnsupportedMethod", "get_host_role"))
-
-    def identify_connection(self, connection: Optional[Connection]) -> Optional[HostInfo]:
-        raise UnsupportedOperationError(
-            Messages.get_formatted("ConnectionStringHostListProvider.UnsupportedMethod", "identify_connection"))
 
     def get_cluster_id(self):
         return "<none>"
@@ -621,44 +558,6 @@ class TopologyUtils(ABC):
             host_id=host_id)
         host_info.add_alias(host_id)
         return host_info
-
-    def get_host_role(self, connection: Connection, driver_dialect: DriverDialect) -> HostRole:
-        try:
-            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                self._thread_pool, self._max_timeout_sec, driver_dialect, connection)(self._get_host_role)
-            result = cursor_execute_func_with_timeout(connection)
-            if result is not None:
-                is_reader = result[0]
-                return HostRole.READER if is_reader else HostRole.WRITER
-        except TimeoutError as e:
-            raise QueryTimeoutError(Messages.get("RdsHostListProvider.GetHostRoleTimeout")) from e
-
-        raise AwsWrapperError(Messages.get("RdsHostListProvider.ErrorGettingHostRole"))
-
-    def _get_host_role(self, conn: Connection):
-        with closing(conn.cursor()) as cursor:
-            cursor.execute(self._dialect.is_reader_query)
-            return cursor.fetchone()
-
-    def get_host_id(self, connection: Connection, driver_dialect: DriverDialect) -> Optional[str]:
-        """
-        Identify which host the given connection points to.
-        :param connection: an opened connection.
-        :return: a str of the current host's id
-        """
-
-        cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-            self._thread_pool, self._max_timeout_sec, driver_dialect, connection)(self._get_host_id)
-        result = cursor_execute_func_with_timeout(connection)
-        if result:
-            host_id: str = result[0]
-            return host_id
-        return None
-
-    def _get_host_id(self, conn: Connection):
-        with closing(conn.cursor()) as cursor:
-            cursor.execute(self._dialect.host_id_query)
-            return cursor.fetchone()
 
     def get_writer_id_if_connected(self, connection: Connection, driver_dialect: DriverDialect) -> Optional[str]:
         try:

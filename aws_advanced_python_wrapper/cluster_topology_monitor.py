@@ -504,8 +504,8 @@ class HostMonitor:
 
                     if is_writer:
                         try:
-                            if self._monitor._topology_utils.get_host_role(
-                                    connection, self._monitor._plugin_service.driver_dialect) != HostRole.WRITER:
+                            if self._monitor._plugin_service.get_host_role(
+                                    connection) != HostRole.WRITER:
                                 is_writer = False
                         except Exception as ex:
                             logger.debug("HostMonitor.InvalidWriterQuery", ex)
