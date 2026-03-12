@@ -14,8 +14,8 @@
 
 import gc
 
-import pytest
-from sqlalchemy import PoolProxiedConnection
+import pytest  # type: ignore
+from sqlalchemy import PoolProxiedConnection  # type: ignore
 
 from aws_advanced_python_wrapper import AwsWrapperConnection, release_resources
 from aws_advanced_python_wrapper.connection_provider import \
@@ -23,7 +23,6 @@ from aws_advanced_python_wrapper.connection_provider import \
 from aws_advanced_python_wrapper.errors import (
     AwsWrapperError, FailoverFailedError, FailoverSuccessError,
     ReadWriteSplittingError, TransactionResolutionUnknownError)
-from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -81,8 +80,6 @@ class TestReadWriteSplitting:
     @pytest.fixture(autouse=True)
     def clear_caches(self):
         StorageService.clear_all()
-        RdsHostListProvider._is_primary_cluster_id_cache.clear()
-        RdsHostListProvider._cluster_ids_to_update.clear()
         yield
         ConnectionProviderManager.release_resources()
         ConnectionProviderManager.reset_provider()

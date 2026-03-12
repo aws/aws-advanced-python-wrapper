@@ -17,7 +17,7 @@ from __future__ import annotations
 import atexit
 from typing import TYPE_CHECKING, Optional
 
-from aws_xray_sdk.core import xray_recorder
+from aws_xray_sdk.core import xray_recorder  # type: ignore
 
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
@@ -27,14 +27,13 @@ from aws_advanced_python_wrapper.database_dialect import DatabaseDialectManager
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
-from aws_advanced_python_wrapper.host_list_provider import RdsHostListProvider
 from aws_advanced_python_wrapper.host_monitoring_plugin import \
     MonitoringThreadContainer
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
 from aws_advanced_python_wrapper.thread_pool_container import \
     ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
     SlidingExpirationCacheContainer
 from aws_advanced_python_wrapper.utils.storage.storage_service import \
@@ -42,14 +41,14 @@ from aws_advanced_python_wrapper.utils.storage.storage_service import \
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
-    from aws_xray_sdk.core.models.segment import Segment
+    from aws_xray_sdk.core.models.segment import Segment  # type: ignore
 
 import socket
 import timeit
 from time import sleep
 from typing import List
 
-import pytest
+import pytest  # type: ignore
 
 from .utils.connection_utils import ConnectionUtils
 from .utils.database_engine_deployment import DatabaseEngineDeployment
@@ -144,8 +143,6 @@ def pytest_runtest_setup(item):
 
         RdsUtils.clear_cache()
         StorageService.clear_all()
-        RdsHostListProvider._is_primary_cluster_id_cache.clear()
-        RdsHostListProvider._cluster_ids_to_update.clear()
         PluginServiceImpl._host_availability_expiring_cache.clear()
         DatabaseDialectManager._known_endpoint_dialects.clear()
         CustomEndpointMonitor._custom_endpoint_info_cache.clear()

@@ -61,7 +61,7 @@ class RdsUtils:
     """
 
     AURORA_DNS_PATTERN = r"^(?P<instance>.+)\." \
-                         r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|shardgrp-)?" \
+                         r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|shardgrp-|global-)?" \
                          r"(?P<domain>[a-zA-Z0-9]+\." \
                          r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)$"
     AURORA_INSTANCE_PATTERN = r"^(?P<instance>.+)\." \
@@ -85,11 +85,11 @@ class RdsUtils:
                                r"(?P<domain>[a-zA-Z0-9]+\." \
                                r"(?P<region>[a-zA-Z0-9\\-]+)\.rds\.amazonaws\.com)(?!\.cn)$"
     AURORA_OLD_CHINA_DNS_PATTERN = r"^(?P<instance>.+)\." \
-                                   r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|shardgrp-)?" \
+                                   r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|shardgrp-|global-)?" \
                                    r"(?P<domain>[a-zA-Z0-9]+\." \
                                    r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com\.cn)$"
     AURORA_CHINA_DNS_PATTERN = r"^(?P<instance>.+)\." \
-                               r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|shardgrp-)?" \
+                               r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|shardgrp-|global-)?" \
                                r"(?P<domain>[a-zA-Z0-9]+\." \
                                r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)$"
     AURORA_OLD_CHINA_CLUSTER_PATTERN = r"^(?P<instance>.+)\." \
@@ -101,7 +101,7 @@ class RdsUtils:
                                    r"(?P<domain>[a-zA-Z0-9]+\." \
                                    r"rds\.(?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com\.cn)$"
     AURORA_GOV_DNS_PATTERN = r"^(?P<instance>.+)\." \
-                             r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|shardgrp-)?" \
+                             r"(?P<dns>proxy-|cluster-|cluster-ro-|cluster-custom-|shardgrp-|global-)?" \
                              r"(?P<domain>[a-zA-Z0-9]+\.rds\.(?P<region>[a-zA-Z0-9\-]+)" \
                              r"\.(amazonaws\.com|c2s\.ic\.gov|sc2s\.sgov\.gov))$"
     AURORA_GOV_CLUSTER_PATTERN = r"^(?P<instance>.+)\." \
@@ -188,6 +188,10 @@ class RdsUtils:
         dns_group = self._get_dns_group(host)
         return dns_group is not None and dns_group.casefold() == "cluster-ro-"
 
+    def is_global_db_writer_cluster_dns(self, host: str) -> bool:
+        dns_group = self._get_dns_group(host)
+        return dns_group is not None and dns_group.casefold() == "global-"
+
     def is_limitless_database_shard_group_dns(self, host: str) -> bool:
         dns_group = self._get_dns_group(host)
         return dns_group is not None and dns_group.casefold() == "shardgrp-"
@@ -249,6 +253,8 @@ class RdsUtils:
 
         if self.is_ip(host):
             return RdsUrlType.IP_ADDRESS
+        elif self.is_global_db_writer_cluster_dns(host):
+            return RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER
         elif self.is_writer_cluster_dns(host):
             return RdsUrlType.RDS_WRITER_CLUSTER
         elif self.is_reader_cluster_dns(host):

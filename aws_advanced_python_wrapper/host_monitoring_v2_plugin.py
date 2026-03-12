@@ -35,7 +35,7 @@ from aws_advanced_python_wrapper.utils.notifications import (
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
     SlidingExpirationCacheContainer
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
