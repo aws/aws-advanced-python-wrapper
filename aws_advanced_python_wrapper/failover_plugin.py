@@ -336,7 +336,7 @@ class FailoverPlugin(Plugin):
             self._plugin_service.set_current_connection(result.new_connection, writer_host)
             logger.info("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
 
-            self._plugin_service.refresh_host_list()
+            self._plugin_service.force_refresh_host_list()
             if self._failover_writer_success_counter is not None:
                 self._failover_writer_success_counter.inc()
         except FailoverSuccessError as fse:

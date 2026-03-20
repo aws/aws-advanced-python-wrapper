@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -52,6 +52,10 @@ class GdbRegionUtils(RegionUtils):
     _GDB_CLUSTER_ARN_PATTERN = r"^arn:aws[^:]*:rds:(?P<region>[^:\n]*):[^:\n]*:([^:/\n]*[:/])?(.*)$"
     _REGION_GROUP = "region"
 
+    def __init__(self, credentials: Optional[Dict[str, str]] = None):
+        super().__init__()
+        self._credentials = credentials
+
     def get_region(self,
                    props: Properties,
                    prop_key: str,
@@ -75,12 +79,16 @@ class GdbRegionUtils(RegionUtils):
         return self._get_region_from_cluster_arn(writer_cluster_arn)
 
     def _find_writer_cluster_arn(self, host_info: HostInfo, props: Properties, global_cluster_identifier: str) -> Optional[str]:
-        region = self.get_region_from_hostname(host_info.host)
-        if not region:
-            return None
-
-        session = AwsCredentialsManager.get_session(host_info, props, region)
-        rds_client = AwsCredentialsManager.get_client("rds", session, host_info.host, region)
+        session = AwsCredentialsManager.get_session(host_info, props)
+        if self._credentials is not None:
+            rds_client = session.client(
+                'rds',
+                aws_access_key_id=self._credentials.get('AccessKeyId'),
+                aws_secret_access_key=self._credentials.get('SecretAccessKey'),
+                aws_session_token=self._credentials.get('SessionToken')
+            )
+        else:
+            rds_client = session.client('rds')
 
         try:
             response = rds_client.describe_global_clusters(GlobalClusterIdentifier=global_cluster_identifier)
@@ -94,7 +102,7 @@ class GdbRegionUtils(RegionUtils):
 
             return None
         except Exception as e:
-            logger.debug("GdbRegionUtils._find_writer_cluster_arn", e)
+            logger.debug("GDBRegionUtils.UnableToRetrieveGlobalClusterARN", e)
             return None
 
     def _get_region_from_cluster_arn(self, cluster_arn: str) -> Optional[str]:

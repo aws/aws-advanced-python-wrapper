@@ -89,8 +89,10 @@ class FederatedAuthPlugin(Plugin):
 
         rds_type = self._rds_utils.identify_rds_type(host)
         if rds_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER:
-            self._region_utils: RegionUtils = GdbRegionUtils()
+            credentials = self._credentials_provider_factory.get_aws_credentials(None, props, host_info)
+            self._region_utils: RegionUtils = GdbRegionUtils(credentials)
         else:
+            credentials = None
             self._region_utils = RegionUtils()
 
         region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host, host_info)
@@ -115,7 +117,7 @@ class FederatedAuthPlugin(Plugin):
             logger.debug("FederatedAuthPlugin.UseCachedToken", token_info.token)
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
-            self._update_authentication_token(token_host_info, props, user, region, cache_key)
+            self._update_authentication_token(token_host_info, props, user, region, cache_key, credentials)
 
         WrapperProperties.USER.set(props, WrapperProperties.DB_USER.get(props))
 
@@ -128,7 +130,7 @@ class FederatedAuthPlugin(Plugin):
             if token_info is None or token_info.is_expired() or not self._plugin_service.is_login_exception(e):
                 raise AwsWrapperError(Messages.get_formatted("FederatedAuthPlugin.ConnectException", e), e) from e
 
-            self._update_authentication_token(token_host_info, props, user, region, cache_key)
+            self._update_authentication_token(token_host_info, props, user, region, cache_key, credentials)
 
             try:
                 return connect_func()
@@ -152,11 +154,13 @@ class FederatedAuthPlugin(Plugin):
                                      props: Properties,
                                      user: Optional[str],
                                      region: str,
-                                     cache_key: str) -> None:
+                                     cache_key: str,
+                                     credentials: Optional[Dict[str, str]] = None) -> None:
         token_expiration_sec: int = WrapperProperties.IAM_TOKEN_EXPIRATION.get_int(props)
         token_expiry: datetime = datetime.now() + timedelta(seconds=token_expiration_sec)
         port: int = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
-        credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props, host_info)
+        if credentials is None:
+            credentials = self._credentials_provider_factory.get_aws_credentials(region, props, host_info)
 
         if self._fetch_token_counter is not None:
             self._fetch_token_counter.inc()

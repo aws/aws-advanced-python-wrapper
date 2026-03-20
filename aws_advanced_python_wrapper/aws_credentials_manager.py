@@ -32,7 +32,7 @@ class AwsCredentialsManager:
     _clients: dict[str, Any] = {}
 
     @staticmethod
-    def get_session(host_info: HostInfo, props: Properties, region: str) -> Session:
+    def get_session(host_info: HostInfo, props: Properties, region: Optional[str] = None) -> Session:
         profile_name = WrapperProperties.AWS_PROFILE.get(props)
         host_key = f'{host_info.as_alias()}{region}{profile_name}'
 
