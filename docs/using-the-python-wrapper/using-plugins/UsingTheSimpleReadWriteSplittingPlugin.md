@@ -51,10 +51,15 @@ Additionally, to consistently ensure the role of connections made with the plugi
 If it is unable to return a verified initial connection, it will log a message and continue with the normal workflow of the other plugins.
 When connecting with custom endpoints and other non-standard URLs, role verification on the initial connection can also be triggered by providing the expected role through the `srw_verify_initial_connection_type` parameter. Set this to `writer` or `reader` accordingly.
 
-## Limitations When Verifying Connections
+The AWS Advanced Python Wrapper supports verifying the role of connections to PostgreSQL, MySQL, and MariaDB databases through using the following queries:
 
-#### Non-RDS clusters
-The verification step determines the role of the connection by executing a query against it. The AWS Advanced Python Wrapper does not support gathering such information for databases that are not Aurora or RDS clusters. Thus, when connecting to non-RDS clusters `verifyNewSrwConnections` must be set to `false`.
+| DB Type        | Query                                   |
+|----------------|-----------------------------------------|
+| PostgreSQL     | `SELECT pg_catalog.pg_is_in_recovery()` |
+| Aurora MySQL   | `SELECT @@innodb_read_only`             |
+| MySQL, MariaDB | `SELECT @@read_only`                    |
+
+Role-verification can be disabled by setting the `verifyNewSrwConnections` parameter to `false`. The Simple Read/Write Splitting Plugin will continue to function, relying purely on the endpoints from the `srwWriteEndpoint` and `srwReadEndpoint` parameters.
 
 #### Autocommit
 The verification logic results in errors such as `Cannot change transaction read-only property in the middle of a transaction` from the underlying driver when:

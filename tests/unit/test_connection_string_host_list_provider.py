@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.s
 
-import pytest
+import pytest  # type: ignore
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_list_provider import \
@@ -34,20 +34,6 @@ def mock_provider_service(mocker):
 @pytest.fixture
 def props():
     return Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com"})
-
-
-def test_get_host_role(mock_provider_service, mock_cursor, props):
-    provider = ConnectionStringHostListProvider(mock_provider_service, props)
-
-    with pytest.raises(AwsWrapperError):
-        provider.get_host_role("ConnectionStringHostListProvider.ErrorDoesNotSupportHostRole")
-
-
-def test_identify_connection_no_dialect(mock_provider_service, props):
-    provider = ConnectionStringHostListProvider(mock_provider_service, props)
-
-    with pytest.raises(AwsWrapperError):
-        provider.identify_connection("ConnectionStringHostListProvider.ErrorDoesNotSupportIdentifyConnection")
 
 
 def test_refresh(mock_provider_service, props):
