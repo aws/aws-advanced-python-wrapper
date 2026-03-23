@@ -29,13 +29,13 @@ from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 class CredentialsProviderFactory(Protocol):
     @abstractmethod
-    def get_aws_credentials(self, region: str, props: Properties, host_info: HostInfo) -> Optional[Dict[str, str]]:
+    def get_aws_credentials(self, region: Optional[str], props: Properties, host_info: HostInfo) -> Optional[Dict[str, str]]:
         ...
 
 
 class SamlCredentialsProviderFactory(CredentialsProviderFactory):
 
-    def get_aws_credentials(self, region: str, props: Properties, host_info: HostInfo) -> Optional[Dict[str, str]]:
+    def get_aws_credentials(self, region: Optional[str], props: Properties, host_info: HostInfo) -> Optional[Dict[str, str]]:
         saml_assertion: str = self.get_saml_assertion(props)
         session = AwsCredentialsManager.get_session(host_info, props, region)
         sts_client = AwsCredentialsManager.get_client("sts", session, host_info.host, region)

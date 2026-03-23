@@ -40,7 +40,7 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
 

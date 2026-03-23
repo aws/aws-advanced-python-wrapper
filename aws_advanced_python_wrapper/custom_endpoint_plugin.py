@@ -35,13 +35,13 @@ if TYPE_CHECKING:
 
 from enum import Enum
 
-from boto3 import Session
+from boto3 import Session  # type: ignore
 
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
     SlidingExpirationCacheContainer
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (

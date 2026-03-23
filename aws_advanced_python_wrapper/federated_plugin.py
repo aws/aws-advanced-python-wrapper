@@ -25,7 +25,9 @@ from aws_advanced_python_wrapper.aws_credentials_manager import \
 from aws_advanced_python_wrapper.credentials_provider_factory import (
     CredentialsProviderFactory, SamlCredentialsProviderFactory)
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
-from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
+from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
+from aws_advanced_python_wrapper.utils.region_utils import (GdbRegionUtils,
+                                                            RegionUtils)
 from aws_advanced_python_wrapper.utils.saml_utils import SamlUtils
 
 if TYPE_CHECKING:
@@ -37,7 +39,7 @@ if TYPE_CHECKING:
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Optional, Set
 
-import requests
+import requests  # type: ignore
 
 from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
@@ -45,7 +47,7 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.rdsutils import RdsUtils
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
 logger = Logger(__name__)
 
@@ -61,7 +63,6 @@ class FederatedAuthPlugin(Plugin):
         self._plugin_service = plugin_service
         self._credentials_provider_factory = credentials_provider_factory
 
-        self._region_utils = RegionUtils()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = telemetry_factory.create_counter("federated.fetch_token.count")
         self._cache_size_gauge = telemetry_factory.create_gauge("federated.token_cache.size", lambda: len(FederatedAuthPlugin._token_cache))
@@ -85,7 +86,16 @@ class FederatedAuthPlugin(Plugin):
 
         host = IamAuthUtils.get_iam_host(props, host_info)
         port = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
-        region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host)
+
+        rds_type = self._rds_utils.identify_rds_type(host)
+        if rds_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER:
+            credentials = self._credentials_provider_factory.get_aws_credentials(None, props, host_info)
+            self._region_utils: RegionUtils = GdbRegionUtils(credentials)
+        else:
+            credentials = None
+            self._region_utils = RegionUtils()
+
+        region = self._region_utils.get_region(props, WrapperProperties.IAM_REGION.name, host, host_info)
         if not region:
             error_message = "RdsUtils.UnsupportedHostname"
             logger.debug(error_message, host)
@@ -107,7 +117,7 @@ class FederatedAuthPlugin(Plugin):
             logger.debug("FederatedAuthPlugin.UseCachedToken", token_info.token)
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
-            self._update_authentication_token(token_host_info, props, user, region, cache_key)
+            self._update_authentication_token(token_host_info, props, user, region, cache_key, credentials)
 
         WrapperProperties.USER.set(props, WrapperProperties.DB_USER.get(props))
 
@@ -120,7 +130,7 @@ class FederatedAuthPlugin(Plugin):
             if token_info is None or token_info.is_expired() or not self._plugin_service.is_login_exception(e):
                 raise AwsWrapperError(Messages.get_formatted("FederatedAuthPlugin.ConnectException", e), e) from e
 
-            self._update_authentication_token(token_host_info, props, user, region, cache_key)
+            self._update_authentication_token(token_host_info, props, user, region, cache_key, credentials)
 
             try:
                 return connect_func()
@@ -144,11 +154,13 @@ class FederatedAuthPlugin(Plugin):
                                      props: Properties,
                                      user: Optional[str],
                                      region: str,
-                                     cache_key: str) -> None:
+                                     cache_key: str,
+                                     credentials: Optional[Dict[str, str]] = None) -> None:
         token_expiration_sec: int = WrapperProperties.IAM_TOKEN_EXPIRATION.get_int(props)
         token_expiry: datetime = datetime.now() + timedelta(seconds=token_expiration_sec)
         port: int = IamAuthUtils.get_port(props, host_info, self._plugin_service.database_dialect.default_port)
-        credentials: Optional[Dict[str, str]] = self._credentials_provider_factory.get_aws_credentials(region, props, host_info)
+        if credentials is None:
+            credentials = self._credentials_provider_factory.get_aws_credentials(region, props, host_info)
 
         if self._fetch_token_counter is not None:
             self._fetch_token_counter.inc()
