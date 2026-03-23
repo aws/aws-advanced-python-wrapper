@@ -40,7 +40,6 @@ if TYPE_CHECKING:
 
 import aws_advanced_python_wrapper.database_dialect as db_dialect
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
-                                                QueryTimeoutError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.host_availability import (
     HostAvailability, create_host_availability_strategy)

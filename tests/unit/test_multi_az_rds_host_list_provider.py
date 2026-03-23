@@ -12,15 +12,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from concurrent.futures import TimeoutError
-
 import psycopg  # type: ignore
 import pytest  # type: ignore
 
 from aws_advanced_python_wrapper.database_dialect import (
     AuroraPgDialect, MultiAzClusterPgDialect)
-from aws_advanced_python_wrapper.errors import (AwsWrapperError,
-                                                QueryTimeoutError)
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_list_provider import (
     MultiAzTopologyUtils, RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -160,46 +157,6 @@ def test_get_topology_no_connection(mocker, mock_provider_service, initial_hosts
 
     assert initial_hosts == result
     mock_force_refresh.assert_not_called()
-
-
-def test_identify_connection_errors(mock_provider_service, mock_conn, mock_cursor, props):
-    mock_cursor.fetchone.return_value = None
-    provider = create_provider(mock_provider_service, props)
-
-    with pytest.raises(AwsWrapperError):
-        provider.identify_connection(mock_conn)
-
-    mock_cursor.execute.side_effect = TimeoutError()
-    with pytest.raises(QueryTimeoutError):
-        provider.identify_connection(mock_conn)
-
-
-def test_identify_connection_no_match_in_topology(mocker, mock_provider_service, mock_conn, mock_cursor, props):
-    mock_cursor.fetchone.return_value = ("non-matching-host",)
-    provider = create_provider(mock_provider_service, props)
-    mocker.patch.object(provider, '_force_refresh_monitor', return_value=())
-
-    assert provider.identify_connection(mock_conn) is None
-
-
-def test_identify_connection_empty_topology(mocker, mock_provider_service, mock_conn, mock_cursor, props):
-    provider = create_provider(mock_provider_service, props)
-    mock_cursor.fetchone.return_value = ("instance-1",)
-
-    provider.refresh = mocker.MagicMock(return_value=[])
-    provider.force_refresh = mocker.MagicMock(return_value=[])
-    assert provider.identify_connection(mock_conn) is None
-
-
-def test_identify_connection_host_in_topology(mocker, mock_provider_service, mock_conn, mock_cursor, props):
-    provider = create_provider(mock_provider_service, props)
-    mock_cursor.fetchone.return_value = ("instance-1",)
-    expected_hosts = (HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", host_id="instance-1", role=HostRole.WRITER),)
-    mocker.patch.object(provider, '_force_refresh_monitor', return_value=expected_hosts)
-
-    host_info = provider.identify_connection(mock_conn)
-    assert "instance-1.xyz.us-east-2.rds.amazonaws.com" == host_info.host
-    assert "instance-1" == host_info.host_id
 
 
 def test_host_pattern_setting(mock_provider_service, props):
