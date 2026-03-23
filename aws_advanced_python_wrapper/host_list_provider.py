@@ -239,14 +239,9 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 # Return the original hosts passed to the connect method
                 return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
 
-            try:
-                monitor = self._get_or_create_monitor()
-                if monitor:
-                    hosts = monitor.force_refresh_with_connection(conn, self._DEFAULT_TOPOLOGY_QUERY_TIMEOUT_SEC)
-                    if hosts is not None and len(hosts) > 0:
-                        return RdsHostListProvider.FetchTopologyResult(hosts, False)
-            except TimeoutError as e:
-                raise QueryTimeoutError(Messages.get("RdsHostListProvider.QueryForTopologyTimeout")) from e
+            hosts = self._force_refresh_monitor(False, self._DEFAULT_TOPOLOGY_QUERY_TIMEOUT_SEC)
+            if hosts is not None and len(hosts) > 0:
+                return RdsHostListProvider.FetchTopologyResult(hosts, False)
 
         if cached_hosts:
             return RdsHostListProvider.FetchTopologyResult(cached_hosts, True)

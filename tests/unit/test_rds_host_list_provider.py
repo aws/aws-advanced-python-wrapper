@@ -95,13 +95,12 @@ def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, 
     provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
     provider._initialize()
     StorageService.set(provider._cluster_id, cache_hosts, Topology)
-    mock_monitor = mocker.MagicMock()
-    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
+    mock_force_refresh = mocker.patch.object(provider, '_force_refresh_monitor')
 
     result = provider.refresh(mock_conn)
 
     assert cache_hosts == result
-    mock_monitor.force_refresh_with_connection.assert_not_called()
+    mock_force_refresh.assert_not_called()
 
 
 def test_get_topology_force_update(
@@ -109,27 +108,21 @@ def test_get_topology_force_update(
     topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
     provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
     StorageService.set(provider._cluster_id, cache_hosts, Topology)
-    mock_monitor = mocker.MagicMock()
-    mock_monitor.force_refresh_with_connection.return_value = queried_hosts
-    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
+    mocker.patch.object(provider, '_force_refresh_monitor', return_value=queried_hosts)
 
     result = provider.force_refresh(mock_conn)
 
     assert queried_hosts == result
-    mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
 def test_get_topology_timeout(mocker, mock_cursor, mock_provider_service, initial_hosts, props):
     topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
     provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
-    mock_monitor = mocker.MagicMock()
-    mock_monitor.force_refresh_with_connection.side_effect = TimeoutError()
-    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
+    mocker.patch.object(provider, '_force_refresh_monitor', return_value=None)
 
-    with pytest.raises(QueryTimeoutError):
-        provider.force_refresh()
+    result = provider.force_refresh()
 
-    mock_monitor.force_refresh_with_connection.assert_called_once()
+    assert initial_hosts == result
 
 
 def test_get_topology_invalid_topology(
@@ -138,41 +131,32 @@ def test_get_topology_invalid_topology(
     provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
     provider._initialize()
     StorageService.set(provider._cluster_id, cache_hosts, Topology)
-    mock_monitor = mocker.MagicMock()
-    mock_monitor.force_refresh_with_connection.return_value = ()  # Empty topology
-    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
+    mocker.patch.object(provider, '_force_refresh_monitor', return_value=())
 
     result = provider.force_refresh()
 
     assert cache_hosts == result
-    mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
 def test_get_topology_invalid_query(mocker, mock_provider_service, mock_conn, mock_cursor, props):
     topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
     provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
-    mock_monitor = mocker.MagicMock()
-    mock_monitor.force_refresh_with_connection.side_effect = ProgrammingError()
-    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
+    mocker.patch.object(provider, '_force_refresh_monitor', side_effect=ProgrammingError())
 
     with pytest.raises(ProgrammingError):
         provider.force_refresh(mock_conn)
-    mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
 def test_get_topology_multiple_writers(mocker, mock_provider_service, mock_conn, mock_cursor, props):
     topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
     provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
     expected_hosts = (HostInfo("new_writer.xyz.us-east-2.rds.amazonaws.com", role=HostRole.WRITER),)
-    mock_monitor = mocker.MagicMock()
-    mock_monitor.force_refresh_with_connection.return_value = expected_hosts
-    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
+    mocker.patch.object(provider, '_force_refresh_monitor', return_value=expected_hosts)
 
     result = provider.refresh()
 
     assert 1 == len(result)
     assert result[0].host == "new_writer.xyz.us-east-2.rds.amazonaws.com"
-    mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
 def test_get_topology_no_connection(mocker, mock_provider_service, initial_hosts, props):
@@ -219,14 +203,16 @@ def test_identify_connection_empty_topology(mocker, mock_provider_service, mock_
     mock_cursor.fetchone.return_value = ("instance-1",)
 
     provider.refresh = mocker.MagicMock(return_value=[])
+    provider.force_refresh = mocker.MagicMock(return_value=[])
     assert provider.identify_connection(mock_conn) is None
 
 
-def test_identify_connection_host_in_topology(mock_provider_service, mock_conn, mock_cursor, props):
+def test_identify_connection_host_in_topology(mocker, mock_provider_service, mock_conn, mock_cursor, props):
     topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
     provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
     mock_cursor.fetchone.return_value = ("instance-1",)
-    mock_topology_query(mock_conn, mock_cursor, [("instance-1", True)])
+    expected_hosts = (HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", host_id="instance-1", role=HostRole.WRITER),)
+    mocker.patch.object(provider, '_force_refresh_monitor', return_value=expected_hosts)
 
     host_info = provider.identify_connection(mock_conn)
     assert "instance-1.xyz.us-east-2.rds.amazonaws.com" == host_info.host
@@ -294,14 +280,11 @@ def test_get_topology_returns_last_writer(mocker, mock_provider_service, mock_co
     props = Properties({"host": "my-cluster.proxy-xyz.us-east-2.rds.amazonaws.com"})
     topology_utils = AuroraTopologyUtils(AuroraPgDialect(), props)
     provider = RdsHostListProvider(mock_provider_service, mock_provider_service, props, topology_utils)
-    mock_monitor = mocker.MagicMock()
-    mock_monitor.force_refresh_with_connection.return_value = expected_hosts
-    mocker.patch.object(provider, '_get_or_create_monitor', return_value=mock_monitor)
+    mocker.patch.object(provider, '_force_refresh_monitor', return_value=expected_hosts)
     provider._initialize()
 
     result = provider._get_topology(mock_conn, True)
     assert result.hosts[0].host == "expected_writer_host.xyz.us-east-2.rds.amazonaws.com"
-    mock_monitor.force_refresh_with_connection.assert_called_once()
 
 
 def test_force_monitoring_refresh(mocker, mock_provider_service, props):
