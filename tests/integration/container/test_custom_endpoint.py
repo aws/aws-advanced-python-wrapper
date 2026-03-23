@@ -63,7 +63,7 @@ class TestCustomEndpoint:
     @pytest.fixture(scope='class')
     def default_props(self):
         p: Properties = Properties(
-            {"connect_timeout": 10_000, "autocommit": True, "cluster_id": "cluster1"})
+            {"connect_timeout": 10_000, "socket_timeout": 30, "autocommit": True, "cluster_id": "cluster1"})
 
         features = TestEnvironment.get_current().get_features()
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in features \
@@ -283,14 +283,19 @@ class TestCustomEndpoint:
         rds_utils.failover_cluster_and_wait_until_writer_changed(target_id=failover_target)
 
         self.logger.debug("Verifying that new connection has role: " + host_role.name)
-        # Verify that new connection is now the correct role
-        with AwsWrapperConnection.connect(target_driver_connect, **conn_kwargs, **props) as conn:
-            endpoint_members = self.endpoint_info["StaticMembers"]
-            original_instance_id = rds_utils.query_instance_id(conn)
-            assert original_instance_id in endpoint_members
+        # Verify role is stable by checking multiple times. Aurora can re-promote an instance
+        # back to writer shortly after failover, so we check over a period of time.
+        num_checks = 3
+        for attempt in range(num_checks):
+            with AwsWrapperConnection.connect(target_driver_connect, **conn_kwargs, **props) as conn:
+                endpoint_members = self.endpoint_info["StaticMembers"]
+                original_instance_id = rds_utils.query_instance_id(conn)
+                assert original_instance_id in endpoint_members
 
-            new_role = rds_utils.query_host_role(conn, TestEnvironment.get_current().get_engine())
-            assert new_role == host_role
+                new_role = rds_utils.query_host_role(conn, TestEnvironment.get_current().get_engine())
+                assert new_role == host_role
+            if attempt < num_checks - 1:
+                sleep(5)
         self.logger.debug("Custom endpoint instance successfully set to role: " + host_role.name)
 
     def test_custom_endpoint_read_write_splitting__with_custom_endpoint_changes__with_reader_as_init_conn(

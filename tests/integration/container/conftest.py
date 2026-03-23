@@ -100,6 +100,7 @@ def pytest_runtest_setup(item):
         # Need to ensure that cluster details through API matches topology fetched through SQL
         # Wait up to 5min
         instances: List[str] = list()
+        consecutive_sql_failures = 0
         start_time = timeit.default_timer()
         while (len(instances) < request.get_num_of_instances()
                or len(instances) == 0
@@ -108,9 +109,25 @@ def pytest_runtest_setup(item):
 
             try:
                 instances = rds_utility.get_instance_ids()
+                consecutive_sql_failures = 0
             except Exception as ex:
+                consecutive_sql_failures += 1
                 logger.warning("conftest.ExceptionWhileObtainingInstanceIDs", ex)
-                instances = list()
+
+                # If SQL connections keep failing, fall back to the RDS API to get instance ordering.
+                # This avoids timing out the entire setup when the cluster is temporarily unreachable via SQL.
+                if consecutive_sql_failures >= 3:
+                    try:
+                        cluster_info = rds_utility.get_db_cluster(info.get_db_name())
+                        if cluster_info is not None:
+                            members = cluster_info.get("DBClusterMembers", [])
+                            writer_ids = [m["DBInstanceIdentifier"] for m in members if m.get("IsClusterWriter")]
+                            reader_ids = [m["DBInstanceIdentifier"] for m in members if not m.get("IsClusterWriter")]
+                            instances = writer_ids + reader_ids
+                    except Exception:
+                        instances = list()
+                else:
+                    instances = list()
 
             # Only sleep if condition is still not met
             if (len(instances) < request.get_num_of_instances()
