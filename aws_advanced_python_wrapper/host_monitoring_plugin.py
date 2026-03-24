@@ -22,12 +22,11 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
-from concurrent.futures import Future, TimeoutError
 from dataclasses import dataclass
 from queue import Queue
-from threading import Event, Lock, RLock
+from threading import Event, Lock, Thread
 from time import perf_counter_ns
-from typing import Any, Callable, ClassVar, Dict, FrozenSet, Optional, Set
+from typing import Any, Callable, Dict, FrozenSet, Optional, Set
 
 from _weakref import ReferenceType, ref
 
@@ -36,9 +35,9 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
-from aws_advanced_python_wrapper.thread_pool_container import \
-    ThreadPoolContainer
-from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
+from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils.events import (EventBase,
+                                                      MonitorResetEvent)
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
@@ -78,7 +77,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
         self._is_connection_initialized = False
         self._monitoring_host_info: Optional[HostInfo] = None
         self._rds_utils: RdsUtils = RdsUtils()
-        self._monitor_service: MonitorService = MonitorService(plugin_service)
+        self._monitor_service: HostMonitorService = HostMonitorService(plugin_service)
         self._lock: Lock = Lock()
         self._is_enabled = WrapperProperties.FAILURE_DETECTION_ENABLED.get_bool(self._props)
         self._failure_detection_time_ms = WrapperProperties.FAILURE_DETECTION_TIME_MS.get_int(self._props)
@@ -201,9 +200,6 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
         return self._monitoring_host_info
 
     def release_resources(self):
-        if self._monitor_service is not None:
-            self._monitor_service.release_resources()
-
         self._monitor_service = None
 
 
@@ -349,12 +345,10 @@ class Monitor:
             self,
             plugin_service: PluginService,
             host_info: HostInfo,
-            props: Properties,
-            monitor_container: MonitoringThreadContainer):
+            props: Properties):
         self._plugin_service: PluginService = plugin_service
         self._host_info: HostInfo = host_info
         self._props: Properties = props
-        self._monitor_container: MonitoringThreadContainer = monitor_container
         self._telemetry_factory = self._plugin_service.get_telemetry_factory()
 
         self._lock: Lock = Lock()
@@ -370,6 +364,9 @@ class Monitor:
         self._host_invalid_counter = self._telemetry_factory.create_counter(
             f"host_monitoring.host_unhealthy.count.{host_id}")
 
+        self._thread = Thread(daemon=True, target=self.run, name="EFMv1Monitor")
+        self._thread.start()
+
     @dataclass
     class HostStatus:
         is_available: bool
@@ -381,6 +378,29 @@ class Monitor:
 
     def stop(self):
         self._is_stopped.set()
+        self.close()
+
+    def close(self) -> None:
+        if self._thread.is_alive():
+            self._thread.join(timeout=5.0)
+        if self._monitoring_conn is not None:
+            try:
+                self._monitoring_conn.close()
+            except Exception:
+                pass
+
+    @property
+    def can_dispose(self) -> bool:
+        return self._active_contexts.empty() and self._new_contexts.empty()
+
+    @property
+    def last_activity_ns(self) -> int:
+        return self._context_last_used_ns
+
+    def process_event(self, event: EventBase) -> None:
+        if isinstance(event, MonitorResetEvent) and self._host_info.host in event.endpoints:
+            logger.debug("Monitor.ResetEventReceived", self._host_info.host)
+            self._monitoring_conn = None
 
     def start_monitoring(self, context: MonitoringContext):
         current_time_ns = perf_counter_ns()
@@ -434,7 +454,7 @@ class Monitor:
 
                     if self._active_contexts.empty():
                         if (perf_counter_ns() - self._context_last_used_ns) >= self._monitor_disposal_time_ms * 1_000_000:
-                            self._monitor_container.release_monitor(self)
+                            # No active contexts and idle too long — stop self
                             break
 
                         self.sleep(Monitor._INACTIVE_SLEEP_MS / 1000)
@@ -499,15 +519,13 @@ class Monitor:
             logger.debug("Monitor.StoppingMonitorUnhandledException", self._host_info.host)
             logger.debug(e, exc_info=True)
         finally:
-            self._monitor_container.release_monitor(self)
-            self.stop()
+            self._is_stopped.set()
+            core_services.get_monitor_service().detach(Monitor, self)
             if self._monitoring_conn is not None:
                 try:
                     self._monitoring_conn.close()
                 except Exception:
-                    # Do nothing
                     pass
-            self.stop()
 
     def _check_host_status(self, host_check_timeout_ms: int) -> HostStatus:
         context = self._telemetry_factory.open_telemetry_context(
@@ -564,118 +582,20 @@ class Monitor:
         self._is_stopped.wait(duration)
 
 
-class MonitoringThreadContainer:
-    """
-    This singleton class keeps track of all the monitoring threads and handles the creation and clean up of each
-    monitoring thread.
-    """
-
-    _instance: ClassVar[Optional[MonitoringThreadContainer]] = None
-    _lock: ClassVar[RLock] = RLock()
-    _monitor_lock: ClassVar[RLock] = RLock()
-
-    _monitor_map: ConcurrentDict[str, Monitor] = ConcurrentDict()
-    _tasks_map: ConcurrentDict[Monitor, Future] = ConcurrentDict()
-    _executor_name: ClassVar[str] = "MonitoringThreadContainerExecutor"
-
-    def __init__(self):
-        self._thread_pool = ThreadPoolContainer.get_thread_pool(self._executor_name)
-
-    # This logic ensures that this class is a Singleton
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            with cls._lock:
-                if not cls._instance:
-                    cls._instance = super().__new__(cls, *args, **kwargs)
-        return cls._instance
-
-    def get_or_create_monitor(self, host_aliases: FrozenSet[str], monitor_supplier: Callable) -> Monitor:
-        if not host_aliases:
-            raise AwsWrapperError(Messages.get("MonitoringThreadContainer.EmptyHostKeys"))
-
-        with self._monitor_lock:
-            monitor = None
-            any_alias = next(iter(host_aliases))
-            for host_alias in host_aliases:
-                monitor = self._monitor_map.get(host_alias)
-                any_alias = host_alias
-                if monitor is not None:
-                    break
-
-            def _get_or_create_monitor(_) -> Monitor:
-                supplied_monitor = monitor_supplier()
-                if supplied_monitor is None:
-                    raise AwsWrapperError(Messages.get("MonitoringThreadContainer.SupplierMonitorNone"))
-                self._tasks_map.compute_if_absent(
-                    supplied_monitor,
-                    lambda _: self._thread_pool.submit(supplied_monitor.run))
-                return supplied_monitor
-
-            if monitor is None:
-                monitor = self._monitor_map.compute_if_absent(any_alias, _get_or_create_monitor)
-                if monitor is None:
-                    raise AwsWrapperError(
-                        Messages.get_formatted("MonitoringThreadContainer.ErrorGettingMonitor", host_aliases))
-
-            for host_alias in host_aliases:
-                self._monitor_map.put_if_absent(host_alias, monitor)
-
-            return monitor
-
-    @staticmethod
-    def _cancel(monitor, future: Future) -> None:
-        future.cancel()
-        monitor.stop()
-        return None
-
-    def get_monitor(self, alias: str) -> Optional[Monitor]:
-        return self._monitor_map.get(alias)
-
-    def release_monitor(self, monitor: Monitor):
-        with self._monitor_lock:
-            self._monitor_map.remove_matching_values([monitor])
-            self._tasks_map.compute_if_present(monitor, MonitoringThreadContainer._cancel)
-
-    @staticmethod
-    def clean_up():
-        """Clean up any dangling monitoring threads created by the host monitoring plugin.
-        This method should be called at the end of the application.
-        The Host Monitoring Plugin creates monitoring threads in the background to monitor all connections established to each of cluster instances.
-        The threads will terminate if there are no connections to the cluster instance the thread is monitoring for over a period of time,
-        specified by the `monitor_disposal_time_ms`. Client applications can also manually call this method to clean up any dangling resources.
-        This method should be called right before application termination.
-        """
-        if MonitoringThreadContainer._instance is None:
-            return
-
-        with MonitoringThreadContainer._lock:
-            if MonitoringThreadContainer._instance is not None:
-                MonitoringThreadContainer._instance._release_resources()
-                MonitoringThreadContainer._instance = None
-
-    def _release_resources(self):
-        with self._monitor_lock:
-            self._monitor_map.clear()
-            self._tasks_map.apply_if(
-                lambda monitor, future: not future.done() and not future.cancelled(),
-                lambda monitor, future: future.cancel())
-
-            for monitor, _ in self._tasks_map.items():
-                monitor.stop()
-
-            ThreadPoolContainer.release_pool(MonitoringThreadContainer._executor_name, wait=False)
-            self._tasks_map.clear()
-
-
-class MonitorService:
+class HostMonitorService:
     def __init__(self, plugin_service: PluginService):
         self._plugin_service: PluginService = plugin_service
-        self._monitor_container: MonitoringThreadContainer = MonitoringThreadContainer()
         self._cached_monitor_aliases: Optional[FrozenSet[str]] = None
         self._cached_monitor: Optional[ReferenceType[Monitor]] = None
 
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._aborted_connections_counter = telemetry_factory.create_counter("host_monitoring.connections.aborted")
+
+        self._monitor_service = core_services.get_monitor_service()
+        self._monitor_service.register_monitor_type(
+            Monitor,
+            expiration_timeout_ns=WrapperProperties.MONITOR_DISPOSAL_TIME_MS.get_int(
+                self._plugin_service.props) * 1_000_000)
 
     def start_monitoring(self,
                          conn: Connection,
@@ -693,8 +613,10 @@ class MonitorService:
                 or monitor.is_stopped \
                 or self._cached_monitor_aliases is None \
                 or self._cached_monitor_aliases != host_aliases:
-            monitor = self._monitor_container.get_or_create_monitor(
-                host_aliases, lambda: self._create_monitor(host_info, props, self._monitor_container))
+            monitor = self._monitor_service.run_if_absent_with_aliases(
+                Monitor,
+                host_aliases,
+                lambda: Monitor(self._plugin_service, host_info, props))
             self._cached_monitor = ref(monitor)
             self._cached_monitor_aliases = host_aliases
 
@@ -704,9 +626,6 @@ class MonitorService:
         monitor.start_monitoring(context)
         return context
 
-    def _create_monitor(self, host_info: HostInfo, props: Properties, monitor_container: MonitoringThreadContainer):
-        return Monitor(self._plugin_service, host_info, props, monitor_container)
-
     @staticmethod
     def stop_monitoring(context: MonitoringContext):
         monitor = context.monitor
@@ -714,10 +633,7 @@ class MonitorService:
 
     def stop_monitoring_host(self, host_aliases: FrozenSet):
         for alias in host_aliases:
-            monitor = self._monitor_container.get_monitor(alias)
+            monitor = self._monitor_service.get(Monitor, alias)
             if monitor is not None:
                 monitor.clear_contexts()
                 return
-
-    def release_resources(self):
-        self._monitor_container = None

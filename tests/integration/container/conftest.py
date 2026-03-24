@@ -27,17 +27,10 @@ from aws_advanced_python_wrapper.database_dialect import DatabaseDialectManager
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
-from aws_advanced_python_wrapper.host_monitoring_plugin import \
-    MonitoringThreadContainer
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
-from aws_advanced_python_wrapper.thread_pool_container import \
-    ThreadPoolContainer
+from aws_advanced_python_wrapper.utils import core_services
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
-    SlidingExpirationCacheContainer
-from aws_advanced_python_wrapper.utils.storage.storage_service import \
-    StorageService
 
 if TYPE_CHECKING:
     from .utils.test_driver import TestDriver
@@ -142,13 +135,10 @@ def pytest_runtest_setup(item):
         assert cluster_ip == writer_ip
 
         RdsUtils.clear_cache()
-        StorageService.clear_all()
+        core_services.release_resources()
         PluginServiceImpl._host_availability_expiring_cache.clear()
         DatabaseDialectManager._known_endpoint_dialects.clear()
         CustomEndpointMonitor._custom_endpoint_info_cache.clear()
-        MonitoringThreadContainer.clean_up()
-        ThreadPoolContainer.release_resources(wait=True)
-        SlidingExpirationCacheContainer.release_resources()
 
         ConnectionProviderManager.release_resources()
         ConnectionProviderManager.reset_provider()

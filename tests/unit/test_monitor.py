@@ -20,7 +20,7 @@ import pytest
 
 from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.host_monitoring_plugin import (
-    Monitor, MonitoringContext, MonitoringThreadContainer)
+    Monitor, MonitoringContext)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -73,18 +73,18 @@ def mock_plugin_service(mocker, mock_conn, mock_driver_dialect):
 
 @pytest.fixture
 def monitor(mock_plugin_service, host_info, props):
-    return Monitor(
-        mock_plugin_service,
-        host_info,
-        props,
-        MonitoringThreadContainer())
+    m = Monitor(mock_plugin_service, host_info, props)
+    # Stop the auto-started thread so tests can control execution
+    m.stop()
+    m._thread.join(timeout=2)
+    m._is_stopped.clear()
+    return m
 
 
 @pytest.fixture(autouse=True)
-def release_container():
+def cleanup():
     yield
-    while MonitoringThreadContainer._instance is not None:
-        release_resources()
+    release_resources()
 
 
 @pytest.fixture
@@ -137,10 +137,6 @@ def test_run_host_available(
         mock_driver_dialect,
         mock_aborted_connection_counter):
     remove_delays()
-    host_alias = "host-1"
-    container = MonitoringThreadContainer()
-    container._monitor_map.put_if_absent(host_alias, monitor)
-    container._tasks_map.put_if_absent(monitor, mocker.MagicMock())
 
     executor = ThreadPoolExecutor()
     context = MonitoringContext(monitor, mock_conn, mock_driver_dialect,
@@ -158,11 +154,9 @@ def test_run_host_available(
     mock_conn.close.assert_called_once()
     assert context._is_host_unavailable is False
     assert monitor._is_stopped.is_set()
-    assert container._monitor_map.get(host_alias) is None
-    assert container._tasks_map.get(monitor) is None
 
 
-def test_ensure_stopped_monitor_removed_from_map(
+def test_ensure_stopped_monitor_exits(
         mocker,
         monitor,
         host_info,
@@ -172,10 +166,6 @@ def test_ensure_stopped_monitor_removed_from_map(
         mock_driver_dialect,
         mock_aborted_connection_counter):
     remove_delays()
-    host_alias = "host-1"
-    container = MonitoringThreadContainer()
-    container._monitor_map.put_if_absent(host_alias, monitor)
-    container._tasks_map.put_if_absent(monitor, mocker.MagicMock())
 
     executor = ThreadPoolExecutor()
     context = MonitoringContext(monitor, mock_conn, mock_driver_dialect,
@@ -189,8 +179,7 @@ def test_ensure_stopped_monitor_removed_from_map(
     sleep(0.1)  # Allow some time for the monitor to loop
     wait([future], 3)
 
-    assert container._monitor_map.get(host_alias) is None
-    assert container._tasks_map.get(monitor) is None
+    assert monitor._is_stopped.is_set()
 
 
 def test_run_host_unavailable(
@@ -221,17 +210,9 @@ def test_run_host_unavailable(
 
 
 def test_run__no_contexts(mocker, monitor):
-    host_alias = "host-1"
-    container = MonitoringThreadContainer()
-    container._monitor_map.put_if_absent(host_alias, monitor)
-    container._tasks_map.put_if_absent(monitor, mocker.MagicMock())
-
     # Monitor should exit because there are no contexts
     monitor.run()
-
-    assert container._monitor_map.get(host_alias) is None
-    assert container._tasks_map.get(monitor) is None
-    release_resources()
+    assert monitor._is_stopped.is_set()
 
 
 def test_check_connection_status__valid_then_invalid(mocker, monitor):
@@ -256,6 +237,19 @@ def test_check_connection_status__conn_check_throws_exception(mocker, monitor):
     assert status.is_available
     status = monitor._check_host_status(30)
     assert not status.is_available
+
+
+def test_can_dispose(monitor):
+    assert monitor.can_dispose is True
+    monitor._active_contexts.put("ctx")
+    assert monitor.can_dispose is False
+
+
+def test_stop(monitor, mock_conn):
+    monitor._monitoring_conn = mock_conn
+    monitor.stop()
+    assert monitor._is_stopped.is_set()
+    mock_conn.close.assert_called_once()
 
 
 def remove_delays():

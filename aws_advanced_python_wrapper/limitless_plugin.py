@@ -15,8 +15,9 @@ import copy
 import math
 import time
 from contextlib import closing
+from datetime import timedelta
 from threading import Event, RLock, Thread
-from time import sleep
+from time import perf_counter_ns, sleep
 from typing import (TYPE_CHECKING, Any, Callable, ClassVar, List, Optional,
                     Set, Tuple)
 
@@ -28,13 +29,12 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin
+from aws_advanced_python_wrapper.utils import core_services
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
-    SlidingExpirationCacheContainer
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryContext, TelemetryFactory, TelemetryTraceLevel)
 from aws_advanced_python_wrapper.utils.utils import LogUtils, Utils
@@ -45,6 +45,13 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
 logger = Logger(__name__)
+
+
+class LimitlessRouters:
+    """Wrapper type for limitless router list, used as StorageService type key."""
+
+    def __init__(self, hosts: List[HostInfo]):
+        self.hosts = hosts
 
 
 class LimitlessPlugin(Plugin):
@@ -112,14 +119,13 @@ class LimitlessRouterMonitor:
     def __init__(self,
                  plugin_service: PluginService,
                  host_info: HostInfo,
-                 limitless_router_cache,  # SlidingExpirationCache from container
                  limitless_router_cache_key: str,
                  props: Properties,
                  interval_ms: int):
         self._plugin_service = plugin_service
         self._host_info = host_info
-        self._limitless_router_cache = limitless_router_cache
         self._limitless_router_cache_key = limitless_router_cache_key
+        self._storage_service = core_services.get_storage_service()
 
         self._properties = copy.deepcopy(props)
         for property_key in self._properties.keys():
@@ -134,6 +140,7 @@ class LimitlessRouterMonitor:
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
         self._monitoring_conn: Optional[Connection] = None
         self._is_stopped: Event = Event()
+        self._last_activity_ns: int = perf_counter_ns()
 
         self._daemon_thread: Thread = Thread(daemon=True, target=self.run)
         self._daemon_thread.start()
@@ -146,8 +153,19 @@ class LimitlessRouterMonitor:
     def is_stopped(self):
         return self._is_stopped.is_set()
 
-    def close(self):
+    def stop(self) -> None:
         self._is_stopped.set()
+        self.close()
+
+    @property
+    def can_dispose(self) -> bool:
+        return self._is_stopped.is_set()
+
+    @property
+    def last_activity_ns(self) -> int:
+        return self._last_activity_ns
+
+    def close(self):
         if self._monitoring_conn:
             self._monitoring_conn.close()
         self._daemon_thread.join(5)
@@ -163,15 +181,14 @@ class LimitlessRouterMonitor:
 
         try:
             while not self.is_stopped:
+                self._last_activity_ns = perf_counter_ns()
                 self._open_connection()
 
                 if self._monitoring_conn is not None:
 
                     new_limitless_routers = self._query_helper.query_for_limitless_routers(self._monitoring_conn, self._host_info.port)
-                    self._limitless_router_cache.compute_if_absent(self._limitless_router_cache_key,
-                                                                   lambda _: new_limitless_routers,
-                                                                   WrapperProperties.LIMITLESS_MONITOR_DISPOSAL_TIME_MS.get(
-                                                                       self._properties) * 1_000_000)
+                    self._storage_service.put(LimitlessRouters, self._limitless_router_cache_key,
+                                              LimitlessRouters(new_limitless_routers))
                     logger.debug(LogUtils.log_topology(tuple(new_limitless_routers), "[limitlessRouterMonitor] Topology:"))
 
                 sleep(self._interval_ms / 1000)
@@ -313,29 +330,26 @@ class LimitlessContext:
 
 class LimitlessRouterService:
     _CACHE_CLEANUP_NS: ClassVar[int] = 60_000_000_000  # 1 minute
-    _ROUTER_CACHE_NAME: ClassVar[str] = "limitless_router_cache"
-    _MONITOR_CACHE_NAME: ClassVar[str] = "limitless_monitor_cache"
     _force_get_limitless_routers_lock_map: ClassVar[ConcurrentDict[str, RLock]] = ConcurrentDict()
 
     def __init__(self, plugin_service: PluginService, query_helper: LimitlessQueryHelper):
         self._plugin_service = plugin_service
         self._query_helper = query_helper
+        self._storage_service = core_services.get_storage_service()
 
-        self._limitless_router_cache = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=LimitlessRouterService._ROUTER_CACHE_NAME,
-            cleanup_interval_ns=LimitlessRouterService._CACHE_CLEANUP_NS
-        )
+        self._storage_service.register(
+            LimitlessRouters,
+            item_expiration_time=timedelta(milliseconds=WrapperProperties.LIMITLESS_MONITOR_DISPOSAL_TIME_MS.get_int(
+                plugin_service.props)))
 
-        self._limitless_router_monitor = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=LimitlessRouterService._MONITOR_CACHE_NAME,
-            cleanup_interval_ns=LimitlessRouterService._CACHE_CLEANUP_NS,
-            should_dispose_func=lambda monitor: True,
-            item_disposal_func=lambda monitor: monitor.close()
-        )
+        self._monitor_service = core_services.get_monitor_service()
+        self._monitor_service.register_monitor_type(
+            LimitlessRouterMonitor,
+            expiration_timeout_ns=LimitlessRouterService._CACHE_CLEANUP_NS)
 
     def establish_connection(self, context: LimitlessContext) -> None:
         context.set_limitless_routers(self._get_limitless_routers(
-            self._plugin_service.host_list_provider.get_cluster_id(), context.get_props()))
+            self._plugin_service.host_list_provider.get_cluster_id()))
 
         if context.get_limitless_routers() is None or len(context.get_limitless_routers()) == 0:
             logger.debug("LimitlessRouterService.LimitlessRouterCacheEmpty")
@@ -388,14 +402,11 @@ class LimitlessRouterService:
 
             self._retry_connection_with_least_loaded_routers(context)
 
-    def _get_limitless_routers(self, cluster_id: str, props: Properties) -> List[HostInfo]:
-        # Convert milliseconds to nanoseconds
-        cache_expiration_nano: int = WrapperProperties.LIMITLESS_MONITOR_DISPOSAL_TIME_MS.get_int(props) * 1_000_000
-        self._limitless_router_cache.set_cleanup_interval_ns(cache_expiration_nano)
-        routers = self._limitless_router_cache.get(cluster_id)
+    def _get_limitless_routers(self, cluster_id: str) -> List[HostInfo]:
+        routers = self._storage_service.get(LimitlessRouters, cluster_id)
         if routers is None:
             return []
-        return routers
+        return routers.hosts
 
     def _retry_connection_with_least_loaded_routers(self, context: LimitlessContext) -> None:
         retry_count = 0
@@ -476,8 +487,6 @@ class LimitlessRouterService:
         raise AwsWrapperError(Messages.get("LimitlessRouterService.NoRoutersAvailable"))
 
     def _synchronously_get_limitless_routers(self, context: LimitlessContext) -> None:
-        cache_expiration_nano: int = WrapperProperties.LIMITLESS_MONITOR_DISPOSAL_TIME_MS.get_int(context.get_props()) * 1_000_000
-
         lock = LimitlessRouterService._force_get_limitless_routers_lock_map.compute_if_absent(
             self._plugin_service.host_list_provider.get_cluster_id(),
             lambda _: RLock()
@@ -487,7 +496,7 @@ class LimitlessRouterService:
 
         lock.acquire()
         try:
-            limitless_routers = self._limitless_router_cache.get(
+            limitless_routers = self._get_limitless_routers(
                 self._plugin_service.host_list_provider.get_cluster_id())
             if limitless_routers is not None and len(limitless_routers) != 0:
                 context.set_limitless_routers(limitless_routers)
@@ -501,11 +510,10 @@ class LimitlessRouterService:
 
             if new_limitless_routers is not None and len(new_limitless_routers) != 0:
                 context.set_limitless_routers(new_limitless_routers)
-                self._limitless_router_cache.compute_if_absent(
+                self._storage_service.put(
+                    LimitlessRouters,
                     self._plugin_service.host_list_provider.get_cluster_id(),
-                    lambda _: new_limitless_routers,
-                    cache_expiration_nano
-                )
+                    LimitlessRouters(new_limitless_routers))
             else:
                 raise AwsWrapperError(Messages.get("LimitlessRouterService.FetchedEmptyRouterList"))
 
@@ -519,21 +527,20 @@ class LimitlessRouterService:
                          props: Properties) -> None:
         try:
             limitless_router_monitor_key: str = self._plugin_service.host_list_provider.get_cluster_id()
-            cache_expiration_nano: int = WrapperProperties.LIMITLESS_MONITOR_DISPOSAL_TIME_MS.get_int(props) * 1_000_000
             intervals_ms: int = WrapperProperties.LIMITLESS_INTERVAL_MILLIS.get_int(props)
 
-            self._limitless_router_monitor.compute_if_absent(
+            self._monitor_service.run_if_absent(
+                LimitlessRouterMonitor,
                 limitless_router_monitor_key,
-                lambda _: LimitlessRouterMonitor(self._plugin_service,
-                                                 host_info,
-                                                 self._limitless_router_cache,
-                                                 limitless_router_monitor_key,
-                                                 props,
-                                                 intervals_ms), cache_expiration_nano)
+                lambda: LimitlessRouterMonitor(self._plugin_service,
+                                               host_info,
+                                               limitless_router_monitor_key,
+                                               props,
+                                               intervals_ms))
         except Exception as e:
             logger.debug("LimitlessRouterService.ErrorStartingMonitor", e)
             raise e
 
     def clear_cache(self) -> None:
         LimitlessRouterService._force_get_limitless_routers_lock_map.clear()
-        self._limitless_router_cache.clear()
+        self._storage_service.clear(LimitlessRouters)

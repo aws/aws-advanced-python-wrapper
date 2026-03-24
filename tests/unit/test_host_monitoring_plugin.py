@@ -200,4 +200,4 @@ def test_get_monitoring_host_info_errors(mocker, plugin, mock_plugin_service):
 
 def test_release_resources(plugin, mock_monitor_service):
     plugin.release_resources()
-    mock_monitor_service.release_resources.assert_called_once()
+    assert plugin._monitor_service is None

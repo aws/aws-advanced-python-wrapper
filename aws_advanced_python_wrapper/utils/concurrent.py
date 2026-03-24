@@ -98,6 +98,14 @@ class ConcurrentDict(Generic[K, V]):
         with self._lock:
             return self._dict.pop(key, None)
 
+    def remove_key_if(self, key: K, predicate: Callable[[V], bool]) -> Optional[V]:
+        with self._lock:
+            value = self._dict.get(key)
+            if value is not None and predicate(value):
+                del self._dict[key]
+                return value
+            return None
+
     def remove_if(self, predicate: Callable) -> bool:
         with self._lock:
             original_len = len(self._dict)

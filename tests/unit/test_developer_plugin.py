@@ -19,6 +19,7 @@ import pytest
 
 from aws_advanced_python_wrapper.developer_plugin import \
     ExceptionSimulatorManager
+from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.plugin_service import (
     PluginManager, PluginServiceImpl, PluginServiceManagerContainer)
 from aws_advanced_python_wrapper.utils.properties import Properties
@@ -87,14 +88,21 @@ def setup_container(container, plugin_service, plugin_manager):
     container.plugin_manager = plugin_manager
 
 
+def _make_conn(plugin_service, plugin_manager):
+    conn = object.__new__(AwsWrapperConnection)
+    conn._plugin_service = plugin_service
+    conn._plugin_manager = plugin_manager
+    return conn
+
+
 @pytest.fixture
 def telemetry_factory(mocker):
     return mocker.MagicMock()
 
 
-def test_raise_exception(mocker, plugin_service, plugin_manager):
+def test_raise_exception(mocker, plugin_service, plugin_manager, container):
     exception: RuntimeError = RuntimeError("exception to raise")
-    conn = AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_service, plugin_manager)
+    conn = _make_conn(plugin_service, plugin_manager)
 
     conn.cursor()
 
@@ -105,9 +113,9 @@ def test_raise_exception(mocker, plugin_service, plugin_manager):
     conn.cursor()
 
 
-def test_raise_exception_for_method_name(mocker, plugin_service, plugin_manager):
+def test_raise_exception_for_method_name(mocker, plugin_service, plugin_manager, container):
     exception: RuntimeError = RuntimeError("exception to raise")
-    conn = AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_service, plugin_manager)
+    conn = _make_conn(plugin_service, plugin_manager)
 
     conn.cursor()
 
@@ -118,9 +126,9 @@ def test_raise_exception_for_method_name(mocker, plugin_service, plugin_manager)
     conn.cursor()
 
 
-def test_raise_exception_for_wrong_method_name(mocker, plugin_service, plugin_manager):
+def test_raise_exception_for_wrong_method_name(mocker, plugin_service, plugin_manager, container):
     exception: RuntimeError = RuntimeError("exception to raise")
-    conn = AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_service, plugin_manager)
+    conn = _make_conn(plugin_service, plugin_manager)
 
     conn.cursor()
 
@@ -128,26 +136,34 @@ def test_raise_exception_for_wrong_method_name(mocker, plugin_service, plugin_ma
     conn.cursor()
 
 
-def test_raise_exception_on_connect(mocker, plugin_service, plugin_manager):
+def test_raise_exception_on_connect(mocker, plugin_service, plugin_manager, container):
     exception: Exception = Exception("exception to raise")
     exception_simulator_manager = ExceptionSimulatorManager()
     exception_simulator_manager.raise_exception_on_next_connect(exception)
+    mock_ps = mocker.MagicMock()
+    mock_ps.current_connection = None
+    mock_ps.initial_connection_host_info = HostInfo("localhost")
+    mock_ps.props = Properties({"host": "localhost", "plugins": "dev"})
     with pytest.raises(Exception, match="exception to raise"):
-        AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_service, plugin_manager)
+        AwsWrapperConnection(mocker.MagicMock(), mock_ps, mock_ps, plugin_manager)
 
-    AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_service, plugin_manager)
+    AwsWrapperConnection(mocker.MagicMock(), mock_ps, mock_ps, plugin_manager)
 
 
-def test_no_exception_on_connect_with_callback(mocker, mock_connect_callback, plugin_service, plugin_manager):
+def test_no_exception_on_connect_with_callback(mocker, mock_connect_callback, plugin_service, plugin_manager, container):
     exception_simulator_manager = ExceptionSimulatorManager()
     mock_connect_callback.get_exception_to_raise.return_value = None
 
     exception_simulator_manager.set_connect_callback(mock_connect_callback)
 
-    AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_service, plugin_manager)
+    mock_ps = mocker.MagicMock()
+    mock_ps.current_connection = None
+    mock_ps.initial_connection_host_info = HostInfo("localhost")
+    mock_ps.props = Properties({"host": "localhost", "plugins": "dev"})
+    AwsWrapperConnection(mocker.MagicMock(), mock_ps, mock_ps, plugin_manager)
 
 
-def test_raise_exception_on_connect_with_callback(mocker, mock_connect_callback, plugin_service, plugin_manager):
+def test_raise_exception_on_connect_with_callback(mocker, mock_connect_callback, plugin_service, plugin_manager, container):
     exception: Exception = Exception("exception to raise")
     exception_simulator_manager = ExceptionSimulatorManager()
     ExceptionSimulatorManager.connect_callback = mocker.MagicMock()
@@ -155,6 +171,11 @@ def test_raise_exception_on_connect_with_callback(mocker, mock_connect_callback,
 
     exception_simulator_manager.raise_exception_on_next_connect(exception)
     exception_simulator_manager.set_connect_callback(mock_connect_callback)
+
+    mock_ps = mocker.MagicMock()
+    mock_ps.current_connection = None
+    mock_ps.initial_connection_host_info = HostInfo("localhost")
+    mock_ps.props = Properties({"host": "localhost", "plugins": "dev"})
 
     with pytest.raises(Exception, match="exception to raise"):
         AwsWrapperConnection(mocker.MagicMock(), plugin_service, plugin_service, plugin_manager)
