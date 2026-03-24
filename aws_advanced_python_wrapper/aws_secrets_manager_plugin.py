@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from json import JSONDecodeError, loads
 from re import search
 from types import SimpleNamespace
@@ -23,7 +24,7 @@ from botocore.exceptions import ClientError, EndpointConnectionError
 
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
-from aws_advanced_python_wrapper.utils.cache_map import CacheMap
+from aws_advanced_python_wrapper.utils import core_services
 
 if TYPE_CHECKING:
     from boto3 import Session
@@ -46,6 +47,13 @@ from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
 logger = Logger(__name__)
 
 
+class Secret:
+    """Wrapper type for secrets, used as StorageService type key."""
+
+    def __init__(self, value: SimpleNamespace):
+        self.value = value
+
+
 class AwsSecretsManagerPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {DbApiMethod.CONNECT.method_name, DbApiMethod.FORCE_CONNECT.method_name}
 
@@ -53,7 +61,6 @@ class AwsSecretsManagerPlugin(Plugin):
     _ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365
 
     _secret: Optional[SimpleNamespace] = None
-    _secrets_cache: CacheMap[Tuple, SimpleNamespace] = CacheMap()
     _secret_key: Tuple = ()
 
     @property
@@ -63,6 +70,8 @@ class AwsSecretsManagerPlugin(Plugin):
     def __init__(self, plugin_service: PluginService, props: Properties, session: Optional[Session] = None):
         self._plugin_service = plugin_service
         self._session = session
+        self._storage_service = core_services.get_storage_service()
+        self._storage_service.register(Secret, item_expiration_time=timedelta(minutes=30))
 
         secret_id = WrapperProperties.SECRETS_MANAGER_SECRET_ID.get(props)
         if not secret_id:
@@ -100,13 +109,13 @@ class AwsSecretsManagerPlugin(Plugin):
         return self._connect(host_info, props, force_connect_func)
 
     def _connect(self, host_info: HostInfo, props: Properties, connect_func: Callable) -> Connection:
-        token_expiration_sec: int = WrapperProperties.SECRETS_MANAGER_EXPIRATION.get_int(props)
+        token_expiration_sec = WrapperProperties.SECRETS_MANAGER_EXPIRATION.get_int(props)
         # if value is less than 0, default to one year
         if token_expiration_sec < 0:
             token_expiration_sec = AwsSecretsManagerPlugin._ONE_YEAR_IN_SECONDS
         token_expiration_ns = token_expiration_sec * 1_000_000_000
 
-        secret_fetched: bool = self._update_secret(host_info, props, token_expiration_ns=token_expiration_ns)
+        secret_fetched: bool = self._update_secret(host_info, props, token_expiration_ns)
 
         try:
             self._apply_secret_to_properties(props)
@@ -120,7 +129,7 @@ class AwsSecretsManagerPlugin(Plugin):
                 raise AwsWrapperError(
                     Messages.get_formatted("AwsSecretsManagerPlugin.ConnectException", e), e) from e
 
-            secret_fetched = self._update_secret(host_info, props, token_expiration_ns=token_expiration_ns, force_refetch=True)
+            secret_fetched = self._update_secret(host_info, props, token_expiration_ns, force_refetch=True)
 
             if secret_fetched:
                 try:
@@ -146,13 +155,14 @@ class AwsSecretsManagerPlugin(Plugin):
 
         try:
             fetched: bool = False
-            self._secret: Optional[SimpleNamespace] = AwsSecretsManagerPlugin._secrets_cache.get(self._secret_key)
+            cached_secret = self._storage_service.get(Secret, self._secret_key)
+            self._secret = cached_secret.value if cached_secret is not None else None
             endpoint = self._secret_key[2]
             if not self._secret or force_refetch:
                 try:
                     self._secret = self._fetch_latest_credentials(host_info, props)
                     if self._secret:
-                        AwsSecretsManagerPlugin._secrets_cache.put(self._secret_key, self._secret, token_expiration_ns)
+                        self._storage_service.put(Secret, self._secret_key, Secret(self._secret), item_expiration_ns=token_expiration_ns)
                         fetched = True
                 except (ClientError, AttributeError) as e:
                     logger.debug("AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e)

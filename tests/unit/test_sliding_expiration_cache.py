@@ -14,8 +14,8 @@
 
 import time
 
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import (
-    SlidingExpirationCache, SlidingExpirationCacheWithCleanupThread)
+from aws_advanced_python_wrapper.utils.storage.sliding_expiration_cache import \
+    SlidingExpirationCache
 
 
 def test_compute_if_absent():
@@ -89,32 +89,29 @@ def test_clear():
     assert item2.disposed is True
 
 
-def test_cleanup_thread_continuous_removal():
-    # Use very short cleanup interval for testing (100ms)
-    cache = SlidingExpirationCacheWithCleanupThread(
-        cleanup_interval_ns=100_000_000,  # 100ms
-        item_disposal_func=lambda item: item.dispose()
-    )
+def test_put_inserts_new_item():
+    cache = SlidingExpirationCache(50_000_000)
+    cache.put("key", "value", 15_000_000_000)
+    assert "value" == cache.get("key")
 
-    # First cycle: insert item that expires quickly
-    item1 = DisposableItem(True)
-    cache.compute_if_absent("key1", lambda _: item1, 50_000_000)  # 50ms expiration
-    assert cache.get("key1") == item1
 
-    # Wait for cleanup thread to remove expired item
-    time.sleep(0.2)  # Wait 200ms for cleanup
-    assert cache.get("key1") is None
-    assert item1.disposed is True
+def test_put_replaces_existing_item():
+    cache = SlidingExpirationCache(50_000_000)
+    cache.put("key", "old", 15_000_000_000)
+    cache.put("key", "new", 15_000_000_000)
+    assert "new" == cache.get("key")
+    assert 1 == len(cache)
 
-    # Second cycle: insert another item that expires quickly
-    item2 = DisposableItem(True)
-    cache.compute_if_absent("key2", lambda _: item2, 50_000_000)  # 50ms expiration
-    assert cache.get("key2") == item2
 
-    # Wait for cleanup thread to remove second expired item
-    time.sleep(0.2)  # Wait 200ms for cleanup
-    assert cache.get("key2") is None
-    assert item2.disposed is True
+def test_put_disposes_old_item():
+    cache = SlidingExpirationCache(50_000_000, item_disposal_func=lambda item: item.dispose())
+    old_item = DisposableItem(True)
+    new_item = DisposableItem(True)
+    cache.put("key", old_item, 15_000_000_000)
+    cache.put("key", new_item, 15_000_000_000)
+    assert old_item.disposed is True
+    assert new_item.disposed is False
+    assert new_item == cache.get("key")
 
 
 class DisposableItem:
