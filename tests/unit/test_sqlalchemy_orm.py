@@ -19,7 +19,7 @@ from sqlalchemy.orm import sessionmaker
 class TestSqlAlchemyORM:
     def test_basic_workflow(self):
         # Step 1: Create engine (connection to database)
-        engine = create_engine('postgresql+aws_wrapper://pguser:pgpassword@mydb.cluster-XYZ.us-west-1.rds.amazonaws.com:5432/somedb')
+        engine = create_engine('mysql+aws_wrapper_mysqlconnector://mysqlmaster:mysqlpassword@database-mysql-ulojonat.cluster-cx422ywmsto6.us-east-2.rds.amazonaws.com:3306/mysqldb')
 
         # Step 2: Define base class for declarative models
         Base = declarative_base()
