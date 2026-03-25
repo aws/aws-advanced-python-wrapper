@@ -11,11 +11,11 @@ class SqlAlchemyOrmPgDialect(PGDialect_psycopg):
     SQLAlchemy dialect for AWS Advanced Python Wrapper with psycopg. Extends the SQLAlchemy PostgreSQL psycopg dialect.
     This dialect is not related to the DriverDialect or DatabaseDialect classes used by our driver. Instead, it is used
     directly by SQLAlchemy. This dialect is registered in pyproject.toml and is selected by prefixing the connection
-    string passed to create_engine with "postgresql+aws_wrapper://" ("[name]+[driver]").
+    string passed to create_engine with "postgresql+aws_wrapper_psycopg://" ("[name]+[driver]").
     """
 
     name = 'postgresql'
-    driver = 'aws_wrapper'
+    driver = 'aws_wrapper_psycopg'
 
     def __init__(self, **kwargs):
         # PGDialect_psycopg's __init__ function checks the driver version and raises an exception if it is lower than
