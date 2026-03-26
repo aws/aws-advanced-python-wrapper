@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter_ns
 from typing import TYPE_CHECKING, Dict, Optional
 
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, Topology
 from aws_advanced_python_wrapper.utils import services_container
@@ -344,8 +345,8 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                              self._cluster_id, self._initial_host_info.host)
 
                 try:
-                    writer_id = self._topology_utils.get_writer_host_if_connected(
-                            conn, self._plugin_service.driver_dialect)
+                    writer_id = self._topology_utils.get_writer_id_if_connected(
+                        conn, self._plugin_service.driver_dialect)
                     if writer_id:
                         self._is_verified_writer_connection = True
                         writer_verified_by_this_thread = True
@@ -354,9 +355,10 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                             writer_host_info = self._initial_host_info
                             self._writer_host_info.set(writer_host_info)
                         else:
-                            writer_host = self._instance_template.host.replace("?", writer_id)
-                            port = self._instance_template.port \
-                                if self._instance_template.is_port_specified() \
+                            instance_template = self._get_instance_template(writer_id, conn)
+                            writer_host = instance_template.host.replace("?", writer_id)
+                            port = instance_template.port \
+                                if instance_template.is_port_specified() \
                                 else self._initial_host_info.port
                             writer_host_info = HostInfo(
                                 writer_host,
