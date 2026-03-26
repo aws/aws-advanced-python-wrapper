@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import socket
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import perf_counter_ns
 from typing import TYPE_CHECKING, FrozenSet, List, cast
 
@@ -44,9 +44,11 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.utils import core_services
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import (ConcurrentDict,
                                                           ConcurrentSet)
+from aws_advanced_python_wrapper.utils.events import MonitorResetEvent
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -901,6 +903,9 @@ class BlueGreenStatusMonitor:
 
         finally:
             self._close_connection()
+            if self._host_list_provider is not None:
+                self._host_list_provider.stop_monitor()
+                self._host_list_provider = None
             logger.debug("BlueGreenStatusMonitor.ThreadCompleted", self._bg_role)
 
     def _open_connection(self):
@@ -1237,6 +1242,8 @@ class BlueGreenStatusProvider:
         self._green_dns_removed = False
         self._green_topology_changed = False
         self._all_green_hosts_changed_name = False
+        self._monitor_reset_on_in_progress_completed = False
+        self._monitor_reset_on_topology_completed = False
         self._post_status_end_time_ns = 0
         self._process_status_lock = RLock()
         self._status_check_intervals_ms: Dict[BlueGreenIntervalRate, int] = {}
@@ -1257,6 +1264,8 @@ class BlueGreenStatusProvider:
             raise AwsWrapperError(
                 Messages.get_formatted(
                     "BlueGreenStatusProvider.UnsupportedDialect", self._bg_id, dialect.__class__.__name__))
+
+        core_services.get_storage_service().register(BlueGreenStatus, item_expiration_time=timedelta(hours=1))
 
         current_host_info = self._plugin_service.current_host_info
         blue_monitor = BlueGreenStatusMonitor(
@@ -1476,6 +1485,7 @@ class BlueGreenStatusProvider:
         elif self._latest_phase == BlueGreenPhase.IN_PROGRESS:
             self._update_dns_flags(bg_role, interim_status)
             self._summary_status = self._get_status_of_in_progress()
+            self._reset_monitors("_monitor_reset_on_in_progress_completed", "- start")
 
         elif self._latest_phase == BlueGreenPhase.POST:
             self._update_dns_flags(bg_role, interim_status)
@@ -1503,6 +1513,7 @@ class BlueGreenStatusProvider:
             logger.debug("BlueGreenStatusProvider.GreenTopologyChanged", self._bg_id)
             self._green_topology_changed = True
             self._store_event_phase_time("Green topology changed")
+            self._reset_monitors("_monitor_reset_on_topology_completed", "- green topology")
 
     def _store_event_phase_time(self, key_prefix: str, phase: Optional[BlueGreenPhase] = None):
         rollback_str = " (rollback)" if self._rollback else ""
@@ -1846,6 +1857,20 @@ class BlueGreenStatusProvider:
             with latest_status.cv:
                 latest_status.cv.notify_all()
 
+    def _reset_monitors(self, completed_flag_attr: str, event_name: str):
+        if getattr(self, completed_flag_attr):
+            return
+        setattr(self, completed_flag_attr, True)
+
+        blue_endpoints = frozenset(
+            host for host, role in self._roles_by_host.items()
+            if role == BlueGreenRole.SOURCE)
+
+        cluster_id = self._plugin_service.host_list_provider.get_cluster_id()
+        core_services.get_event_publisher().publish(
+            MonitorResetEvent(cluster_id=cluster_id, endpoints=blue_endpoints))
+        self._store_event_phase_time(f"Monitor reset {event_name}")
+
     def _log_current_context(self):
         logger.debug(f"[bg_id: '{self._bg_id}'] Summary status: \n{self._summary_status}")
         hosts_str = "\n".join(
@@ -1913,6 +1938,8 @@ class BlueGreenStatusProvider:
         self._green_dns_removed = False
         self._green_topology_changed = False
         self._all_green_hosts_changed_name = False
+        self._monitor_reset_on_in_progress_completed = False
+        self._monitor_reset_on_topology_completed = False
         self._post_status_end_time_ns = 0
         self._interim_status_hashes = [0, 0]
         self._latest_context_hash = 0

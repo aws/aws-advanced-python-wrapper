@@ -67,7 +67,7 @@ def test_run_host_available(mock_conn, mock_plugin_service, host_info, props):
         host_info,
         props, 1_000)
     sleep(0.1)
-    monitor.close()
+    monitor.stop()
 
     mock_plugin_service.driver_dialect.ping.assert_called()
     mock_plugin_service.force_connect.assert_called()

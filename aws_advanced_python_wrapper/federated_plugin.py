@@ -43,6 +43,7 @@ import requests  # type: ignore
 
 from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.utils import core_services
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -57,15 +58,16 @@ class FederatedAuthPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"connect", "force_connect"}
 
     _rds_utils: RdsUtils = RdsUtils()
-    _token_cache: Dict[str, TokenInfo] = {}
 
     def __init__(self, plugin_service: PluginService, credentials_provider_factory: CredentialsProviderFactory):
         self._plugin_service = plugin_service
         self._credentials_provider_factory = credentials_provider_factory
+        self._storage_service = core_services.get_storage_service()
+        self._storage_service.register(TokenInfo, item_expiration_time=timedelta(minutes=30))
 
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = telemetry_factory.create_counter("federated.fetch_token.count")
-        self._cache_size_gauge = telemetry_factory.create_gauge("federated.token_cache.size", lambda: len(FederatedAuthPlugin._token_cache))
+        self._cache_size_gauge = telemetry_factory.create_gauge("federated.token_cache.size", lambda: self._storage_service.size(TokenInfo))
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -109,7 +111,7 @@ class FederatedAuthPlugin(Plugin):
             region
         )
 
-        token_info: Optional[TokenInfo] = FederatedAuthPlugin._token_cache.get(cache_key)
+        token_info: Optional[TokenInfo] = self._storage_service.get(TokenInfo, cache_key)
 
         token_host_info = deepcopy(host_info)
         token_host_info.host = host
@@ -174,7 +176,7 @@ class FederatedAuthPlugin(Plugin):
             session,
             credentials)
         WrapperProperties.PASSWORD.set(props, token)
-        FederatedAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
+        self._storage_service.put(TokenInfo, cache_key, TokenInfo(token, token_expiry))
 
 
 class FederatedAuthPluginFactory(PluginFactory):

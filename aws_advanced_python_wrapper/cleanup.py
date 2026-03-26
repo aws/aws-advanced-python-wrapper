@@ -16,18 +16,11 @@ from aws_advanced_python_wrapper.aurora_connection_tracker_plugin import \
     OpenedConnectionTracker
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
-from aws_advanced_python_wrapper.host_monitoring_plugin import \
-    MonitoringThreadContainer
-from aws_advanced_python_wrapper.thread_pool_container import \
-    ThreadPoolContainer
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
-    SlidingExpirationCacheContainer
+from aws_advanced_python_wrapper.utils import core_services
 
 
 def release_resources() -> None:
     """Release all global resources used by the wrapper."""
-    MonitoringThreadContainer.clean_up()
-    ThreadPoolContainer.release_resources()
+    core_services.release_resources()
     AwsCredentialsManager.release_resources()
     OpenedConnectionTracker.release_resources()
-    SlidingExpirationCacheContainer.release_resources()

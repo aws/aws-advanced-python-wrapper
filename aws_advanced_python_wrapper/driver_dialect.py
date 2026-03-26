@@ -27,8 +27,7 @@ from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import (QueryTimeoutError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
-from aws_advanced_python_wrapper.thread_pool_container import \
-    ThreadPoolContainer
+from aws_advanced_python_wrapper.utils import core_services
 from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -51,7 +50,7 @@ class DriverDialect(ABC):
 
     def __init__(self, props: Properties):
         self._props = props
-        self._thread_pool = ThreadPoolContainer.get_thread_pool(self._executor_name)
+        self._thread_pool = core_services.get_thread_pool(self._executor_name)
 
     @property
     def driver_name(self):

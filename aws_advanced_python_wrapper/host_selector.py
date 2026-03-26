@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from .hostinfo import HostInfo, HostRole
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.utils.cache_map import CacheMap
+from aws_advanced_python_wrapper.utils.storage.cache_map import CacheMap
 from .pep249 import Error
 from .utils.messages import Messages
 from .utils.properties import Properties, WrapperProperties

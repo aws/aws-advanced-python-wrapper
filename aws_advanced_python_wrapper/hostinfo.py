@@ -16,10 +16,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, ClassVar, FrozenSet, Optional, Set
+from typing import (TYPE_CHECKING, ClassVar, FrozenSet, Optional, Set, Tuple,
+                    TypeAlias)
 
 from aws_advanced_python_wrapper.host_availability import (
     HostAvailability, HostAvailabilityStrategy)
+
+Topology: TypeAlias = Tuple["HostInfo", ...]
 
 if TYPE_CHECKING:
     from datetime import datetime

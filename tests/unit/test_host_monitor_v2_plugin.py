@@ -241,17 +241,17 @@ def test_is_active_when_inactive(monitoring_context):
 
 
 def test_can_dispose_none_empty_active_context(host_monitor):
-    assert host_monitor.can_dispose() is True
+    assert host_monitor.can_dispose is True
 
     host_monitor._active_contexts.put(MagicMock())
-    assert host_monitor.can_dispose() is False
+    assert host_monitor.can_dispose is False
 
 
 def test_can_dispose_none_new_contexts_context(host_monitor):
-    assert host_monitor.can_dispose() is True
+    assert host_monitor.can_dispose is True
 
     host_monitor._new_contexts.compute_if_absent(1, lambda key: Queue())
-    assert host_monitor.can_dispose() is False
+    assert host_monitor.can_dispose is False
 
 
 def test_is_stopped(host_monitor):
