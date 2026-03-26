@@ -21,8 +21,8 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy.orm import declarative_base, Mapped, mapped_column
-from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
 
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from ..utils.conditions import (disable_on_features, enable_on_deployments,
@@ -52,18 +52,20 @@ class TestSqlAlchemy:
     @pytest.fixture(scope='class')
     def sqlalchemy_models(self, sqlalchemy_setup):
         """Create SQLAlchemy models after SQLAlchemy is set up"""
+	    #Base = declarative_base()
 
-	Base = declarative_base()
+    class Base(DeclarativeBase):
+        pass
 
-        class TestModel(Base):
-            """Basic test model for SQLAlchemy ORM functionality"""
-            __tablename__ = 'sqlalchemy_test_model'
+    class TestModel(Base):
+        """Basic test model for SQLAlchemy ORM functionality"""
+        __tablename__ = 'sqlalchemy_test_model'
 
-            name: Mapped[str] = mapped_column(String(100))
-            email: Mapped[str] = mapped_column(String, primary_key=True)
-            age: Mapped[int] = mapped_column(Integer)
-            is_active: Mapped[bool] = mapped_column(Bool, server_default=True)
-            created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+        name: Mapped[str] = mapped_column(String(100))
+        email: Mapped[str] = mapped_column(String, primary_key=True)
+        age: Mapped[int] = mapped_column(Integer)
+        is_active: Mapped[bool] = mapped_column(Boolean)
+        created_at: Mapped[datetime] = mapped_column(DateTime)
 
 '''
         class DataTypeModel(models.Model):
