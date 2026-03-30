@@ -14,9 +14,9 @@
 
 from __future__ import annotations
 
-import threading
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Optional, Type, TypeVar
 
+from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
 from aws_advanced_python_wrapper.utils.events import (DataAccessEvent,
                                                       EventPublisher)
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -36,8 +36,7 @@ class StorageService:
 
     def __init__(self, event_publisher: EventPublisher) -> None:
         self._event_publisher = event_publisher
-        self._caches: Dict[type, SlidingExpirationCache] = {}
-        self._lock = threading.Lock()
+        self._caches: ConcurrentDict[type, SlidingExpirationCache] = ConcurrentDict()
 
     def register(
             self,
@@ -45,13 +44,13 @@ class StorageService:
             item_expiration_time: timedelta,
             should_dispose: Optional[Callable] = None,
             on_dispose: Optional[Callable] = None) -> None:
-        with self._lock:
-            if item_type not in self._caches:
-                item_expiration_ns = int(item_expiration_time.total_seconds() * 1_000_000_000)
-                self._caches[item_type] = SlidingExpirationCache(
-                    cleanup_interval_ns=item_expiration_ns,
-                    should_dispose_func=should_dispose,
-                    item_disposal_func=on_dispose)
+        item_expiration_ns = int(item_expiration_time.total_seconds() * 1_000_000_000)
+        self._caches.compute_if_absent(
+            item_type,
+            lambda _: SlidingExpirationCache(
+                cleanup_interval_ns=item_expiration_ns,
+                should_dispose_func=should_dispose,
+                item_disposal_func=on_dispose))
 
     def get(self, item_type: Type[V], key: Any) -> Optional[V]:
         cache = self._caches.get(item_type)
@@ -97,5 +96,4 @@ class StorageService:
 
     def release_resources(self) -> None:
         self.clear_all()
-        with self._lock:
-            self._caches.clear()
+        self._caches.clear()
