@@ -22,7 +22,9 @@ In the case of AD FS, the user signs into the AD FS sign in page. This generates
 > 
 > For more information on configuring AWS credentials, see our [AWS credentials documentation](../AwsCredentials.md).
 
-## How to use the Federated Authentication Plugin with the AWS Advanced Python Wrapper 
+- This plugin does not create or modify any ADFS or IAM resources, therefore all permissions and policies must be correctly configured before using this plugin. If you plan on using [Amazon Aurora Global Databases](https://aws.amazon.com/rds/aurora/global-database/) with this plugin, please see the [Using Federated Authentication with Global Databases](#using-federated-authentication-with-global-databases) section as well.
+
+## How to use the Federated Authentication Plugin with the AWS Advanced Python Wrapper
 
 ### Enabling the Federated Authentication Plugin
 > [!NOTE]\
@@ -59,3 +61,24 @@ In the case of AD FS, the user signs into the AD FS sign in page. This generates
 ## Sample code
 [MySQLFederatedAuthentication.py](../../examples/MySQLFederatedAuthentication.py)
 [PGFederatedAuthentication.py](../../examples/PGFederatedAuthentication.py)
+
+## Using Federated Authentication with Global Databases
+
+When using Federated authentication with [Amazon Aurora Global Databases](https://aws.amazon.com/rds/aurora/global-database/), the IAM user or role requires the additional `rds:DescribeGlobalClusters` permission. This permission allows the wrapper to resolve the Global Database endpoint to the appropriate regional cluster for IAM token generation.
+
+Example IAM policy:
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "rds-db:connect",
+                "rds:DescribeGlobalClusters"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
