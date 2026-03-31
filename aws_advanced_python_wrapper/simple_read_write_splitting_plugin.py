@@ -118,6 +118,7 @@ class EndpointBasedConnectionHandler(ReadWriteConnectionHandler):
 
         if (
             url_type == RdsUrlType.RDS_WRITER_CLUSTER
+            or url_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER
             or self._verify_initial_connection_type == HostRole.WRITER
         ):
             conn = self._get_verified_connection(host_info, HostRole.WRITER, plugin_service_connect_func, connect_func)

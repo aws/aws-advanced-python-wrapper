@@ -58,7 +58,8 @@ class StaleDnsHelper:
         :param connect_func:
         :return:
         """
-        if not self._rds_helper.is_writer_cluster_dns(host_info.host):
+        if not self._rds_helper.is_writer_cluster_dns(host_info.host) \
+                and not self._rds_helper.is_global_db_writer_cluster_dns(host_info.host):
             return connect_func()
 
         conn: Connection = connect_func()
