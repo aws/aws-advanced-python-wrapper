@@ -40,7 +40,7 @@ class StorageService:
 
     def register(
             self,
-            item_type: type,
+            item_type: Type[V],
             item_expiration_time: timedelta,
             should_dispose: Optional[Callable] = None,
             on_dispose: Optional[Callable] = None) -> None:
@@ -61,9 +61,6 @@ class StorageService:
             self._event_publisher.publish(DataAccessEvent(data_type=item_type, key=key))
         return value
 
-    def get_all(self, item_type: Type[V]) -> Optional[SlidingExpirationCache]:
-        return self._caches.get(item_type)
-
     def put(self, item_type: Type[V], key: Any, value: V, item_expiration_ns: Optional[int] = None) -> None:
         cache = self._caches.get(item_type)
         if cache is None:
@@ -72,21 +69,21 @@ class StorageService:
             item_expiration_ns = cache._cleanup_interval_ns
         cache.put(key, value, item_expiration_ns)
 
-    def exists(self, item_type: type, key: Any) -> bool:
+    def exists(self, item_type: Type[V], key: Any) -> bool:
         cache = self._caches.get(item_type)
-        return cache is not None and cache.get(key) is not None
+        return cache is not None and key in cache
 
-    def remove(self, item_type: type, key: Any) -> None:
+    def remove(self, item_type: Type[V], key: Any) -> None:
         cache = self._caches.get(item_type)
         if cache is not None:
             cache.remove(key)
 
-    def clear(self, item_type: type) -> None:
+    def clear(self, item_type: Type[V]) -> None:
         cache = self._caches.get(item_type)
         if cache is not None:
             cache.clear()
 
-    def size(self, item_type: type) -> int:
+    def size(self, item_type: Type[V]) -> int:
         cache = self._caches.get(item_type)
         return len(cache) if cache is not None else 0
 

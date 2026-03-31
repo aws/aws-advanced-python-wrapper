@@ -22,15 +22,15 @@ from aws_advanced_python_wrapper.host_list_provider import (
     MultiAzTopologyUtils, RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249 import ProgrammingError
-from aws_advanced_python_wrapper.utils import core_services
-from aws_advanced_python_wrapper.utils.core_services import Topology
+from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.services_container import Topology
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
 
 @pytest.fixture(autouse=True)
 def clear_caches():
-    core_services.get_storage_service().clear_all()
+    services_container.get_storage_service().clear_all()
 
 
 def mock_topology_query(mock_conn, mock_cursor, records, writer_id=None):
@@ -98,7 +98,7 @@ def create_provider(mock_provider_service, props):
 def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, props, cache_hosts, refresh_ns):
     provider = create_provider(mock_provider_service, props)
     provider._initialize()
-    core_services.get_storage_service().put(Topology, provider._cluster_id, cache_hosts)
+    services_container.get_storage_service().put(Topology, provider._cluster_id, cache_hosts)
     mock_force_refresh = mocker.patch.object(provider, '_force_refresh_monitor')
 
     result = provider.refresh(mock_conn)
@@ -110,7 +110,7 @@ def test_get_topology_caches_topology(mocker, mock_provider_service, mock_conn, 
 def test_get_topology_force_update(
         mocker, mock_provider_service, mock_conn, cache_hosts, queried_hosts, props, refresh_ns):
     provider = create_provider(mock_provider_service, props)
-    core_services.get_storage_service().put(Topology, provider._cluster_id, cache_hosts)
+    services_container.get_storage_service().put(Topology, provider._cluster_id, cache_hosts)
     mocker.patch.object(provider, '_force_refresh_monitor', return_value=queried_hosts)
 
     result = provider.force_refresh(mock_conn)
@@ -131,7 +131,7 @@ def test_get_topology_invalid_topology(
         mocker, mock_provider_service, mock_conn, mock_cursor, props, cache_hosts, refresh_ns):
     provider = create_provider(mock_provider_service, props)
     provider._initialize()
-    core_services.get_storage_service().put(Topology, provider._cluster_id, cache_hosts)
+    services_container.get_storage_service().put(Topology, provider._cluster_id, cache_hosts)
     mocker.patch.object(provider, '_force_refresh_monitor', return_value=())
 
     result = provider.force_refresh()

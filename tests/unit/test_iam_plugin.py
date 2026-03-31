@@ -25,7 +25,7 @@ from aws_advanced_python_wrapper.aws_credentials_manager import \
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.iam_utils import TokenInfo
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -45,8 +45,8 @@ _PG_HOST_INFO_WITH_REGION = HostInfo("pg.testdb.us-west-1.rds.amazonaws.com")
 @pytest.fixture(autouse=True)
 def clear_caches():
     from datetime import timedelta
-    core_services.get_storage_service().register(TokenInfo, item_expiration_time=timedelta(minutes=15))
-    core_services.get_storage_service().clear(TokenInfo)
+    services_container.get_storage_service().register(TokenInfo, item_expiration_time=timedelta(minutes=15))
+    services_container.get_storage_service().clear(TokenInfo)
     AwsCredentialsManager.release_resources()
 
 
@@ -102,7 +102,7 @@ def pg_properties():
 def test_pg_connect_valid_token_in_cache(mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     initial_token = TokenInfo(_TEST_TOKEN, datetime.now() + timedelta(minutes=5))
-    core_services.get_storage_service().put(TokenInfo, _PG_CACHE_KEY, initial_token)
+    services_container.get_storage_service().put(TokenInfo, _PG_CACHE_KEY, initial_token)
 
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service)
     target_plugin.connect(
@@ -115,7 +115,7 @@ def test_pg_connect_valid_token_in_cache(mocker, mock_plugin_service, mock_sessi
 
     mock_client.generate_db_auth_token.assert_not_called()
 
-    actual_token = core_services.get_storage_service().get(TokenInfo, _PG_CACHE_KEY)
+    actual_token = services_container.get_storage_service().get(TokenInfo, _PG_CACHE_KEY)
     assert _GENERATED_TOKEN != actual_token.token
     assert _TEST_TOKEN == actual_token.token
     assert actual_token.is_expired() is False
@@ -145,7 +145,7 @@ def test_pg_connect_with_invalid_port_fall_backs_to_host_port(
         DBUsername="postgresqlUser"
     )
 
-    actual_token = core_services.get_storage_service().get(TokenInfo, "us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:1234:postgresqlUser")
+    actual_token = services_container.get_storage_service().get(TokenInfo, "us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:1234:postgresqlUser")
     assert _GENERATED_TOKEN == actual_token.token
     assert actual_token.is_expired() is False
 
@@ -179,7 +179,7 @@ def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(
         DBUsername="postgresqlUser"
     )
 
-    actual_token = core_services.get_storage_service().get(
+    actual_token = services_container.get_storage_service().get(
         TokenInfo, f"us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:{expected_default_pg_port}:postgresqlUser")
     assert _GENERATED_TOKEN == actual_token.token
     assert actual_token.is_expired() is False
@@ -192,7 +192,7 @@ def test_pg_connect_with_invalid_port_and_no_host_port_fall_backs_to_host_port(
 def test_connect_expired_token_in_cache(mocker, mock_plugin_service, mock_session, mock_func, mock_client, mock_dialect):
     test_props: Properties = Properties({"user": "postgresqlUser"})
     initial_token = TokenInfo(_TEST_TOKEN, datetime.now() - timedelta(minutes=5))
-    core_services.get_storage_service().put(TokenInfo, _PG_CACHE_KEY, initial_token)
+    services_container.get_storage_service().put(TokenInfo, _PG_CACHE_KEY, initial_token)
 
     mock_func.side_effect = Exception("generic exception")
     target_plugin: IamAuthPlugin = IamAuthPlugin(mock_plugin_service)
@@ -211,7 +211,7 @@ def test_connect_expired_token_in_cache(mocker, mock_plugin_service, mock_sessio
         DBUsername="postgresqlUser"
     )
 
-    actual_token = core_services.get_storage_service().get(TokenInfo, _PG_CACHE_KEY)
+    actual_token = services_container.get_storage_service().get(TokenInfo, _PG_CACHE_KEY)
     assert initial_token != actual_token
     assert _GENERATED_TOKEN == actual_token.token
     assert actual_token.is_expired() is False
@@ -234,7 +234,7 @@ def test_connect_empty_cache(mocker, mock_plugin_service, mock_connection, mock_
         DBUsername="postgresqlUser"
     )
 
-    actual_token = core_services.get_storage_service().get(TokenInfo, _PG_CACHE_KEY)
+    actual_token = services_container.get_storage_service().get(TokenInfo, _PG_CACHE_KEY)
     assert mock_connection == actual_connection
     assert _GENERATED_TOKEN == actual_token.token
     assert actual_token.is_expired() is False
@@ -244,7 +244,7 @@ def test_connect_with_specified_port(mocker, mock_plugin_service, mock_session, 
     test_props: Properties = Properties({"user": "postgresqlUser"})
     cache_key_with_new_port: str = "us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:1234:postgresqlUser"
     initial_token = TokenInfo(f"{_TEST_TOKEN}:1234", datetime.now() + timedelta(minutes=5))
-    core_services.get_storage_service().put(TokenInfo, cache_key_with_new_port, initial_token)
+    services_container.get_storage_service().put(TokenInfo, cache_key_with_new_port, initial_token)
 
     # Assert no password has been set
     assert test_props.get("password") is None
@@ -260,8 +260,8 @@ def test_connect_with_specified_port(mocker, mock_plugin_service, mock_session, 
 
     mock_client.generate_db_auth_token.assert_not_called()
 
-    actual_token = core_services.get_storage_service().get(TokenInfo, cache_key_with_new_port)
-    assert core_services.get_storage_service().get(TokenInfo, _PG_CACHE_KEY) is None
+    actual_token = services_container.get_storage_service().get(TokenInfo, cache_key_with_new_port)
+    assert services_container.get_storage_service().get(TokenInfo, _PG_CACHE_KEY) is None
     assert _GENERATED_TOKEN != actual_token.token
     assert f"{_TEST_TOKEN}:1234" == actual_token.token
     assert actual_token.is_expired() is False
@@ -277,7 +277,7 @@ def test_connect_with_specified_iam_default_port(mocker, mock_plugin_service, mo
     test_props[WrapperProperties.IAM_DEFAULT_PORT.name] = iam_default_port
     cache_key_with_new_port = f"us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:{iam_default_port}:postgresqlUser"
     initial_token = TokenInfo(f"{_TEST_TOKEN}:{iam_default_port}", datetime.now() + timedelta(minutes=5))
-    core_services.get_storage_service().put(TokenInfo, cache_key_with_new_port, initial_token)
+    services_container.get_storage_service().put(TokenInfo, cache_key_with_new_port, initial_token)
 
     # Assert no password has been set
     assert test_props.get("password") is None
@@ -293,8 +293,8 @@ def test_connect_with_specified_iam_default_port(mocker, mock_plugin_service, mo
 
     mock_client.generate_db_auth_token.assert_not_called()
 
-    actual_token = core_services.get_storage_service().get(TokenInfo, cache_key_with_new_port)
-    assert core_services.get_storage_service().get(TokenInfo, _PG_CACHE_KEY) is None
+    actual_token = services_container.get_storage_service().get(TokenInfo, cache_key_with_new_port)
+    assert services_container.get_storage_service().get(TokenInfo, _PG_CACHE_KEY) is None
     assert _GENERATED_TOKEN != actual_token.token
     assert f"{_TEST_TOKEN}:{iam_default_port}" == actual_token.token
     assert actual_token.is_expired() is False
@@ -311,7 +311,7 @@ def test_connect_with_specified_region(mocker, mock_plugin_service, mock_session
     # Cache a token with a different region
     cache_key_with_region = "us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:5432:postgresqlUser"
     initial_token = TokenInfo("us-east-2", datetime.now() + timedelta(minutes=5))
-    core_services.get_storage_service().put(TokenInfo, cache_key_with_region, initial_token)
+    services_container.get_storage_service().put(TokenInfo, cache_key_with_region, initial_token)
 
     test_props[WrapperProperties.IAM_REGION.name] = iam_region
 
@@ -335,7 +335,7 @@ def test_connect_with_specified_region(mocker, mock_plugin_service, mock_session
         DBUsername="postgresqlUser"
     )
 
-    actual_token = core_services.get_storage_service().get(TokenInfo, "us-east-1:pg.testdb.us-east-2.rds.amazonaws.com:5432:postgresqlUser")
+    actual_token = services_container.get_storage_service().get(TokenInfo, "us-east-1:pg.testdb.us-east-2.rds.amazonaws.com:5432:postgresqlUser")
     assert f"{_TEST_TOKEN}:{iam_region}" == actual_token.token
     assert actual_token.is_expired() is False
 
@@ -376,7 +376,7 @@ def test_connect_with_specified_host(iam_host: str, mocker, mock_plugin_service,
         DBUsername="postgresqlUser"
     )
 
-    actual_token = core_services.get_storage_service().get(TokenInfo, f"us-east-2:{iam_host}:5432:postgresqlUser")
+    actual_token = services_container.get_storage_service().get(TokenInfo, f"us-east-2:{iam_host}:5432:postgresqlUser")
     assert actual_token is not None
     assert _GENERATED_TOKEN != actual_token.token
     assert f"{_TEST_TOKEN}:{iam_host}" == actual_token.token

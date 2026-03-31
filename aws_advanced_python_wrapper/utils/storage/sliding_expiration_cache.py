@@ -15,8 +15,7 @@
 from __future__ import annotations
 
 from time import perf_counter_ns
-from typing import (Any, Callable, FrozenSet, Generic, List, Optional, Tuple,
-                    TypeVar)
+from typing import Callable, Generic, List, Optional, Tuple, TypeVar
 
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
@@ -42,6 +41,9 @@ class SlidingExpirationCache(Generic[K, V]):
 
     def __len__(self):
         return len(self._cdict)
+
+    def __contains__(self, key: K) -> bool:
+        return key in self._cdict
 
     def set_cleanup_interval_ns(self, interval_ns):
         self._cleanup_interval_ns = interval_ns
@@ -69,35 +71,6 @@ class SlidingExpirationCache(Generic[K, V]):
         self.cleanup()
         cache_item = self._cdict.get(key)
         return cache_item.item if cache_item is not None else None
-
-    def extend_expiration(self, key: K) -> None:
-        cache_item = self._cdict.get(key)
-        if cache_item is not None:
-            cache_item.update_expiration(self._cleanup_interval_ns)
-
-    def get_or_create_for_aliases(
-            self, aliases: FrozenSet, factory: Callable, item_expiration_ns: int) -> Any:
-        self.cleanup()
-        # Accesses ConcurrentDict internals directly because this operation must atomically
-        # check multiple keys, create a value if none exist, and assign to all keys.
-        # ConcurrentDict has no single method that supports this multi-key atomic pattern.
-        with self._cdict._lock:
-            monitor = None
-            for alias in aliases:
-                cache_item = self._cdict._dict.get(alias)
-                if cache_item is not None:
-                    cache_item.update_expiration(item_expiration_ns)
-                    monitor = cache_item.item
-                    break
-
-            if monitor is None:
-                monitor = factory()
-
-            new_item = CacheItem(monitor, perf_counter_ns() + item_expiration_ns)
-            for alias in aliases:
-                self._cdict._dict.setdefault(alias, new_item)
-
-        return monitor
 
     def remove(self, key: K):
         cache_item = self._cdict.remove(key)

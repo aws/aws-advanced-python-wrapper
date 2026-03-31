@@ -39,7 +39,7 @@ from boto3 import Session  # type: ignore
 
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
@@ -262,7 +262,7 @@ class CustomEndpointPlugin(Plugin):
         telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
         self._wait_for_info_counter: TelemetryCounter | None = telemetry_factory.create_counter("customEndpoint.waitForInfo.counter")
 
-        self._monitors = core_services.get_monitor_service()
+        self._monitors = services_container.get_monitor_service()
         self._monitors.register_monitor_type(
             CustomEndpointMonitor,
             expiration_timeout_ns=self._idle_monitor_expiration_ms * 1_000_000,

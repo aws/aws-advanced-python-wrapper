@@ -18,7 +18,7 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.limitless_plugin import (
     LimitlessContext, LimitlessPlugin, LimitlessRouters,
     LimitlessRouterService)
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -135,7 +135,7 @@ def plugin(mock_plugin_service, props, mock_limitless_router_service):
 @pytest.fixture(autouse=True)
 def run_before_and_after_tests():
     yield
-    core_services.get_storage_service().clear(LimitlessRouters)
+    services_container.get_storage_service().clear(LimitlessRouters)
 
 
 def test_establish_connection_empty_routers_list_then_wait_for_router_info_then_raises_exception(mocker,
@@ -202,7 +202,7 @@ def test_establish_connection_host_info_in_router_cache_then_call_connection_fun
                                                                                       limitless_routers):
     limitless_router_service: LimitlessRouterService = LimitlessRouterService(mock_plugin_service,
                                                                               mock_limitless_query_helper)
-    core_services.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
+    services_container.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
                                             EXPIRATION_NANO_SECONDS)
 
     mock_connect_func = mocker.MagicMock()
@@ -249,7 +249,7 @@ def test_establish_connection_fetch_router_list_and_host_info_in_router_list_the
     limitless_router_service.establish_connection(input_context)
 
     assert mock_conn == input_context.get_connection()
-    assert limitless_routers == core_services.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
+    assert limitless_routers == services_container.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
     mock_limitless_query_helper.query_for_limitless_routers.assert_called_once()
     mock_connect_func.assert_called_once()
 
@@ -265,7 +265,7 @@ def test_establish_connection_router_cache_then_select_host(mocker,
                                                             limitless_routers):
     limitless_router_service: LimitlessRouterService = LimitlessRouterService(mock_plugin_service,
                                                                               mock_limitless_query_helper)
-    core_services.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
+    services_container.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
                                             EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
     mock_plugin_service.connect.return_value = mock_conn
@@ -285,7 +285,7 @@ def test_establish_connection_router_cache_then_select_host(mocker,
     limitless_router_service.establish_connection(input_context)
 
     assert mock_conn == input_context.get_connection()
-    assert limitless_routers == core_services.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
+    assert limitless_routers == services_container.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
     mock_plugin_service.get_host_info_by_strategy.assert_called_once()
     mock_plugin_service.get_host_info_by_strategy.assert_called_with(HostRole.WRITER, "weighted_random",
                                                                      limitless_routers)
@@ -324,7 +324,7 @@ def test_establish_connection_fetch_router_list_then_select_host(mocker,
     limitless_router_service.establish_connection(input_context)
 
     assert mock_conn == input_context.get_connection()
-    assert limitless_routers == core_services.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
+    assert limitless_routers == services_container.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
     mock_limitless_query_helper.query_for_limitless_routers.assert_called_once()
     mock_plugin_service.get_host_info_by_strategy.assert_called_once()
     mock_plugin_service.get_host_info_by_strategy.assert_called_with(HostRole.WRITER, "weighted_random",
@@ -345,7 +345,7 @@ def test_establish_connection_host_info_in_router_cache_can_call_connection_func
         limitless_routers):
     limitless_router_service: LimitlessRouterService = LimitlessRouterService(mock_plugin_service,
                                                                               mock_limitless_query_helper)
-    core_services.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
+    services_container.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
                                             EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
     mock_plugin_service.connect.return_value = mock_conn
@@ -365,7 +365,7 @@ def test_establish_connection_host_info_in_router_cache_can_call_connection_func
     limitless_router_service.establish_connection(input_context)
 
     assert mock_conn == input_context.get_connection()
-    assert limitless_routers == core_services.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
+    assert limitless_routers == services_container.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
     mock_plugin_service.get_host_info_by_strategy.assert_called_once()
     mock_plugin_service.get_host_info_by_strategy.assert_called_with(HostRole.WRITER, "highest_weight",
                                                                      limitless_routers)
@@ -385,7 +385,7 @@ def test_establish_connection_selected_host_raises_exception_and_retries(mocker,
                                                                          limitless_routers):
     limitless_router_service: LimitlessRouterService = LimitlessRouterService(mock_plugin_service,
                                                                               mock_limitless_query_helper)
-    core_services.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
+    services_container.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
                                             EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.side_effect = [
         Exception(),
@@ -408,7 +408,7 @@ def test_establish_connection_selected_host_raises_exception_and_retries(mocker,
     limitless_router_service.establish_connection(input_context)
 
     assert mock_conn == input_context.get_connection()
-    assert limitless_routers == core_services.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
+    assert limitless_routers == services_container.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
     assert mock_plugin_service.get_host_info_by_strategy.call_count == 2
     mock_plugin_service.get_host_info_by_strategy.assert_called_with(HostRole.WRITER, "highest_weight",
                                                                      limitless_routers)
@@ -429,7 +429,7 @@ def test_establish_connection_selected_host_none_then_retry(mocker,
                                                             limitless_routers):
     limitless_router_service: LimitlessRouterService = LimitlessRouterService(mock_plugin_service,
                                                                               mock_limitless_query_helper)
-    core_services.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
+    services_container.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
                                             EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.side_effect = [
         None,
@@ -452,7 +452,7 @@ def test_establish_connection_selected_host_none_then_retry(mocker,
     limitless_router_service.establish_connection(input_context)
 
     assert mock_conn == input_context.get_connection()
-    assert limitless_routers == core_services.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
+    assert limitless_routers == services_container.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
     assert mock_plugin_service.get_host_info_by_strategy.call_count == 2
     mock_plugin_service.get_host_info_by_strategy.assert_called_with(HostRole.WRITER, "highest_weight",
                                                                      limitless_routers)
@@ -474,7 +474,7 @@ def test_establish_connection_plugin_service_connect_raises_exception_then_retry
                                                                                  limitless_routers):
     limitless_router_service: LimitlessRouterService = LimitlessRouterService(mock_plugin_service,
                                                                               mock_limitless_query_helper)
-    core_services.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
+    services_container.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
                                             EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.side_effect = [
         limitless_router1,
@@ -500,7 +500,7 @@ def test_establish_connection_plugin_service_connect_raises_exception_then_retry
     limitless_router_service.establish_connection(input_context)
 
     assert mock_conn == input_context.get_connection()
-    assert limitless_routers == core_services.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
+    assert limitless_routers == services_container.get_storage_service().get(LimitlessRouters, CLUSTER_ID).hosts
     assert mock_plugin_service.get_host_info_by_strategy.call_count == 2
     mock_plugin_service.get_host_info_by_strategy.assert_called_with(HostRole.WRITER, "highest_weight",
                                                                      limitless_routers)
@@ -521,7 +521,7 @@ def test_establish_connection_retry_and_max_retries_exceeded_then_raise_exceptio
                                                                                   limitless_routers):
     limitless_router_service: LimitlessRouterService = LimitlessRouterService(mock_plugin_service,
                                                                               mock_limitless_query_helper)
-    core_services.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
+    services_container.get_storage_service().put(LimitlessRouters, CLUSTER_ID, LimitlessRouters(limitless_routers),
                                             EXPIRATION_NANO_SECONDS)
     mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
     mock_plugin_service.connect.side_effect = Exception()

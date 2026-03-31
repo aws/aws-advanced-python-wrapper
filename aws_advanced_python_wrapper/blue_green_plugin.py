@@ -44,7 +44,7 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import (ConcurrentDict,
                                                           ConcurrentSet)
@@ -1265,7 +1265,7 @@ class BlueGreenStatusProvider:
                 Messages.get_formatted(
                     "BlueGreenStatusProvider.UnsupportedDialect", self._bg_id, dialect.__class__.__name__))
 
-        core_services.get_storage_service().register(BlueGreenStatus, item_expiration_time=timedelta(hours=1))
+        services_container.get_storage_service().register(BlueGreenStatus, item_expiration_time=timedelta(hours=1))
 
         current_host_info = self._plugin_service.current_host_info
         blue_monitor = BlueGreenStatusMonitor(
@@ -1867,7 +1867,7 @@ class BlueGreenStatusProvider:
             if role == BlueGreenRole.SOURCE)
 
         cluster_id = self._plugin_service.host_list_provider.get_cluster_id()
-        core_services.get_event_publisher().publish(
+        services_container.get_event_publisher().publish(
             MonitorResetEvent(cluster_id=cluster_id, endpoints=blue_endpoints))
         self._store_event_phase_time(f"Monitor reset {event_name}")
 

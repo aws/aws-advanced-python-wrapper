@@ -89,7 +89,7 @@ from aws_advanced_python_wrapper.read_write_splitting_plugin import \
 from aws_advanced_python_wrapper.simple_read_write_splitting_plugin import \
     SimpleReadWriteSplittingPluginFactory
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsPluginFactory
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -349,7 +349,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._driver_dialect = driver_dialect
         self._database_dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
         self._session_state_service = session_state_service if session_state_service is not None else SessionStateServiceImpl(self, props)
-        self._thread_pool = core_services.get_thread_pool(self._executor_name)
+        self._thread_pool = services_container.get_thread_pool(self._executor_name)
 
     @property
     def all_hosts(self) -> Tuple[HostInfo, ...]:
@@ -375,11 +375,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     @property
     def allowed_and_blocked_hosts(self) -> Optional[AllowedAndBlockedHosts]:
-        return core_services.get_storage_service().get(AllowedAndBlockedHosts, self._original_url)
+        return services_container.get_storage_service().get(AllowedAndBlockedHosts, self._original_url)
 
     @allowed_and_blocked_hosts.setter
     def allowed_and_blocked_hosts(self, allowed_and_blocked_hosts: Optional[AllowedAndBlockedHosts]):
-        storage = core_services.get_storage_service()
+        storage = services_container.get_storage_service()
         if allowed_and_blocked_hosts is None:
             storage.remove(AllowedAndBlockedHosts, self._original_url)
         else:
@@ -789,14 +789,14 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             host_list_provider.release_resources()
 
     def set_status(self, clazz: Type[StatusType], status: Optional[StatusType], key: str):
-        storage = core_services.get_storage_service()
+        storage = services_container.get_storage_service()
         if status is None:
             storage.remove(clazz, key)
         else:
             storage.put(clazz, key, status)
 
     def get_status(self, clazz: Type[StatusType], key: str) -> Optional[StatusType]:
-        status = core_services.get_storage_service().get(clazz, key)
+        status = services_container.get_storage_service().get(clazz, key)
         if status is None:
             return None
 

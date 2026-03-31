@@ -40,7 +40,7 @@ import requests  # type: ignore
 
 from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -58,7 +58,7 @@ class OktaAuthPlugin(Plugin):
     def __init__(self, plugin_service: PluginService, credentials_provider_factory: CredentialsProviderFactory):
         self._plugin_service = plugin_service
         self._credentials_provider_factory = credentials_provider_factory
-        self._storage_service = core_services.get_storage_service()
+        self._storage_service = services_container.get_storage_service()
         self._storage_service.register(TokenInfo, item_expiration_time=timedelta(minutes=30))
 
         telemetry_factory = self._plugin_service.get_telemetry_factory()

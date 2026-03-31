@@ -29,7 +29,7 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -125,7 +125,7 @@ class LimitlessRouterMonitor:
         self._plugin_service = plugin_service
         self._host_info = host_info
         self._limitless_router_cache_key = limitless_router_cache_key
-        self._storage_service = core_services.get_storage_service()
+        self._storage_service = services_container.get_storage_service()
 
         self._properties = copy.deepcopy(props)
         for property_key in self._properties.keys():
@@ -335,14 +335,14 @@ class LimitlessRouterService:
     def __init__(self, plugin_service: PluginService, query_helper: LimitlessQueryHelper):
         self._plugin_service = plugin_service
         self._query_helper = query_helper
-        self._storage_service = core_services.get_storage_service()
+        self._storage_service = services_container.get_storage_service()
 
         self._storage_service.register(
             LimitlessRouters,
             item_expiration_time=timedelta(milliseconds=WrapperProperties.LIMITLESS_MONITOR_DISPOSAL_TIME_MS.get_int(
                 plugin_service.props)))
 
-        self._monitor_service = core_services.get_monitor_service()
+        self._monitor_service = services_container.get_monitor_service()
         self._monitor_service.register_monitor_type(
             LimitlessRouterMonitor,
             expiration_timeout_ns=LimitlessRouterService._CACHE_CLEANUP_NS)

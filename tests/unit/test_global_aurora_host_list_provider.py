@@ -22,14 +22,14 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_list_provider import (
     GlobalAuroraHostListProvider, GlobalAuroraTopologyUtils)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 @pytest.fixture(autouse=True)
 def clear_caches():
-    core_services.get_storage_service().clear_all()
-    core_services.get_monitor_service().stop_all()
+    services_container.get_storage_service().clear_all()
+    services_container.get_monitor_service().stop_all()
 
 
 @pytest.fixture

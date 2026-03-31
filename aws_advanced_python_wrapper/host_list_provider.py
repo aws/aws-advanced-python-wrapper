@@ -27,7 +27,7 @@ from typing import (TYPE_CHECKING, ClassVar, List, Optional, Protocol, Tuple,
 from aws_advanced_python_wrapper.cluster_topology_monitor import (
     ClusterTopologyMonitor, ClusterTopologyMonitorImpl,
     GlobalAuroraTopologyMonitor)
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.events import MonitorStopEvent
@@ -174,7 +174,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         self._high_refresh_rate_ns = (
             WrapperProperties.CLUSTER_TOPOLOGY_HIGH_REFRESH_RATE_MS.get_int(self._props) * 1_000_000)
 
-        self._monitor_service = core_services.get_monitor_service()
+        self._monitor_service = services_container.get_monitor_service()
         self._monitor_service.register_monitor_type(
             ClusterTopologyMonitorImpl,
             expiration_timeout_ns=RdsHostListProvider._MONITOR_CLEANUP_NANO,
@@ -215,7 +215,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         """
         self._initialize()
 
-        cached_hosts = core_services.get_storage_service().get(Topology, self._cluster_id)
+        cached_hosts = services_container.get_storage_service().get(Topology, self._cluster_id)
         if not cached_hosts or force_update:
             if not conn:
                 # Cannot fetch topology without a connection
@@ -319,7 +319,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         return self._cluster_id
 
     def stop_monitor(self) -> None:
-        core_services.get_event_publisher().publish(
+        services_container.get_event_publisher().publish(
             MonitorStopEvent(monitor_type=ClusterTopologyMonitorImpl, key=self._cluster_id))
 
     @dataclass()
@@ -464,7 +464,7 @@ class TopologyUtils(ABC):
 
         self.instance_template: HostInfo = instance_template
         self._max_timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(props)
-        self._thread_pool = core_services.get_thread_pool(self._executor_name)
+        self._thread_pool = services_container.get_thread_pool(self._executor_name)
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):

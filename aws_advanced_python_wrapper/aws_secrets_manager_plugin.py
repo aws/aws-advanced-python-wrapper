@@ -24,7 +24,7 @@ from botocore.exceptions import ClientError, EndpointConnectionError
 
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 
 if TYPE_CHECKING:
     from boto3 import Session
@@ -70,7 +70,7 @@ class AwsSecretsManagerPlugin(Plugin):
     def __init__(self, plugin_service: PluginService, props: Properties, session: Optional[Session] = None):
         self._plugin_service = plugin_service
         self._session = session
-        self._storage_service = core_services.get_storage_service()
+        self._storage_service = services_container.get_storage_service()
         self._storage_service.register(Secret, item_expiration_time=timedelta(minutes=30))
 
         secret_id = WrapperProperties.SECRETS_MANAGER_SECRET_ID.get(props)

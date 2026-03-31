@@ -26,7 +26,7 @@ from aws_advanced_python_wrapper.aws_secrets_manager_plugin import (
     AwsSecretsManagerPlugin, Secret)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 _TEST_REGION = "us-east-2"
@@ -69,8 +69,8 @@ _GENERIC_CLIENT_ERROR = ClientError({
 @pytest.fixture(autouse=True)
 def clear_caches():
     from datetime import timedelta
-    core_services.get_storage_service().register(Secret, item_expiration_time=timedelta(minutes=30))
-    core_services.get_storage_service().clear(Secret)
+    services_container.get_storage_service().register(Secret, item_expiration_time=timedelta(minutes=30))
+    services_container.get_storage_service().clear(Secret)
     AwsCredentialsManager.release_resources()
 
 
@@ -129,7 +129,7 @@ def test_properties():
 
 def test_connect_with_cached_secrets(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    storage = core_services.get_storage_service()
+    storage = services_container.get_storage_service()
     storage.put(Secret, _SECRET_CACHE_KEY, Secret(_TEST_SECRET), item_expiration_ns=_ONE_YEAR_IN_NANOSECONDS)
     target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(
         mock_plugin_service, test_properties, mock_session)
@@ -145,7 +145,7 @@ def test_connect_with_cached_secrets(
 
 def test_connect_with_new_secrets(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    storage = core_services.get_storage_service()
+    storage = services_container.get_storage_service()
     assert 0 == storage.size(Secret)
 
     target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(
@@ -176,7 +176,7 @@ def test_missing_required_params(key: str, mock_plugin_service, mock_session):
 
 def test_failed_initial_connection_with_unhandled_error(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    storage = core_services.get_storage_service()
+    storage = services_container.get_storage_service()
     exception_msg = "Unhandled error during connection"
 
     # Simulate an unhandled exception (neither a login exception nor a network exception)
@@ -199,7 +199,7 @@ def test_failed_initial_connection_with_unhandled_error(
 
 def test_connect_with_new_secrets_after_trying_with_cached_secrets(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    storage = core_services.get_storage_service()
+    storage = services_container.get_storage_service()
     storage.put(Secret, _SECRET_CACHE_KEY, Secret(_INVALID_TEST_SECRET), item_expiration_ns=_ONE_YEAR_IN_NANOSECONDS)
 
     login_exception = Exception("Login failed with cached credentials")
@@ -289,7 +289,7 @@ def test_connection_with_region_parameter_and_arn(
 
 def test_connect_with_different_secret_keys(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    storage = core_services.get_storage_service()
+    storage = services_container.get_storage_service()
     test_properties["secrets_manager_secret_username_key"] = _TEST_USERNAME_KEY
     test_properties["secrets_manager_secret_password_key"] = _TEST_PASSWORD_KEY
     secret_string = (

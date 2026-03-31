@@ -39,7 +39,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -860,7 +860,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
         self._can_update: bool = False
         self._dialect: DatabaseDialect = UnknownDatabaseDialect()
         self._dialect_code: DialectCode = DialectCode.UNKNOWN
-        self._thread_pool = core_services.get_thread_pool(self._executor_name)
+        self._thread_pool = services_container.get_thread_pool(self._executor_name)
 
     @staticmethod
     def get_custom_dialect():

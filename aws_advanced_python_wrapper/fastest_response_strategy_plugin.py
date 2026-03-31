@@ -26,7 +26,7 @@ from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, List, Optional,
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import RandomHostSelector
 from aws_advanced_python_wrapper.plugin import Plugin
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.events import (EventBase,
                                                       MonitorResetEvent)
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -164,7 +164,7 @@ class HostResponseTimeMonitor:
         self._host_info = host_info
         self._properties = props
         self._interval_ms = interval_ms
-        self._storage_service = core_services.get_storage_service()
+        self._storage_service = services_container.get_storage_service()
 
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
         self._response_time: int = MAX_VALUE
@@ -321,12 +321,12 @@ class HostResponseTimeService:
         self._interval_ms = interval_ms
         self._hosts: Tuple[HostInfo, ...] = ()
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
-        self._storage_service = core_services.get_storage_service()
+        self._storage_service = services_container.get_storage_service()
 
         self._storage_service.register(
             ResponseTimeHolder, item_expiration_time=timedelta(minutes=10))
 
-        self._monitor_service = core_services.get_monitor_service()
+        self._monitor_service = services_container.get_monitor_service()
         self._monitor_service.register_monitor_type(
             HostResponseTimeMonitor,
             expiration_timeout_ns=HostResponseTimeService._CACHE_EXPIRATION_NS,

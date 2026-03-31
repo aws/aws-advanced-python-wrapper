@@ -19,11 +19,11 @@ from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 
 
 def pytest_runtest_setup(item):
-    core_services.get_storage_service().clear_all()
+    services_container.get_storage_service().clear_all()
     PluginServiceImpl._host_availability_expiring_cache.clear()
     DatabaseDialectManager._known_endpoint_dialects.clear()
 

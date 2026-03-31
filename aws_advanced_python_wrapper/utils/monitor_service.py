@@ -127,9 +127,7 @@ class MonitorService(EventSubscriber):
         container = self._monitor_caches.get(monitor_type)
         if container is None:
             return
-        for key, cache_item in container.cache.items():
-            if cache_item.item is monitor:
-                container.cache._cdict.remove(key)
+        container.cache.detach_value(monitor)
 
     def get(self, monitor_type: type, key: Any) -> Optional[Any]:
         container = self._monitor_caches.get(monitor_type)

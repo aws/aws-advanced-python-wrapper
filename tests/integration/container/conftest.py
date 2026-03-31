@@ -28,7 +28,7 @@ from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
@@ -135,7 +135,7 @@ def pytest_runtest_setup(item):
         assert cluster_ip == writer_ip
 
         RdsUtils.clear_cache()
-        core_services.release_resources()
+        services_container.release_resources()
         PluginServiceImpl._host_availability_expiring_cache.clear()
         DatabaseDialectManager._known_endpoint_dialects.clear()
         CustomEndpointMonitor._custom_endpoint_info_cache.clear()

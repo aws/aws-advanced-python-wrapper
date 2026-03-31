@@ -25,7 +25,7 @@ from aws_advanced_python_wrapper.errors import (
     ReadWriteSplittingError, TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -78,7 +78,7 @@ class TestReadWriteSplitting:
 
     @pytest.fixture(autouse=True)
     def clear_caches(self):
-        core_services.get_storage_service().clear_all()
+        services_container.get_storage_service().clear_all()
         yield
         ConnectionProviderManager.release_resources()
         ConnectionProviderManager.reset_provider()

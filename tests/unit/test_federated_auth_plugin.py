@@ -25,7 +25,7 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.federated_plugin import FederatedAuthPlugin
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import TokenInfo
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -42,8 +42,8 @@ _PG_HOST_INFO = HostInfo("pg.testdb.us-east-2.rds.amazonaws.com")
 @pytest.fixture(autouse=True)
 def clear_cache():
     from datetime import timedelta
-    core_services.get_storage_service().register(TokenInfo, item_expiration_time=timedelta(minutes=30))
-    core_services.get_storage_service().clear(TokenInfo)
+    services_container.get_storage_service().register(TokenInfo, item_expiration_time=timedelta(minutes=30))
+    services_container.get_storage_service().clear(TokenInfo)
     AwsCredentialsManager.release_resources()
 
 
@@ -105,12 +105,12 @@ def test_pg_connect_valid_token_in_cache(mocker, mock_plugin_service, mock_sessi
     WrapperProperties.PLUGINS.set(properties, "federated_auth")
     WrapperProperties.DB_USER.set(properties, _DB_USER)
     initial_token = TokenInfo(_TEST_TOKEN, datetime.now() + timedelta(minutes=5))
-    core_services.get_storage_service().put(TokenInfo, _PG_CACHE_KEY, initial_token)
+    services_container.get_storage_service().put(TokenInfo, _PG_CACHE_KEY, initial_token)
 
     target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service,
                                                              mock_session)
     key = "us-east-2:pg.testdb.us-east-2.rds.amazonaws.com:" + str(_DEFAULT_PG_PORT) + ":postgesqlUser"
-    core_services.get_storage_service().put(TokenInfo, key, initial_token)
+    services_container.get_storage_service().put(TokenInfo, key, initial_token)
 
     target_plugin.connect(
         target_driver_func=mocker.MagicMock(),
@@ -122,7 +122,7 @@ def test_pg_connect_valid_token_in_cache(mocker, mock_plugin_service, mock_sessi
 
     mock_client.generate_db_auth_token.assert_not_called()
 
-    actual_token = core_services.get_storage_service().get(TokenInfo, _PG_CACHE_KEY)
+    actual_token = services_container.get_storage_service().get(TokenInfo, _PG_CACHE_KEY)
     assert _GENERATED_TOKEN != actual_token.token
     assert _TEST_TOKEN == actual_token.token
     assert actual_token.is_expired() is False
@@ -133,7 +133,7 @@ def test_expired_cached_token(mocker, mock_plugin_service, mock_session, mock_fu
     test_props: Properties = Properties({"plugins": "federated_auth", "user": "postgresqlUser", "idp_username": "user", "idp_password": "password"})
     WrapperProperties.DB_USER.set(test_props, _DB_USER)
     initial_token = TokenInfo(_TEST_TOKEN, datetime.now() - timedelta(minutes=5))
-    core_services.get_storage_service().put(TokenInfo, _PG_CACHE_KEY, initial_token)
+    services_container.get_storage_service().put(TokenInfo, _PG_CACHE_KEY, initial_token)
 
     target_plugin: FederatedAuthPlugin = FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory)
 
@@ -228,7 +228,7 @@ def test_connect_with_specified_iam_host_port_region(mocker,
     test_token_info = TokenInfo(_TEST_TOKEN, datetime.now() + timedelta(minutes=5))
 
     key = "us-west-2:pg.testdb.us-west-2.rds.amazonaws.com:" + str(expected_port) + ":specifiedUser"
-    core_services.get_storage_service().put(TokenInfo, key, test_token_info)
+    services_container.get_storage_service().put(TokenInfo, key, test_token_info)
 
     mock_client.generate_db_auth_token.return_value = f"{_TEST_TOKEN}:{expected_region}"
 

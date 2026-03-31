@@ -35,7 +35,7 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.events import (EventBase,
                                                       MonitorResetEvent)
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -520,7 +520,7 @@ class Monitor:
             logger.debug(e, exc_info=True)
         finally:
             self._is_stopped.set()
-            core_services.get_monitor_service().detach(Monitor, self)
+            services_container.get_monitor_service().detach(Monitor, self)
             if self._monitoring_conn is not None:
                 try:
                     self._monitoring_conn.close()
@@ -591,7 +591,7 @@ class HostMonitorService:
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._aborted_connections_counter = telemetry_factory.create_counter("host_monitoring.connections.aborted")
 
-        self._monitor_service = core_services.get_monitor_service()
+        self._monitor_service = services_container.get_monitor_service()
         self._monitor_service.register_monitor_type(
             Monitor,
             expiration_timeout_ns=WrapperProperties.MONITOR_DISPOSAL_TIME_MS.get_int(

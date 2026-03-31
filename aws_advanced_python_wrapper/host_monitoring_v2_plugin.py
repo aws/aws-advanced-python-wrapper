@@ -25,7 +25,7 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.atomic import (AtomicBoolean,
                                                       AtomicReference)
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
@@ -473,7 +473,7 @@ class MonitorServiceV2:
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._aborted_connections_counter = telemetry_factory.create_counter("efm2.connections.aborted")
 
-        self._monitor_service = core_services.get_monitor_service()
+        self._monitor_service = services_container.get_monitor_service()
         self._monitor_service.register_monitor_type(
             HostMonitorV2,
             expiration_timeout_ns=MonitorServiceV2._CACHE_CLEANUP_NANO)

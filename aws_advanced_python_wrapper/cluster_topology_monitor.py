@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, Topology
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.atomic import AtomicReference
 from aws_advanced_python_wrapper.utils.events import (EventBase,
                                                       MonitorResetEvent)
@@ -176,7 +176,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                         self._cluster_id, timeout_sec * 1000))
 
     def _get_stored_hosts(self) -> Topology:
-        hosts = core_services.get_storage_service().get(Topology, self._cluster_id)
+        hosts = services_container.get_storage_service().get(Topology, self._cluster_id)
         if hosts is None:
             return ()
         return hosts
@@ -482,7 +482,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         return self._instance_template
 
     def _update_topology_cache(self, hosts: Topology) -> None:
-        core_services.get_storage_service().put(Topology, self._cluster_id, hosts)
+        services_container.get_storage_service().put(Topology, self._cluster_id, hosts)
         # Notify waiting threads
         self._request_to_update_topology.clear()
         self._topology_updated.set()

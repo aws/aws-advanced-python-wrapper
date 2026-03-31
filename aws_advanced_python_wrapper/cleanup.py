@@ -16,11 +16,11 @@ from aws_advanced_python_wrapper.aurora_connection_tracker_plugin import \
     OpenedConnectionTracker
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
-from aws_advanced_python_wrapper.utils import core_services
+from aws_advanced_python_wrapper.utils import services_container
 
 
 def release_resources() -> None:
     """Release all global resources used by the wrapper."""
-    core_services.release_resources()
+    services_container.release_resources()
     AwsCredentialsManager.release_resources()
     OpenedConnectionTracker.release_resources()
