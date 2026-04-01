@@ -27,8 +27,8 @@ from aws_advanced_python_wrapper.utils.events import (DataAccessEvent,
                                                       MonitorResetEvent,
                                                       MonitorStopEvent)
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.utils.storage.sliding_expiration_cache import \
-    SlidingExpirationCache
+from aws_advanced_python_wrapper.utils.storage.expiration_tracking_cache import \
+    ExpirationTrackingCache
 
 logger = Logger(__name__)
 
@@ -61,10 +61,8 @@ class MonitorSettings:
 class _CacheContainer:
     def __init__(self, settings: MonitorSettings) -> None:
         self.settings = settings
-        self.cache: SlidingExpirationCache = SlidingExpirationCache(
-            cleanup_interval_ns=settings.expiration_timeout_ns,
-            should_dispose_func=lambda monitor: monitor.can_dispose,
-            item_disposal_func=lambda monitor: self._dispose(monitor))
+        self.cache: ExpirationTrackingCache = ExpirationTrackingCache(
+            expiration_timeout_ns=settings.expiration_timeout_ns)
 
     @staticmethod
     def _dispose(monitor: Monitor) -> None:
@@ -111,8 +109,7 @@ class MonitorService(EventSubscriber):
             key: Any,
             factory: Callable[[], Any]) -> Any:
         container = self._get_or_create_container(monitor_type)
-        return container.cache.compute_if_absent(
-            key, lambda _: factory(), container.settings.expiration_timeout_ns)
+        return container.cache.compute_if_absent(key, lambda _: factory())
 
     def run_if_absent_with_aliases(
             self,
@@ -120,14 +117,12 @@ class MonitorService(EventSubscriber):
             aliases: FrozenSet[str],
             factory: Callable[[], Any]) -> Any:
         container = self._get_or_create_container(monitor_type)
-        return container.cache.get_or_create_for_aliases(
-            aliases, factory, container.settings.expiration_timeout_ns)
+        return container.cache.get_or_create_for_aliases(aliases, factory)
 
     def detach(self, monitor_type: type, monitor: Any) -> None:
         container = self._monitor_caches.get(monitor_type)
-        if container is None:
-            return
-        container.cache.detach_value(monitor)
+        if container is not None:
+            container.cache.detach_value(monitor)
 
     def get(self, monitor_type: type, key: Any) -> Optional[Any]:
         container = self._monitor_caches.get(monitor_type)
@@ -142,17 +137,21 @@ class MonitorService(EventSubscriber):
     def stop_and_remove(self, monitor_type: type, key: Any) -> None:
         container = self._monitor_caches.get(monitor_type)
         if container is not None:
-            container.cache.remove(key)
+            monitor = container.cache.remove(key)
+            if monitor is not None:
+                _CacheContainer._dispose(monitor)
 
     def stop_and_remove_all(self, monitor_type: type) -> None:
         container = self._monitor_caches.get(monitor_type)
         if container is not None:
-            container.cache.clear()
+            for monitor in container.cache.clear():
+                _CacheContainer._dispose(monitor)
 
     def stop_all(self) -> None:
         with self._lock:
             for container in self._monitor_caches.values():
-                container.cache.clear()
+                for monitor in container.cache.clear():
+                    _CacheContainer._dispose(monitor)
 
     def release_resources(self) -> None:
         self._stop_event.set()
@@ -174,8 +173,7 @@ class MonitorService(EventSubscriber):
         with self._lock:
             containers = list(self._monitor_caches.values())
         for container in containers:
-            for _key, cache_item in container.cache.items():
-                monitor = cache_item.item
+            for _key, monitor in container.cache.items():
                 if isinstance(monitor, EventSubscriber):
                     try:
                         monitor.process_event(event)
@@ -208,14 +206,17 @@ class MonitorService(EventSubscriber):
         now = perf_counter_ns()
         for monitor_type, container in containers:
             try:
-                # Detect and remove stuck monitors
                 inactive_timeout = container.settings.inactive_timeout_ns
-                for key, cache_item in container.cache.items():
-                    monitor = cache_item.item
+                for key, monitor in container.cache.items():
                     if now - monitor.last_activity_ns > inactive_timeout:
                         logger.debug("MonitorService.StuckMonitorDetected", monitor_type, key)
-                        container.cache.remove(key)
+                        removed = container.cache.remove(key)
+                        if removed is not None:
+                            _CacheContainer._dispose(removed)
+                        continue
 
-                container.cache.cleanup()
+                    removed = container.cache.remove_expired_if(key, lambda m: m.can_dispose)
+                    if removed is not None:
+                        _CacheContainer._dispose(removed)
             except Exception as e:
                 logger.debug("MonitorService.ErrorDuringCleanup", e)

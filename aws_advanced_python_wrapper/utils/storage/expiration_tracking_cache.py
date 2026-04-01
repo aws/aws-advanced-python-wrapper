@@ -24,8 +24,6 @@ V = TypeVar('V')
 
 
 class _CacheItem(Generic[V]):
-    __slots__ = ('item', 'expiration_ns')
-
     def __init__(self, item: V, expiration_ns: int) -> None:
         self.item = item
         self.expiration_ns = expiration_ns
@@ -68,23 +66,11 @@ class ExpirationTrackingCache(Generic[K, V]):
         return entry.item
 
     def get_or_create_for_aliases(self, aliases: FrozenSet[K], factory: Callable[[], V]) -> V:
-        with self._cache._lock:
-            value = None
-            for alias in aliases:
-                entry: _CacheItem = self._cache._dict.get(alias)
-                if entry is not None:
-                    entry.extend(self._expiration_timeout_ns)
-                    value = entry.item
-                    break
-
-            if value is None:
-                value = factory()
-
-            new_entry = _CacheItem(value, perf_counter_ns() + self._expiration_timeout_ns)
-            for alias in aliases:
-                self._cache._dict.setdefault(alias, new_entry)
-
-        return value
+        entry = self._cache.compute_for_keys(
+            aliases,
+            lambda: _CacheItem(factory(), perf_counter_ns() + self._expiration_timeout_ns),
+            on_existing=lambda e: e.extend(self._expiration_timeout_ns))
+        return entry.item
 
     def extend_expiration(self, key: K) -> None:
         entry = self._cache.get(key)
@@ -94,11 +80,6 @@ class ExpirationTrackingCache(Generic[K, V]):
     def remove(self, key: K) -> Optional[V]:
         entry = self._cache.remove(key)
         return entry.item if entry is not None else None
-
-    def remove_if(self, key: K, predicate: Callable[[V], bool]) -> Optional[V]:
-        removed = self._cache.remove_key_if(
-            key, lambda entry: predicate(entry.item))
-        return removed.item if removed is not None else None
 
     def remove_expired_if(self, key: K, predicate: Callable[[V], bool]) -> Optional[V]:
         removed = self._cache.remove_key_if(

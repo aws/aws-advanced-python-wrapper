@@ -22,9 +22,9 @@ from aws_advanced_python_wrapper.host_list_provider import (
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import ProgrammingError
 from aws_advanced_python_wrapper.utils import services_container
-from aws_advanced_python_wrapper.utils.services_container import Topology
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
+from aws_advanced_python_wrapper.utils.services_container import Topology
 
 
 @pytest.fixture(autouse=True)
