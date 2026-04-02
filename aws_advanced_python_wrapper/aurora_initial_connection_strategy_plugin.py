@@ -54,7 +54,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
         if not url_type.is_rds_cluster:
             return connect_func()
 
-        if url_type == RdsUrlType.RDS_WRITER_CLUSTER:
+        if url_type == RdsUrlType.RDS_WRITER_CLUSTER or url_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER:
             writer_candidate_conn: Optional[Connection] = self._get_verified_writer_connection(props, is_initial_connection, connect_func)
             if writer_candidate_conn is None:
                 return connect_func()
