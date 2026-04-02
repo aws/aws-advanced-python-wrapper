@@ -21,8 +21,8 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import create_engine, Column, ForeignKey, Integer, BigInteger, SmallInteger, Float, Numeric, String, Boolean, Date, Time, DateTime, Text, JSON
 
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from ..utils.conditions import (disable_on_features, enable_on_deployments,
@@ -39,146 +39,94 @@ from ..utils.test_environment_features import TestEnvironmentFeatures
                       TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
                       TestEnvironmentFeatures.PERFORMANCE])
 class TestSqlAlchemy:
-    TestModel: Any
-    DataTypeModel: Any
-    Author: Any
-    Book: Any
-
     @pytest.fixture(scope='class')
     def rds_utils(self):
         region: str = TestEnvironment.get_current().get_info().get_region()
         return RdsTestUtility(region)
 
-    @pytest.fixture(scope='class')
-    def sqlalchemy_models(self, sqlalchemy_setup):
-        """Create SQLAlchemy models after SQLAlchemy is set up"""
-	    #Base = declarative_base()
-
-    class Base(DeclarativeBase):
-        pass
+    Base = declarative_base()
 
     class TestModel(Base):
         """Basic test model for SQLAlchemy ORM functionality"""
         __tablename__ = 'sqlalchemy_test_model'
 
-        name: Mapped[str] = mapped_column(String(100))
-        email: Mapped[str] = mapped_column(String, primary_key=True)
-        age: Mapped[int] = mapped_column(Integer)
-        is_active: Mapped[bool] = mapped_column(Boolean)
-        created_at: Mapped[datetime] = mapped_column(DateTime)
+        id = Column(Integer, primary_key=True)
 
-'''
-        class DataTypeModel(models.Model):
-            """Model for testing various data types"""
-            # String fields
-            char_field = models.CharField(max_length=255, null=True, blank=True)
-            text_field = models.TextField(null=True, blank=True)
+        name = Column(String(100))
+        email = Column(String, primary_key=True)
+        age = Column(Integer)
+        is_active = Column(Boolean)
+        created_at = Column(DateTime)
 
-            # Numeric fields
-            integer_field = models.IntegerField(null=True, blank=True)
-            big_integer_field = models.BigIntegerField(null=True, blank=True)
-            decimal_field = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-            float_field = models.FloatField(null=True, blank=True)
+    class DataTypeModel(Base):
+        """Model for testing various data types"""
+        __tablename__ = 'sqlalchemy_data_type_model'
 
-            # Boolean field
-            boolean_field = models.BooleanField(default=False)
+        id = Column(Integer, primary_key=True)
 
-            # Date/Time fields
-            date_field = models.DateField(null=True, blank=True)
-            time_field = models.TimeField(null=True, blank=True)
-            datetime_field = models.DateTimeField(null=True, blank=True)
+        # String fields
+        string_field = Column(String(255))
+        text_field = Column(Text)
 
-            # JSON field (MySQL 5.7+)
-            json_field = models.JSONField(null=True, blank=True)
+        # Numeric fields
+        integer_field = Column(Integer)
+        small_integer_field = Column(SmallInteger)
+        big_integer_field = Column(BigInteger)
+        numeric_field = Column(Numeric)
+        float_field = Column(Float)
 
-            class Meta:
-                app_label = 'test_app'
-                db_table = 'django_data_type_model'
+        # Boolean field
+        boolean_field = Column(Boolean)
 
-        class Author(models.Model):
-            """Author model for relationship testing"""
-            name = models.CharField(max_length=100)
-            email = models.EmailField()
-            birth_date = models.DateField(null=True, blank=True)
+        # Date/Time fields
+        date_field = Column(Date)
+        time_field = Column(Time)
+        datetime_field = Column(DateTime)
 
-            class Meta:
-                app_label = 'test_app'
-                db_table = 'django_author'
+        # JSON field (MySQL 5.7+)
+        json_field = Column(JSON)
 
-        # Store Author first so it's available for Book's ForeignKey
-        TestDjango.Author = Author
+    class Author(Base):
+        """Author model for relationship testing"""
+        __tablename__ = 'sqlalchemy_author'
 
-        class Book(models.Model):
-            """Book model for relationship testing"""
-            title = models.CharField(max_length=200)
-            author = models.ForeignKey(TestDjango.Author, on_delete=models.CASCADE, related_name='books')
-            publication_date = models.DateField()
-            pages = models.IntegerField()
-            price = models.DecimalField(max_digits=8, decimal_places=2)
+        id = Column(Integer, primary_key=True)
+        name = Column(String(100))
+        email = Column(String)
+        birth_date = Column(Date)
 
-            class Meta:
-                app_label = 'test_app'
-                db_table = 'django_book'
+    class Book(Base):
+        """Book model for relationship testing"""
+        __tablename__ = 'sqlalchemy_book'
 
-        # Store models as class attributes for easy access
-        TestDjango.TestModel = TestModel
-        TestDjango.DataTypeModel = DataTypeModel
-        TestDjango.Book = Book
+        id = Column(Integer, primary_key=True)
+        title = Column(String(200))
+        author = Column(String, ForeignKey("Author.id"))
+        publication_date = Column(Date)
+        pages = Column(Integer)
+        price = Column(Numeric)
 
-        # Create tables for our test models
-        with connection.schema_editor() as schema_editor:
-            schema_editor.create_model(TestModel)
-            schema_editor.create_model(DataTypeModel)
-            schema_editor.create_model(Author)
-            schema_editor.create_model(Book)
+    @pytest.fixture(scope="class")
+    def engine(self, conn_utils):
+        conn_str = f'mysql+aws_wrapper_mysqlconnector://{conn_utils.user}:{conn_utils.password}@{conn_utils.writer_cluster_host}:{conn_utils.port}/{conn_utils.dbname}'
+        engine = create_engine(conn_str)
+        Base.metadata.create_all(engine)
+        yield engine
+        Base.metadata.drop_all(engine)
 
-        yield
+    @pytest.fixture(scope="class")
+    def Session(self, engine):
+        Session = sessionmaker(bind=engine)
+        yield Session
 
-        # Clean up tables
-        with connection.schema_editor() as schema_editor:
-            schema_editor.delete_model(Book)
-            schema_editor.delete_model(Author)
-            schema_editor.delete_model(DataTypeModel)
-            schema_editor.delete_model(TestModel)
+    @pytest.fixture(scope="class")
+    def session(self, Session):
+        session = Session()
+        yield session
+        session.rollback()
+        session.close()
 
-    @pytest.fixture(scope='class')
-    def django_setup(self, conn_utils):
-        """Setup Django configuration for testing"""
-        # Configure Django settings
-        if not settings.configured:
-            db_config = {
-                'ENGINE': 'aws_advanced_python_wrapper.django.backends.mysql_connector',
-                'NAME': conn_utils.dbname,
-                'USER': conn_utils.user,
-                'PASSWORD': conn_utils.password,
-                'HOST': conn_utils.writer_cluster_host,
-                'PORT': conn_utils.port,
-                'OPTIONS': {
-                    'plugins': 'failover_v2,aurora_connection_tracker',
-                    'connect_timeout': 10,
-                    'autocommit': True,
-                },
-            }
-
-            settings.configure(
-                DEBUG=True,
-                DATABASES={'default': db_config},
-                INSTALLED_APPS=[
-                    'django.contrib.contenttypes',
-                    'django.contrib.auth',
-                ],
-                SECRET_KEY='test-secret-key-for-django-tests',
-                USE_TZ=True,
-            )
-
-        django.setup()
-        setup_test_environment()
-
-        yield
-        connections.close_all()
-
-        teardown_test_environment()
-
+    '''
     def test_django_backend_configuration(self, test_environment: TestEnvironment, django_models):
         """Test Django backend configuration with empty plugins"""
         # Verify that the connection is using the AWS wrapper
@@ -186,26 +134,25 @@ class TestSqlAlchemy:
 
         # Test basic connection functionality
         assert self.TestModel.objects.count() == 0
+    '''
 
-    def test_django_basic_model_operations(self, test_environment: TestEnvironment, django_models):
+    def test_sqlalchemy_basic_model_operations(self, session, test_environment: TestEnvironment):
         """Test basic Django ORM operations (CRUD)"""
-        TestModel = self.TestModel
-
-        # Ensure clean slate
-        TestModel.objects.all().delete()
 
         # Create
-        test_obj = TestModel.objects.create(
+        test_obj = TestModel(
             name="John Doe",
             email="john@example.com",
             age=30,
             is_active=True
         )
+        session.add(test_obj)
+        session.commit()
         assert test_obj.id is not None
         assert test_obj.name == "John Doe"
 
         # Read
-        retrieved_obj = TestModel.objects.get(id=test_obj.id)
+        retrieved_obj = session.query(TestModel).filter(TestModel.id == test_obj.id).first()
         assert retrieved_obj.name == "John Doe"
         assert retrieved_obj.email == "john@example.com"
         assert retrieved_obj.age == 30
@@ -214,16 +161,18 @@ class TestSqlAlchemy:
         # Update
         retrieved_obj.name = "Jane Doe"
         retrieved_obj.age = 25
-        retrieved_obj.save()
+        session.commit()
 
-        updated_obj = TestModel.objects.get(id=test_obj.id)
+        updated_obj = session.query(TestModel).filter(TestModel.id == test_obj.id).first()
         assert updated_obj.name == "Jane Doe"
         assert updated_obj.age == 25
 
         # Delete
-        updated_obj.delete()
-        assert TestModel.objects.filter(id=test_obj.id).count() == 0
+        session.delete(updated_obj)
+        session.commit()
+        assert session.query(TestModel).filter(TestModel.id == test_obj.id).count() == 0
 
+'''
     def test_django_queryset_operations(self, test_environment: TestEnvironment, django_models):
         """Test Django QuerySet operations"""
         TestModel = self.TestModel

@@ -85,4 +85,5 @@ filterwarnings = [
 ]
 
 [tool.poetry.plugins."sqlalchemy.dialects"]
-"postgresql.aws_wrapper" = "aws_advanced_python_wrapper.sqlalchemy.orm_dialect:SqlAlchemyOrmPgDialect"
+"postgresql.aws_wrapper_psycopg" = "aws_advanced_python_wrapper.sqlalchemy.pg_orm_dialect:SqlAlchemyOrmPgDialect"
+"mysql.aws_wrapper_mysqlconnector" = "aws_advanced_python_wrapper.sqlalchemy.mysql_orm_dialect:SqlAlchemyOrmMysqlDialect"
