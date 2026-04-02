@@ -63,7 +63,7 @@ class TestEnvironmentRequest:
         return self._features
 
     def get_num_of_instances(self) -> int:
-        return self._num_of_instances
+        return 3
 
     def get_display_name(self) -> str:
         return "Test environment [{0}, {1}, {2}, {3}, {4}, {5}]".format(
