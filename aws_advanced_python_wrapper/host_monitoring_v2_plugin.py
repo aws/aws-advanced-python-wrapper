@@ -25,9 +25,12 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import (CanReleaseResources, Plugin,
                                                 PluginFactory)
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.atomic import (AtomicBoolean,
                                                       AtomicReference)
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
+from aws_advanced_python_wrapper.utils.events import (EventBase,
+                                                      MonitorResetEvent)
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
@@ -36,8 +39,6 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
-    SlidingExpirationCacheContainer
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryCounter, TelemetryFactory, TelemetryTraceLevel)
 
@@ -235,6 +236,7 @@ class HostMonitorV2:
         self._invalid_host_start_time_ns: int = 0
         self._monitoring_connection: Optional[Connection] = None
         self._driver_dialect: DriverDialect = self._plugin_service.driver_dialect
+        self._last_activity_ns: int = perf_counter_ns()
 
         self._monitor_run_thread: Thread = Thread(daemon=True, name="HostMonitoringThreadRun", target=self.run)
         self._monitor_run_thread.start()
@@ -242,8 +244,21 @@ class HostMonitorV2:
                                                           target=self._new_context_run)
         self._monitor_new_context_thread.start()
 
+    @property
     def can_dispose(self) -> bool:
         return self._active_contexts.empty() and len(self._new_contexts.items()) == 0
+
+    @property
+    def last_activity_ns(self) -> int:
+        return self._last_activity_ns
+
+    def process_event(self, event: EventBase) -> None:
+        if isinstance(event, MonitorResetEvent) and self._host_info.host in event.endpoints:
+            logger.debug("HostMonitorV2.ResetEventReceived", self._host_info.host)
+            self._monitoring_connection = None
+            self._invalid_host_start_time_ns = 0
+            self._failure_count = 0
+            self._is_unhealthy = False
 
     @property
     def is_stopped(self):
@@ -251,6 +266,7 @@ class HostMonitorV2:
 
     def stop(self):
         self._is_stopped.set(True)
+        self.close()
 
     def start_monitoring(self, context: MonitoringContext):
         if self.is_stopped:
@@ -306,6 +322,7 @@ class HostMonitorV2:
 
         try:
             while not self.is_stopped:
+                self._last_activity_ns = perf_counter_ns()
                 if self._active_contexts.empty() and not self._is_unhealthy:
                     sleep(HostMonitorV2._THREAD_SLEEP_SEC)
                     continue
@@ -356,7 +373,7 @@ class HostMonitorV2:
         except Exception as ex:
             logger.debug("HostMonitorV2.ExceptionDuringMonitoringStop", self._host_info.host, ex)
         finally:
-            self.stop()
+            self._is_stopped.set(True)
             if self._monitoring_connection is not None:
                 try:
                     self.abort_connection(self._monitoring_connection)
@@ -443,15 +460,12 @@ class HostMonitorV2:
             logger.debug("HostMonitorV2.ExceptionAbortingConnection", ex)
 
     def close(self) -> None:
-        self.stop()
         self._monitor_run_thread.join(10)
         self._monitor_new_context_thread.join(10)
 
 
 class MonitorServiceV2:
-    # 1 Minute to Nanoseconds
     _CACHE_CLEANUP_NANO: ClassVar[int] = 1 * 60 * 1_000_000_000
-    _MONITOR_CACHE_NAME: ClassVar[str] = "host_monitors_v2"
 
     def __init__(self, plugin_service: PluginService):
         self._plugin_service: PluginService = plugin_service
@@ -459,12 +473,10 @@ class MonitorServiceV2:
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._aborted_connections_counter = telemetry_factory.create_counter("efm2.connections.aborted")
 
-        self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=MonitorServiceV2._MONITOR_CACHE_NAME,
-            cleanup_interval_ns=MonitorServiceV2._CACHE_CLEANUP_NANO,
-            should_dispose_func=lambda monitor: monitor.can_dispose(),
-            item_disposal_func=lambda monitor: monitor.close()
-        )
+        self._monitor_service = services_container.get_monitor_service()
+        self._monitor_service.register_monitor_type(
+            HostMonitorV2,
+            expiration_timeout_ns=MonitorServiceV2._CACHE_CLEANUP_NANO)
 
     def start_monitoring(
             self,
@@ -510,13 +522,14 @@ class MonitorServiceV2:
             host_info.url
         )
 
-        cache_expiration_ns = int(WrapperProperties.MONITOR_DISPOSAL_TIME_MS.get_float(props) * 10**6)
-        return self._monitors.compute_if_absent(monitor_key,
-                                                lambda k: HostMonitorV2(self._plugin_service,
-                                                                        host_info,
-                                                                        props,
-                                                                        failure_detection_time_ms,
-                                                                        failure_detection_interval_ms,
-                                                                        failure_detection_count,
-                                                                        self._aborted_connections_counter),
-                                                cache_expiration_ns)
+        return self._monitor_service.run_if_absent(
+            HostMonitorV2,
+            monitor_key,
+            lambda: HostMonitorV2(self._plugin_service,
+                                  host_info,
+                                  props,
+                                  failure_detection_time_ms,
+                                  failure_detection_interval_ms,
+                                  failure_detection_count,
+                                  self._aborted_connections_counter)
+        )

@@ -27,12 +27,10 @@ from typing import (TYPE_CHECKING, ClassVar, List, Optional, Protocol, Tuple,
 from aws_advanced_python_wrapper.cluster_topology_monitor import (
     ClusterTopologyMonitor, ClusterTopologyMonitorImpl,
     GlobalAuroraTopologyMonitor)
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
-    SlidingExpirationCacheContainer
-from aws_advanced_python_wrapper.utils.storage.storage_service import (
-    StorageService, Topology)
+from aws_advanced_python_wrapper.utils.events import MonitorStopEvent
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -43,11 +41,9 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.host_availability import (
     HostAvailability, create_host_availability_strategy)
-from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole, Topology
 from aws_advanced_python_wrapper.pep249 import (Connection, Cursor,
                                                 ProgrammingError)
-from aws_advanced_python_wrapper.thread_pool_container import \
-    ThreadPoolContainer
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -81,6 +77,9 @@ class HostListProvider(Protocol):
         ...
 
     def get_cluster_id(self) -> str:
+        ...
+
+    def stop_monitor(self) -> None:
         ...
 
 
@@ -149,9 +148,7 @@ class HostListProviderService(Protocol):
 
 
 class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
-    _CACHE_CLEANUP_NANO: ClassVar[int] = 1 * 60 * 1_000_000_000  # 1 minute
     _MONITOR_CLEANUP_NANO: ClassVar[int] = 15 * 60 * 1_000_000_000  # 15 minutes
-    _MONITOR_CACHE_NAME: ClassVar[str] = "cluster_topology_monitors"
     _DEFAULT_TOPOLOGY_QUERY_TIMEOUT_SEC: ClassVar[int] = 5
 
     def __init__(
@@ -177,12 +174,11 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         self._high_refresh_rate_ns = (
             WrapperProperties.CLUSTER_TOPOLOGY_HIGH_REFRESH_RATE_MS.get_int(self._props) * 1_000_000)
 
-        self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=RdsHostListProvider._MONITOR_CACHE_NAME,
-            cleanup_interval_ns=RdsHostListProvider._CACHE_CLEANUP_NANO,
-            should_dispose_func=lambda monitor: monitor.can_dispose(),
-            item_disposal_func=lambda monitor: monitor.close()
-        )
+        self._monitor_service = services_container.get_monitor_service()
+        self._monitor_service.register_monitor_type(
+            ClusterTopologyMonitorImpl,
+            expiration_timeout_ns=RdsHostListProvider._MONITOR_CLEANUP_NANO,
+            produced_data_type=Topology)
 
     def _initialize(self):
         if self._is_initialized:
@@ -219,7 +215,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         """
         self._initialize()
 
-        cached_hosts = StorageService.get(Topology, self._cluster_id)
+        cached_hosts = services_container.get_storage_service().get(Topology, self._cluster_id)
         if not cached_hosts or force_update:
             if not conn:
                 # Cannot fetch topology without a connection
@@ -237,9 +233,10 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
 
     def _get_or_create_monitor(self) -> Optional[ClusterTopologyMonitor]:
         """Get or create monitor - matches Java's getOrCreateMonitor"""
-        return self._monitors.compute_if_absent_with_disposal(
+        return self._monitor_service.run_if_absent(
+            ClusterTopologyMonitorImpl,
             self.get_cluster_id(),
-            lambda k: ClusterTopologyMonitorImpl(
+            lambda: ClusterTopologyMonitorImpl(
                 self._plugin_service,
                 self._topology_utils,
                 self._cluster_id,
@@ -248,8 +245,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 self._topology_utils.instance_template,
                 self._refresh_rate_ns,
                 self._high_refresh_rate_ns
-            ),
-            RdsHostListProvider._MONITOR_CLEANUP_NANO
+            )
         )
 
     def _force_refresh_monitor(self, should_verify_writer: bool, timeout_sec: int) -> Optional[Topology]:
@@ -322,6 +318,10 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         self._initialize()
         return self._cluster_id
 
+    def stop_monitor(self) -> None:
+        services_container.get_event_publisher().publish(
+            MonitorStopEvent(monitor_type=ClusterTopologyMonitorImpl, key=self._cluster_id))
+
     @dataclass()
     class FetchTopologyResult:
         hosts: Topology
@@ -370,6 +370,9 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
     def get_cluster_id(self):
         return "<none>"
 
+    def stop_monitor(self) -> None:
+        pass
+
 
 class GlobalAuroraHostListProvider(RdsHostListProvider):
     _global_topology_utils: GlobalAuroraTopologyUtils
@@ -395,9 +398,10 @@ class GlobalAuroraHostListProvider(RdsHostListProvider):
 
     def _get_or_create_monitor(self) -> Optional[ClusterTopologyMonitor]:
         """Override to create GlobalAuroraTopologyMonitor"""
-        return self._monitors.compute_if_absent_with_disposal(
+        return self._monitor_service.run_if_absent(
+            ClusterTopologyMonitorImpl,
             self.get_cluster_id(),
-            lambda k: GlobalAuroraTopologyMonitor(
+            lambda: GlobalAuroraTopologyMonitor(
                 self._plugin_service,
                 self._global_topology_utils,
                 self._cluster_id,
@@ -407,8 +411,7 @@ class GlobalAuroraHostListProvider(RdsHostListProvider):
                 self._refresh_rate_ns,
                 self._high_refresh_rate_ns,
                 self._instance_templates_by_region
-            ),
-            RdsHostListProvider._MONITOR_CLEANUP_NANO
+            )
         )
 
     def get_current_topology(self, connection: Connection, initial_host_info: HostInfo) -> Topology:
@@ -461,7 +464,7 @@ class TopologyUtils(ABC):
 
         self.instance_template: HostInfo = instance_template
         self._max_timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(props)
-        self._thread_pool = ThreadPoolContainer.get_thread_pool(self._executor_name)
+        self._thread_pool = services_container.get_thread_pool(self._executor_name)
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):

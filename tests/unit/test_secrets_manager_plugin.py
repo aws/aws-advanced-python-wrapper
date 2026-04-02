@@ -15,8 +15,6 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Tuple
-from unittest.mock import patch
 
 import pytest
 from boto3 import Session
@@ -24,11 +22,11 @@ from botocore.exceptions import ClientError
 
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
-from aws_advanced_python_wrapper.aws_secrets_manager_plugin import \
-    AwsSecretsManagerPlugin
+from aws_advanced_python_wrapper.aws_secrets_manager_plugin import (
+    AwsSecretsManagerPlugin, Secret)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
-from aws_advanced_python_wrapper.utils.cache_map import CacheMap
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 _TEST_REGION = "us-east-2"
@@ -67,12 +65,12 @@ _GENERIC_CLIENT_ERROR = ClientError({
     }
 }, "some_operation")
 
-_secrets_cache: CacheMap[Tuple, SimpleNamespace] = CacheMap()
-
 
 @pytest.fixture(autouse=True)
 def clear_caches():
-    _secrets_cache.clear()
+    from datetime import timedelta
+    services_container.get_storage_service().register(Secret, item_expiration_time=timedelta(minutes=30))
+    services_container.get_storage_service().clear(Secret)
     AwsCredentialsManager.release_resources()
 
 
@@ -129,26 +127,26 @@ def test_properties():
     })
 
 
-@patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
 def test_connect_with_cached_secrets(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    _secrets_cache.put(_SECRET_CACHE_KEY, _TEST_SECRET, _ONE_YEAR_IN_NANOSECONDS)
+    storage = services_container.get_storage_service()
+    storage.put(Secret, _SECRET_CACHE_KEY, Secret(_TEST_SECRET), item_expiration_ns=_ONE_YEAR_IN_NANOSECONDS)
     target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(
         mock_plugin_service, test_properties, mock_session)
 
     target_plugin.connect(
         mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
-    assert 1 == len(_secrets_cache)
+    assert 1 == storage.size(Secret)
     mock_client.get_secret_value.assert_not_called()
     mock_func.assert_called_once()
     assert _TEST_USERNAME == test_properties.get("user")
     assert _TEST_PASSWORD == test_properties.get("password")
 
 
-@patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
 def test_connect_with_new_secrets(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    assert 0 == len(_secrets_cache)
+    storage = services_container.get_storage_service()
+    assert 0 == storage.size(Secret)
 
     target_plugin: AwsSecretsManagerPlugin = AwsSecretsManagerPlugin(
         mock_plugin_service, test_properties, mock_session)
@@ -156,7 +154,7 @@ def test_connect_with_new_secrets(
     target_plugin.connect(
         mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
 
-    assert 1 == len(_secrets_cache)
+    assert 1 == storage.size(Secret)
     mock_client.get_secret_value.assert_called_once()
     mock_func.assert_called_once()
     assert _TEST_USERNAME == test_properties.get("user")
@@ -176,9 +174,9 @@ def test_missing_required_params(key: str, mock_plugin_service, mock_session):
     assert "required" in str(exc_info.value).lower()
 
 
-@patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
 def test_failed_initial_connection_with_unhandled_error(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
+    storage = services_container.get_storage_service()
     exception_msg = "Unhandled error during connection"
 
     # Simulate an unhandled exception (neither a login exception nor a network exception)
@@ -192,17 +190,17 @@ def test_failed_initial_connection_with_unhandled_error(
         target_plugin.connect(
             mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
 
-    assert 1 == len(_secrets_cache)
+    assert 1 == storage.size(Secret)
     mock_client.get_secret_value.assert_called_once()
     mock_func.assert_called_once()
     assert _TEST_USERNAME == test_properties.get("user")
     assert _TEST_PASSWORD == test_properties.get("password")
 
 
-@patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
 def test_connect_with_new_secrets_after_trying_with_cached_secrets(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
-    _secrets_cache.put(_SECRET_CACHE_KEY, _INVALID_TEST_SECRET, _ONE_YEAR_IN_NANOSECONDS)
+    storage = services_container.get_storage_service()
+    storage.put(Secret, _SECRET_CACHE_KEY, Secret(_INVALID_TEST_SECRET), item_expiration_ns=_ONE_YEAR_IN_NANOSECONDS)
 
     login_exception = Exception("Login failed with cached credentials")
     mock_func.side_effect = [login_exception, mocker.MagicMock()]
@@ -213,14 +211,13 @@ def test_connect_with_new_secrets_after_trying_with_cached_secrets(
 
     target_plugin.connect(mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
 
-    assert 1 == len(_secrets_cache)
+    assert 1 == storage.size(Secret)
     mock_client.get_secret_value.assert_called_once()
     assert 2 == mock_func.call_count
     assert _TEST_USERNAME == test_properties.get("user")
     assert _TEST_PASSWORD == test_properties.get("password")
 
 
-@patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
 def test_failed_to_read_secrets(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
     mock_client.get_secret_value.return_value = "foo"
@@ -233,7 +230,6 @@ def test_failed_to_read_secrets(
             mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
 
 
-@patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
 def test_failed_to_get_secrets(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
     mock_client.get_secret_value.side_effect = _GENERIC_CLIENT_ERROR
@@ -291,9 +287,9 @@ def test_connection_with_region_parameter_and_arn(
     mock_client.get_secret_value.assert_called_with(SecretId=arn)
 
 
-@patch("aws_advanced_python_wrapper.aws_secrets_manager_plugin.AwsSecretsManagerPlugin._secrets_cache", _secrets_cache)
 def test_connect_with_different_secret_keys(
         mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
+    storage = services_container.get_storage_service()
     test_properties["secrets_manager_secret_username_key"] = _TEST_USERNAME_KEY
     test_properties["secrets_manager_secret_password_key"] = _TEST_PASSWORD_KEY
     secret_string = (
@@ -307,7 +303,7 @@ def test_connect_with_different_secret_keys(
     target_plugin.connect(
         mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
 
-    assert 1 == len(_secrets_cache)
+    assert 1 == storage.size(Secret)
     mock_client.get_secret_value.assert_called_once()
     mock_func.assert_called_once()
     assert _TEST_USERNAME == test_properties.get("user")

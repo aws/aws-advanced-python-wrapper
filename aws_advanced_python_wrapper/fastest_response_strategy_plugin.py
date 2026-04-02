@@ -17,21 +17,23 @@ from __future__ import annotations
 import time
 from copy import copy
 from dataclasses import dataclass
+from datetime import timedelta
 from threading import Event, Lock, Thread
-from time import sleep
+from time import perf_counter_ns, sleep
 from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, List, Optional,
                     Set, Tuple)
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import RandomHostSelector
 from aws_advanced_python_wrapper.plugin import Plugin
-from aws_advanced_python_wrapper.utils.cache_map import CacheMap
+from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.events import (EventBase,
+                                                      MonitorResetEvent)
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
-    SlidingExpirationCacheContainer
+from aws_advanced_python_wrapper.utils.storage.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryContext, TelemetryFactory, TelemetryGauge, TelemetryTraceLevel)
 
@@ -45,6 +47,14 @@ if TYPE_CHECKING:
 logger = Logger(__name__)
 
 MAX_VALUE = 2147483647
+
+
+class ResponseTimeHolder:
+    """Wrapper type for response time data, used as StorageService type key."""
+
+    def __init__(self, url: str, response_time: int):
+        self.url = url
+        self.response_time = response_time
 
 
 class FastestResponseStrategyPlugin(Plugin):
@@ -154,12 +164,14 @@ class HostResponseTimeMonitor:
         self._host_info = host_info
         self._properties = props
         self._interval_ms = interval_ms
+        self._storage_service = services_container.get_storage_service()
 
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
         self._response_time: int = MAX_VALUE
         self._lock: Lock = Lock()
         self._monitoring_conn: Optional[Connection] = None
         self._is_stopped: Event = Event()
+        self._last_activity_ns: int = perf_counter_ns()
 
         self._host_id: Optional[str] = self._host_info.host_id
         if self._host_id is None or self._host_id == "":
@@ -190,8 +202,26 @@ class HostResponseTimeMonitor:
     def is_stopped(self):
         return self._is_stopped.is_set()
 
-    def close(self):
+    def stop(self) -> None:
         self._is_stopped.set()
+        self.close()
+
+    @property
+    def can_dispose(self) -> bool:
+        return self._is_stopped.is_set()
+
+    @property
+    def last_activity_ns(self) -> int:
+        return self._last_activity_ns
+
+    def process_event(self, event: EventBase) -> None:
+        if isinstance(event, MonitorResetEvent) and self._host_info.host in event.endpoints:
+            logger.debug("HostResponseTimeMonitor.ResetEventReceived", self._host_info.host)
+            self._monitoring_conn = None
+            self._response_time = MAX_VALUE
+            self._storage_service.remove(ResponseTimeHolder, self._host_info.url)
+
+    def close(self):
         self._daemon_thread.join(5)
         logger.debug("HostResponseTimeMonitor.Stopped", self._host_info.host)
 
@@ -206,6 +236,7 @@ class HostResponseTimeMonitor:
             context.set_attribute("url", self._host_info.url)
         try:
             while not self.is_stopped:
+                self._last_activity_ns = perf_counter_ns()
                 self._open_connection()
 
                 if self._monitoring_conn is not None:
@@ -223,8 +254,11 @@ class HostResponseTimeMonitor:
 
                         if count > 0:
                             self.response_time = response_time_sum / count
+                            self._storage_service.put(ResponseTimeHolder, self._host_info.url,
+                                                      ResponseTimeHolder(self._host_info.url, self._response_time))
                         else:
                             self.response_time = MAX_VALUE
+                            self._storage_service.remove(ResponseTimeHolder, self._host_info.url)
                         logger.debug("HostResponseTimeMonitor.ResponseTime", self._host_info.host, self._response_time)
 
                 sleep(self._interval_ms / 1000)
@@ -279,8 +313,6 @@ class HostResponseTimeMonitor:
 
 class HostResponseTimeService:
     _CACHE_EXPIRATION_NS: ClassVar[int] = 10 * 60_000_000_000  # 10 minutes
-    _CACHE_CLEANUP_NS: ClassVar[int] = 60_000_000_000  # 1 minute
-    _CACHE_NAME: ClassVar[str] = "host_response_time_monitors"
     _lock: ClassVar[Lock] = Lock()
 
     def __init__(self, plugin_service: PluginService, props: Properties, interval_ms: int):
@@ -289,17 +321,20 @@ class HostResponseTimeService:
         self._interval_ms = interval_ms
         self._hosts: Tuple[HostInfo, ...] = ()
         self._telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
+        self._storage_service = services_container.get_storage_service()
 
-        self._monitoring_hosts = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=HostResponseTimeService._CACHE_NAME,
-            cleanup_interval_ns=HostResponseTimeService._CACHE_CLEANUP_NS,
-            should_dispose_func=lambda monitor: True,
-            item_disposal_func=lambda monitor: HostResponseTimeService._monitor_close(monitor)
-        )
+        self._storage_service.register(
+            ResponseTimeHolder, item_expiration_time=timedelta(minutes=10))
+
+        self._monitor_service = services_container.get_monitor_service()
+        self._monitor_service.register_monitor_type(
+            HostResponseTimeMonitor,
+            expiration_timeout_ns=HostResponseTimeService._CACHE_EXPIRATION_NS,
+            produced_data_type=ResponseTimeHolder)
 
         self._host_count_gauge: TelemetryGauge | None = self._telemetry_factory.create_gauge(
             "frt.hosts.count",
-            lambda: len(self._monitoring_hosts)
+            lambda: self._monitor_service.count(HostResponseTimeMonitor)
         )
 
     @property
@@ -310,18 +345,11 @@ class HostResponseTimeService:
     def hosts(self, new_hosts: Tuple[HostInfo, ...]):
         self._hosts = new_hosts
 
-    @staticmethod
-    def _monitor_close(monitor: HostResponseTimeMonitor):
-        try:
-            monitor.close()
-        except Exception:
-            pass
-
     def get_response_time(self, host_info: HostInfo) -> int:
-        monitor: Optional[HostResponseTimeMonitor] = self._monitoring_hosts.get(host_info.url)
-        if monitor is None:
-            return MAX_VALUE
-        return monitor.response_time
+        holder = self._storage_service.get(ResponseTimeHolder, host_info.url)
+        if holder is not None:
+            return holder.response_time
+        return MAX_VALUE
 
     def set_hosts(self, new_hosts: Tuple[HostInfo, ...]) -> None:
         old_hosts_dict = {x.url: x for x in self.hosts}
@@ -329,10 +357,11 @@ class HostResponseTimeService:
 
         for host in self.hosts:
             if host.url not in old_hosts_dict:
+                def _create_monitor(h: HostInfo = host) -> HostResponseTimeMonitor:
+                    return HostResponseTimeMonitor(self._plugin_service, h, self._properties, self._interval_ms)
+
                 with self._lock:
-                    self._monitoring_hosts.compute_if_absent(host.url,
-                                                             lambda _: HostResponseTimeMonitor(
-                                                                 self._plugin_service,
-                                                                 host,
-                                                                 self._properties,
-                                                                 self._interval_ms), HostResponseTimeService._CACHE_EXPIRATION_NS)
+                    self._monitor_service.run_if_absent(
+                        HostResponseTimeMonitor,
+                        host.url,
+                        _create_monitor)

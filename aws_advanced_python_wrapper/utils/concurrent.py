@@ -77,6 +77,25 @@ class ConcurrentDict(Generic[K, V]):
                     return new_value
             return value
 
+    def compute_for_keys(
+            self, keys, factory: Callable,
+            on_existing: Optional[Callable] = None) -> V:
+        with self._lock:
+            value = None
+            for key in keys:
+                value = self._dict.get(key)
+                if value is not None:
+                    if on_existing:
+                        on_existing(value)
+                    break
+
+            if value is None:
+                value = factory()
+
+            for key in keys:
+                self._dict.setdefault(key, value)
+            return value
+
     def put(self, key: K, value: V):
         with self._lock:
             self._dict[key] = value
@@ -97,6 +116,14 @@ class ConcurrentDict(Generic[K, V]):
     def remove(self, key: K) -> V:
         with self._lock:
             return self._dict.pop(key, None)
+
+    def remove_key_if(self, key: K, predicate: Callable[[V], bool]) -> Optional[V]:
+        with self._lock:
+            value = self._dict.get(key)
+            if value is not None and predicate(value):
+                del self._dict[key]
+                return value
+            return None
 
     def remove_if(self, predicate: Callable) -> bool:
         with self._lock:

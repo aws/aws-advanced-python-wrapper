@@ -17,8 +17,12 @@ from __future__ import annotations
 from typing import (TYPE_CHECKING, Any, Callable, Iterator, List, Optional,
                     Type, TypeVar, Union)
 
+from aws_advanced_python_wrapper.plugin_service import (
+    PluginManager, PluginServiceImpl, PluginServiceManagerContainer)
+
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
+    from aws_advanced_python_wrapper.plugin_service import PluginService
 
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
@@ -26,9 +30,6 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.pep249 import Connection, Cursor, Error
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
-from aws_advanced_python_wrapper.plugin_service import (
-    PluginManager, PluginService, PluginServiceImpl,
-    PluginServiceManagerContainer)
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -159,12 +160,16 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         try:
             driver_dialect_manager: DriverDialectManager = DriverDialectManager()
             driver_dialect = driver_dialect_manager.get_dialect(target_func, props)
-            container: PluginServiceManagerContainer = PluginServiceManagerContainer()
-            plugin_service = PluginServiceImpl(
-                container, props, target_func, driver_dialect_manager, driver_dialect)
+
+            container = PluginServiceManagerContainer()
+            plugin_service = PluginServiceImpl(container, props, target_func, driver_dialect_manager, driver_dialect)
             plugin_manager: PluginManager = PluginManager(container, props, telemetry_factory)
 
-            return AwsWrapperConnection(target_func, plugin_service, plugin_service, plugin_manager)
+            return AwsWrapperConnection(
+                target_func,
+                plugin_service,
+                plugin_service,
+                plugin_manager)
         except Exception as ex:
             if context is not None:
                 context.set_exception(ex)

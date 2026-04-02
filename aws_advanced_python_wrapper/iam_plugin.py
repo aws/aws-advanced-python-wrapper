@@ -31,11 +31,12 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
 from datetime import datetime, timedelta
-from typing import Callable, Dict, Set
+from typing import Callable, Set
 
 from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -51,15 +52,16 @@ class IamAuthPlugin(Plugin):
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60 - 30
 
     _rds_utils: RdsUtils = RdsUtils()
-    _token_cache: Dict[str, TokenInfo] = {}
 
     def __init__(self, plugin_service: PluginService):
         self._plugin_service = plugin_service
+        self._storage_service = services_container.get_storage_service()
+        self._storage_service.register(TokenInfo, item_expiration_time=timedelta(minutes=15))
 
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = telemetry_factory.create_counter("iam.fetch_token.count")
         self._cache_size_gauge = telemetry_factory.create_gauge(
-            "iam.token_cache.size", lambda: len(IamAuthPlugin._token_cache))
+            "iam.token_cache.size", lambda: self._storage_service.size(TokenInfo))
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -104,7 +106,7 @@ class IamAuthPlugin(Plugin):
             region
         )
 
-        token_info = IamAuthPlugin._token_cache.get(cache_key)
+        token_info = self._storage_service.get(TokenInfo, cache_key)
 
         if token_info is not None and not token_info.is_expired():
             logger.debug("IamAuthPlugin.UseCachedIamToken", token_info.token)
@@ -125,7 +127,7 @@ class IamAuthPlugin(Plugin):
                 region,
                 session)
             self._plugin_service.driver_dialect.set_password(props, token)
-            IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
+            self._storage_service.put(TokenInfo, cache_key, TokenInfo(token, token_expiry))
 
         try:
             return connect_func()
@@ -150,7 +152,7 @@ class IamAuthPlugin(Plugin):
             session = AwsCredentialsManager.get_session(session_host_info, props, region)
             token = IamAuthUtils.generate_authentication_token(self._plugin_service, user, host, port, region, session)
             self._plugin_service.driver_dialect.set_password(props, token)
-            IamAuthPlugin._token_cache[cache_key] = TokenInfo(token, token_expiry)
+            self._storage_service.put(TokenInfo, cache_key, TokenInfo(token, token_expiry))
 
             try:
                 return connect_func()

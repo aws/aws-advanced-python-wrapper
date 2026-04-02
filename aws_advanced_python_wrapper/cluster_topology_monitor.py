@@ -18,16 +18,18 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
+from time import perf_counter_ns
 from typing import TYPE_CHECKING, Dict, Optional
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
-from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.hostinfo import HostInfo, Topology
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.atomic import AtomicReference
+from aws_advanced_python_wrapper.utils.events import (EventBase,
+                                                      MonitorResetEvent)
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
-from aws_advanced_python_wrapper.utils.storage.storage_service import (
-    StorageService, Topology)
 from aws_advanced_python_wrapper.utils.thread_safe_connection_holder import \
     ThreadSafeConnectionHolder
 from aws_advanced_python_wrapper.utils.utils import LogUtils
@@ -55,8 +57,18 @@ class ClusterTopologyMonitor(ABC):
     def force_refresh_with_connection(self, connection: Connection, timeout_sec: int) -> Topology:
         pass
 
+    @property
     @abstractmethod
     def can_dispose(self) -> bool:
+        pass
+
+    @abstractmethod
+    def stop(self) -> None:
+        pass
+
+    @property
+    @abstractmethod
+    def last_activity_ns(self) -> int:
         pass
 
     @abstractmethod
@@ -109,6 +121,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         self._high_refresh_rate_end_time_nano = 0
         self._stop = threading.Event()
         self._monitor_thread: Optional[threading.Thread] = None
+        self._last_activity_ns: int = perf_counter_ns()
 
         self._monitoring_properties = PropertiesUtils.create_topology_monitoring_properties(properties)
         if WrapperProperties.SOCKET_TIMEOUT_SEC.get(self._monitoring_properties) is None:
@@ -124,7 +137,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                 current_time_nano < self._ignore_new_topology_requests_end_time_nano):
             current_hosts = self._get_stored_hosts()
             if current_hosts is not None:
-                logger.debug("ClusterTopologyMonitorImpl.IgnoringTopologyRequest", self._cluster_id, LogUtils.log_topology(current_hosts))
+                logger.debug("ClusterTopologyMonitor.IgnoringTopologyRequest", self._cluster_id, LogUtils.log_topology(current_hosts))
                 return current_hosts
 
         if should_verify_writer:
@@ -145,7 +158,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         self._request_to_update_topology.set()
 
         if timeout_sec == 0:
-            logger.debug("ClusterTopologyMonitorImpl.TimeoutSetToZero", self._cluster_id, LogUtils.log_topology(current_hosts))
+            logger.debug("ClusterTopologyMonitor.TimeoutSetToZero", self._cluster_id, LogUtils.log_topology(current_hosts))
             return current_hosts
 
         end_time = time.time() + timeout_sec
@@ -159,21 +172,45 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
 
         raise TimeoutError(
                     Messages.get_formatted(
-                        "ClusterTopologyMonitorImpl.TopologyNotUpdated",
+                        "ClusterTopologyMonitor.TopologyNotUpdated",
                         self._cluster_id, timeout_sec * 1000))
 
     def _get_stored_hosts(self) -> Topology:
-        hosts = StorageService.get(Topology, self._cluster_id)
+        hosts = services_container.get_storage_service().get(Topology, self._cluster_id)
         if hosts is None:
             return ()
         return hosts
 
+    def stop(self) -> None:
+        self._stop.set()
+        self.close()
+
+    @property
     def can_dispose(self) -> bool:
         return self._stop.is_set()
 
+    @property
+    def last_activity_ns(self) -> int:
+        return self._last_activity_ns
+
+    def process_event(self, event: EventBase) -> None:
+        if isinstance(event, MonitorResetEvent) and event.cluster_id == self._cluster_id:
+            logger.debug("ClusterTopologyMonitor.ResetEventReceived", self._cluster_id)
+            self._host_threads_stop.set()
+            self._close_host_monitors()
+            self._close_connection_from_ref(self._host_threads_writer_connection)
+            self._close_connection_from_ref(self._host_threads_reader_connection)
+            self._host_threads_stop.clear()
+            self._submitted_hosts.clear()
+            self._host_threads_writer_host_info.set(None)
+            self._host_threads_latest_topology.set(None)
+            self._monitoring_connection.clear()
+            self._is_verified_writer_connection = False
+            self._writer_host_info.set(None)
+            self._high_refresh_rate_end_time_nano = 0
+
     def close(self) -> None:
-        logger.debug("ClusterTopologyMonitorImpl.ClosingMonitor", self._cluster_id)
-        self._stop.set()
+        logger.debug("ClusterTopologyMonitor.ClosingMonitor", self._cluster_id)
         self._request_to_update_topology.set()
 
         self._close_host_monitors()
@@ -195,6 +232,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
             logger.debug("ClusterTopologyMonitor.StartMonitoringThread", self._cluster_id, self._initial_host_info.host)
 
             while not self._stop.is_set():
+                self._last_activity_ns = perf_counter_ns()
                 if self._is_in_panic_mode():
                     if not self._submitted_hosts:
                         self._close_host_monitors()
@@ -207,7 +245,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                             hosts = self._open_any_connection_and_update_topology()
 
                         if hosts and not self._is_verified_writer_connection:
-                            logger.debug("ClusterTopologyMonitorImpl.StartingHostMonitoringThreads", self._cluster_id)
+                            logger.debug("ClusterTopologyMonitor.StartingHostMonitoringThreads", self._cluster_id)
                             writer_host_info = self._writer_host_info.get()
                             for host_info in hosts:
                                 if host_info.host not in self._submitted_hosts:
@@ -217,14 +255,14 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                                         self._submitted_hosts[host_info.host] = True
                                     except Exception as e:
                                         logger.debug(
-                                            "ClusterTopologyMonitorImpl.ExceptionStartingHostMonitor",
+                                            "ClusterTopologyMonitor.ExceptionStartingHostMonitor",
                                             self._cluster_id, host_info.host, e)
                     else:
                         # Check if writer has been detected
                         writer_host_info = self._host_threads_writer_host_info.get()
                         writer_connection = self._host_threads_writer_connection.get()
                         if (writer_connection is not None and writer_host_info is not None):
-                            logger.debug("ClusterTopologyMonitorImpl.WriterPickedUpFromHostMonitors", self._cluster_id, writer_host_info.host)
+                            logger.debug("ClusterTopologyMonitor.WriterPickedUpFromHostMonitors", self._cluster_id, writer_host_info.host)
                             # Transfer the writer connection to monitoring connection
                             self._monitoring_connection.set(writer_connection, close_previous=True)
                             self._writer_host_info.set(writer_host_info)
@@ -254,7 +292,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                                         self._submitted_hosts[host_info.host] = True
                                     except Exception as e:
                                         logger.debug(
-                                            "ClusterTopologyMonitorImpl.ExceptionStartingHostMonitor",
+                                            "ClusterTopologyMonitor.ExceptionStartingHostMonitor",
                                             self._cluster_id, host_info.host, e)
 
                     self._delay(True)
@@ -283,7 +321,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                     self._ignore_new_topology_requests_end_time_nano = 0
 
         except Exception as ex:
-            logger.info("ClusterTopologyMonitorImpl.ExceptionDuringMonitoringStop", self._cluster_id, ex)
+            logger.info("ClusterTopologyMonitor.ExceptionDuringMonitoringStop", self._cluster_id, ex)
         finally:
             self._stop.set()
             self._close_host_monitors()
@@ -303,7 +341,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
             try:
                 conn = self._plugin_service.force_connect(self._initial_host_info, self._monitoring_properties)
                 self._monitoring_connection.set(conn, close_previous=False)
-                logger.debug("ClusterTopologyMonitorImpl.OpenedMonitoringConnection",
+                logger.debug("ClusterTopologyMonitor.OpenedMonitoringConnection",
                              self._cluster_id, self._initial_host_info.host)
 
                 try:
@@ -330,7 +368,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                                 host_id=writer_id)
                             self._writer_host_info.set(writer_host_info)
 
-                        logger.debug("ClusterTopologyMonitorImpl.WriterMonitoringConnection",
+                        logger.debug("ClusterTopologyMonitor.WriterMonitoringConnection",
                                      self._cluster_id, writer_host_info.host)
                 except Exception:
                     pass
@@ -385,7 +423,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
     def _get_host_executor_service(self) -> ThreadPoolExecutor:
         if self._stop.is_set():
             raise RuntimeError(Messages.get_formatted(
-                "ClusterTopologyMonitorImpl.CannotCreateExecutorWhenStopped", self._cluster_id))
+                "ClusterTopologyMonitor.CannotCreateExecutorWhenStopped", self._cluster_id))
         thread_pool_executor = self._thread_pool_executor.get()
         if thread_pool_executor is None:
             thread_pool_executor = ThreadPoolExecutor(thread_name_prefix=self._cluster_id)
@@ -421,7 +459,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                 return hosts
             return ()
         except Exception as ex:
-            logger.debug("ClusterTopologyMonitorImpl.ErrorFetchingTopology", self._cluster_id, ex)
+            logger.debug("ClusterTopologyMonitor.ErrorFetchingTopology", self._cluster_id, ex)
             return ()
 
     def _fetch_topology_and_update_cache_safe(self) -> Topology:
@@ -444,7 +482,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         return self._instance_template
 
     def _update_topology_cache(self, hosts: Topology) -> None:
-        StorageService.set(self._cluster_id, hosts, Topology)
+        services_container.get_storage_service().put(Topology, self._cluster_id, hosts)
         # Notify waiting threads
         self._request_to_update_topology.clear()
         self._topology_updated.set()

@@ -12,58 +12,85 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from types import MappingProxyType
-from typing import (TYPE_CHECKING, Any, ClassVar, Optional, Tuple, Type,
-                    TypeAlias, TypeVar)
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Callable, Optional, Type, TypeVar
+
+from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
+from aws_advanced_python_wrapper.utils.events import (DataAccessEvent,
+                                                      EventPublisher)
+from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.storage.sliding_expiration_cache import \
+    SlidingExpirationCache
 
 if TYPE_CHECKING:
-    from aws_advanced_python_wrapper.hostinfo import HostInfo
+    from datetime import timedelta
 
-from aws_advanced_python_wrapper.utils.cache_map import CacheMap
+logger = Logger(__name__)
 
 V = TypeVar('V')
-Topology: TypeAlias = Tuple["HostInfo", ...]
 
 
 class StorageService:
-    _storage_map: ClassVar[MappingProxyType] = MappingProxyType({
-        Topology: CacheMap()
-    })
+    """Instance-based typed key-value cache with expiration and event publishing."""
 
-    @staticmethod
-    def get(item_class: Type[V], key: Any) -> Optional[V]:
-        cache = StorageService._storage_map.get(item_class)
+    def __init__(self, event_publisher: EventPublisher) -> None:
+        self._event_publisher = event_publisher
+        self._caches: ConcurrentDict[type, SlidingExpirationCache] = ConcurrentDict()
+
+    def register(
+            self,
+            item_type: Type[V],
+            item_expiration_time: timedelta,
+            should_dispose: Optional[Callable] = None,
+            on_dispose: Optional[Callable] = None) -> None:
+        item_expiration_ns = int(item_expiration_time.total_seconds() * 1_000_000_000)
+        self._caches.compute_if_absent(
+            item_type,
+            lambda _: SlidingExpirationCache(
+                cleanup_interval_ns=item_expiration_ns,
+                should_dispose_func=should_dispose,
+                item_disposal_func=on_dispose))
+
+    def get(self, item_type: Type[V], key: Any) -> Optional[V]:
+        cache = self._caches.get(item_type)
         if cache is None:
             return None
-
         value = cache.get(key)
-        # TODO: publish data access event
+        if value is not None:
+            self._event_publisher.publish(DataAccessEvent(data_type=item_type, key=key))
         return value
 
-    @staticmethod
-    def get_all(item_class: Type[V]) -> Optional[CacheMap[Any, V]]:
-        cache = StorageService._storage_map.get(item_class)
-        return cache
+    def put(self, item_type: Type[V], key: Any, value: V, item_expiration_ns: Optional[int] = None) -> None:
+        cache = self._caches.get(item_type)
+        if cache is None:
+            raise ValueError(f"Type {item_type} is not registered with StorageService")
+        if item_expiration_ns is None:
+            item_expiration_ns = cache._cleanup_interval_ns
+        cache.put(key, value, item_expiration_ns)
 
-    @staticmethod
-    def set(key: Any, item: V, item_class: Type[V]) -> None:
-        cache = StorageService._storage_map.get(item_class)
-        if cache is not None:
-            cache.put(key, item)
+    def exists(self, item_type: Type[V], key: Any) -> bool:
+        cache = self._caches.get(item_type)
+        return cache is not None and key in cache
 
-    @staticmethod
-    def remove(item_class: Type, key: Any) -> None:
-        cache = StorageService._storage_map.get(item_class)
+    def remove(self, item_type: Type[V], key: Any) -> None:
+        cache = self._caches.get(item_type)
         if cache is not None:
             cache.remove(key)
 
-    @staticmethod
-    def clear(item_class: Type) -> None:
-        cache = StorageService._storage_map.get(item_class)
+    def clear(self, item_type: Type[V]) -> None:
+        cache = self._caches.get(item_type)
         if cache is not None:
             cache.clear()
 
-    @staticmethod
-    def clear_all() -> None:
-        for cache in StorageService._storage_map.values():
+    def size(self, item_type: Type[V]) -> int:
+        cache = self._caches.get(item_type)
+        return len(cache) if cache is not None else 0
+
+    def clear_all(self) -> None:
+        for cache in self._caches.values():
             cache.clear()
+
+    def release_resources(self) -> None:
+        self.clear_all()
+        self._caches.clear()

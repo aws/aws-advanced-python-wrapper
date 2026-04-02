@@ -21,7 +21,7 @@ from aws_advanced_python_wrapper.sql_alchemy_connection_provider import (
     PoolKey, SqlAlchemyPooledConnectionProvider)
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache import \
+from aws_advanced_python_wrapper.utils.storage.sliding_expiration_cache import \
     SlidingExpirationCache
 
 

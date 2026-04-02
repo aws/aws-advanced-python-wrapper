@@ -18,8 +18,8 @@ from _weakref import ref
 
 from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.host_monitoring_plugin import (
-    MonitoringThreadContainer, MonitorService)
+from aws_advanced_python_wrapper.host_monitoring_plugin import \
+    HostMonitorService
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.properties import Properties
 
@@ -35,11 +35,6 @@ def mock_plugin_service(mocker):
 
 
 @pytest.fixture
-def mock_thread_container(mocker):
-    return mocker.MagicMock()
-
-
-@pytest.fixture
 def mock_monitor(mocker):
     monitor = mocker.MagicMock()
     monitor.is_stopped = False
@@ -47,120 +42,65 @@ def mock_monitor(mocker):
 
 
 @pytest.fixture
-def thread_container():
-    return MonitoringThreadContainer()
-
-
-@pytest.fixture
-def monitor_service_mocked_container(mock_plugin_service, mock_thread_container):
-    service = MonitorService(mock_plugin_service)
-    service._monitor_container = mock_thread_container
-    return service
-
-
-@pytest.fixture
-def monitor_service_with_container(mock_plugin_service, thread_container):
-    service = MonitorService(mock_plugin_service)
-    service._monitor_container = thread_container
+def monitor_service(mock_plugin_service, mocker, mock_monitor):
+    mocker.patch(
+        "aws_advanced_python_wrapper.host_monitoring_plugin.Monitor.__init__", return_value=None)
+    service = HostMonitorService(mock_plugin_service)
     return service
 
 
 @pytest.fixture(autouse=True)
-def setup_teardown(mocker, mock_thread_container, mock_plugin_service, mock_monitor):
-    mock_thread_container.get_or_create_monitor.return_value = mock_monitor
-    mocker.patch(
-        "aws_advanced_python_wrapper.host_monitoring_plugin.MonitorService._create_monitor", return_value=mock_monitor)
-
+def cleanup():
     yield
-
-    while MonitoringThreadContainer._instance is not None:
-        release_resources()
+    release_resources()
 
 
-def test_start_monitoring(
-        monitor_service_mocked_container,
-        mock_plugin_service,
-        mock_monitor,
-        mock_conn,
-        mock_thread_container):
+def test_start_monitoring(mocker, monitor_service, mock_plugin_service, mock_monitor, mock_conn):
     aliases = frozenset({"instance-1"})
 
-    monitor_service_mocked_container.start_monitoring(
+    mocker.patch.object(monitor_service._monitor_service, 'run_if_absent_with_aliases', return_value=mock_monitor)
+
+    monitor_service.start_monitoring(
         mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
     mock_monitor.start_monitoring.assert_called_once()
-    assert mock_monitor == monitor_service_mocked_container._cached_monitor()
-    assert aliases == monitor_service_mocked_container._cached_monitor_aliases
-
-
-def test_start_monitoring__multiple_calls(monitor_service_with_container, mock_monitor, mock_conn, mocker):
-    aliases = frozenset({"instance-1"})
-
-    # Mock the _thread_pool directly on the container instance since it's now cached in __init__
-    mock_thread_pool = mocker.MagicMock()
-    monitor_service_with_container._monitor_container._thread_pool = mock_thread_pool
-
-    num_calls = 5
-    for _ in range(num_calls):
-        monitor_service_with_container.start_monitoring(
-            mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
-
-    assert num_calls == mock_monitor.start_monitoring.call_count
-    mock_thread_pool.submit.assert_called_once_with(mock_monitor.run)
-    assert mock_monitor == monitor_service_with_container._cached_monitor()
-    assert aliases == monitor_service_with_container._cached_monitor_aliases
+    assert mock_monitor == monitor_service._cached_monitor()
+    assert aliases == monitor_service._cached_monitor_aliases
 
 
 def test_start_monitoring__cached_monitor(
-        monitor_service_mocked_container, mock_plugin_service, mock_monitor, mock_conn, mock_thread_container):
+        mocker, monitor_service, mock_plugin_service, mock_monitor, mock_conn):
     aliases = frozenset({"instance-1"})
-    monitor_service_mocked_container._cached_monitor = ref(mock_monitor)
-    monitor_service_mocked_container._cached_monitor_aliases = aliases
+    monitor_service._cached_monitor = ref(mock_monitor)
+    monitor_service._cached_monitor_aliases = aliases
 
-    monitor_service_mocked_container.start_monitoring(
+    monitor_service.start_monitoring(
         mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
-    mock_plugin_service.get_dialect.assert_not_called()
-    mock_thread_container.get_or_create_monitor.assert_not_called()
     mock_monitor.start_monitoring.assert_called_once()
-    assert mock_monitor == monitor_service_mocked_container._cached_monitor()
-    assert aliases == monitor_service_mocked_container._cached_monitor_aliases
+    assert mock_monitor == monitor_service._cached_monitor()
+    assert aliases == monitor_service._cached_monitor_aliases
 
 
-def test_start_monitoring__errors(monitor_service_mocked_container, mock_conn, mock_plugin_service):
+def test_start_monitoring__errors(monitor_service, mock_conn):
     with pytest.raises(AwsWrapperError):
-        monitor_service_mocked_container.start_monitoring(
+        monitor_service.start_monitoring(
             mock_conn, frozenset(), HostInfo("instance-1"), Properties(), 5000, 1000, 3)
 
 
-def test_stop_monitoring(monitor_service_with_container, mock_monitor, mock_conn):
+def test_stop_monitoring(mocker, monitor_service, mock_monitor, mock_conn):
     aliases = frozenset({"instance-1"})
-    context = monitor_service_with_container.start_monitoring(
-            mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
-    monitor_service_with_container.stop_monitoring(context)
+    mocker.patch.object(monitor_service._monitor_service, 'run_if_absent_with_aliases', return_value=mock_monitor)
+
+    context = monitor_service.start_monitoring(
+        mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
+    monitor_service.stop_monitoring(context)
     mock_monitor.stop_monitoring.assert_called_once_with(context)
 
 
-def test_stop_monitoring__multiple_calls(monitor_service_with_container, mock_monitor, mock_conn):
-    aliases = frozenset({"instance-1"})
-    context = monitor_service_with_container.start_monitoring(
-            mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
-    monitor_service_with_container.stop_monitoring(context)
-    mock_monitor.stop_monitoring.assert_called_once_with(context)
-    monitor_service_with_container.stop_monitoring(context)
-    assert 2 == mock_monitor.stop_monitoring.call_count
+def test_stop_monitoring_host(mocker, monitor_service, mock_monitor):
+    aliases = frozenset({"alias-1"})
+    mocker.patch.object(monitor_service._monitor_service, 'get', return_value=mock_monitor)
 
-
-def test_stop_monitoring_host_connections(mocker, monitor_service_with_container, thread_container):
-    aliases1 = frozenset({"alias-1"})
-    aliases2 = frozenset({"alias-2"})
-    mock_monitor1 = mocker.MagicMock()
-    mock_monitor2 = mocker.MagicMock()
-    thread_container.get_or_create_monitor(aliases1, lambda: mock_monitor1)
-    thread_container.get_or_create_monitor(aliases2, lambda: mock_monitor2)
-
-    monitor_service_with_container.stop_monitoring_host(aliases1)
-    mock_monitor1.clear_contexts.assert_called_once()
-
-    monitor_service_with_container.stop_monitoring_host(aliases2)
-    mock_monitor2.clear_contexts.assert_called_once()
+    monitor_service.stop_monitoring_host(aliases)
+    mock_monitor.clear_contexts.assert_called_once()

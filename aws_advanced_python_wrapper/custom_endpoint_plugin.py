@@ -22,9 +22,9 @@ from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, List,
 from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
     AllowedAndBlockedHosts
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.utils.cache_map import CacheMap
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
+from aws_advanced_python_wrapper.utils.storage.cache_map import CacheMap
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -39,11 +39,10 @@ from boto3 import Session  # type: ignore
 
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
-    SlidingExpirationCacheContainer
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryCounter, TelemetryFactory)
 
@@ -136,6 +135,7 @@ class CustomEndpointMonitor:
         self._client = self._session.client('rds', region_name=region)
 
         self._stop_event = Event()
+        self._last_activity_ns: int = perf_counter_ns()
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         self._info_changed_counter = telemetry_factory.create_counter("customEndpoint.infoChanged.counter")
 
@@ -148,6 +148,7 @@ class CustomEndpointMonitor:
         try:
             while not self._stop_event.is_set():
                 try:
+                    self._last_activity_ns = perf_counter_ns()
                     start_ns = perf_counter_ns()
 
                     response = self._client.describe_db_cluster_endpoints(
@@ -220,10 +221,21 @@ class CustomEndpointMonitor:
     def has_custom_endpoint_info(self):
         return CustomEndpointMonitor._custom_endpoint_info_cache.get(self._custom_endpoint_host_info.host) is not None
 
+    def stop(self) -> None:
+        self._stop_event.set()
+        self.close()
+
+    @property
+    def can_dispose(self) -> bool:
+        return self._stop_event.is_set()
+
+    @property
+    def last_activity_ns(self) -> int:
+        return self._last_activity_ns
+
     def close(self):
         logger.debug("CustomEndpointMonitor.StoppingMonitor", self._custom_endpoint_host_info.host)
         CustomEndpointMonitor._custom_endpoint_info_cache.remove(self._custom_endpoint_host_info.host)
-        self._stop_event.set()
 
 
 class CustomEndpointPlugin(Plugin):
@@ -232,8 +244,6 @@ class CustomEndpointPlugin(Plugin):
     or removing an instance in the custom endpoint.
     """
     _SUBSCRIBED_METHODS: ClassVar[Set[str]] = {DbApiMethod.CONNECT.method_name}
-    _CACHE_CLEANUP_RATE_NS: ClassVar[int] = 60_000_000_000  # 1 minute
-    _MONITOR_CACHE_NAME: ClassVar[str] = "custom_endpoint_monitors"
 
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service = plugin_service
@@ -252,12 +262,11 @@ class CustomEndpointPlugin(Plugin):
         telemetry_factory: TelemetryFactory = self._plugin_service.get_telemetry_factory()
         self._wait_for_info_counter: TelemetryCounter | None = telemetry_factory.create_counter("customEndpoint.waitForInfo.counter")
 
-        self._monitors = SlidingExpirationCacheContainer.get_or_create_cache(
-            name=CustomEndpointPlugin._MONITOR_CACHE_NAME,
-            cleanup_interval_ns=CustomEndpointPlugin._CACHE_CLEANUP_RATE_NS,
-            should_dispose_func=lambda _: True,
-            item_disposal_func=lambda monitor: monitor.close()
-        )
+        self._monitors = services_container.get_monitor_service()
+        self._monitors.register_monitor_type(
+            CustomEndpointMonitor,
+            expiration_timeout_ns=self._idle_monitor_expiration_ms * 1_000_000,
+            inactive_timeout_ns=1 * 60 * 1_000_000_000)  # 1 minute, matches JDBC
 
         CustomEndpointPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 
@@ -302,15 +311,15 @@ class CustomEndpointPlugin(Plugin):
         host_info = cast('HostInfo', self._custom_endpoint_host_info)
         endpoint_id = cast('str', self._custom_endpoint_id)
         region = cast('str', self._region)
-        monitor = self._monitors.compute_if_absent(
+        monitor = self._monitors.run_if_absent(
+            CustomEndpointMonitor,
             host_info.host,
-            lambda key: CustomEndpointMonitor(
+            lambda: CustomEndpointMonitor(
                 self._plugin_service,
                 host_info,
                 endpoint_id,
                 region,
-                WrapperProperties.CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS.get_int(props) * 1_000_000),
-            self._idle_monitor_expiration_ms * 1_000_000)
+                WrapperProperties.CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS.get_int(props) * 1_000_000))
 
         return cast('CustomEndpointMonitor', monitor)
 

@@ -39,8 +39,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.thread_pool_container import \
-    ThreadPoolContainer
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -49,8 +48,8 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from .driver_dialect_codes import DriverDialectCodes
-from .utils.cache_map import CacheMap
 from .utils.messages import Messages
+from .utils.storage.cache_map import CacheMap
 from .utils.utils import Utils
 
 logger = Logger(__name__)
@@ -861,7 +860,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
         self._can_update: bool = False
         self._dialect: DatabaseDialect = UnknownDatabaseDialect()
         self._dialect_code: DialectCode = DialectCode.UNKNOWN
-        self._thread_pool = ThreadPoolContainer.get_thread_pool(self._executor_name)
+        self._thread_pool = services_container.get_thread_pool(self._executor_name)
 
     @staticmethod
     def get_custom_dialect():

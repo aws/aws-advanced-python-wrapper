@@ -22,17 +22,14 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_list_provider import (
     GlobalAuroraHostListProvider, GlobalAuroraTopologyUtils)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.properties import Properties
-from aws_advanced_python_wrapper.utils.sliding_expiration_cache_container import \
-    SlidingExpirationCacheContainer
-from aws_advanced_python_wrapper.utils.storage.storage_service import \
-    StorageService
 
 
 @pytest.fixture(autouse=True)
 def clear_caches():
-    StorageService.clear_all()
-    SlidingExpirationCacheContainer.release_resources()
+    services_container.get_storage_service().clear_all()
+    services_container.get_monitor_service().stop_all()
 
 
 @pytest.fixture
