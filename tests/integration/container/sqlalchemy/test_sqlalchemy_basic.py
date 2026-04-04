@@ -16,13 +16,16 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import create_engine, Column, ForeignKey, Integer, BigInteger, SmallInteger, Float, Numeric, String, Boolean, Date, Time, DateTime, Text, JSON
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy import (
+    create_engine, Column, ForeignKey, Integer, BigInteger, SmallInteger,
+    Float, Numeric, String, Boolean, Date, Time, DateTime, Text, JSON
+)
 
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from ..utils.conditions import (disable_on_features, enable_on_deployments,
@@ -32,6 +35,71 @@ from ..utils.database_engine_deployment import DatabaseEngineDeployment
 from ..utils.test_environment import TestEnvironment
 from ..utils.test_environment_features import TestEnvironmentFeatures
 
+Base = declarative_base()
+
+class TestModel(Base):
+    """Basic test model for SQLAlchemy ORM functionality"""
+    __tablename__ = 'sqlalchemy_test_model'
+
+    id = Column(Integer, primary_key=True)
+
+    name = Column(String(100), nullable=False)
+    email = Column(String(254), nullable=False, unique=True)
+    age = Column(Integer, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+
+class DataTypeModel(Base):
+    """Model for testing various data types"""
+    __tablename__ = 'sqlalchemy_data_type_model'
+
+    id = Column(Integer, primary_key=True)
+
+    # String fields
+    string_field = Column(String(255))
+    text_field = Column(Text)
+
+    # Numeric fields
+    integer_field = Column(Integer)
+    small_integer_field = Column(SmallInteger)
+    big_integer_field = Column(BigInteger)
+    numeric_field = Column(Numeric(10, 2))
+    float_field = Column(Float)
+
+    # Boolean field
+    boolean_field = Column(Boolean, default=False)
+
+    # Date/Time fields
+    date_field = Column(Date)
+    time_field = Column(Time)
+    datetime_field = Column(DateTime)
+
+    # JSON field (MySQL 5.7+)
+    json_field = Column(JSON)
+
+class Author(Base):
+    """Author model for relationship testing"""
+    __tablename__ = 'sqlalchemy_author'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(254), nullable=False)
+    birth_date = Column(Date)
+
+    books = relationship('Book', back_populates='author', cascade='all, delete-orphan')
+
+class Book(Base):
+    """Book model for relationship testing"""
+    __tablename__ = 'sqlalchemy_book'
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(200), nullable=False)
+    author_id = Column(Integer, ForeignKey("sqlalchemy_author.id"), nullable=False)
+    publication_date = Column(Date, nullable=False)
+    pages = Column(Integer, nullable=False)
+    price = Column(Numeric(8, 2), nullable=False)
+
+    author = relationship('Author', back_populates='books')
 
 @enable_on_engines([DatabaseEngine.MYSQL])  # MySQL Specific until PG is implemented
 @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER])
@@ -44,67 +112,6 @@ class TestSqlAlchemy:
         region: str = TestEnvironment.get_current().get_info().get_region()
         return RdsTestUtility(region)
 
-    Base = declarative_base()
-
-    class TestModel(Base):
-        """Basic test model for SQLAlchemy ORM functionality"""
-        __tablename__ = 'sqlalchemy_test_model'
-
-        id = Column(Integer, primary_key=True)
-
-        name = Column(String(100))
-        email = Column(String, primary_key=True)
-        age = Column(Integer)
-        is_active = Column(Boolean)
-        created_at = Column(DateTime)
-
-    class DataTypeModel(Base):
-        """Model for testing various data types"""
-        __tablename__ = 'sqlalchemy_data_type_model'
-
-        id = Column(Integer, primary_key=True)
-
-        # String fields
-        string_field = Column(String(255))
-        text_field = Column(Text)
-
-        # Numeric fields
-        integer_field = Column(Integer)
-        small_integer_field = Column(SmallInteger)
-        big_integer_field = Column(BigInteger)
-        numeric_field = Column(Numeric)
-        float_field = Column(Float)
-
-        # Boolean field
-        boolean_field = Column(Boolean)
-
-        # Date/Time fields
-        date_field = Column(Date)
-        time_field = Column(Time)
-        datetime_field = Column(DateTime)
-
-        # JSON field (MySQL 5.7+)
-        json_field = Column(JSON)
-
-    class Author(Base):
-        """Author model for relationship testing"""
-        __tablename__ = 'sqlalchemy_author'
-
-        id = Column(Integer, primary_key=True)
-        name = Column(String(100))
-        email = Column(String)
-        birth_date = Column(Date)
-
-    class Book(Base):
-        """Book model for relationship testing"""
-        __tablename__ = 'sqlalchemy_book'
-
-        id = Column(Integer, primary_key=True)
-        title = Column(String(200))
-        author = Column(String, ForeignKey("Author.id"))
-        publication_date = Column(Date)
-        pages = Column(Integer)
-        price = Column(Numeric)
 
     @pytest.fixture(scope="class")
     def engine(self, conn_utils):
@@ -152,7 +159,7 @@ class TestSqlAlchemy:
         assert test_obj.name == "John Doe"
 
         # Read
-        retrieved_obj = session.query(TestModel).filter(TestModel.id == test_obj.id).first()
+        retrieved_obj = session.query(TestModel).filter_by(id = test_obj.id).one()
         assert retrieved_obj.name == "John Doe"
         assert retrieved_obj.email == "john@example.com"
         assert retrieved_obj.age == 30
@@ -163,7 +170,7 @@ class TestSqlAlchemy:
         retrieved_obj.age = 25
         session.commit()
 
-        updated_obj = session.query(TestModel).filter(TestModel.id == test_obj.id).first()
+        updated_obj = session.query(TestModel).filter_by(id = test_obj.id).one()
         assert updated_obj.name == "Jane Doe"
         assert updated_obj.age == 25
 
@@ -172,7 +179,7 @@ class TestSqlAlchemy:
         session.commit()
         assert session.query(TestModel).filter(TestModel.id == test_obj.id).count() == 0
 
-'''
+    '''
     def test_django_queryset_operations(self, test_environment: TestEnvironment, django_models):
         """Test Django QuerySet operations"""
         TestModel = self.TestModel
@@ -939,6 +946,5 @@ class TestSqlAlchemy:
 
         # Clean up
         TestModel.objects.all().delete()
-
-'''
+    '''
 
