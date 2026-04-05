@@ -49,3 +49,24 @@ IAM database authentication use is limited to certain database engines. For more
 
 [PGIamAuthentication.py](../../examples/PGIamAuthentication.py)
 [MySQLIamAuthentication.py](../../examples/MySQLIamAuthentication.py)
+
+## Using IAM Authentication with Global Databases
+
+When using IAM authentication with [Amazon Aurora Global Databases](https://aws.amazon.com/rds/aurora/global-database/), the IAM user or role requires the additional `rds:DescribeGlobalClusters` permission. This permission allows the wrapper to resolve the Global Database endpoint to the appropriate regional cluster for IAM token generation.
+
+Example IAM policy:
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "rds-db:connect",
+                "rds:DescribeGlobalClusters"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
