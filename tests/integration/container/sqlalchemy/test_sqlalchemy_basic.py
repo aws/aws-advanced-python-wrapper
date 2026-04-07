@@ -21,10 +21,15 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.sql import func
+from sqlalchemy.orm import (
+    declarative_base, sessionmaker, relationship, Session, joinedload,
+    subqueryload
+)
 from sqlalchemy import (
     create_engine, Column, ForeignKey, Integer, BigInteger, SmallInteger,
-    Float, Numeric, String, Boolean, Date, Time, DateTime, Text, JSON
+    Float, Numeric, String, Boolean, Date, Time, DateTime, Text, JSON, or_,
+    and_, text
 )
 
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
@@ -133,18 +138,18 @@ class TestSqlAlchemy:
         session.rollback()
         session.close()
 
-    '''
-    def test_django_backend_configuration(self, test_environment: TestEnvironment, django_models):
-        """Test Django backend configuration with empty plugins"""
+    def test_sqlalchemy_backend_configuration(self, test_environment: TestEnvironment, engine):
+        """Test SQLAlchemy backend configuration with empty plugins"""
         # Verify that the connection is using the AWS wrapper
-        assert hasattr(connection, 'connection')
+        with engine.connect() as connection:
+            assert connection.connection is not None
 
         # Test basic connection functionality
-        assert self.TestModel.objects.count() == 0
-    '''
+        with Session(engine) as session:
+            assert session.query(TestModel).count() == 0
 
     def test_sqlalchemy_basic_model_operations(self, session, test_environment: TestEnvironment):
-        """Test basic Django ORM operations (CRUD)"""
+        """Test basic SQLAlchemy ORM operations (CRUD)"""
 
         # Create
         test_obj = TestModel(
@@ -179,772 +184,626 @@ class TestSqlAlchemy:
         session.commit()
         assert session.query(TestModel).filter(TestModel.id == test_obj.id).count() == 0
 
-    '''
-    def test_django_queryset_operations(self, test_environment: TestEnvironment, django_models):
-        """Test Django QuerySet operations"""
-        TestModel = self.TestModel
-
+    def test_sqlalchemy_query_operations(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy query operations"""
         # Ensure clean slate
-        TestModel.objects.all().delete()
-
+        session.query(TestModel).delete()
+        session.commit()
         # Create test data
-        TestModel.objects.create(name="Alice", email="alice@example.com", age=25, is_active=True)
-        TestModel.objects.create(name="Bob", email="bob@example.com", age=30, is_active=False)
-        TestModel.objects.create(name="Charlie", email="charlie@example.com", age=35, is_active=True)
-
+        session.add_all([
+            TestModel(name="Alice", email="alice@example.com", age=25, is_active=True),
+            TestModel(name="Bob", email="bob@example.com", age=30, is_active=False),
+            TestModel(name="Charlie", email="charlie@example.com", age=35, is_active=True),
+        ])
+        session.commit()
         # Test filtering
-        active_users = TestModel.objects.filter(is_active=True)
-        assert active_users.count() == 2
-
+        active_users = session.query(TestModel).filter(TestModel.is_active == True).all()
+        assert len(active_users) == 2
         # Test ordering
-        ordered_users = TestModel.objects.order_by('age')
+        ordered_users = session.query(TestModel).order_by(TestModel.age).all()
         ages = [user.age for user in ordered_users]
         assert ages == [25, 30, 35]
-
         # Test complex queries
-        young_active_users = TestModel.objects.filter(age__lt=30, is_active=True)
-        assert young_active_users.count() == 1
-        assert young_active_users.first().name == "Alice"
-
-        # Test exclude
-        non_bob_users = TestModel.objects.exclude(name="Bob")
-        assert non_bob_users.count() == 2
-
+        young_active_users = session.query(TestModel).filter(
+            TestModel.age < 30, TestModel.is_active == True
+        ).all()
+        assert len(young_active_users) == 1
+        assert young_active_users[0].name == "Alice"
+        # Test exclude (using NOT)
+        non_bob_users = session.query(TestModel).filter(TestModel.name != "Bob").all()
+        assert len(non_bob_users) == 2
         # Test exists
-        assert TestModel.objects.filter(name="Alice").exists()
-        assert not TestModel.objects.filter(name="David").exists()
-
+        assert session.query(TestModel).filter(TestModel.name == "Alice").first() is not None
+        assert session.query(TestModel).filter(TestModel.name == "David").first() is None
         # Clean up
-        TestModel.objects.all().delete()
+        session.query(TestModel).delete()
+        session.commit()
 
-    def test_django_data_types(self, test_environment: TestEnvironment, django_models):
-        """Test Django ORM with various data types"""
-        DataTypeModel = self.DataTypeModel
-
+    def test_sqlalchemy_data_types(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy with various data types"""
         # Ensure clean slate
-        DataTypeModel.objects.all().delete()
-
+        session.query(DataTypeModel).delete()
+        session.commit()
         # Create test data with various data types
         test_datetime = datetime(2023, 12, 25, 14, 30, 0)
-        test_datetime_aware = timezone.make_aware(test_datetime)
-
-        test_data = DataTypeModel.objects.create(
-            char_field="Test String",
+        test_data = DataTypeModel(
+            string_field="Test String",
             text_field="This is a longer text field content",
             integer_field=42,
+            small_integer_field=5,
             big_integer_field=9223372036854775807,
-            decimal_field=Decimal('123.45'),
+            numeric_field=Decimal('123.45'),
             float_field=3.14159,
             boolean_field=True,
             date_field=date(2023, 12, 25),
             time_field=time(14, 30, 0),
-            datetime_field=test_datetime_aware,  # Use timezone-aware datetime
-            json_field={"key": "value", "number": 123, "array": [1, 2, 3]}
+            datetime_field=test_datetime,
+            json_field={"key": "value", "number": 123, "array": [1, 2, 3]},
         )
-
+        session.add(test_data)
+        session.commit()
         # Retrieve and verify data
-        retrieved = DataTypeModel.objects.get(id=test_data.id)
-
-        assert retrieved.char_field == "Test String"
+        retrieved = session.query(DataTypeModel).get(test_data.id)
+        assert retrieved.string_field == "Test String"
         assert retrieved.text_field == "This is a longer text field content"
         assert retrieved.integer_field == 42
+        assert retrieved.small_integer_field == 5
         assert retrieved.big_integer_field == 9223372036854775807
-        assert retrieved.decimal_field == Decimal('123.45')
+        assert retrieved.numeric_field == Decimal('123.45')
         assert abs(retrieved.float_field - 3.14159) < 0.001
         assert retrieved.boolean_field is True
         assert retrieved.date_field == date(2023, 12, 25)
         assert retrieved.time_field == time(14, 30, 0)
-        # Compare timezone-aware datetimes
-        assert retrieved.datetime_field == test_datetime_aware
+        assert retrieved.datetime_field == test_datetime
         assert retrieved.json_field == {"key": "value", "number": 123, "array": [1, 2, 3]}
-
         # Clean up
-        DataTypeModel.objects.all().delete()
+        session.query(DataTypeModel).delete()
+        session.commit()
 
-    def test_django_null_values(self, test_environment: TestEnvironment, django_models):
-        """Test Django ORM handling of NULL values"""
-        DataTypeModel = self.DataTypeModel
-
-        # First, ensure we start with a clean slate
-        DataTypeModel.objects.all().delete()
-
+    def test_sqlalchemy_null_values(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy handling of NULL values"""
+        # Ensure clean slate
+        session.query(DataTypeModel).delete()
+        session.commit()
         # Create object with NULL values
-        test_obj = DataTypeModel.objects.create(
-            char_field=None,
+        test_obj = DataTypeModel(
+            string_field=None,
             integer_field=None,
             date_field=None,
-            boolean_field=False  # This field has default=False, so it won't be NULL
+            boolean_field=False,
         )
-
+        session.add(test_obj)
+        session.commit()
         # Retrieve and verify NULL values
-        retrieved = DataTypeModel.objects.get(id=test_obj.id)
-        assert retrieved.char_field is None
+        retrieved = session.query(DataTypeModel).get(test_obj.id)
+        assert retrieved.string_field is None
         assert retrieved.integer_field is None
         assert retrieved.date_field is None
         assert retrieved.boolean_field is False
-
         # Test filtering with NULL values
-        null_char_objects = DataTypeModel.objects.filter(char_field__isnull=True)
-        assert null_char_objects.count() == 1
-
-        not_null_char_objects = DataTypeModel.objects.filter(char_field__isnull=False)
-        assert not_null_char_objects.count() == 0
-
+        null_char_objects = session.query(DataTypeModel).filter(DataTypeModel.string_field.is_(None)).all()
+        assert len(null_char_objects) == 1
+        not_null_char_objects = session.query(DataTypeModel).filter(DataTypeModel.string_field.isnot(None)).all()
+        assert len(not_null_char_objects) == 0
         # Create an object with non-NULL values to test the opposite
-        DataTypeModel.objects.create(
-            char_field="Not NULL",
+        session.add(DataTypeModel(
+            string_field="Not NULL",
             integer_field=42,
-            date_field=date(2023, 1, 1)
-        )
-
+            date_field=date(2023, 1, 1),
+        ))
+        session.commit()
         # Now test filtering again
-        null_char_objects = DataTypeModel.objects.filter(char_field__isnull=True)
-        assert null_char_objects.count() == 1  # Still one NULL object
-
-        not_null_char_objects = DataTypeModel.objects.filter(char_field__isnull=False)
-        assert not_null_char_objects.count() == 1  # Now one non-NULL object
-
+        null_string_objects = session.query(DataTypeModel).filter(DataTypeModel.string_field.is_(None)).all()
+        # Still one NULL object
+        assert len(null_string_objects) == 1
+        not_null_string_objects = session.query(DataTypeModel).filter(DataTypeModel.string_field.isnot(None)).all()
+        # Now one non-NULL object
+        assert len(not_null_string_objects) == 1
         # Clean up
-        DataTypeModel.objects.all().delete()
+        session.query(DataTypeModel).delete()
+        session.commit()
 
-    def test_django_relationships(self, test_environment: TestEnvironment, django_models):
-        """Test Django ORM relationships (ForeignKey)"""
-        Author = self.Author
-        Book = self.Book
-
+    def test_sqlalchemy_relationships(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy relationships (ForeignKey)"""
         # Create author
-        author = Author.objects.create(
+        author = Author(
             name="J.K. Rowling",
             email="jk@example.com",
-            birth_date=date(1965, 7, 31)
+            birth_date=date(1965, 7, 31),
         )
-
+        session.add(author)
+        session.commit()
         # Create books
-        book1 = Book.objects.create(
+        book1 = Book(
             title="Harry Potter and the Philosopher's Stone",
-            author=author,
+            author_id=author.id,
             publication_date=date(1997, 6, 26),
             pages=223,
-            price=Decimal('12.99')
+            price=Decimal('12.99'),
         )
-
-        book2 = Book.objects.create(
+        book2 = Book(
             title="Harry Potter and the Chamber of Secrets",
-            author=author,
+            author_id=author.id,
             publication_date=date(1998, 7, 2),
             pages=251,
-            price=Decimal('13.99')
+            price=Decimal('13.99'),
         )
-
+        session.add_all([book1, book2])
+        session.commit()
         # Test forward relationship
         assert book1.author.name == "J.K. Rowling"
         assert book2.author.email == "jk@example.com"
-
         # Test reverse relationship
-        author_books = author.books.all()
-        assert author_books.count() == 2
-        book_titles = [book.title for book in author_books.order_by('publication_date')]
+        assert len(author.books) == 2
+        book_titles = [book.title for book in sorted(author.books, key=lambda b: b.publication_date)]
         assert "Harry Potter and the Philosopher's Stone" in book_titles
         assert "Harry Potter and the Chamber of Secrets" in book_titles
-
         # Test related queries
-        books_by_author = Book.objects.filter(author__name="J.K. Rowling")
-        assert books_by_author.count() == 2
-
-        # Test select_related for optimization
-        book_with_author = Book.objects.select_related('author').get(id=book1.id)
+        books_by_author = session.query(Book).join(Author).filter(Author.name == "J.K. Rowling").all()
+        assert len(books_by_author) == 2
+        # Test joinedload for optimization
+        book_with_author = session.query(Book).options(
+            joinedload(Book.author)
+        ).filter(Book.id == book1.id).one()
         assert book_with_author.author.name == "J.K. Rowling"
-
         # Clean up
-        Book.objects.all().delete()
-        Author.objects.all().delete()
+        session.query(Book).delete()
+        session.query(Author).delete()
+        session.commit()
 
-    def test_django_aggregations(self, test_environment: TestEnvironment, django_models):
-        """Test Django ORM aggregations"""
-        Author = self.Author
-        Book = self.Book
+    def test_sqlalchemy_aggregations(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy aggregations"""
+        author = Author(name="Test Author", email="test@example.com")
+        session.add(author)
+        session.flush()
+        books = [
+            Book(title="Book 1", author_id=author.id, publication_date=date(2020, 1, 1), pages=100, price=Decimal('10.00')),
+            Book(title="Book 2", author_id=author.id, publication_date=date(2021, 1, 1), pages=200, price=Decimal('20.00')),
+            Book(title="Book 3", author_id=author.id, publication_date=date(2022, 1, 1), pages=300, price=Decimal('30.00')),
+        ]
+        session.add_all(books)
+        session.flush()
+        stats = session.query(
+            func.count(Book.id).label('total_books'),
+            func.sum(Book.pages).label('total_pages'),
+            func.avg(Book.price).label('avg_price'),
+            func.max(Book.pages).label('max_pages'),
+            func.min(Book.price).label('min_price'),
+        ).one()
+        assert stats.total_books == 3
+        assert stats.total_pages == 600
+        assert abs(float(stats.avg_price) - 20.0) < 0.01
+        assert stats.max_pages == 300
+        assert stats.min_price == Decimal('10.00')
+        session.rollback()
 
-        # Create test data
-        author = Author.objects.create(name="Test Author", email="test@example.com")
-
-        Book.objects.create(title="Book 1", author=author, publication_date=date(2020, 1, 1), pages=100, price=Decimal('10.00'))
-        Book.objects.create(title="Book 2", author=author, publication_date=date(2021, 1, 1), pages=200, price=Decimal('20.00'))
-        Book.objects.create(title="Book 3", author=author, publication_date=date(2022, 1, 1), pages=300, price=Decimal('30.00'))
-
-        # Test aggregations
-        stats = Book.objects.aggregate(
-            total_books=Count('id'),
-            total_pages=Sum('pages'),
-            avg_price=Avg('price'),
-            max_pages=Max('pages'),
-            min_price=Min('price')
-        )
-
-        assert stats['total_books'] == 3
-        assert stats['total_pages'] == 600
-        assert abs(float(stats['avg_price']) - 20.0) < 0.01
-        assert stats['max_pages'] == 300
-        assert stats['min_price'] == Decimal('10.00')
-
-        # Clean up
-        Book.objects.all().delete()
-        Author.objects.all().delete()
-
-    def test_django_transactions(self, test_environment: TestEnvironment, django_models):
-        """Test Django transaction handling"""
-        TestModel = self.TestModel
-
-        # Ensure clean slate
-        TestModel.objects.all().delete()
-
-        initial_count = TestModel.objects.count()
-
+    def test_sqlalchemy_transactions(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy transaction handling"""
+        session.query(TestModel).delete()
+        session.commit()
+        initial_count = session.query(TestModel).count()
         # Test successful transaction
-        with transaction.atomic():
-            TestModel.objects.create(name="User 1", email="user1@example.com", age=25)
-            TestModel.objects.create(name="User 2", email="user2@example.com", age=30)
-
-        assert TestModel.objects.count() == initial_count + 2
-
+        session.add(TestModel(name="User 1", email="user1@example.com", age=25))
+        session.add(TestModel(name="User 2", email="user2@example.com", age=30))
+        session.commit()
+        assert session.query(TestModel).count() == initial_count + 2
         # Test rollback transaction
         try:
-            with transaction.atomic():
-                TestModel.objects.create(name="User 3", email="user3@example.com", age=35)
-                TestModel.objects.create(name="User 4", email="user4@example.com", age=40)
-                # Force an error to trigger rollback
-                raise Exception("Force rollback")
+            session.add(TestModel(name="User 3", email="user3@example.com", age=35))
+            session.add(TestModel(name="User 4", email="user4@example.com", age=40))
+            session.flush()
+            raise Exception("Force rollback")
         except Exception:
-            pass  # Expected exception
+            session.rollback()
+        assert session.query(TestModel).count() == initial_count + 2
+        session.query(TestModel).delete()
+        session.commit()
 
-        # Should still have only 2 additional records (rollback occurred)
-        assert TestModel.objects.count() == initial_count + 2
-
-        # Clean up
-        TestModel.objects.all().delete()
-
-    def test_django_bulk_operations(self, test_environment: TestEnvironment, django_models):
-        """Test Django bulk operations"""
-        TestModel = self.TestModel
-
-        # Ensure clean slate
-        TestModel.objects.all().delete()
-
-        # Test bulk_create
-        test_objects = [
+    def test_sqlalchemy_bulk_operations(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy bulk operations"""
+        session.query(TestModel).delete()
+        session.commit()
+        # Test bulk insert
+        session.bulk_save_objects([
             TestModel(name=f"User {i}", email=f"user{i}@example.com", age=20 + i)
             for i in range(10)
-        ]
-
-        created_objects = TestModel.objects.bulk_create(test_objects)
-        assert len(created_objects) == 10
-        assert TestModel.objects.count() == 10
-
-        # Test bulk_update - need to get the objects first and modify them
-        objects_to_update = list(TestModel.objects.all())
-        for obj in objects_to_update:
-            obj.age += 5
-
-        TestModel.objects.bulk_update(objects_to_update, ['age'])
-
-        # Verify updates - get fresh objects from database
-        ages = list(TestModel.objects.values_list('age', flat=True).order_by('name'))
-        expected_ages = [25 + i for i in range(10)]  # 20+i+5 for i in range(10)
+        ])
+        session.commit()
+        assert session.query(TestModel).count() == 10
+        # Test bulk update
+        session.query(TestModel).update({TestModel.age: TestModel.age + 5})
+        session.commit()
+        ages = [r.age for r in session.query(TestModel).order_by(TestModel.name).all()]
+        expected_ages = [25 + i for i in range(10)]
         assert ages == expected_ages
+        session.query(TestModel).delete()
+        session.commit()
 
-        # Clean up
-        TestModel.objects.all().delete()
-
-    def test_django_complex_queries(self, test_environment: TestEnvironment, django_models):
-        """Test complex Django queries with Q objects and F expressions"""
-        TestModel = self.TestModel
-
-        # Ensure clean slate
-        TestModel.objects.all().delete()
-
-        # Create test data
-        TestModel.objects.create(name="Alice", email="alice@example.com", age=25, is_active=True)
-        TestModel.objects.create(name="Bob", email="bob@example.com", age=30, is_active=False)
-        TestModel.objects.create(name="Charlie", email="charlie@example.com", age=35, is_active=True)
-        TestModel.objects.create(name="David", email="david@example.com", age=28, is_active=True)
-
-        # Test Q objects for complex conditions
-        complex_query = TestModel.objects.filter(
-            Q(age__gte=30) | Q(name__startswith='A')
+    def test_sqlalchemy_complex_queries(self, test_environment: TestEnvironment, session):
+        """Test complex SQLAlchemy queries with or_/and_ and column expressions"""
+        session.query(TestModel).delete()
+        session.commit()
+        session.add_all([
+            TestModel(name="Alice", email="alice@example.com", age=25, is_active=True),
+            TestModel(name="Bob", email="bob@example.com", age=30, is_active=False),
+            TestModel(name="Charlie", email="charlie@example.com", age=35, is_active=True),
+            TestModel(name="David", email="david@example.com", age=28, is_active=True),
+        ])
+        session.commit()
+        # Test or_ for complex conditions
+        results = session.query(TestModel).filter(
+            or_(TestModel.age >= 30, TestModel.name.like('A%'))
+        ).all()
+        assert len(results) == 3
+        # Test column expression update (equivalent to Django's F expressions)
+        session.query(TestModel).filter(TestModel.age < 30).update(
+            {TestModel.age: TestModel.age + 5}, synchronize_session='fetch'
         )
-        assert complex_query.count() == 3  # Bob (30), Charlie (35), Alice (starts with A)
+        session.commit()
+        alice = session.query(TestModel).filter_by(name="Alice").one()
+        david = session.query(TestModel).filter_by(name="David").one()
+        assert alice.age == 30
+        assert david.age == 33
+        session.query(TestModel).delete()
+        session.commit()
 
-        # Test F expressions
-        TestModel.objects.filter(age__lt=30).update(age=F('age') + 5)
+    def test_sqlalchemy_raw_sql_queries(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy raw SQL query execution"""
+        session.query(TestModel).delete()
+        session.commit()
+        session.add_all([
+            TestModel(name="Alice", email="alice@example.com", age=25, is_active=True),
+            TestModel(name="Bob", email="bob@example.com", age=30, is_active=False),
+            TestModel(name="Charlie", email="charlie@example.com", age=35, is_active=True),
+        ])
+        session.commit()
+        table = TestModel.__tablename__
+        # Test raw SQL with text()
+        rows = session.execute(
+            text(f'SELECT * FROM {table} WHERE age >= :age ORDER BY age'),
+            {'age': 30}
+        ).fetchall()
+        assert len(rows) == 2
+        # Test raw SQL for specific columns
+        rows = session.execute(
+            text(f'SELECT name, age FROM {table} WHERE is_active = :active ORDER BY age'),
+            {'active': True}
+        ).fetchall()
+        assert len(rows) == 2
+        assert rows[0][0] == "Alice"
+        assert rows[0][1] == 25
+        assert rows[1][0] == "Charlie"
+        assert rows[1][1] == 35
+        # Test raw SQL aggregate
+        result = session.execute(
+            text(f'SELECT COUNT(*), AVG(age) FROM {table}')
+        ).fetchone()
+        assert result[0] == 3
+        assert abs(float(result[1]) - 30.0) < 0.01
+        session.query(TestModel).delete()
+        session.commit()
 
-        # Verify F expression update
-        alice = TestModel.objects.get(name="Alice")
-        david = TestModel.objects.get(name="David")
-        assert alice.age == 30  # 25 + 5
-        assert david.age == 33  # 28 + 5
-
-        # Clean up, might get a failover error from this connection
-        TestModel.objects.all().delete()
-
-    def test_django_raw_sql_queries(self, test_environment: TestEnvironment, django_models):
-        """Test Django raw SQL query execution"""
-        TestModel = self.TestModel
-
-        # Ensure clean slate
-        TestModel.objects.all().delete()
-
-        # Create test data
-        TestModel.objects.create(name="Alice", email="alice@example.com", age=25, is_active=True)
-        TestModel.objects.create(name="Bob", email="bob@example.com", age=30, is_active=False)
-        TestModel.objects.create(name="Charlie", email="charlie@example.com", age=35, is_active=True)
-
-        # Test raw() method
-        raw_results = TestModel.objects.raw(
-            f'SELECT * FROM {TestModel._meta.db_table} WHERE age >= %s ORDER BY age',
-            [30]
-        )
-        raw_list = list(raw_results)
-        assert len(raw_list) == 2
-        assert raw_list[0].name == "Bob"
-        assert raw_list[1].name == "Charlie"
-
-        # Test connection.cursor() for custom SQL
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f'SELECT name, age FROM {TestModel._meta.db_table} WHERE is_active = %s ORDER BY age',
-                [True]
-            )
-            rows = cursor.fetchall()
-            assert len(rows) == 2
-            assert rows[0][0] == "Alice"  # name
-            assert rows[0][1] == 25       # age
-            assert rows[1][0] == "Charlie"
-            assert rows[1][1] == 35
-
-        # Test raw SQL with connection for aggregate
-        with connection.cursor() as cursor:
-            cursor.execute(f'SELECT COUNT(*), AVG(age) FROM {TestModel._meta.db_table}')
-            count, avg_age = cursor.fetchone()
-            assert count == 3
-            assert abs(float(avg_age) - 30.0) < 0.01
-
-        # Clean up
-        TestModel.objects.all().delete()
-
-    def test_django_get_or_create(self, test_environment: TestEnvironment, django_models):
-        """Test Django get_or_create pattern"""
-        TestModel = self.TestModel
-
-        # Ensure clean slate
-        TestModel.objects.all().delete()
-
+    def test_sqlalchemy_get_or_create(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy get-or-create pattern"""
+        session.query(TestModel).delete()
+        session.commit()
         # Test create case
-        obj1, created1 = TestModel.objects.get_or_create(
-            email="test@example.com",
-            defaults={'name': 'Test User', 'age': 25, 'is_active': True}
-        )
+        obj1 = session.query(TestModel).filter_by(email="test@example.com").first()
+        created1 = obj1 is None
+        if created1:
+            obj1 = TestModel(name="Test User", email="test@example.com", age=25, is_active=True)
+            session.add(obj1)
+            session.commit()
         assert created1 is True
         assert obj1.name == "Test User"
         assert obj1.age == 25
-
-        # Test get case (object already exists)
-        obj2, created2 = TestModel.objects.get_or_create(
-            email="test@example.com",
-            defaults={'name': 'Different Name', 'age': 30, 'is_active': False}
-        )
+        # Test get case
+        obj2 = session.query(TestModel).filter_by(email="test@example.com").first()
+        created2 = obj2 is None
+        if created2:
+            obj2 = TestModel(name="Different Name", email="test@example.com", age=30, is_active=False)
+            session.add(obj2)
+            session.commit()
         assert created2 is False
         assert obj2.id == obj1.id
-        assert obj2.name == "Test User"  # Should keep original values
+        assert obj2.name == "Test User"
         assert obj2.age == 25
+        assert session.query(TestModel).filter_by(email="test@example.com").count() == 1
+        session.query(TestModel).delete()
+        session.commit()
 
-        # Verify only one object exists
-        assert TestModel.objects.filter(email="test@example.com").count() == 1
-
-        # Clean up
-        TestModel.objects.all().delete()
-
-    def test_django_update_or_create(self, test_environment: TestEnvironment, django_models):
-        """Test Django update_or_create pattern"""
-        TestModel = self.TestModel
-
-        # Ensure clean slate
-        TestModel.objects.all().delete()
-
+    def test_sqlalchemy_update_or_create(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy update-or-create pattern"""
+        session.query(TestModel).delete()
+        session.commit()
         # Test create case
-        obj1, created1 = TestModel.objects.update_or_create(
-            email="update@example.com",
-            defaults={'name': 'Initial Name', 'age': 25, 'is_active': True}
-        )
+        obj1 = session.query(TestModel).filter_by(email="update@example.com").first()
+        created1 = obj1 is None
+        if created1:
+            obj1 = TestModel(name="Initial Name", email="update@example.com", age=25, is_active=True)
+            session.add(obj1)
+        session.commit()
         assert created1 is True
         assert obj1.name == "Initial Name"
         assert obj1.age == 25
-
-        # Test update case (object already exists)
-        obj2, created2 = TestModel.objects.update_or_create(
-            email="update@example.com",
-            defaults={'name': 'Updated Name', 'age': 30, 'is_active': False}
-        )
+        # Test update case
+        obj2 = session.query(TestModel).filter_by(email="update@example.com").first()
+        created2 = obj2 is None
+        if created2:
+            obj2 = TestModel(name="Updated Name", email="update@example.com", age=30, is_active=False)
+            session.add(obj2)
+        else:
+            obj2.name = "Updated Name"
+            obj2.age = 30
+            obj2.is_active = False
+        session.commit()
         assert created2 is False
         assert obj2.id == obj1.id
-        assert obj2.name == "Updated Name"  # Should be updated
+        assert obj2.name == "Updated Name"
         assert obj2.age == 30
         assert obj2.is_active is False
-
-        # Verify only one object exists
-        assert TestModel.objects.filter(email="update@example.com").count() == 1
-
-        # Verify the update persisted
-        retrieved = TestModel.objects.get(email="update@example.com")
+        assert session.query(TestModel).filter_by(email="update@example.com").count() == 1
+        retrieved = session.query(TestModel).filter_by(email="update@example.com").one()
         assert retrieved.name == "Updated Name"
         assert retrieved.age == 30
+        session.query(TestModel).delete()
+        session.commit()
 
-        # Clean up
-        TestModel.objects.all().delete()
-
-    def test_django_prefetch_related(self, test_environment: TestEnvironment, django_models):
-        """Test Django prefetch_related for optimizing queries"""
-        Author = self.Author
-        Book = self.Book
-
-        # Create test data
-        author1 = Author.objects.create(name="Author 1", email="author1@example.com")
-        author2 = Author.objects.create(name="Author 2", email="author2@example.com")
-
-        Book.objects.create(title="Book 1A", author=author1, publication_date=date(2020, 1, 1), pages=100, price=Decimal('10.00'))
-        Book.objects.create(title="Book 1B", author=author1, publication_date=date(2021, 1, 1), pages=200, price=Decimal('20.00'))
-        Book.objects.create(title="Book 2A", author=author2, publication_date=date(2022, 1, 1), pages=300, price=Decimal('30.00'))
-
-        # Test prefetch_related
-        authors = Author.objects.prefetch_related('books').all()
-
-        # Access related books (should not trigger additional queries due to prefetch)
+    def test_sqlalchemy_eager_loading(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy eager loading for optimizing queries"""
+        author1 = Author(name="Author 1", email="author1@example.com")
+        author2 = Author(name="Author 2", email="author2@example.com")
+        session.add_all([author1, author2])
+        session.flush()
+        session.add_all([
+            Book(title="Book 1A", author_id=author1.id, publication_date=date(2020, 1, 1), pages=100, price=Decimal('10.00')),
+            Book(title="Book 1B", author_id=author1.id, publication_date=date(2021, 1, 1), pages=200, price=Decimal('20.00')),
+            Book(title="Book 2A", author_id=author2.id, publication_date=date(2022, 1, 1), pages=300, price=Decimal('30.00')),
+        ])
+        session.commit()
+        # Test subqueryload (equivalent to Django's prefetch_related)
+        authors = session.query(Author).options(subqueryload(Author.books)).all()
         for author in authors:
-            books = list(author.books.all())
             if author.name == "Author 1":
-                assert len(books) == 2
-                book_titles = [book.title for book in books]
-                assert "Book 1A" in book_titles
-                assert "Book 1B" in book_titles
+                assert len(author.books) == 2
+                titles = [b.title for b in author.books]
+                assert "Book 1A" in titles
+                assert "Book 1B" in titles
             elif author.name == "Author 2":
-                assert len(books) == 1
-                assert books[0].title == "Book 2A"
+                assert len(author.books) == 1
+                assert author.books[0].title == "Book 2A"
+        session.rollback()
 
-        # Clean up
-        Book.objects.all().delete()
-        Author.objects.all().delete()
-
-    def test_django_database_functions(self, test_environment: TestEnvironment, django_models):
-        """Test Django database functions"""
-        TestModel = self.TestModel
-
-        # Ensure clean slate
-        TestModel.objects.all().delete()
-
-        # Create test data
-        TestModel.objects.create(name="alice", email="alice@example.com", age=25)
-        TestModel.objects.create(name="BOB", email="bob@example.com", age=30)
-        TestModel.objects.create(name="Charlie", email="charlie@example.com", age=35)
-
-        # Test Upper function
-        upper_names = TestModel.objects.annotate(upper_name=Upper('name')).values_list('upper_name', flat=True)
-        upper_list = list(upper_names)
-        assert "ALICE" in upper_list
-        assert "BOB" in upper_list
-        assert "CHARLIE" in upper_list
-
-        # Test Lower function
-        lower_names = TestModel.objects.annotate(lower_name=Lower('name')).values_list('lower_name', flat=True)
-        lower_list = list(lower_names)
-        assert "alice" in lower_list
-        assert "bob" in lower_list
-        assert "charlie" in lower_list
-
-        # Test Length function
-        name_lengths = TestModel.objects.annotate(name_length=Length('name')).filter(name_length__gte=5)
-        assert name_lengths.count() == 2  # "alice" (5) and "Charlie" (7)
-
-        # Test Concat function
-        full_info = TestModel.objects.annotate(
-            full_info=Concat('name', Value(' - '), 'email', output_field=CharField())
+    def test_sqlalchemy_database_functions(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy database functions"""
+        session.query(TestModel).delete()
+        session.commit()
+        session.add_all([
+            TestModel(name="alice", email="alice@example.com", age=25),
+            TestModel(name="BOB", email="bob@example.com", age=30),
+            TestModel(name="Charlie", email="charlie@example.com", age=35),
+        ])
+        session.commit()
+        # Test upper
+        upper_names = [r[0] for r in session.query(func.upper(TestModel.name)).all()]
+        assert "ALICE" in upper_names
+        assert "BOB" in upper_names
+        assert "CHARLIE" in upper_names
+        # Test lower
+        lower_names = [r[0] for r in session.query(func.lower(TestModel.name)).all()]
+        assert "alice" in lower_names
+        assert "bob" in lower_names
+        assert "charlie" in lower_names
+        # Test length
+        results = session.query(TestModel).filter(func.length(TestModel.name) >= 5).all()
+        assert len(results) == 2  # "alice" (5) and "Charlie" (7)
+        # Test concat
+        result = session.query(
+            func.concat(TestModel.name, ' - ', TestModel.email)
         ).first()
-        assert ' - ' in full_info.full_info
-        assert '@example.com' in full_info.full_info
+        assert ' - ' in result[0]
+        assert '@example.com' in result[0]
+        session.query(TestModel).delete()
+        session.commit()
 
-        # Clean up
-        TestModel.objects.all().delete()
-
-    def test_django_annotations(self, test_environment: TestEnvironment, django_models):
-        """Test Django annotations with expressions"""
-        TestModel = self.TestModel
-        Book = self.Book
-        Author = self.Author
-
-        # Create test data for TestModel
-        TestModel.objects.create(name="Alice", email="alice@example.com", age=25, is_active=True)
-        TestModel.objects.create(name="Bob", email="bob@example.com", age=30, is_active=False)
-        TestModel.objects.create(name="Charlie", email="charlie@example.com", age=35, is_active=True)
-
-        # Test annotate with F expression for calculations
-        test_with_age_plus_ten = TestModel.objects.annotate(
-            age_plus_ten=F('age') + 10
-        ).order_by('age')
-
-        # Verify calculation
-        first_obj = test_with_age_plus_ten.first()
-        assert first_obj.age_plus_ten == first_obj.age + 10
-        assert first_obj.age_plus_ten == 35  # 25 + 10
-
-        # Create books for F expression testing
-        author = Author.objects.create(name="Test Author", email="test@example.com")
-        Book.objects.create(title="Book 1", author=author, publication_date=date(2020, 1, 1), pages=100, price=Decimal('10.00'))
-        Book.objects.create(title="Book 2", author=author, publication_date=date(2021, 1, 1), pages=200, price=Decimal('20.00'))
-        Book.objects.create(title="Book 3", author=author, publication_date=date(2022, 1, 1), pages=300, price=Decimal('30.00'))
-
-        # Test annotate with F expression for price per page
-        books_with_price_per_page = Book.objects.annotate(
-            price_per_page=F('price') / F('pages')
-        ).order_by('price_per_page')
-
-        # Verify calculation
-        first_book = books_with_price_per_page.first()
-        expected_price_per_page = float(first_book.price) / first_book.pages
-        assert abs(float(first_book.price_per_page) - expected_price_per_page) < 0.001
-
-        # Test filtering on annotated field - use a lower threshold to avoid precision issues
-        cheap_books = Book.objects.annotate(
-            price_per_page=F('price') / F('pages')
-        ).filter(price_per_page__lte=0.15)
-        assert cheap_books.count() == 3  # All books have price_per_page = 0.10
-
-        # Clean up
-        TestModel.objects.all().delete()
-        Book.objects.all().delete()
-        Author.objects.all().delete()
-
-    def test_django_values_and_values_list(self, test_environment: TestEnvironment, django_models):
-        """Test Django values() and values_list() methods"""
-        TestModel = self.TestModel
-
+    def test_sqlalchemy_values_and_values_list(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy equivalents of Django's values() and values_list() functions"""
         # Ensure clean slate
-        TestModel.objects.all().delete()
-
+        session.query(TestModel).delete()
+        session.commit()
         # Create test data
-        TestModel.objects.create(name="Alice", email="alice@example.com", age=25, is_active=True)
-        TestModel.objects.create(name="Bob", email="bob@example.com", age=30, is_active=False)
-        TestModel.objects.create(name="Charlie", email="charlie@example.com", age=35, is_active=True)
-
-        # Test values() - returns list of dictionaries
-        values_result = TestModel.objects.values('name', 'age').order_by('age')
-        values_list = list(values_result)
-        assert len(values_list) == 3
-        assert values_list[0] == {'name': 'Alice', 'age': 25}
-        assert values_list[1] == {'name': 'Bob', 'age': 30}
-        assert values_list[2] == {'name': 'Charlie', 'age': 35}
-
-        # Test values_list() - returns list of tuples
-        values_list_result = TestModel.objects.values_list('name', 'age').order_by('age')
-        tuples_list = list(values_list_result)
-        assert len(tuples_list) == 3
-        assert tuples_list[0] == ('Alice', 25)
-        assert tuples_list[1] == ('Bob', 30)
-        assert tuples_list[2] == ('Charlie', 35)
-
-        # Test values_list() with flat=True - returns flat list
-        names = TestModel.objects.values_list('name', flat=True).order_by('name')
-        names_list = list(names)
-        assert names_list == ['Alice', 'Bob', 'Charlie']
-
-        # Test values() with filtering
-        active_users = TestModel.objects.filter(is_active=True).values('name', 'email')
-        active_list = list(active_users)
-        assert len(active_list) == 2
-        active_names = [user['name'] for user in active_list]
+        session.add_all([
+            TestModel(name="Alice", email="alice@example.com", age=25, is_active=True),
+            TestModel(name="Bob", email="bob@example.com", age=30, is_active=False),
+            TestModel(name="Charlie", email="charlie@example.com", age=35, is_active=True),
+        ])
+        session.commit()
+        # Convert values to dicts (equivalent to Django's values())
+        values_result = session.query(TestModel.name, TestModel.age).order_by(TestModel.age).all()
+        assert len(values_result) == 3
+        assert values_result[0] == ('Alice', 25)
+        assert values_result[1] == ('Bob', 30)
+        assert values_result[2] == ('Charlie', 35)
+        values_dicts = [{'name': r.name, 'age': r.age} for r in values_result]
+        assert values_dicts[0] == {'name': 'Alice', 'age': 25}
+        assert values_dicts[1] == {'name': 'Bob', 'age': 30}
+        assert values_dicts[2] == {'name': 'Charlie', 'age': 35}
+        # Test flat list (equivalent to Django's values_list with flat=True)
+        names = [r[0] for r in session.query(TestModel.name).order_by(TestModel.name).all()]
+        assert names == ['Alice', 'Bob', 'Charlie']
+        # Test with filtering
+        active_users = session.query(TestModel.name, TestModel.email).filter(
+            TestModel.is_active == True
+        ).all()
+        assert len(active_users) == 2
+        active_names = [r.name for r in active_users]
         assert 'Alice' in active_names
         assert 'Charlie' in active_names
         assert 'Bob' not in active_names
-
         # Clean up
-        TestModel.objects.all().delete()
+        session.query(TestModel).delete()
+        session.commit()
 
-    def test_django_distinct_queries(self, test_environment: TestEnvironment, django_models):
-        """Test Django distinct() functionality"""
-        TestModel = self.TestModel
-
+    def test_sqlalchemy_distinct_queries(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy distinct() functionality"""
         # Ensure clean slate
-        TestModel.objects.all().delete()
-
+        session.query(TestModel).delete()
+        session.commit()
         # Create test data with duplicate ages
-        TestModel.objects.create(name="Alice", email="alice@example.com", age=25, is_active=True)
-        TestModel.objects.create(name="Bob", email="bob@example.com", age=30, is_active=False)
-        TestModel.objects.create(name="Charlie", email="charlie@example.com", age=25, is_active=True)
-        TestModel.objects.create(name="David", email="david@example.com", age=30, is_active=True)
-
+        session.add_all([
+            TestModel(name="Alice", email="alice@example.com", age=25, is_active=True),
+            TestModel(name="Bob", email="bob@example.com", age=30, is_active=False),
+            TestModel(name="Charlie", email="charlie@example.com", age=25, is_active=True),
+            TestModel(name="David", email="david@example.com", age=30, is_active=True),
+        ])
+        session.commit()
         # Test distinct ages
-        distinct_ages = TestModel.objects.values_list('age', flat=True).distinct().order_by('age')
-        ages_list = list(distinct_ages)
+        ages_list = [r[0] for r in session.query(TestModel.age).distinct().order_by(TestModel.age).all()]
         assert ages_list == [25, 30]
-
         # Test distinct with multiple fields
-        distinct_age_status = TestModel.objects.values('age', 'is_active').distinct().order_by('age', 'is_active')
-        distinct_list = list(distinct_age_status)
+        distinct_list = session.query(TestModel.age, TestModel.is_active).distinct().order_by(
+            TestModel.age, TestModel.is_active
+        ).all()
         assert len(distinct_list) == 3  # (25, True), (30, False), (30, True)
-
         # Test count with distinct
-        total_count = TestModel.objects.count()
-        distinct_age_count = TestModel.objects.values('age').distinct().count()
+        total_count = session.query(TestModel).count()
+        distinct_age_count = session.query(TestModel.age).distinct().count()
         assert total_count == 4
         assert distinct_age_count == 2
-
         # Clean up
-        TestModel.objects.all().delete()
+        session.query(TestModel).delete()
+        session.commit()
 
-    def test_django_only_and_defer(self, test_environment: TestEnvironment, django_models):
-        """Test Django only() and defer() for query optimization"""
-        TestModel = self.TestModel
-
+    def test_sqlalchemy_load_only_and_defer(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy load_only() and defer() for query optimization"""
+        from sqlalchemy.orm import defer, load_only
         # Ensure clean slate
-        TestModel.objects.all().delete()
-
+        session.query(TestModel).delete()
+        session.commit()
         # Create test data
-        obj = TestModel.objects.create(
-            name="Test User",
-            email="test@example.com",
-            age=30,
-            is_active=True
-        )
-
-        # Test only() - load only specific fields
-        obj_only = TestModel.objects.only('name', 'email').get(id=obj.id)
+        obj = TestModel(name="Test User", email="test@example.com", age=30, is_active=True)
+        session.add(obj)
+        session.commit()
+        obj_id = obj.id
+        session.expire_all()
+        # Test load_only() - load only specific fields
+        obj_only = session.query(TestModel).options(
+            load_only(TestModel.name, TestModel.email)
+        ).get(obj_id)
         assert obj_only.name == "Test User"
         assert obj_only.email == "test@example.com"
-        # Accessing deferred fields will trigger additional query, but should still work
         assert obj_only.age == 30
-
+        session.expire_all()
         # Test defer() - exclude specific fields from loading
-        obj_defer = TestModel.objects.defer('age', 'is_active').get(id=obj.id)
+        obj_defer = session.query(TestModel).options(
+            defer(TestModel.age), defer(TestModel.is_active)
+        ).get(obj_id)
         assert obj_defer.name == "Test User"
         assert obj_defer.email == "test@example.com"
-        # Accessing deferred fields will trigger additional query, but should still work
         assert obj_defer.age == 30
-
         # Clean up
-        TestModel.objects.all().delete()
+        session.query(TestModel).delete()
+        session.commit()
 
-    def test_django_in_bulk(self, test_environment: TestEnvironment, django_models):
-        """Test Django in_bulk() for batch retrieval"""
-        TestModel = self.TestModel
-
+    def test_sqlalchemy_batch_retrieval(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy batch retrieval (equivalent to Django's in_bulk)"""
         # Ensure clean slate
-        TestModel.objects.all().delete()
-
+        session.query(TestModel).delete()
+        session.commit()
         # Create test data
-        obj1 = TestModel.objects.create(name="User 1", email="user1@example.com", age=25)
-        obj2 = TestModel.objects.create(name="User 2", email="user2@example.com", age=30)
-        obj3 = TestModel.objects.create(name="User 3", email="user3@example.com", age=35)
-
-        # Test in_bulk with IDs (default behavior)
-        bulk_result = TestModel.objects.in_bulk([obj1.id, obj2.id, obj3.id])
+        obj1 = TestModel(name="User 1", email="user1@example.com", age=25)
+        obj2 = TestModel(name="User 2", email="user2@example.com", age=30)
+        obj3 = TestModel(name="User 3", email="user3@example.com", age=35)
+        session.add_all([obj1, obj2, obj3])
+        session.commit()
+        # Test bulk retrieval by IDs
+        ids = [obj1.id, obj2.id, obj3.id]
+        bulk_result = {o.id: o for o in session.query(TestModel).filter(TestModel.id.in_(ids)).all()}
         assert len(bulk_result) == 3
         assert bulk_result[obj1.id].name == "User 1"
         assert bulk_result[obj2.id].name == "User 2"
         assert bulk_result[obj3.id].name == "User 3"
-
-        # Test in_bulk with all IDs (no list provided)
-        bulk_all = TestModel.objects.in_bulk()
+        # Test bulk retrieval of all
+        bulk_all = {o.id: o for o in session.query(TestModel).all()}
         assert len(bulk_all) == 3
         assert obj1.id in bulk_all
         assert obj2.id in bulk_all
         assert obj3.id in bulk_all
-
-        # Test in_bulk with email field (unique field)
-        bulk_by_email = TestModel.objects.in_bulk(
-            ["user1@example.com", "user3@example.com"],
-            field_name='email'
-        )
+        # Test bulk retrieval by email field
+        emails = ["user1@example.com", "user3@example.com"]
+        bulk_by_email = {
+            o.email: o for o in session.query(TestModel).filter(TestModel.email.in_(emails)).all()
+        }
         assert len(bulk_by_email) == 2
         assert bulk_by_email["user1@example.com"].name == "User 1"
         assert bulk_by_email["user3@example.com"].name == "User 3"
-
         # Clean up
-        TestModel.objects.all().delete()
+        session.query(TestModel).delete()
+        session.commit()
 
-    def test_django_conditional_expressions(self, test_environment: TestEnvironment, django_models):
-        """Test Django Case/When conditional expressions"""
-        from django.db.models import Case, IntegerField, Value, When
-
-        TestModel = self.TestModel
-
+    def test_sqlalchemy_conditional_expressions(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy case() conditional expressions"""
+        from sqlalchemy import String, case
         # Ensure clean slate
-        TestModel.objects.all().delete()
-
+        session.query(TestModel).delete()
+        session.commit()
         # Create test data
-        TestModel.objects.create(name="Alice", email="alice@example.com", age=25, is_active=True)
-        TestModel.objects.create(name="Bob", email="bob@example.com", age=30, is_active=False)
-        TestModel.objects.create(name="Charlie", email="charlie@example.com", age=35, is_active=True)
-
-        # Test Case/When for conditional logic
-        results = TestModel.objects.annotate(
-            age_category=Case(
-                When(age__lt=30, then=Value('young')),
-                When(age__gte=30, age__lt=40, then=Value('middle')),
-                default=Value('senior'),
-                output_field=CharField()
-            )
-        ).order_by('age')
-
-        results_list = list(results)
-        assert results_list[0].age_category == 'young'  # Alice, 25
-        assert results_list[1].age_category == 'middle'  # Bob, 30
-        assert results_list[2].age_category == 'middle'  # Charlie, 35
-
-        # Test Case/When with integer output
-        priority_results = TestModel.objects.annotate(
-            priority=Case(
-                When(is_active=True, age__lt=30, then=Value(1)),
-                When(is_active=True, then=Value(2)),
-                When(is_active=False, then=Value(3)),
-                default=Value(4),
-                output_field=IntegerField()
-            )
-        ).order_by('priority', 'name')
-
-        priority_list = list(priority_results)
-        assert priority_list[0].name == 'Alice'  # priority 1: active and young
-        assert priority_list[1].name == 'Charlie'  # priority 2: active but not young
-        assert priority_list[2].name == 'Bob'  # priority 3: not active
-
+        session.add_all([
+            TestModel(name="Alice", email="alice@example.com", age=25, is_active=True),
+            TestModel(name="Bob", email="bob@example.com", age=30, is_active=False),
+            TestModel(name="Charlie", email="charlie@example.com", age=35, is_active=True),
+        ])
+        session.commit()
+        # Test case() for conditional logic
+        age_category = case(
+            (TestModel.age < 30, 'young'),
+            (TestModel.age.between(30, 39), 'middle'),
+            else_='senior'
+        ).label('age_category')
+        results = session.query(TestModel, age_category).order_by(TestModel.age).all()
+        assert results[0].age_category == 'young'   # Alice, 25
+        assert results[1].age_category == 'middle'   # Bob, 30
+        assert results[2].age_category == 'middle'   # Charlie, 35
+        # Test case() with integer output
+        from sqlalchemy import Integer
+        priority = case(
+            (and_(TestModel.is_active == True, TestModel.age < 30), 1),
+            (TestModel.is_active == True, 2),
+            (TestModel.is_active == False, 3),
+            else_=4
+        ).label('priority')
+        results = session.query(TestModel, priority).order_by('priority', TestModel.name).all()
+        assert results[0].TestModel.name == 'Alice'    # priority 1
+        assert results[1].TestModel.name == 'Charlie'  # priority 2
+        assert results[2].TestModel.name == 'Bob'      # priority 3
         # Clean up
-        TestModel.objects.all().delete()
+        session.query(TestModel).delete()
+        session.commit()
 
-    def test_django_iterator(self, test_environment: TestEnvironment, django_models):
-        """Test Django iterator() for memory-efficient queries"""
-        TestModel = self.TestModel
-
+    def test_sqlalchemy_yield_per(self, test_environment: TestEnvironment, session):
+        """Test SQLAlchemy yield_per() for memory-efficient queries"""
         # Ensure clean slate
-        TestModel.objects.all().delete()
-
+        session.query(TestModel).delete()
+        session.commit()
         # Create test data
-        for i in range(20):
-            TestModel.objects.create(
-                name=f"User {i}",
-                email=f"user{i}@example.com",
-                age=20 + i
-            )
-
-        # Test iterator() - processes results without caching
+        session.add_all([
+            TestModel(name=f"User {i}", email=f"user{i}@example.com", age=20 + i)
+            for i in range(20)
+        ])
+        session.commit()
+        # Test yield_per() - processes results without caching all at once
         count = 0
-        for obj in TestModel.objects.iterator():
+        for obj in session.query(TestModel).yield_per(100):
             assert obj.name.startswith("User")
             count += 1
         assert count == 20
-
-        # Test iterator with chunk_size
+        # Test yield_per with smaller chunk size
         count = 0
-        for obj in TestModel.objects.iterator(chunk_size=5):
+        for obj in session.query(TestModel).yield_per(5):
             assert obj.email.endswith("@example.com")
             count += 1
         assert count == 20
-
         # Clean up
-        TestModel.objects.all().delete()
-    '''
+        session.query(TestModel).delete()
+        session.commit()
 
