@@ -42,7 +42,7 @@ class TestDatabaseInfo:
 
         self._username = typing.cast('str', database_info.get("username"))
         self._password = typing.cast('str', database_info.get("password"))
-        self._default_db_name = "mysqldb"
+        self._default_db_name = typing.cast('str', database_info.get("defaultDbName"))
         self._cluster_endpoint = typing.cast('str', database_info.get("clusterEndpoint"))
         self._cluster_endpoint_port = typing.cast('int', database_info.get("clusterEndpointPort"))
         self._cluster_read_only_endpoint = typing.cast('str', database_info.get("clusterReadOnlyEndpoint"))
