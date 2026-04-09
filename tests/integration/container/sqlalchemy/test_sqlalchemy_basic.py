@@ -688,7 +688,7 @@ class TestSqlAlchemy:
         session.expire_all()
         # Test load_only() - load only specific fields
         obj_only = session.query(TestModel).options(
-            load_only(TestModel.name, TestModel.email)
+            load_only('TestModel.name', 'TestModel.email')
         ).get(obj_id)
         assert obj_only.name == "Test User"
         assert obj_only.email == "test@example.com"
@@ -696,7 +696,7 @@ class TestSqlAlchemy:
         session.expire_all()
         # Test defer() - exclude specific fields from loading
         obj_defer = session.query(TestModel).options(
-            defer(TestModel.age), defer(TestModel.is_active)
+            defer('TestModel.age'), defer('TestModel.is_active')
         ).get(obj_id)
         assert obj_defer.name == "Test User"
         assert obj_defer.email == "test@example.com"
