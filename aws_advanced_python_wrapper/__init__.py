@@ -14,21 +14,16 @@
 
 from logging import DEBUG, getLogger
 
+from aws_advanced_python_wrapper.pep249 import (DatabaseError, DataError,
+                                                Error, IntegrityError,
+                                                InterfaceError, InternalError,
+                                                NotSupportedError,
+                                                OperationalError,
+                                                ProgrammingError)
 from .cleanup import release_resources
 from .driver_info import DriverInfo
 from .utils.utils import LogUtils
 from .wrapper import AwsWrapperConnection
-from aws_advanced_python_wrapper.pep249 import (
-    Error,
-    InterfaceError,
-    DatabaseError,
-    DataError,
-    OperationalError,
-    IntegrityError,
-    InternalError,
-    ProgrammingError,
-    NotSupportedError
-)
 
 # PEP249 compliance
 connect = AwsWrapperConnection.connect
@@ -57,6 +52,7 @@ __all__ = [
 ]
 
 __version__ = DriverInfo.DRIVER_VERSION
+
 
 def set_logger(name='aws_advanced_python_wrapper', level=DEBUG, format_string=None):
     LogUtils.setup_logger(getLogger(name), level, format_string)

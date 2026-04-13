@@ -13,10 +13,8 @@
 #  limitations under the License.
 
 # aws_advanced_python_wrapper/sqlalchemy/sqlalchemy_mysqlconnector_dialect.py
-from sqlalchemy.dialects.mysql.mysqlconnector import MySQLDialect_mysqlconnector
-import re
-
-from aws_advanced_python_wrapper import AwsWrapperConnection
+from sqlalchemy.dialects.mysql.mysqlconnector import \
+    MySQLDialect_mysqlconnector
 
 
 class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
@@ -29,4 +27,3 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
 
     name = 'mysql'
     driver = 'aws_wrapper_mysqlconnector'
-
