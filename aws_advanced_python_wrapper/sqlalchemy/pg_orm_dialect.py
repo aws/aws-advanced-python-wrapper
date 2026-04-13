@@ -12,10 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import re
+
 # aws_advanced_python_wrapper/sqlalchemy/sqlalchemy_psycopg_dialect.py
 from psycopg import Connection
 from sqlalchemy.dialects.postgresql.psycopg import PGDialect_psycopg
-import re
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 
