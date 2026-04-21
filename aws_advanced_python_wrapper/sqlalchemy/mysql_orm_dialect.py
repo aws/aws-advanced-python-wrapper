@@ -11,10 +11,16 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+from typing import Optional
 
-# aws_advanced_python_wrapper/sqlalchemy/sqlalchemy_mysqlconnector_dialect.py
+from sqlalchemy import Connection
 from sqlalchemy.dialects.mysql.mysqlconnector import \
     MySQLDialect_mysqlconnector
+
+import mysql.connector
+from sqlalchemy.engine import default
+
+from aws_advanced_python_wrapper import AwsWrapperConnection
 
 
 class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
@@ -27,3 +33,125 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
 
     name = 'mysql'
     driver = 'aws_wrapper_mysqlconnector'
+
+    @classmethod
+    def import_dbapi(cls):
+        """
+        Return the DB-API 2.0 module.
+        SQLAlchemy calls this to get the driver module.
+        """
+        import aws_advanced_python_wrapper
+        return aws_advanced_python_wrapper
+
+    def create_connect_args(self, url):
+        """
+        Transform SQLAlchemy URL into connection arguments.
+        Must include the 'target' parameter for our wrapper driver.
+        """
+        # Extract standard connection parameters
+        opts = url.translate_connect_args(username='user')
+
+        # Add query string parameters
+        opts.update(url.query)
+
+        # Add the required 'target' parameter for our wrapper
+        if 'target' not in opts:
+            opts['target'] = mysql.connector.Connect
+        if 'plugins' not in opts:
+            opts['plugins'] = "aurora_connection_tracker,failover"
+
+        # Return empty args list and kwargs dict
+        return [], opts
+
+    def _detect_charset(self, connection: Connection) -> str:
+        return connection.charset
+
+    def initialize(self, connection):
+        """
+        Override initialization to handle type introspection.
+        The parent class tries to use TypeInfo.fetch() which requires
+        a native SQLAlchemy connection, not AwsWrapperConnection.
+        """
+
+        # Unwrap SQLAlchemy's connection object
+        wrapper_conn, wrapper_parent = self._get_wrapper_connection_and_parent(connection)
+
+        # this is driver-based, does not need server version info
+        # and is fairly critical for even basic SQL operations
+        self._connection_charset: Optional[str] = self._detect_charset(
+            wrapper_conn.target_connection
+        )
+
+        # call super().initialize() because we need to have
+        # server_version_info set up.  in 1.4 under python 2 only this does the
+        # "check unicode returns" thing, which is the one area that some
+        # SQL gets compiled within initialize() currently
+        default.DefaultDialect.initialize(self, connection)
+
+        self._detect_sql_mode(connection)
+        self._detect_ansiquotes(connection)  # depends on sql mode
+        self._detect_casing(connection)
+        if self._server_ansiquotes:
+            # if ansiquotes == True, build a new IdentifierPreparer
+            # with the new setting
+            self.identifier_preparer = self.preparer(
+                self, server_ansiquotes=self._server_ansiquotes
+            )
+
+        self.supports_sequences = (
+                self.is_mariadb and self.server_version_info >= (10, 3)
+        )
+
+        self.supports_for_update_of = (
+                self._is_mysql and self.server_version_info >= (8,)
+        )
+
+        self.use_mysql_for_share = (
+                self._is_mysql and self.server_version_info >= (8, 0, 1)
+        )
+
+        self._needs_correct_for_88718_96365 = (
+                not self.is_mariadb and self.server_version_info >= (8,)
+        )
+
+        self.delete_returning = (
+                self.is_mariadb and self.server_version_info >= (10, 0, 5)
+        )
+
+        self.insert_returning = (
+                self.is_mariadb and self.server_version_info >= (10, 5)
+        )
+
+        self._requires_alias_for_on_duplicate_key = (
+                self._is_mysql and self.server_version_info >= (8, 0, 20)
+        )
+
+        self._warn_for_known_db_issues()
+
+    def _get_wrapper_connection_and_parent(self, connection):
+        """
+        Traverse the connection chain to find AwsWrapperConnection and its parent connection.
+
+        Args:
+            connection: SQLAlchemy Connection object
+
+        Returns:
+            AwsWrapperConnection instance or None, parent connection of AwsWrapperConnection or None
+        """
+        # Start with the DBAPI connection
+        parent = connection
+        child = connection.connection
+
+        # Traverse up to 5 levels deep (reasonable limit)
+        for _ in range(5):
+            if isinstance(child, AwsWrapperConnection):
+                return child, parent
+
+            # Try to go deeper if there's a .connection attribute
+            if hasattr(child, 'connection'):
+                parent = child
+                child = child.connection
+            else:
+                break
+
+        return None
