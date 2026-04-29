@@ -407,7 +407,6 @@ class AbstractReadWriteSplittingPlugin(Plugin):
         ...
 
 
-
 class ReadWriteSplittingPlugin(AbstractReadWriteSplittingPlugin):
     """Topology-based read/write splitting plugin.
 

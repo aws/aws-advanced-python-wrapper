@@ -18,14 +18,13 @@ from time import perf_counter_ns, sleep
 from typing import TYPE_CHECKING, Callable, Optional, Type, TypeVar
 
 from aws_advanced_python_wrapper.host_availability import HostAvailability
-from aws_advanced_python_wrapper.read_write_splitting_plugin import (
-    AbstractReadWriteSplittingPlugin)
+from aws_advanced_python_wrapper.read_write_splitting_plugin import \
+    AbstractReadWriteSplittingPlugin
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
-    from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
     from aws_advanced_python_wrapper.utils.properties import Properties, WrapperProperty
