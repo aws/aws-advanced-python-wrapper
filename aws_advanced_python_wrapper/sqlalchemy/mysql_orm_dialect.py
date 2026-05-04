@@ -21,6 +21,8 @@ import mysql.connector
 from sqlalchemy.engine import default
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesUtils
 
 
 class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
@@ -65,6 +67,9 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
 
     def _detect_charset(self, connection: Connection) -> str:
         return connection.charset
+
+    def _extract_error_code(self, exception: BaseException) -> int:
+        return exception.driver_error.errno
 
     def initialize(self, connection):
         """
@@ -155,3 +160,14 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
                 break
 
         return None
+
+    def prepare_connect_info(self, host_info: HostInfo, props: Properties) -> Properties:
+        prop_copy: Properties = Properties(props.copy())
+
+        prop_copy["host"] = host_info.host
+
+        if host_info.is_port_specified():
+            prop_copy["port"] = str(host_info.port)
+
+        PropertiesUtils.remove_wrapper_props(prop_copy)
+        return prop_copy

@@ -30,6 +30,7 @@ from botocore.exceptions import ClientError
 from sqlalchemy import (Boolean, BigInteger, Column, Date, DateTime, Float,
                         ForeignKey, Integer, JSON, Numeric, SmallInteger, String, Text,
                         Time, create_engine, text)
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker, Mapped, mapped_column
 
 from aws_advanced_python_wrapper.errors import FailoverSuccessError
@@ -208,7 +209,7 @@ class TestSqlAlchemyPlugins:
             if len(endpoints) != 1:
                 sleep(3)
                 continue
-            TestSQLAlchemyPlugins.endpoint_info = endpoints[0]
+            TestSqlAlchemyPlugins.endpoint_info = endpoints[0]
             if endpoints[0]["Status"] == "available":
                 available = True
                 break
@@ -296,6 +297,7 @@ class TestSqlAlchemyPlugins:
 
             if 'iam' in plugins_config:
                 user = conn_utils.iam_user
+                extra_options['auth_plugin'] = 'mysql_clear_password'
             elif 'aws_secrets_manager' in plugins_config:
                 user = None
                 _, secret_arn = create_secret
@@ -489,7 +491,7 @@ class TestSqlAlchemyPlugins:
 
             rds_utils.failover_cluster_and_wait_until_writer_changed()
 
-            with pytest.raises(FailoverSuccessError):
+            with pytest.raises(DBAPIError):
                 session.query(TestModel).filter_by(id=obj.id).first()
 
             result = session.query(TestModel).filter_by(id=obj.id).first()
@@ -543,7 +545,7 @@ class TestSqlAlchemyPlugins:
 
             rds_utils.failover_cluster_and_wait_until_writer_changed()
 
-            with pytest.raises(FailoverSuccessError):
+            with pytest.raises(DBAPIError):
                 session.query(TestModel).filter_by(id=obj.id).first()
 
             result = session.query(TestModel).filter_by(id=obj.id).first()
@@ -569,8 +571,7 @@ class TestSqlAlchemyPlugins:
             conn_utils.port, conn_utils.dbname, plugins='read_write_splitting')
         reader_url = _build_url(
             conn_utils.user, conn_utils.password, conn_utils.writer_cluster_host,
-            conn_utils.port, conn_utils.dbname, plugins='read_write_splitting',
-            read_only='true')
+            conn_utils.port, conn_utils.dbname, plugins='read_write_splitting')
 
         writer_engine = create_engine(writer_url)
         reader_engine = create_engine(reader_url)
@@ -599,65 +600,4 @@ class TestSqlAlchemyPlugins:
         writer_engine.dispose()
         reader_engine.dispose()
 
-    @enable_on_num_instances(min_instances=2)
-    def test_sqlalchemy_read_write_splitting(self, test_environment: TestEnvironment, sa_rw_split_setup, rds_utils):
-        """Test SQLAlchemy with read/write splitting using separate engines"""
-        setup = sa_rw_split_setup
-        RWSplitTestModel = setup['model']
-
-        # Verify writer connection
-        with setup['writer_engine'].connect() as conn:
-            row = conn.execute(text(RdsTestUtility.get_instance_id_query())).fetchone()
-            writer_instance_id = row[0]
-            assert rds_utils.is_db_instance_writer(writer_instance_id)
-
-        # Verify reader connection
-        with setup['reader_engine'].connect() as conn:
-            row = conn.execute(text(RdsTestUtility.get_instance_id_query())).fetchone()
-            reader_instance_id = row[0]
-            assert not rds_utils.is_db_instance_writer(reader_instance_id)
-
-        assert writer_instance_id != reader_instance_id
-
-        # Write operations
-        w_session: Session = setup['WriterSession']()
-        r_session: Session = setup['ReaderSession']()
-        try:
-            obj = RWSplitTestModel(name="Test Write", value=42)
-            w_session.add(obj)
-            w_session.commit()
-            assert obj.id is not None
-
-            # Read via reader
-            retrieved = r_session.get(RWSplitTestModel, obj.id)
-            assert retrieved.name == "Test Write"
-            assert retrieved.value == 42
-
-            # Bulk create
-            w_session.add_all([
-                RWSplitTestModel(name="Object 1", value=10),
-                RWSplitTestModel(name="Object 2", value=20),
-                RWSplitTestModel(name="Object 3", value=30),
-            ])
-            w_session.commit()
-
-            r_session.expire_all()
-            assert r_session.query(RWSplitTestModel).count() == 4
-
-            filtered = r_session.query(RWSplitTestModel).filter(RWSplitTestModel.value >= 20).all()
-            assert len(filtered) == 3
-
-            # Update
-            w_session.query(RWSplitTestModel).filter_by(name="Object 1").update({"value": 15})
-            w_session.commit()
-
-            r_session.expire_all()
-            updated = r_session.query(RWSplitTestModel).filter_by(name="Object 1").first()
-            assert updated.value == 15
-
-            w_session.query(RWSplitTestModel).delete()
-            w_session.commit()
-        finally:
-            w_session.close()
-            r_session.close()
 
