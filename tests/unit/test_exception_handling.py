@@ -162,6 +162,72 @@ def test_is_login_exception_with_nested_non_login_error_pg(pg_handler):
     assert pg_handler.is_login_exception(error=wrapper_error) is False
 
 
+def test_nested_pam_error_in_connection_failed_is_not_network_exception_pg(pg_handler):
+    error_msg = (
+        'connection failed: connection to server at "", port 5432 failed: '
+        'FATAL:  PAM authentication failed for user ""'
+    )
+    wrapper_error = AwsWrapperError("Error occurred while opening a connection", OperationalError(error_msg))
+
+    assert pg_handler.is_network_exception(error=wrapper_error) is False
+
+
+def test_nested_password_auth_error_in_connection_failed_is_not_network_exception_pg(pg_handler):
+    error_msg = (
+        'connection failed: connection to server at "", port 5432 failed: '
+        'FATAL:  password authentication failed for user ""'
+    )
+    wrapper_error = AwsWrapperError("Error occurred while opening a connection", OperationalError(error_msg))
+
+    assert pg_handler.is_network_exception(error=wrapper_error) is False
+
+
+def test_nested_pam_error_deeply_wrapped_is_not_network_exception_pg(pg_handler):
+    error_msg = (
+        'connection failed: connection to server at "", port 5432 failed: '
+        'FATAL:  password authentication failed for user ""'
+    )
+    wrapper_error = AwsWrapperError(
+        "[IamAuthPlugin] Error occurred while opening a connection",
+        AwsWrapperError("Inner wrapper", OperationalError(error_msg)))
+
+    assert pg_handler.is_network_exception(error=wrapper_error) is False
+
+
+def test_nested_pam_error_is_login_exception_pg(pg_handler):
+    error_msg = (
+        'connection failed: connection to server at "", port 5432 failed: '
+        'FATAL:  PAM authentication failed for user ""'
+    )
+    wrapper_error = AwsWrapperError("Error occurred while opening a connection", OperationalError(error_msg))
+
+    assert pg_handler.is_login_exception(error=wrapper_error) is True
+
+
+def test_nested_password_auth_error_is_login_exception_pg(pg_handler):
+    error_msg = (
+        'connection failed: connection to server at "", port 5432 failed: '
+        'FATAL:  password authentication failed for user ""'
+    )
+    wrapper_error = AwsWrapperError("Error occurred while opening a connection", OperationalError(error_msg))
+
+    assert pg_handler.is_login_exception(error=wrapper_error) is True
+
+
+def test_pure_connection_failed_is_network_exception_pg(pg_handler):
+    error_msg = 'connection failed: connection to server at "", port 5432 failed: Connection refused'
+    wrapper_error = AwsWrapperError("Error occurred while opening a connection", OperationalError(error_msg))
+
+    assert pg_handler.is_network_exception(error=wrapper_error) is True
+
+
+def test_pure_connection_failed_is_not_login_exception_pg(pg_handler):
+    error_msg = 'connection failed: connection to server at "", port 5432 failed: Connection refused'
+    wrapper_error = AwsWrapperError("Error occurred while opening a connection", OperationalError(error_msg))
+
+    assert pg_handler.is_login_exception(error=wrapper_error) is False
+
+
 def test_is_read_only_exception_with_nested_aws_wrapper_error_mysql(mysql_handler):
     class MockReadOnlyError(Exception):
         def __init__(self):
