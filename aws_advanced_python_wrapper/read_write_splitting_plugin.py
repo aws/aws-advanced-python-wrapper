@@ -137,6 +137,7 @@ class AbstractReadWriteSplittingPlugin(Plugin):
             return execute_func()
         except Exception as ex:
             if isinstance(ex, FailoverFailedError):
+                # Evict the current connection from the pool right away since it is not reusable
                 self._close_connections(False)
             if isinstance(ex, FailoverError):
                 logger.debug(
@@ -253,6 +254,7 @@ class AbstractReadWriteSplittingPlugin(Plugin):
             and self._is_writer(current_host)
             and self._is_connection_usable(current_conn, driver_dialect)
         ):
+            # Already connected to the intended writer.
             return
 
         self._in_read_write_split = True
@@ -280,6 +282,7 @@ class AbstractReadWriteSplittingPlugin(Plugin):
             and self._is_reader(current_host)
             and self._is_connection_usable(current_conn, driver_dialect)
         ):
+            # Already connected to the intended reader.
             return
 
         self._close_reader_if_necessary()
@@ -318,12 +321,14 @@ class AbstractReadWriteSplittingPlugin(Plugin):
         driver_dialect = self._plugin_service.driver_dialect
 
         if close_only_if_idle and internal_conn == current_conn:
+            # Connection is in use, do not close
             return
 
         try:
             if self._is_connection_usable(internal_conn, driver_dialect):
                 driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: internal_conn.close())
         except Exception:
+            # Ignore exceptions during cleanup - connection might already be dead
             pass
         finally:
             if internal_conn == self._writer_connection:
@@ -350,6 +355,7 @@ class AbstractReadWriteSplittingPlugin(Plugin):
         try:
             return not driver_dialect.is_closed(conn)
         except Exception:
+            # If we cannot determine connection state, assume unavailable.
             return False
 
     @staticmethod
@@ -358,6 +364,7 @@ class AbstractReadWriteSplittingPlugin(Plugin):
             try:
                 driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
             except Exception:
+                # Swallow exception
                 return
 
     # --- Abstract methods that concrete subclasses must implement ---
@@ -415,6 +422,7 @@ class ReadWriteSplittingPlugin(AbstractReadWriteSplittingPlugin):
     """
 
     def __init__(self, plugin_service: PluginService, props: Properties):
+        # The read/write splitting plugin handles connections based on topology.
         super().__init__(plugin_service, props)
         strategy = WrapperProperties.READER_HOST_SELECTOR_STRATEGY.get(props)
         if strategy is not None:
@@ -559,6 +567,7 @@ class ReadWriteSplittingPlugin(AbstractReadWriteSplittingPlugin):
         )
 
     def _close_reader_if_necessary(self):
+        # The old reader cannot be used anymore, close it.
         if (
             self._reader_host_info is not None
             and self._reader_connection is not None

@@ -46,6 +46,7 @@ class SimpleReadWriteSplittingPlugin(AbstractReadWriteSplittingPlugin):
     T = TypeVar('T')
 
     def __init__(self, plugin_service: PluginService, props: Properties):
+        # The simple read/write splitting plugin handles connections based on configuration parameter endpoints.
         super().__init__(plugin_service, props)
 
         read_endpoint: str = SimpleReadWriteSplittingPlugin._verify_parameter(
