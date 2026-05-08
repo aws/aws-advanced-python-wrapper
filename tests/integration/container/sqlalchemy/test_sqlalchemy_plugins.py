@@ -288,7 +288,7 @@ class TestSqlAlchemyPlugins:
         """Setup SQLAlchemy engine with configurable plugins."""
         if hasattr(request, 'param') and isinstance(request.param, dict):
             config = request.param
-            plugins_config = config.get('plugins', 'aurora_connection_tracker,failover_v2')
+            plugins_config = config.get('wrapper_plugins', 'aurora_connection_tracker,failover_v2')
             extra_options = config.get('options', {})
             use_custom_endpoint = config.get('use_custom_endpoint', False)
             custom_endpoint_host = None
@@ -319,7 +319,7 @@ class TestSqlAlchemyPlugins:
             host = conn_utils.writer_host
 
         url = _build_url(user, password, host, conn_utils.port, conn_utils.dbname,
-                         plugins=plugins_config, **extra_options)
+                         wrapper_plugins=plugins_config, **extra_options)
         engine = create_engine(url)
         SessionLocal = sessionmaker(bind=engine)
 
@@ -350,7 +350,7 @@ class TestSqlAlchemyPlugins:
         finally:
             session.close()
 
-    @pytest.mark.parametrize('sa_setup', [{'plugins': ''}], indirect=True)
+    @pytest.mark.parametrize('sa_setup', [{'wrapper_plugins': ''}], indirect=True)
     def test_sqlalchemy_with_no_plugins(self, test_environment: TestEnvironment, sa_models, sa_setup):
         """Test SQLAlchemy with no plugins enabled"""
         TestModel = sa_models['TestModel']
@@ -369,7 +369,7 @@ class TestSqlAlchemyPlugins:
         finally:
             session.close()
 
-    @pytest.mark.parametrize('sa_setup', [{'plugins': 'failover_v2'}], indirect=True)
+    @pytest.mark.parametrize('sa_setup', [{'wrapper_plugins': 'failover_v2'}], indirect=True)
     def test_sqlalchemy_with_failover_only(self, test_environment: TestEnvironment, sa_models, sa_setup):
         """Test SQLAlchemy with only failover plugin"""
         TestModel = sa_models['TestModel']
@@ -388,7 +388,7 @@ class TestSqlAlchemyPlugins:
         finally:
             session.close()
 
-    @pytest.mark.parametrize('sa_setup', [{'plugins': 'aurora_connection_tracker,failover_v2'}], indirect=True)
+    @pytest.mark.parametrize('sa_setup', [{'wrapper_plugins': 'aurora_connection_tracker,failover_v2'}], indirect=True)
     def test_sqlalchemy_with_multiple_plugins(self, test_environment: TestEnvironment, sa_models, sa_setup):
         """Test SQLAlchemy with multiple plugins enabled"""
         TestModel = sa_models['TestModel']
@@ -408,7 +408,7 @@ class TestSqlAlchemyPlugins:
             session.close()
 
     @pytest.mark.parametrize('sa_setup', [{
-        'plugins': 'aws_secrets_manager',
+        'wrapper_plugins': 'aws_secrets_manager',
         'use_secrets_manager': True
     }], indirect=True)
     def test_sqlalchemy_with_secrets_manager_plugin(self, test_environment: TestEnvironment, sa_setup, sa_models):
@@ -434,7 +434,7 @@ class TestSqlAlchemyPlugins:
             session.close()
 
     @pytest.mark.parametrize('sa_setup', [{
-        'plugins': 'iam',
+        'wrapper_plugins': 'iam',
         'password': '<anything>',
         'options': {}
     }], indirect=True)
@@ -460,7 +460,7 @@ class TestSqlAlchemyPlugins:
             session.close()
 
     @pytest.mark.parametrize('sa_setup', [{
-        'plugins': 'failover_v2',
+        'wrapper_plugins': 'failover_v2',
         'options': {
             'socket_timeout': 10,
             'connect_timeout': 10,
@@ -510,7 +510,7 @@ class TestSqlAlchemyPlugins:
 
     '''
     @pytest.mark.parametrize('sa_setup', [{
-        'plugins': 'custom_endpoint,failover_v2',
+        'wrapper_plugins': 'custom_endpoint,failover_v2',
         'use_custom_endpoint': True,
         'options': {
             'socket_timeout': 10,

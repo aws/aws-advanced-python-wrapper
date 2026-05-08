@@ -59,8 +59,10 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
         # Add the required 'target' parameter for our wrapper
         if 'target' not in opts:
             opts['target'] = mysql.connector.Connect
-        if 'plugins' not in opts:
+        if 'wrapper_plugins' not in opts:
             opts['plugins'] = "aurora_connection_tracker,failover"
+        else:
+            opts['plugins'] = opts['wrapper_plugins']
 
         # Return empty args list and kwargs dict
         return [], opts
