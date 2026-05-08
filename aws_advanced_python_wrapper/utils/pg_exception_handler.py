@@ -76,7 +76,7 @@ class PgExceptionHandler(ExceptionHandler):
             # Check the error message if this is a generic error
             error_msg: str = error.args[0]
             is_network_error: bool = any(error_msg.startswith(msg) for msg in self._NETWORK_ERROR_MESSAGES)
-            # PAM errors may be nested in the connection error, double check here to avoid false positives
+            # PAM errors may be nested in the connection error messages, double check here to avoid false positives
             # Example nested error: 'connection failed: ...: FATAL: password authentication failed for user'
             return is_network_error and not any(msg in error_msg for msg in self._ACCESS_ERROR_MESSAGES)
 
