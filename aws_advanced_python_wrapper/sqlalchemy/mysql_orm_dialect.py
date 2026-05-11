@@ -63,6 +63,7 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
             opts['plugins'] = "aurora_connection_tracker,failover"
         else:
             opts['plugins'] = opts['wrapper_plugins']
+            opts.pop('wrapper_plugins', None)
 
         # Return empty args list and kwargs dict
         return [], opts
