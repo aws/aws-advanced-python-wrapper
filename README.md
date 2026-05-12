@@ -88,6 +88,7 @@ The following table lists the connection properties used with the AWS Advanced P
 | `topology_refresh_ms`                        |      [Driver Parameters](docs/using-the-python-wrapper/UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters)      |
 | `cluster_id`                                 |      [Driver Parameters](docs/using-the-python-wrapper/UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters)      |
 | `cluster_instance_host_pattern`              |      [Driver Parameters](docs/using-the-python-wrapper/UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters)      |
+| `global_cluster_instance_host_patterns`      | [Failover v2 Plugin](docs/using-the-python-wrapper/UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters)                                 |
 | `wrapper_dialect`                            |              [Dialects](docs/using-the-python-wrapper/DatabaseDialects.md), and whether you should include it.               |
 | `wrapper_driver_dialect`                     |           [Driver Dialect](./docs/using-the-python-wrapper/DriverDialects.md), and whether you should include it.            |
 | `plugins`                                    |   [Connection Plugin Manager](docs/using-the-python-wrapper/UsingThePythonWrapper.md#connection-plugin-manager-parameters)   | 

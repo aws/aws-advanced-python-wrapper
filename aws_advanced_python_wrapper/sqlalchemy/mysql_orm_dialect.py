@@ -11,6 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
 from typing import Optional
 
 from sqlalchemy import Connection
@@ -23,7 +24,6 @@ from sqlalchemy.engine import default
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesUtils
-
 
 class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
     """
