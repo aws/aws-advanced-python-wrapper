@@ -113,11 +113,11 @@ class Book(Base):
 
     author: Mapped[Author] = relationship(back_populates='books')
 
-def _build_url(user, password, host, port, dbname, plugins=None, **extra_options):
+def _build_url(user, password, host, port, dbname, wrapper_plugins=None, **extra_options):
     """Build a SQLAlchemy connection URL using the aws wrapper dialect."""
     query_params = {}
-    if plugins:
-        query_params['plugins'] = plugins
+    if wrapper_plugins:
+        query_params['wrapper_plugins'] = wrapper_plugins
     query_params['connect_timeout'] = str(extra_options.get('connect_timeout', 10))
     for k, v in extra_options.items():
         if k != 'connect_timeout':
@@ -263,6 +263,7 @@ class TestSqlAlchemyPlugins:
         engine = sa_setup['engine']
         test_id = str(uuid.uuid4())[:8]
 
+        breakpoint()
         Base.metadata.create_all(engine, tables=[
             TestModel.__table__, DataTypeModel.__table__,
             Author.__table__, Book.__table__
@@ -342,7 +343,7 @@ class TestSqlAlchemyPlugins:
             assert obj.id is not None
             assert obj.name == "Plugin Test User"
 
-            retrieved = session.get(TestModel, obj.id)
+            retrieved: TestModel = session.get(TestModel, obj.id)
             assert retrieved.name == "Plugin Test User"
 
             session.query(TestModel).delete()
@@ -425,7 +426,7 @@ class TestSqlAlchemyPlugins:
             session.commit()
             assert obj.id is not None
 
-            retrieved = session.get(TestModel, obj.id)
+            retrieved: TestModel = session.get(TestModel, obj.id)
             assert retrieved.email == "secrets@example.com"
 
             session.query(TestModel).delete()
@@ -451,7 +452,7 @@ class TestSqlAlchemyPlugins:
             session.commit()
             assert obj.id is not None
 
-            retrieved = session.get(TestModel, obj.id)
+            retrieved: TestModel = session.get(TestModel, obj.id)
             assert retrieved.email == "iam@example.com"
 
             session.query(TestModel).delete()
@@ -499,7 +500,7 @@ class TestSqlAlchemyPlugins:
             assert result.name == "Failover Test User"
 
             row = session.execute(text(RdsTestUtility.get_instance_id_query())).fetchone()
-            current_writer_id = row[0]
+            current_writer_id = row._tuple()[0]
             assert rds_utils.is_db_instance_writer(current_writer_id) is True
             assert current_writer_id != initial_writer_id
 
