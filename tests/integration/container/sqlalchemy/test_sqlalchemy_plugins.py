@@ -426,8 +426,8 @@ class TestSqlAlchemyPlugins:
             session.commit()
             assert obj.id is not None
 
-            retrieved: TestModel = session.get(TestModel, obj.id)
-            assert retrieved.email == "secrets@example.com"
+            retrieved = session.get(TestModel, obj.id)
+            assert retrieved and retrieved.email == "secrets@example.com"
 
             session.query(TestModel).delete()
             session.commit()
@@ -452,8 +452,8 @@ class TestSqlAlchemyPlugins:
             session.commit()
             assert obj.id is not None
 
-            retrieved: TestModel = session.get(TestModel, obj.id)
-            assert retrieved.email == "iam@example.com"
+            retrieved = session.get(TestModel, obj.id)
+            assert retrieved and retrieved.email == "iam@example.com"
 
             session.query(TestModel).delete()
             session.commit()
