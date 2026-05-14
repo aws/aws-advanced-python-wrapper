@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import annotations
+
 from typing import Optional
 from typing import TYPE_CHECKING
 
@@ -30,6 +32,7 @@ from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesU
 if TYPE_CHECKING:
     from sqlalchemy import Connection
     from aws_advanced_python_wrapper.hostinfo import HostInfo
+
 
 class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
     """
