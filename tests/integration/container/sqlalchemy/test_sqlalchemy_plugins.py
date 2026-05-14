@@ -343,8 +343,8 @@ class TestSqlAlchemyPlugins:
             assert obj.id is not None
             assert obj.name == "Plugin Test User"
 
-            retrieved: TestModel? = session.get(TestModel, obj.id)
-            assert retrieved && retrieved.name == "Plugin Test User"
+            retrieved = session.get(TestModel, obj.id)
+            assert retrieved and retrieved.name == "Plugin Test User"
 
             session.query(TestModel).delete()
             session.commit()
