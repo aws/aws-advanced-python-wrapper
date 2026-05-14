@@ -80,7 +80,7 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
         if isinstance(exception, AwsWrapperError):
             err = exception.driver_error
             if err and isinstance(err, BaseException):
-                return exception.driver_error.errno
+                return err.errno
             else:
                 raise Exception("Could not extract error code because driver_error was not a BaseException.")
         else:
