@@ -19,9 +19,11 @@ from sqlalchemy.dialects.mysql.mysqlconnector import \
     MySQLDialect_mysqlconnector
 
 import mysql.connector
+from mysql.connector import CMySQLConnection
 from sqlalchemy.engine import default
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesUtils
 
@@ -68,10 +70,10 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
         # Return empty args list and kwargs dict
         return [], opts
 
-    def _detect_charset(self, connection: Connection) -> str:
+    def _detect_charset(self, connection: CMySQLConnection) -> str:
         return connection.charset
 
-    def _extract_error_code(self, exception: BaseException) -> int:
+    def _extract_error_code(self, exception: AwsWrapperError) -> int:
         return exception.driver_error.errno
 
     def initialize(self, connection):
