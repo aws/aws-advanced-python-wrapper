@@ -13,8 +13,8 @@
 #  limitations under the License.
 
 from typing import Optional
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Connection
 from sqlalchemy.dialects.mysql.mysqlconnector import \
     MySQLDialect_mysqlconnector
 
@@ -25,8 +25,11 @@ from sqlalchemy.engine import default
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesUtils
+
+if TYPE_CHECKING:
+    from sqlalchemy import Connection
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
 
 class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
     """
