@@ -70,11 +70,17 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
         # Return empty args list and kwargs dict
         return [], opts
 
-    def _detect_charset(self, connection: CMySQLConnection) -> str:
-        return connection.charset
+    def _detect_charset(self, connection: Connection) -> str:
+        if isinstance(connection, CMySQLConnection):
+            return connection.charset
+        else:
+            raise Exception("Could not detect charset because connection was not a CMySQLConnection.")
 
-    def _extract_error_code(self, exception: AwsWrapperError) -> int:
-        return exception.driver_error.errno
+    def _extract_error_code(self, exception: BaseException) -> int:
+        if isinstance(exception, AwsWrapperError):
+            return exception.driver_error.errno
+        else:
+            raise Exception("Could not extract error code because exception was not an AwsWrapperError.")
 
     def initialize(self, connection):
         """
