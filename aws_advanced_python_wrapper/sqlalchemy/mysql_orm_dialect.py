@@ -77,8 +77,12 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
             raise Exception("Could not detect charset because connection was not a CMySQLConnection.")
 
     def _extract_error_code(self, exception: BaseException) -> int:
-        if isinstance(exception, AwsWrapperError) and isinstance(exception.driver_error, BaseException):
-            return exception.driver_error.errno
+        if isinstance(exception, AwsWrapperError):
+            err = exception.driver_error
+            if err and isinstance(err, BaseException):
+                return exception.driver_error.errno
+            else:
+                raise Exception("Could not extract error code because driver_error was not a BaseException.")
         else:
             raise Exception("Could not extract error code because exception was not an AwsWrapperError.")
 
