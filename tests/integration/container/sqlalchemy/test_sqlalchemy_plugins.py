@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from decimal import Decimal
 from datetime import date, datetime, time, timezone
+from decimal import Decimal
 from time import perf_counter_ns, sleep
 from typing import Any, ClassVar, Dict, List, Optional
 
@@ -27,11 +27,12 @@ import boto3
 import pytest
 from boto3 import client
 from botocore.exceptions import ClientError
-from sqlalchemy import (Boolean, BigInteger, Column, Date, DateTime, Float,
-                        ForeignKey, Integer, JSON, Numeric, SmallInteger, String, Text,
-                        Time, create_engine, text)
+from sqlalchemy import (JSON, BigInteger, Boolean, Column, Date, DateTime,
+                        Float, ForeignKey, Integer, Numeric, SmallInteger,
+                        String, Text, Time, create_engine, text)
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker, Mapped, mapped_column
+from sqlalchemy.orm import (DeclarativeBase, Mapped, Session, mapped_column,
+                            relationship, sessionmaker)
 
 from aws_advanced_python_wrapper.errors import FailoverSuccessError
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
