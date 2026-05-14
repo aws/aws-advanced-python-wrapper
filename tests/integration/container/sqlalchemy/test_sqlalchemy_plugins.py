@@ -500,7 +500,10 @@ class TestSqlAlchemyPlugins:
             assert result.name == "Failover Test User"
 
             row = session.execute(text(RdsTestUtility.get_instance_id_query())).fetchone()
-            current_writer_id = row._tuple()[0]
+            if row:
+                current_writer_id = row._tuple()[0]
+            else:
+                raise Exception("Failed to get current_writer_id from row because row was None.")
             assert rds_utils.is_db_instance_writer(current_writer_id) is True
             assert current_writer_id != initial_writer_id
 
