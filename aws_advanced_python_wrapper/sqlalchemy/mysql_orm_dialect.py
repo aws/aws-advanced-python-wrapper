@@ -14,23 +14,23 @@
 
 from __future__ import annotations
 
-from typing import Optional
-from typing import TYPE_CHECKING
-
-from sqlalchemy.dialects.mysql.mysqlconnector import \
-    MySQLDialect_mysqlconnector
+from typing import TYPE_CHECKING, Optional
 
 import mysql.connector
 from mysql.connector import CMySQLConnection
 from mysql.connector.errors import Error
+from sqlalchemy.dialects.mysql.mysqlconnector import \
+    MySQLDialect_mysqlconnector
 from sqlalchemy.engine import default
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.utils.properties import Properties, PropertiesUtils
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          PropertiesUtils)
 
 if TYPE_CHECKING:
     from sqlalchemy import Connection
+
     from aws_advanced_python_wrapper.hostinfo import HostInfo
 
 
