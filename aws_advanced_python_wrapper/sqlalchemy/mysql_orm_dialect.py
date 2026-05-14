@@ -20,6 +20,7 @@ from sqlalchemy.dialects.mysql.mysqlconnector import \
 
 import mysql.connector
 from mysql.connector import CMySQLConnection
+from mysql.connector.errors import Error
 from sqlalchemy.engine import default
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
@@ -79,7 +80,7 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
     def _extract_error_code(self, exception: BaseException) -> int:
         if isinstance(exception, AwsWrapperError):
             err = exception.driver_error
-            if err and isinstance(err, BaseException):
+            if err and isinstance(err, Error):
                 return err.errno
             else:
                 raise Exception("Could not extract error code because driver_error was not a BaseException.")
