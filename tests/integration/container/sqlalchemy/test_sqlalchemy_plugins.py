@@ -264,7 +264,6 @@ class TestSqlAlchemyPlugins:
         engine = sa_setup['engine']
         test_id = str(uuid.uuid4())[:8]
 
-        breakpoint()
         Base.metadata.create_all(engine, tables=[
             TestModel.__table__, DataTypeModel.__table__,
             Author.__table__, Book.__table__
