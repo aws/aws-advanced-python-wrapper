@@ -73,6 +73,8 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
         else:
             opts['plugins'] = opts['wrapper_plugins']
             opts.pop('wrapper_plugins', None)
+        if 'connect_timeout' in opts:
+            opts['connect_timeout'] = int(opts['connect_timeout'])
 
         # Return empty args list and kwargs dict
         return [], opts

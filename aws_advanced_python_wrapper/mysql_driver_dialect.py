@@ -197,7 +197,7 @@ class MySQLDriverDialect(DriverDialect):
 
         connect_timeout = WrapperProperties.CONNECT_TIMEOUT_SEC.get(original_props)
         if connect_timeout is not None:
-            driver_props["connect_timeout"] = int(connect_timeout)
+            driver_props["connect_timeout"] = connect_timeout
 
         return driver_props
 
