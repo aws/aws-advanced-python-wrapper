@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 
 
 class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
+    supports_statement_cache = True
+
     """
     SQLAlchemy dialect for AWS Advanced Python Wrapper with mysqlconnector. Extends the SQLAlchemy MySQL mysqlconnector dialect.
     This dialect is not related to the DriverDialect or DatabaseDialect classes used by our driver. Instead, it is used
