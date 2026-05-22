@@ -29,8 +29,10 @@ with the AWS Advanced Python Wrapper.
 
 """
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class BankAccount(Base):
     """Example model for demonstrating failover handling."""
@@ -58,8 +60,8 @@ def execute_query_with_failover_handling(query_func):
         return query_func()
 
     except DBAPIError as dbapi_err:
-        err = dbapi_err.orig
-        if isinstance(err, FailoverSuccessError):
+        e = dbapi_err.orig
+        if isinstance(e, FailoverSuccessError):
             # Query execution failed and AWS Advanced Python Wrapper successfully failed over to an available instance.
             # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoversuccesserror
 
@@ -69,7 +71,7 @@ def execute_query_with_failover_handling(query_func):
             # Retry the query
             return query_func()
 
-        elif isinstance(err, FailoverFailedError):
+        elif isinstance(e, FailoverFailedError):
             # Failover failed. The application should open a new connection,
             # check the results of the failed transaction and re-run it if needed.
             # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoverfailederror
@@ -77,7 +79,7 @@ def execute_query_with_failover_handling(query_func):
             print("Application should open a new connection and retry the transaction.")
             raise e
 
-        elif isinstance(err, TransactionResolutionUnknownError):
+        elif isinstance(e, TransactionResolutionUnknownError):
             # The transaction state is unknown. The application should check the status
             # of the failed transaction and restart it if needed.
             # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#transactionresolutionunknownerror
@@ -173,13 +175,17 @@ if __name__ == "__main__":
         print("SQLAlchemy ORM Failover Example with AWS Advanced Python Wrapper")
         print("=" * 60)
 
-        engine = create_engine('mysql+aws_wrapper_mysqlconnector://mysqlmaster:sqlalchemypazzword@database-mysql-ulojonat.cluster-cx422ywmsto6.us-east-2.rds.amazonaws.com:3306/mysqldb')
+        engine = create_engine(
+            'mysql+aws_wrapper_mysqlconnector://admin:pwd@'
+            'database.cluster-xyz.us-east-1.rds.amazonaws.com:3306/mysql?'
+            'wrapper_plugins=failover'
+        )
 
         # Create table
         create_table(engine)
 
         Session = sessionmaker(bind=engine)
-        with Session() as session: 
+        with Session() as session:
             # Insert records
             insert_records(session)
 
