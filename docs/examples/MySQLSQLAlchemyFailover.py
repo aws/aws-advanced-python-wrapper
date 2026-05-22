@@ -14,6 +14,7 @@
 
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.exc import DBAPIError
 
 from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.errors import (
@@ -56,31 +57,33 @@ def execute_query_with_failover_handling(query_func):
     try:
         return query_func()
 
-    except FailoverSuccessError:
-        # Query execution failed and AWS Advanced Python Wrapper successfully failed over to an available instance.
-        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoversuccesserror
+    except DBAPIError as dbapi_err:
+        err = dbapi_err.orig
+        if isinstance(err, FailoverSuccessError):
+            # Query execution failed and AWS Advanced Python Wrapper successfully failed over to an available instance.
+            # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoversuccesserror
 
-        # The connection has been re-established. Retry the query.
-        print("Failover successful! Retrying query...")
+            # The connection has been re-established. Retry the query.
+            print("Failover successful! Retrying query...")
 
-        # Retry the query
-        return query_func()
+            # Retry the query
+            return query_func()
 
-    except FailoverFailedError as e:
-        # Failover failed. The application should open a new connection,
-        # check the results of the failed transaction and re-run it if needed.
-        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoverfailederror
-        print(f"Failover failed: {e}")
-        print("Application should open a new connection and retry the transaction.")
-        raise e
+        else if isinstance(err, FailoverFailedError):
+            # Failover failed. The application should open a new connection,
+            # check the results of the failed transaction and re-run it if needed.
+            # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoverfailederror
+            print(f"Failover failed: {e}")
+            print("Application should open a new connection and retry the transaction.")
+            raise e
 
-    except TransactionResolutionUnknownError as e:
-        # The transaction state is unknown. The application should check the status
-        # of the failed transaction and restart it if needed.
-        # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#transactionresolutionunknownerror
-        print(f"Transaction resolution unknown: {e}")
-        print("Application should check transaction status and retry if needed.")
-        raise e
+        else if isinstance(err, TransactionResolutionUnknownError):
+            # The transaction state is unknown. The application should check the status
+            # of the failed transaction and restart it if needed.
+            # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#transactionresolutionunknownerror
+            print(f"Transaction resolution unknown: {e}")
+            print("Application should check transaction status and retry if needed.")
+            raise e
 
 
 def create_table(engine):
