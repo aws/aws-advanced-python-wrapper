@@ -12,9 +12,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.errors import (
@@ -69,7 +69,7 @@ def execute_query_with_failover_handling(query_func):
             # Retry the query
             return query_func()
 
-        else if isinstance(err, FailoverFailedError):
+        elif isinstance(err, FailoverFailedError):
             # Failover failed. The application should open a new connection,
             # check the results of the failed transaction and re-run it if needed.
             # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#failoverfailederror
@@ -77,7 +77,7 @@ def execute_query_with_failover_handling(query_func):
             print("Application should open a new connection and retry the transaction.")
             raise e
 
-        else if isinstance(err, TransactionResolutionUnknownError):
+        elif isinstance(err, TransactionResolutionUnknownError):
             # The transaction state is unknown. The application should check the status
             # of the failed transaction and restart it if needed.
             # https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-driver/using-plugins/UsingTheFailoverPlugin.md#transactionresolutionunknownerror
