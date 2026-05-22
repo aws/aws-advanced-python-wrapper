@@ -13,7 +13,7 @@
 #  limitations under the License.
 
 from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.errors import (
@@ -28,7 +28,8 @@ with the AWS Advanced Python Wrapper.
 
 """
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 class BankAccount(Base):
     """Example model for demonstrating failover handling."""
