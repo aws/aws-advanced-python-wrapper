@@ -34,7 +34,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import (DeclarativeBase, Mapped, Session, mapped_column,
                             relationship, sessionmaker)
 
-from aws_advanced_python_wrapper.errors import FailoverSuccessError, TransactionResolutionUnknownError
+from aws_advanced_python_wrapper.errors import (
+    FailoverSuccessError, TransactionResolutionUnknownError)
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from ..utils.conditions import (disable_on_features, enable_on_deployments,
                                 enable_on_engines, enable_on_features,
