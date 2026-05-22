@@ -34,7 +34,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import (DeclarativeBase, Mapped, Session, mapped_column,
                             relationship, sessionmaker)
 
-from aws_advanced_python_wrapper.errors import FailoverSuccessError
+from aws_advanced_python_wrapper.errors import FailoverSuccessError, TransactionResolutionUnknownError
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from ..utils.conditions import (disable_on_features, enable_on_deployments,
                                 enable_on_engines, enable_on_features,
@@ -492,8 +492,11 @@ class TestSqlAlchemyPlugins:
 
             rds_utils.failover_cluster_and_wait_until_writer_changed()
 
-            with pytest.raises(DBAPIError):
+            try:
                 session.query(TestModel).filter_by(id=obj.id).first()
+                raise Exception("FailoverSuccessError was not raised.")
+            except DBAPIError as err:
+                assert isinstance(err.orig, TransactionResolutionUnknownError)
 
             result = session.query(TestModel).filter_by(id=obj.id).first()
             assert result is not None
@@ -549,8 +552,12 @@ class TestSqlAlchemyPlugins:
 
             rds_utils.failover_cluster_and_wait_until_writer_changed()
 
-            with pytest.raises(DBAPIError):
+
+            try:
                 session.query(TestModel).filter_by(id=obj.id).first()
+                raise Exception("FailoverSuccessError was not raised.")
+            except DBAPIError as err:
+                assert isinstance(err.orig, TransactionResolutionUnknownError)
 
             result = session.query(TestModel).filter_by(id=obj.id).first()
             assert result is not None
