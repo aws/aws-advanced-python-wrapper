@@ -33,3 +33,29 @@ The AWS Advanced Python Wrapper supports a variety of plugins that enhance your 
 
 For a complete list of available plugins, see the [List of Available Plugins](./UsingThePythonWrapper.md#list-of-available-plugins) in the main driver documentation.
 
+
+### Failover Plugin
+
+The Failover Plugin provides automatic failover handling for Aurora clusters. When a database instance becomes unavailable, the plugin automatically connects to a healthy instance in the cluster.
+
+#### Handling Failover Events
+
+During a failover event, the driver will throw a `DBAPIError` exception after successfully connecting to a new instance. Your application should catch this exception, check which type of failover error occurred, and retry the failed query:
+
+```python
+from aws_advanced_python_wrapper.errors import FailoverSuccessError
+
+def execute_query_with_failover_handling(query_func):
+    try:
+        return query_func()
+    except DBAPIError as dbapi_err:
+        err = dbapi_err.orig
+        if isinstance(err, FailoverSuccessError):
+            # Failover successful, retry the query
+            return query_func()
+```
+
+For a complete example, see [MySQLSQLAlchemyFailover.py](../examples/MySQLSQLAlchemyFailover.py).
+
+For more information about the Failover Plugin, see the [Failover Plugin documentation](./using-plugins/UsingTheFailoverPlugin.md).
+
