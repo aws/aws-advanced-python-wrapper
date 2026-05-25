@@ -111,7 +111,7 @@ def insert_records(session):
     print("\n--- Inserting Records ---")
 
     def _insert1():
-        account = BankAccount(name='John Doe', account_balance=200)
+        account = BankAccount(name='Jane Doe', account_balance=200)
         session.add(account)
         session.commit()  # Explicit commit required
         print(f"Inserted: {account}")
