@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > SQLAlchemy ORM support is currently only available for **MySQL databases**.
 
-The AWS Advanced Python Wrapper provides a custom SQLAlchemy database backend that enables SQLAlchemy applications to leverage AWS and Aurora functionalities such as failover handling, IAM authentication, and read/write splitting.
+The AWS Advanced Python Wrapper provides a custom SQLAlchemy database backend that enables SQLAlchemy applications to leverage AWS and Aurora functionalities such as failover handling and IAM authentication.
 
 ## Prerequisites
 
@@ -59,3 +59,8 @@ For a complete example, see [MySQLSQLAlchemyFailover.py](../examples/MySQLSQLAlc
 
 For more information about the Failover Plugin, see the [Failover Plugin documentation](./using-plugins/UsingTheFailoverPlugin.md).
 
+### Read/Write Splitting
+
+The Read/Write Splitting Plugin is not supported for SQLAlchemy, since session binds already implement this functionality.
+
+See the [official SQLAlchemy documentation on the Session API](https://docs.sqlalchemy.org/en/20/orm/session_api.html) for more information on session binds.
