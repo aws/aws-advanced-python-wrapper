@@ -63,6 +63,15 @@ def clear_cache():
     SqlAlchemyPooledConnectionProvider._database_pools.clear()
 
 
+@pytest.fixture
+def mock_dialects(mocker):
+    mock_driver_dialect = mocker.MagicMock()
+    mock_database_dialect = mocker.MagicMock()
+    mock_driver_dialect.prepare_connect_info.side_effect = lambda host, props: Properties(props.copy())
+    mock_database_dialect.prepare_conn_props.return_value = None
+    return mock_driver_dialect, mock_database_dialect
+
+
 def test_connect__default_mapping__default_pool_configuration(provider, host_info, mocker, mock_conn, mock_pool):
     expected_urls = {host_info.url}
     expected_keys = [PoolKey(host_info.url, "user1")]
@@ -100,6 +109,69 @@ def test_connect__custom_configuration_and_mapping(host_info, mocker, mock_conn,
     mock_pool_initializer_func.assert_called_with(creator=mock_pool_connection_func, pool_size=10)
 
 
+def test_connect__updates_password_in_cached_pool_creator_props(host_info, mocker, mock_dialects):
+    captured_password: list = []
+    props = Properties({WrapperProperties.USER.name: "user1", WrapperProperties.PASSWORD.name: "TOKEN_1"})
+
+    def fake_target_connect(**kwargs):
+        captured_password.append(kwargs.get("password"))
+        return mocker.MagicMock(spec=psycopg.Connection)
+
+    provider = SqlAlchemyPooledConnectionProvider(
+        pool_configurator=lambda _, __: {"pool_size": 0, "max_overflow": 2}
+    )
+    mock_driver_dialect, mock_database_dialect = mock_dialects
+
+    # Create a cached pool
+    conn_1 = provider.connect(fake_target_connect, mock_driver_dialect, mock_database_dialect, host_info, props)
+    assert conn_1 is not None
+
+    # Rotate password
+    props[WrapperProperties.PASSWORD.name] = "TOKEN_2"
+
+    conn_2 = provider.connect(fake_target_connect, mock_driver_dialect, mock_database_dialect, host_info, props)
+    assert conn_2 is not None
+
+    assert captured_password == ["TOKEN_1", "TOKEN_2"]
+
+
+def test_connect__password_update_different_pool_keys(host_info, mocker, mock_dialects):
+    captured_password_user1: list = []
+    captured_password_user2: list = []
+    props_user1 = Properties({WrapperProperties.USER.name: "user1", WrapperProperties.PASSWORD.name: "TOKEN_1"})
+    props_user2 = Properties({WrapperProperties.USER.name: "user2", WrapperProperties.PASSWORD.name: "TOKEN_2"})
+
+    def fake_target_connect(**kwargs):
+        user = kwargs.get("user")
+        pwd = kwargs.get("password")
+        if user == "user1":
+            captured_password_user1.append(pwd)
+        else:
+            captured_password_user2.append(pwd)
+        return mocker.MagicMock(spec=psycopg.Connection)
+
+    provider = SqlAlchemyPooledConnectionProvider(
+        pool_configurator=lambda _, __: {"pool_size": 0, "max_overflow": 3}
+    )
+    mock_driver_dialect, mock_database_dialect = mock_dialects
+
+    conn1 = provider.connect(fake_target_connect, mock_driver_dialect, mock_database_dialect, host_info, props_user1)
+    conn2 = provider.connect(fake_target_connect, mock_driver_dialect, mock_database_dialect, host_info, props_user2)
+    assert conn1 is not None
+    assert conn2 is not None
+
+    assert captured_password_user1 == ["TOKEN_1"]
+    assert captured_password_user2 == ["TOKEN_2"]
+
+    # Rotate password for user 1
+    props_user1[WrapperProperties.PASSWORD.name] = "TOKEN_3"
+    conn3 = provider.connect(fake_target_connect, mock_driver_dialect, mock_database_dialect, host_info, props_user1)
+    assert conn3 is not None
+
+    assert captured_password_user1 == ["TOKEN_1", "TOKEN_3"]
+    assert captured_password_user2 == ["TOKEN_2"]
+
+
 def test_accepts_host_info(provider):
     instance_url = "instance-1.XYZ.us-east-2.rds.amazonaws.com"
     instance_host_info = HostInfo(instance_url)
@@ -115,18 +187,24 @@ def test_least_connections_strategy(provider, mock_pool):
     writer = HostInfo("writer.XYZ.us-east-2.rds.amazonaws.com")
     reader_1 = HostInfo("reader-1.XYZ.us-east-2.rds.amazonaws.com", role=HostRole.READER)
     reader_2 = HostInfo("reader-2.XYZ.us-east-2.rds.amazonaws.com", role=HostRole.READER)
-    hosts = [writer, reader_1, reader_2]
+    hosts = (writer, reader_1, reader_2)
     props = Properties({WrapperProperties.USER.name: "user1", WrapperProperties.PASSWORD.name: "password"})
 
     # Create cache with 1 pool to reader_url_1_connection and 2 pools to reader_url_2_connections.
     # Each pool holds 1 connection.
     test_database_pools = SlidingExpirationCache()
     test_database_pools.compute_if_absent(
-        PoolKey(reader_1.url, "user1"), lambda _: mock_pool, 10 * 60_000_000_000)
+        PoolKey(reader_1.url, "user1"),
+        lambda _: (mock_pool, Properties()),
+        10 * 60_000_000_000)
     test_database_pools.compute_if_absent(
-        PoolKey(reader_2.url, "user1"), lambda _: mock_pool, 10 * 60_000_000_000)
+        PoolKey(reader_2.url, "user1"),
+        lambda _: (mock_pool, Properties()),
+        10 * 60_000_000_000)
     test_database_pools.compute_if_absent(
-        PoolKey(reader_2.url, "user2"), lambda _: mock_pool, 10 * 60_000_000_000)
+        PoolKey(reader_2.url, "user2"),
+        lambda _: (mock_pool, Properties()),
+        10 * 60_000_000_000)
 
     result = provider.get_host_info_by_strategy(hosts, HostRole.READER, "least_connections", props)
     assert reader_1 == result
@@ -135,15 +213,21 @@ def test_least_connections_strategy(provider, mock_pool):
 def test_least_connections_strategy__no_hosts_matching_role(provider):
     props = Properties()
     with pytest.raises(AwsWrapperError):
-        provider.get_host_info_by_strategy([HostInfo("writer")], HostRole.READER, "least_connections", props)
+        provider.get_host_info_by_strategy((HostInfo("writer"),), HostRole.READER, "least_connections", props)
 
 
 def test_release_resources(provider, mocker):
     pool1 = mocker.MagicMock()
     pool2 = mocker.MagicMock()
     test_database_pools = SlidingExpirationCache()
-    test_database_pools.compute_if_absent(PoolKey("url1", "user1"), lambda _: pool1, 60_000_000_000)
-    test_database_pools.compute_if_absent(PoolKey("url1", "user2"), lambda _: pool2, 60_000_000_000)
+    test_database_pools.compute_if_absent(
+        PoolKey("url1", "user1"),
+        lambda _: (pool1, Properties()),
+        60_000_000_000)
+    test_database_pools.compute_if_absent(
+        PoolKey("url1", "user2"),
+        lambda _: (pool2, Properties()),
+        60_000_000_000)
     SqlAlchemyPooledConnectionProvider._database_pools = test_database_pools
 
     provider.release_resources()

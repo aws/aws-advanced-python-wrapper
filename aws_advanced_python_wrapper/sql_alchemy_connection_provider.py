@@ -51,9 +51,9 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
                                                      "weighted_random": WeightedRandomHostSelector(),
                                                      "highest_weight": HighestWeightHostSelector()}
     _rds_utils: ClassVar[RdsUtils] = RdsUtils()
-    _database_pools: ClassVar[SlidingExpirationCache[PoolKey, QueuePool]] = SlidingExpirationCache(
-        should_dispose_func=lambda queue_pool: queue_pool.checkedout() == 0,
-        item_disposal_func=lambda queue_pool: queue_pool.dispose()
+    _database_pools: ClassVar[SlidingExpirationCache[PoolKey, Tuple[QueuePool, Properties]]] = SlidingExpirationCache(
+        should_dispose_func=lambda pool_pair: pool_pair[0].checkedout() == 0,
+        item_disposal_func=lambda pool_pair: pool_pair[0].dispose()
     )
 
     def __init__(
@@ -119,7 +119,8 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         num_connections = 0
         for pool_key, cache_item in SqlAlchemyPooledConnectionProvider._database_pools.items():
             if pool_key.url == host_info.url:
-                num_connections += cache_item.item.checkedout()
+                queue_pool, _ = cache_item.item
+                num_connections += queue_pool.checkedout()
         return num_connections
 
     def connect(
@@ -129,14 +130,21 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             database_dialect: DatabaseDialect,
             host_info: HostInfo,
             props: Properties):
-        queue_pool: Optional[QueuePool] = SqlAlchemyPooledConnectionProvider._database_pools.compute_if_absent(
+        db_pool: Optional[Tuple[QueuePool, Properties]] = SqlAlchemyPooledConnectionProvider._database_pools.compute_if_absent(
             PoolKey(host_info.url, self._get_extra_key(host_info, props)),
             lambda _: self._create_pool(target_func, driver_dialect, database_dialect, host_info, props),
             SqlAlchemyPooledConnectionProvider._POOL_EXPIRATION_CHECK_NS
         )
 
-        if queue_pool is None:
+        if db_pool is None:
             raise AwsWrapperError(Messages.get_formatted("SqlAlchemyPooledConnectionProvider.PoolNone", host_info.url))
+
+        queue_pool, creator_props = db_pool
+
+        # Update the password in the creator's captured properties so new pooled connections use the latest credentials
+        password = WrapperProperties.PASSWORD.get(props)
+        if password is not None:
+            creator_props[WrapperProperties.PASSWORD.name] = password
 
         return queue_pool.connect()
 
@@ -163,7 +171,7 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         prepared_properties = driver_dialect.prepare_connect_info(host_info, props)
         database_dialect.prepare_conn_props(prepared_properties)
         kwargs["creator"] = self._get_connection_func(target_func, prepared_properties)
-        return self._create_sql_alchemy_pool(**kwargs)
+        return self._create_sql_alchemy_pool(**kwargs), prepared_properties
 
     def _get_connection_func(self, target_connect_func: Callable, props: Properties):
         return lambda: target_connect_func(**props)
@@ -174,7 +182,8 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
     def release_resources(self):
         for _, cache_item in SqlAlchemyPooledConnectionProvider._database_pools.items():
             try:
-                cache_item.item.dispose()
+                queue_pool, _ = cache_item.item
+                queue_pool.dispose()
             except Exception:
                 # Swallow exception, connections may already be dead
                 pass

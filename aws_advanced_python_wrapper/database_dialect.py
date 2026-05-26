@@ -628,15 +628,15 @@ class GlobalAuroraMysqlDialect(AuroraMysqlDialect, GlobalAuroraTopologyDialect):
 
 
 class GlobalAuroraPgDialect(AuroraPgDialect, GlobalAuroraTopologyDialect):
-    _GLOBAL_STATUS_TABLE_EXISTS_QUERY = "select 'aurora_global_db_status'::regproc"
-    _GLOBAL_INSTANCE_STATUS_EXISTS_QUERY = "select 'aurora_global_db_instance_status'::regproc"
+    _GLOBAL_STATUS_TABLE_EXISTS_QUERY = "select 'pg_catalog.aurora_global_db_status'::regproc"
+    _GLOBAL_INSTANCE_STATUS_EXISTS_QUERY = "select 'pg_catalog.aurora_global_db_instance_status'::regproc"
     _TOPOLOGY_QUERY = \
         ("SELECT SERVER_ID, CASE WHEN SESSION_ID = 'MASTER_SESSION_ID' THEN TRUE ELSE FALSE END, "
          "VISIBILITY_LAG_IN_MSEC, AWS_REGION "
-         "FROM aurora_global_db_instance_status()")
-    _REGION_COUNT_QUERY = "SELECT count(1) FROM aurora_global_db_status()"
+         "FROM pg_catalog.aurora_global_db_instance_status()")
+    _REGION_COUNT_QUERY = "SELECT count(1) FROM pg_catalog.aurora_global_db_status()"
     _REGION_BY_INSTANCE_ID_QUERY = \
-        "SELECT AWS_REGION FROM aurora_global_db_instance_status() WHERE SERVER_ID = %s"
+        "SELECT AWS_REGION FROM pg_catalog.aurora_global_db_instance_status() WHERE SERVER_ID = %s"
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:

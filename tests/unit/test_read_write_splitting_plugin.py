@@ -131,7 +131,7 @@ def plugin_service_mock(mocker, driver_dialect_mock, writer_conn_mock):
 @pytest.fixture
 def read_write_splitting_plugin(plugin_service_mock, props, host_list_provider_service_mock):
     plugin = ReadWriteSplittingPlugin(plugin_service_mock, props)
-    plugin._connection_handler._host_list_provider_service = host_list_provider_service_mock
+    plugin._host_list_provider_service = host_list_provider_service_mock
 
     return plugin
 
@@ -139,7 +139,7 @@ def read_write_splitting_plugin(plugin_service_mock, props, host_list_provider_s
 @pytest.fixture
 def srw_plugin(plugin_service_mock, srw_props, host_list_provider_service_mock):
     plugin = SimpleReadWriteSplittingPlugin(plugin_service_mock, srw_props)
-    plugin._connection_handler._host_list_provider_service = host_list_provider_service_mock
+    plugin._host_list_provider_service = host_list_provider_service_mock
 
     return plugin
 
@@ -688,7 +688,7 @@ def test_connect_verification_fails_fallback_srw(
     plugin_service_mock.get_host_role.return_value = HostRole.READER  # Wrong role
 
     plugin = SimpleReadWriteSplittingPlugin(plugin_service_mock, props)
-    plugin._connection_handler.host_list_provider_service = (
+    plugin._host_list_provider_service = (
         host_list_provider_service_mock
     )
 
@@ -738,7 +738,7 @@ def test_connect_non_rds_cluster_endpoint_with_verification_srw(
     )
 
     plugin = SimpleReadWriteSplittingPlugin(plugin_service_mock, props)
-    plugin._connection_handler.host_list_provider_service = (
+    plugin._host_list_provider_service = (
         host_list_provider_service_mock
     )
 
