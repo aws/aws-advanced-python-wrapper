@@ -178,7 +178,7 @@ if __name__ == "__main__":
         engine = create_engine(
             'mysql+aws_wrapper_mysqlconnector://admin:pwd@'
             'database.cluster-xyz.us-east-1.rds.amazonaws.com:3306/mysql?'
-            'wrapper_plugins=failover'
+            'wrapper_plugins=failover_v2'
         )
 
         # Create table
