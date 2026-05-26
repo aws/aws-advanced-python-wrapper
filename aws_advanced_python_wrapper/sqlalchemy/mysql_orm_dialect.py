@@ -187,13 +187,3 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
 
         return None
 
-    def prepare_connect_info(self, host_info: HostInfo, props: Properties) -> Properties:
-        prop_copy: Properties = Properties(props.copy())
-
-        prop_copy["host"] = host_info.host
-
-        if host_info.is_port_specified():
-            prop_copy["port"] = str(host_info.port)
-
-        PropertiesUtils.remove_wrapper_props(prop_copy)
-        return prop_copy
