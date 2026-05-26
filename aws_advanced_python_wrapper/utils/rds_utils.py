@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from re import Match, search, sub
-from typing import Dict, Optional
+from typing import Callable, ClassVar, Dict, Optional
 
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
@@ -108,7 +108,7 @@ class RdsUtils:
                                  r"(?P<dns>cluster-|cluster-ro-)+" \
                                  r"(?P<domain>[a-zA-Z0-9]+\.rds\.(?P<region>[a-zA-Z0-9\-]+)" \
                                  r"\.(amazonaws\.com|c2s\.ic\.gov|sc2s\.sgov\.gov))$"
-    ELB_PATTERN = r"^(?<instance>.+)\.elb\.((?<region>[a-zA-Z0-9\-]+)\.amazonaws\.com)$"
+    ELB_PATTERN = r"^(?P<instance>.+)\.elb\.((?P<region>[a-zA-Z0-9\-]+)\.amazonaws\.com)$"
 
     IP_V4 = r"^(([1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){1}" \
             r"(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){2}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])"
@@ -127,77 +127,100 @@ class RdsUtils:
     CACHE_DNS_PATTERNS: Dict[str, Match[str]] = {}
     CACHE_PATTERNS: Dict[str, str] = {}
 
+    _prepare_host_func: ClassVar[Optional[Callable[[str], Optional[str]]]] = None
+
+    @staticmethod
+    def set_prepare_host_func(func: Optional[Callable[[str], Optional[str]]]):
+        RdsUtils._prepare_host_func = func
+
+    @staticmethod
+    def reset_prepare_host_func():
+        RdsUtils._prepare_host_func = None
+
+    @staticmethod
+    def _get_prepared_host(host: Optional[str]) -> Optional[str]:
+        func = RdsUtils._prepare_host_func
+        if func is None or host is None:
+            return host
+        prepared = func(host)
+        return host if prepared is None else prepared
+
     def is_rds_cluster_dns(self, host: str) -> bool:
-        dns_group = self._get_dns_group(host)
+        dns_group = self._get_dns_group(self._get_prepared_host(host))
         return dns_group is not None and dns_group.casefold() in ["cluster-", "cluster-ro-"]
 
     def is_rds_custom_cluster_dns(self, host: str) -> bool:
-        dns_group = self._get_dns_group(host)
+        dns_group = self._get_dns_group(self._get_prepared_host(host))
         return dns_group is not None and dns_group.casefold() == "cluster-custom-"
 
-    def is_rds_dns(self, host: str) -> bool:
-        if not host or not host.strip():
+    def is_rds_dns(self, host: Optional[str]) -> bool:
+        prepared_host = self._get_prepared_host(host)
+        if not prepared_host or not prepared_host.strip():
             return False
 
-        pattern = self._find(host, [RdsUtils.AURORA_DNS_PATTERN,
-                                    RdsUtils.AURORA_CHINA_DNS_PATTERN,
-                                    RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
-                                    RdsUtils.AURORA_GOV_DNS_PATTERN])
+        pattern = self._find(prepared_host, [RdsUtils.AURORA_DNS_PATTERN,
+                                             RdsUtils.AURORA_CHINA_DNS_PATTERN,
+                                             RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
+                                             RdsUtils.AURORA_GOV_DNS_PATTERN])
         group = self._get_regex_group(pattern, RdsUtils.DNS_GROUP)
 
         if group:
-            RdsUtils.CACHE_PATTERNS[host] = group
+            RdsUtils.CACHE_PATTERNS[prepared_host] = group
 
         return pattern is not None
 
-    def is_rds_instance(self, host: str) -> bool:
-        return self._get_dns_group(host) is None and self.is_rds_dns(host)
+    def is_rds_instance(self, host: Optional[str]) -> bool:
+        prepared_host = self._get_prepared_host(host)
+        return self._get_dns_group(prepared_host) is None and self.is_rds_dns(prepared_host)
 
     def is_rds_proxy_dns(self, host: str) -> bool:
-        dns_group = self._get_dns_group(host)
+        dns_group = self._get_dns_group(self._get_prepared_host(host))
         return dns_group is not None and dns_group.casefold() == "proxy-"
 
     def get_rds_instance_host_pattern(self, host: str) -> str:
-        if not host or not host.strip():
+        prepared_host = self._get_prepared_host(host)
+        if not prepared_host or not prepared_host.strip():
             return "?"
 
-        match = self._get_group(host, RdsUtils.DOMAIN_GROUP)
+        match = self._get_group(prepared_host, RdsUtils.DOMAIN_GROUP)
         if match:
             return f"?.{match}"
 
         return "?"
 
     def get_rds_region(self, host: Optional[str]):
-        if not host or not host.strip():
+        prepared_host = self._get_prepared_host(host)
+        if not prepared_host or not prepared_host.strip():
             return None
 
-        group = self._get_group(host, RdsUtils.REGION_GROUP)
+        group = self._get_group(prepared_host, RdsUtils.REGION_GROUP)
         if group:
             return group
 
-        elb_matcher = search(RdsUtils.ELB_PATTERN, host)
+        elb_matcher = search(RdsUtils.ELB_PATTERN, prepared_host)
         if elb_matcher:
             return elb_matcher.group(RdsUtils.REGION_GROUP)
         return None
 
     def is_writer_cluster_dns(self, host: str) -> bool:
-        dns_group = self._get_dns_group(host)
+        dns_group = self._get_dns_group(self._get_prepared_host(host))
         return dns_group is not None and dns_group.casefold() == "cluster-"
 
     def is_reader_cluster_dns(self, host: str) -> bool:
-        dns_group = self._get_dns_group(host)
+        dns_group = self._get_dns_group(self._get_prepared_host(host))
         return dns_group is not None and dns_group.casefold() == "cluster-ro-"
 
     def is_global_db_writer_cluster_dns(self, host: str) -> bool:
-        dns_group = self._get_dns_group(host)
+        dns_group = self._get_dns_group(self._get_prepared_host(host))
         return dns_group is not None and dns_group.casefold() == "global-"
 
     def is_limitless_database_shard_group_dns(self, host: str) -> bool:
-        dns_group = self._get_dns_group(host)
+        dns_group = self._get_dns_group(self._get_prepared_host(host))
         return dns_group is not None and dns_group.casefold() == "shardgrp-"
 
     def get_rds_cluster_host_url(self, host: str):
-        if not host or not host.strip():
+        prepared_host = self._get_prepared_host(host)
+        if not prepared_host or not prepared_host.strip():
             return None
 
         for pattern in [RdsUtils.AURORA_CLUSTER_PATTERN,
@@ -205,29 +228,31 @@ class RdsUtils:
                         RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
                         RdsUtils.AURORA_GOV_DNS_PATTERN,
                         RdsUtils.AURORA_LIMITLESS_CLUSTER_PATTERN]:
-            if m := search(pattern, host):
+            if m := search(pattern, prepared_host):
                 group = self._get_regex_group(m, RdsUtils.DNS_GROUP)
                 if group is not None:
                     if pattern == RdsUtils.AURORA_LIMITLESS_CLUSTER_PATTERN:
-                        return sub(pattern, r"\g<instance>.shardgrp-\g<domain>", host)
+                        return sub(pattern, r"\g<instance>.shardgrp-\g<domain>", prepared_host)
                     else:
-                        return sub(pattern, r"\g<instance>.cluster-\g<domain>", host)
+                        return sub(pattern, r"\g<instance>.cluster-\g<domain>", prepared_host)
                 return None
 
         return None
 
     def get_cluster_id(self, host: str) -> Optional[str]:
-        if host is None or not host.strip():
+        prepared_host = self._get_prepared_host(host)
+        if prepared_host is None or not prepared_host.strip():
             return None
 
-        if self._get_dns_group(host) is not None:
-            return self._get_group(host, self.INSTANCE_GROUP)
+        if self._get_dns_group(prepared_host) is not None:
+            return self._get_group(prepared_host, self.INSTANCE_GROUP)
 
         return None
 
     def get_instance_id(self, host: str) -> Optional[str]:
-        if self._get_dns_group(host) is None:
-            return self._get_group(host, self.INSTANCE_GROUP)
+        prepared_host = self._get_prepared_host(host)
+        if self._get_dns_group(prepared_host) is None:
+            return self._get_group(prepared_host, self.INSTANCE_GROUP)
 
         return None
 
@@ -248,53 +273,61 @@ class RdsUtils:
         return "?" in host
 
     def identify_rds_type(self, host: Optional[str]) -> RdsUrlType:
-        if host is None or not host.strip():
+        prepared_host = self._get_prepared_host(host)
+        if prepared_host is None or not prepared_host.strip():
             return RdsUrlType.OTHER
 
-        if self.is_ip(host):
+        if self.is_ip(prepared_host):
             return RdsUrlType.IP_ADDRESS
-        elif self.is_global_db_writer_cluster_dns(host):
+        elif self.is_global_db_writer_cluster_dns(prepared_host):
             return RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER
-        elif self.is_writer_cluster_dns(host):
+        elif self.is_writer_cluster_dns(prepared_host):
             return RdsUrlType.RDS_WRITER_CLUSTER
-        elif self.is_reader_cluster_dns(host):
+        elif self.is_reader_cluster_dns(prepared_host):
             return RdsUrlType.RDS_READER_CLUSTER
-        elif self.is_limitless_database_shard_group_dns(host):
+        elif self.is_limitless_database_shard_group_dns(prepared_host):
             return RdsUrlType.RDS_AURORA_LIMITLESS_DB_SHARD_GROUP
-        elif self.is_rds_custom_cluster_dns(host):
+        elif self.is_rds_custom_cluster_dns(prepared_host):
             return RdsUrlType.RDS_CUSTOM_CLUSTER
-        elif self.is_rds_proxy_dns(host):
+        elif self.is_rds_proxy_dns(prepared_host):
             return RdsUrlType.RDS_PROXY
-        elif self.is_rds_instance(host):
+        elif self.is_rds_instance(prepared_host):
             return RdsUrlType.RDS_INSTANCE
 
         return RdsUrlType.OTHER
 
     def is_green_instance(self, host: str) -> bool:
-        if not host:
+        prepared_host = self._get_prepared_host(host)
+        if not prepared_host:
             return False
 
-        return search(RdsUtils.BG_GREEN_HOST_PATTERN, host) is not None
+        return search(RdsUtils.BG_GREEN_HOST_PATTERN, prepared_host) is not None
 
     def is_not_old_instance(self, host: str) -> bool:
-        if host is None or not host.strip():
+        prepared_host = self._get_prepared_host(host)
+        if prepared_host is None or not prepared_host.strip():
             return False
-        return search(RdsUtils.BG_OLD_HOST_PATTERN, host) is None
+        return search(RdsUtils.BG_OLD_HOST_PATTERN, prepared_host) is None
 
     def is_not_green_or_old_instance(self, host: str) -> bool:
-        if not host:
+        prepared_host = self._get_prepared_host(host)
+        if not prepared_host:
             return False
 
-        return search(RdsUtils.BG_GREEN_HOST_PATTERN, host) is None and \
-            search(RdsUtils.BG_OLD_HOST_PATTERN, host) is None
+        return search(RdsUtils.BG_GREEN_HOST_PATTERN, prepared_host) is None and \
+            search(RdsUtils.BG_OLD_HOST_PATTERN, prepared_host) is None
 
     def remove_green_instance_prefix(self, host: str) -> str:
         if not host:
             return host
 
-        host_match = search(RdsUtils.BG_GREEN_HOST_PATTERN, host)
+        prepared_host = self._get_prepared_host(host)
+        if not prepared_host:
+            return host
+
+        host_match = search(RdsUtils.BG_GREEN_HOST_PATTERN, prepared_host)
         if host_match is None:
-            host_id_match = search(RdsUtils.BG_GREEN_HOST_ID_PATTERN, host)
+            host_id_match = search(RdsUtils.BG_GREEN_HOST_ID_PATTERN, prepared_host)
             if host_id_match:
                 return host_id_match.group(0)
             else:
@@ -306,7 +339,7 @@ class RdsUtils:
 
         return host.replace(f"{prefix}.", ".")
 
-    def _find(self, host: str, patterns: list):
+    def _find(self, host: Optional[str], patterns: list):
         if not host or not host.strip():
             return None
 
@@ -327,7 +360,7 @@ class RdsUtils:
             return None
         return pattern.group(group_name)
 
-    def _get_group(self, host: str, group: str):
+    def _get_group(self, host: Optional[str], group: str):
         if not host or not host.strip():
             return None
 
@@ -337,7 +370,7 @@ class RdsUtils:
                                     RdsUtils.AURORA_GOV_DNS_PATTERN])
         return self._get_regex_group(pattern, group)
 
-    def _get_dns_group(self, host: str):
+    def _get_dns_group(self, host: Optional[str]):
         return self._get_group(host, RdsUtils.DNS_GROUP)
 
     def remove_port(self, url: str):

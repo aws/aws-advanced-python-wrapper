@@ -185,6 +185,7 @@ def test_get_rds_instance_host_pattern(expected, test_value):
     ("us-isob-east-1", us_isob_east_region_custom_domain),
     ("us-isob-east-1", us_isob_east_region_limitless_db_shard_group),
     ("us-gov-east-1", us_gov_east_region_cluster),
+    ("us-east-2", us_east_region_elb_url),
 ])
 def test_get_rds_region(expected, test_value):
     target = RdsUtils()

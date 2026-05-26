@@ -615,6 +615,32 @@ class WrapperProperties:
         1000,
     )
 
+    # Global Database Read/Write Splitting
+    GDB_RW_HOME_REGION = WrapperProperty(
+        "gdb_rw_home_region",
+        "Specifies the home region for read/write splitting in a Global Database setup.",
+        None,
+    )
+
+    GDB_RW_RESTRICT_WRITER_TO_HOME_REGION = WrapperProperty(
+        "gdb_rw_restrict_writer_to_home_region",
+        "Prevents connections to a writer instance outside of the defined home region.",
+        True,
+    )
+
+    GDB_RW_RESTRICT_READER_TO_HOME_REGION = WrapperProperty(
+        "gdb_rw_restrict_reader_to_home_region",
+        "Prevents connections to a reader instance outside of the defined home region.",
+        True,
+    )
+
+    GDB_ENABLE_GLOBAL_WRITE_FORWARDING = WrapperProperty(
+        "gdb_enable_global_write_forwarding",
+        "Set to True to enable Global Write Forwarding when connected to a "
+        "reader connection in a secondary global region.",
+        False,
+    )
+
 
 class PropertiesUtils:
     _MONITORING_PROPERTY_PREFIX = "monitoring-"

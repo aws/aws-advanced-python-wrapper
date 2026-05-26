@@ -142,7 +142,8 @@ class SimpleReadWriteSplittingPlugin(AbstractReadWriteSplittingPlugin):
 
         if conn is None:
             self.log_and_raise_exception(
-                "ReadWriteSplittingPlugin.FailedToConnectToWriter"
+                "ReadWriteSplittingPlugin.FailedToConnectToWriter",
+                self._write_endpoint_host_info.url
             )
             return
 
