@@ -29,7 +29,6 @@ from sqlalchemy.orm import (DeclarativeBase, Mapped, Session, joinedload,
                             subqueryload)
 from sqlalchemy.sql import func
 
-from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from ..utils.conditions import (disable_on_features, enable_on_deployments,
                                 enable_on_engines)
 from ..utils.database_engine import DatabaseEngine
@@ -114,41 +113,29 @@ class Book(Base):
                       TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
                       TestEnvironmentFeatures.PERFORMANCE])
 class TestSqlAlchemy:
-    @pytest.fixture(scope='class')
-    def rds_utils(self):
-        region: str = TestEnvironment.get_current().get_info().get_region()
-        return RdsTestUtility(region)
-
-
-    @pytest.fixture(scope="class")
+    @pytest.fixture(scope="function")
     def engine(self, conn_utils):
         conn_str = f'mysql+aws_wrapper_mysqlconnector://{conn_utils.user}:{conn_utils.password}@{conn_utils.writer_cluster_host}:{conn_utils.port}/{conn_utils.dbname}'
         engine = create_engine(conn_str)
         Base.metadata.create_all(engine)
         yield engine
         Base.metadata.drop_all(engine)
+        engine.dispose()
 
-    @pytest.fixture(scope="class")
-    def Session(self, engine):
-        Session = sessionmaker(bind=engine)
-        yield Session
-
-    @pytest.fixture(scope="class")
-    def session(self, Session):
-        session = Session()
+    @pytest.fixture(scope="function")
+    def session(self, engine):
+        session = sessionmaker(bind=engine)()
         yield session
         session.rollback()
         session.close()
 
-    def test_sqlalchemy_backend_configuration(self, test_environment: TestEnvironment, engine):
+    def test_sqlalchemy_backend_configuration(self, test_environment: TestEnvironment, session):
         """Test SQLAlchemy backend configuration with empty plugins"""
         # Verify that the connection is using the AWS wrapper
-        with engine.connect() as connection:
-            assert connection.connection is not None
+        assert session.connection().connection is not None
 
         # Test basic connection functionality
-        with Session(engine) as session:
-            assert session.query(TestModel).count() == 0
+        assert session.query(TestModel).count() == 0
 
     def test_sqlalchemy_basic_model_operations(self, session, test_environment: TestEnvironment):
         """Test basic SQLAlchemy ORM operations (CRUD)"""
