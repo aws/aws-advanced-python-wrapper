@@ -25,13 +25,9 @@ from sqlalchemy.engine import default
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.utils.properties import (Properties,
-                                                          PropertiesUtils)
 
 if TYPE_CHECKING:
     from sqlalchemy import Connection
-
-    from aws_advanced_python_wrapper.hostinfo import HostInfo
 
 
 class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
@@ -71,7 +67,7 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
         if 'target' not in opts:
             opts['target'] = mysql.connector.Connect
         if 'wrapper_plugins' not in opts:
-            opts['plugins'] = "aurora_connection_tracker,failover"
+            opts['plugins'] = "aurora_connection_tracker,failover_v2"
         else:
             opts['plugins'] = opts['wrapper_plugins']
             opts.pop('wrapper_plugins', None)
@@ -186,4 +182,3 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
                 break
 
         return None
-
