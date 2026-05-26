@@ -71,7 +71,7 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
         if 'target' not in opts:
             opts['target'] = mysql.connector.Connect
         if 'wrapper_plugins' not in opts:
-            opts['plugins'] = "aurora_connection_tracker,failover"
+            opts['plugins'] = "aurora_connection_tracker,failover_v2"
         else:
             opts['plugins'] = opts['wrapper_plugins']
             opts.pop('wrapper_plugins', None)
@@ -187,13 +187,3 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
 
         return None
 
-    def prepare_connect_info(self, host_info: HostInfo, props: Properties) -> Properties:
-        prop_copy: Properties = Properties(props.copy())
-
-        prop_copy["host"] = host_info.host
-
-        if host_info.is_port_specified():
-            prop_copy["port"] = str(host_info.port)
-
-        PropertiesUtils.remove_wrapper_props(prop_copy)
-        return prop_copy
