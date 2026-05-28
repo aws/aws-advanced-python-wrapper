@@ -237,7 +237,8 @@ class PluginService(ExceptionHandler, Protocol):
         """
         ...
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> Optional[HostInfo]:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> \
+    Optional[HostInfo]:
         """
         Selects a :py:class:`HostInfo` with the requested role from available hosts using the requested strategy.
         :py:method:`PluginService.accepts_strategy` should be called first to evaluate if any of the configured :py:class:`ConnectionPlugin`
@@ -276,7 +277,8 @@ class PluginService(ExceptionHandler, Protocol):
         """
         ...
 
-    def force_connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
+    def force_connect(self, host_info: HostInfo, props: Properties,
+                      plugin_to_skip: Optional[Plugin] = None) -> Connection:
         """
         Establishes a connection to the given host using the given driver protocol and properties.
         This call differs from connect in that the default :py:class`DriverConnectionProvider` will be used to establish the connection even if
@@ -348,7 +350,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._driver_dialect_manager = driver_dialect_manager
         self._driver_dialect = driver_dialect
         self._database_dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
-        self._session_state_service = session_state_service if session_state_service is not None else SessionStateServiceImpl(self, props)
+        self._session_state_service = session_state_service if session_state_service is not None else SessionStateServiceImpl(
+            self, props)
         self._thread_pool = services_container.get_thread_pool(self._executor_name)
 
     @property
@@ -421,9 +424,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                         pass
 
                 old_connection_suggested_action = \
-                    self._container.plugin_manager.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
+                    self._container.plugin_manager.notify_connection_changed(
+                        {ConnectionEvent.CONNECTION_OBJECT_CHANGED})
 
-                if old_connection_suggested_action != OldConnectionSuggestedAction.PRESERVE and not self.driver_dialect.is_closed(old_connection):
+                if old_connection_suggested_action != OldConnectionSuggestedAction.PRESERVE and not self.driver_dialect.is_closed(
+                        old_connection):
 
                     try:
                         self.session_state_service.apply_pristine_session_state(old_connection)
@@ -559,7 +564,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.accepts_strategy(role, strategy)
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> Optional[HostInfo]:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> \
+    Optional[HostInfo]:
         plugin_manager: PluginManager = self._container.plugin_manager
         return plugin_manager.get_host_info_by_strategy(role, strategy, host_list)
 
@@ -570,11 +576,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
         timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_float(self._props)
         return DialectUtils.get_host_role(
-                connection,
-                self._driver_dialect,
-                self.database_dialect.is_reader_query,
-                self._thread_pool,
-                timeout_sec)
+            connection,
+            self._driver_dialect,
+            self.database_dialect.is_reader_query,
+            self._thread_pool,
+            timeout_sec)
 
     def refresh_host_list(self, connection: Optional[Connection] = None):
         connection = self.current_connection if connection is None else connection
@@ -712,7 +718,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._exception_manager.is_login_exception(
             dialect=self.database_dialect, error=error, sql_state=sql_state)
 
-    def is_read_only_connection_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
+    def is_read_only_connection_exception(self, error: Optional[Exception] = None,
+                                          sql_state: Optional[str] = None) -> bool:
         return self._exception_manager.is_read_only_connection_exception(
             dialect=self.database_dialect, error=error, sql_state=sql_state)
 
@@ -814,6 +821,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
 class PluginChainCallableInfo:
     """Container for plugin chain callable and subscription information."""
+
     def __init__(self, func: Callable, is_subscribed: bool):
         self.func = func
         self.is_subscribed = is_subscribed
@@ -874,7 +882,8 @@ class PluginManager(CanReleaseResources):
     def __init__(
             self, container: PluginServiceManagerContainer, props: Properties, telemetry_factory: TelemetryFactory):
         self._props: Properties = props
-        self._function_cache: list[Optional[PluginChainCallableInfo]] = [None] * (DbApiMethod.ALL.id + 1)    # last element in DbApiMethod
+        self._function_cache: list[Optional[PluginChainCallableInfo]] = [None] * (
+                    DbApiMethod.ALL.id + 1)  # last element in DbApiMethod
         self._container = container
         self._container.plugin_manager = self
         self._connection_provider_manager = ConnectionProviderManager()
@@ -915,8 +924,11 @@ class PluginManager(CanReleaseResources):
             plugin_factories = DriverConfigurationProfiles.get_plugin_factories(profile_name)
         else:
             plugin_codes = WrapperProperties.PLUGINS.get(self._props)
+            dialect = self._container.plugin_service.driver_dialect
             if plugin_codes is None:
-                plugin_codes = WrapperProperties.DEFAULT_PLUGINS
+                plugin_codes = WrapperProperties.DEFAULT_PLUGINS \
+                    if dialect.driver_name == "MySQL Connector Python" \
+                    else WrapperProperties.MYSQL_CONNECTOR_DEFAULT_PLUGINS
 
             if plugin_codes != "":
                 plugin_factories = self.create_plugin_factories_from_list(plugin_codes.split(","))
@@ -984,7 +996,8 @@ class PluginManager(CanReleaseResources):
         conn: Optional[Connection] = driver_dialect.get_connection_from_obj(target)
         current_conn: Optional[Connection] = driver_dialect.unwrap_connection(plugin_service.current_connection)
 
-        if method not in [DbApiMethod.CONNECTION_CLOSE, DbApiMethod.CURSOR_CLOSE] and conn is not None and conn != current_conn:
+        if method not in [DbApiMethod.CONNECTION_CLOSE,
+                          DbApiMethod.CURSOR_CLOSE] and conn is not None and conn != current_conn:
             raise AwsWrapperError(Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target))
 
         if conn is None and method in [DbApiMethod.CONNECTION_CLOSE, DbApiMethod.CURSOR_CLOSE]:
@@ -999,7 +1012,8 @@ class PluginManager(CanReleaseResources):
             result = self._execute_with_subscribed_plugins(
                 method,
                 # next_plugin_func is defined later in make_pipeline
-                lambda plugin, next_plugin_func: plugin.execute(target, method.method_name, next_plugin_func, *args, **kwargs),
+                lambda plugin, next_plugin_func: plugin.execute(target, method.method_name, next_plugin_func, *args,
+                                                                **kwargs),
                 target_driver_func,
                 None)
             if context is not None:
@@ -1080,7 +1094,9 @@ class PluginManager(CanReleaseResources):
             pipeline_so_far(plugin_func, target_driver_func, method_name, plugin_to_skip)
             if plugin_to_skip is not None and plugin_to_skip == plugin
             else self._execute_with_telemetry(
-                plugin_name, lambda: plugin_func(plugin, lambda: pipeline_so_far(plugin_func, target_driver_func, method_name, plugin_to_skip)))
+                plugin_name, lambda: plugin_func(plugin,
+                                                 lambda: pipeline_so_far(plugin_func, target_driver_func, method_name,
+                                                                         plugin_to_skip)))
         )
 
     def connect(
@@ -1091,7 +1107,8 @@ class PluginManager(CanReleaseResources):
             props: Properties,
             is_initial_connection: bool,
             plugin_to_skip: Optional[Plugin] = None) -> Connection:
-        context = self._telemetry_factory.open_telemetry_context(DbApiMethod.CONNECT.method_name, TelemetryTraceLevel.NESTED)
+        context = self._telemetry_factory.open_telemetry_context(DbApiMethod.CONNECT.method_name,
+                                                                 TelemetryTraceLevel.NESTED)
         try:
             return self._execute_with_subscribed_plugins(
                 DbApiMethod.CONNECT,
@@ -1164,7 +1181,8 @@ class PluginManager(CanReleaseResources):
 
         return False
 
-    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> Optional[HostInfo]:
+    def get_host_info_by_strategy(self, role: HostRole, strategy: str, host_list: Optional[List[HostInfo]] = None) -> \
+    Optional[HostInfo]:
         for plugin in self._plugins:
             plugin_subscribed_methods = plugin.subscribed_methods
             is_subscribed = \
@@ -1182,7 +1200,8 @@ class PluginManager(CanReleaseResources):
         return None
 
     def init_host_provider(self, props: Properties, host_list_provider_service: HostListProviderService):
-        context = self._telemetry_factory.open_telemetry_context(DbApiMethod.INIT_HOST_PROVIDER.method_name, TelemetryTraceLevel.NESTED)
+        context = self._telemetry_factory.open_telemetry_context(DbApiMethod.INIT_HOST_PROVIDER.method_name,
+                                                                 TelemetryTraceLevel.NESTED)
         try:
             return self._execute_with_subscribed_plugins(
                 DbApiMethod.INIT_HOST_PROVIDER,
