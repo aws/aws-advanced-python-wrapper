@@ -3,6 +3,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/#semantic-versioning-200).
 
+## [3.0.0] - 2026-06-02
+
+### :crab: Breaking Changes
+> [!WARNING]
+> 3.0.0 changes the default `cluster_id` behavior. Applications connecting to **multiple database clusters** must now explicitly set a unique `cluster_id` for each cluster. See the [Cluster ID documentation](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/ClusterId.md) for details.
+>
+> #### Migration
+>
+> | Scenario | Action Required |
+> |---|---|
+> | Single database cluster | No changes required |
+> | Multiple database clusters | Review all connection strings and add a unique `cluster_id` parameter per cluster. See the [Cluster ID documentation](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/ClusterId.md) for configuration guidance. |
+
+### :magic_wand: Added
+* [SQLAlchemy ORM support](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/SQLAlchemySupport.md).
+
+### :bug: Fixed
+* New pooled connections created with stale credentials, and PostgreSQL error handler unable to correctly handle auth errors nested in connection errors ([PR #1231](https://github.com/aws/aws-advanced-python-wrapper/pull/1231)).
+* Read/Write Splitting plugins not subscribed to the execute pipeline, causing idle connections to not be correctly closed during failover ([PR #1117](https://github.com/aws/aws-advanced-python-wrapper/pull/1117)).
+
+### :crab: Changed
+* Updated the default plugin list:
+  * Added the [Aurora Initial Connection Strategy Plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheAuroraInitialConnectionStrategyPlugin.md) for both PostgreSQL and MySQL driver dialects.
+  * Removed the [Host Monitoring Plugin V2](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheHostMonitoringPlugin.md) from the default plugins for MySQL driver dialect.
+
 ## [2.1.0] - 2026-02-11
 ### :magic_wand: Added
 * [Failover v2 Plugin](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/using-plugins/UsingTheFailoverPlugin.md), an improved version of the failover plugin with enhanced reliability ([PR #1079](https://github.com/aws/aws-advanced-python-wrapper/pull/1079)).
@@ -102,6 +127,7 @@ The Amazon Web Services (AWS) Advanced Python Wrapper allows an application to t
 * Support for PostgreSQL
 * Support for MySQL
 
+[3.0.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/2.1.0...3.0.0
 [2.1.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/2.0.0...2.1.0
 [2.0.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.4.0...2.0.0
 [1.4.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.3.0...1.4.0
