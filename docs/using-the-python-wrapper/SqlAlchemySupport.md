@@ -31,6 +31,10 @@ See [the SQLALchemy official documentation](https://docs.sqlalchemy.org/en/20/co
 
 The AWS Advanced Python Wrapper supports a variety of plugins that enhance your SQLAlchemy application with features like failover handling, IAM authentication, and more. Most plugins can be enabled simply by adding them to the `wrapper_plugins` parameter in your database URL.
 
+> [!NOTE]
+> SQLAlchemy reserves the `plugins` connection parameter for its own engine, pool, and dialect event listeners.
+> When using SQLAlchemy, enable AWS Advanced Python Wrapper plugins (such as the Aurora Initial Connection Strategy plugin) via `wrapper_plugins`. Otherwise, use `plugins` as usual.
+
 For a complete list of available plugins, see the [List of Available Plugins](./UsingThePythonWrapper.md#list-of-available-plugins) in the main driver documentation.
 
 
