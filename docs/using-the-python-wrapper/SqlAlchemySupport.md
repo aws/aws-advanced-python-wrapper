@@ -63,8 +63,24 @@ def execute_query_with_failover_handling(query_func):
 
 For a complete example, see [MySQLSQLAlchemyFailover.py](../examples/MySQLSQLAlchemyFailover.py).
 
-### Read/Write Splitting
+### Plugin Compatibility
 
-The Read/Write Splitting Plugin is not supported for SQLAlchemy, since session binds already implement this functionality.
+| Plugin name | Plugin Code | Supported? |
+|-------------------------------------------------------------------------------------------------|-------------------------------------------|-----|
+| [Failover Plugin](./using-plugins/UsingTheFailoverPlugin.md)                                    | `failover`                                | Yes |
+| [Failover Plugin v2](./using-plugins/UsingTheFailover2Plugin.md)                                | `failover_v2`                             | Yes |
+| [Host Monitoring Plugin](./using-plugins/UsingTheHostMonitoringPlugin.md)                       | `host_monitoring_v2` or `host_monitoring` | Yes |
+| [IAM Authentication Plugin](./using-plugins/UsingTheIamAuthenticationPlugin.md)                 | `iam`                                     | Yes |
+| [AWS Secrets Manager Plugin](./using-plugins/UsingTheAwsSecretsManagerPlugin.md)                | `aws_secrets_manager`                     | Yes |
+| [Federated Authentication Plugin](./using-plugins/UsingTheFederatedAuthenticationPlugin.md)     | `federated_auth`                          | Yes |
+| [Okta Authentication Plugin](./using-plugins/UsingTheOktaAuthenticationPlugin.md)               | `okta`                                    | Yes |
+| [Custom Endpoint Plugin](./using-plugins/UsingTheCustomEndpointPlugin.md)                       | `customEndpoint`                          | Yes |
+| Aurora Stale DNS Plugin                                                                         | `stale_dns`                               | Yes | 
+| [Aurora Connection Tracker Plugin](./using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)    | `aurora_connection_tracker`               | Yes |
+| [Fastest Response Strategy Plugin](./using-plugins/UsingTheFastestResponseStrategyPlugin.md)    | `fastest_response_strategy`               | Yes |
+| [Blue/Green Deployment Plugin](./using-plugins/UsingTheBlueGreenPlugin.md)                      | `bg`                                      | Yes |
+| [Limitless Plugin](./using-plugins/UsingTheLimitlessPlugin.md)                                  | `limitless`                               | Yes |
+| [Read Write Splitting Plugin](./using-plugins/UsingTheReadWriteSplittingPlugin.md)              | `read_write_splitting`                    | No  |
+| [Simple Read Write Splitting Plugin](./using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) | `srw`                                     | No  |
 
-See the [official SQLAlchemy documentation on the Session API](https://docs.sqlalchemy.org/en/20/orm/session_api.html) for more information on session binds.
+For Read Write Splitting, SQLAlchemy provides session binding. See the [official SQLAlchemy documentation on the Session API](https://docs.sqlalchemy.org/en/20/orm/session_api.html) for more information on session binds.
