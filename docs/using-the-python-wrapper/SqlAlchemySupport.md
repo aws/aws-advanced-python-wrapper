@@ -42,6 +42,8 @@ For a complete list of available plugins, see the [List of Available Plugins](./
 
 The Failover Plugin provides automatic failover handling for Aurora clusters. When a database instance becomes unavailable, the plugin automatically connects to a healthy instance in the cluster.
 
+For more information about the Failover Plugin, see the [Failover Plugin documentation](./using-plugins/UsingTheFailover2Plugin.md).
+
 #### Handling Failover Events
 
 During a failover event, the driver will throw a `DBAPIError` exception after successfully connecting to a new instance. Your application should catch this exception, check which type of failover error occurred, and retry the failed query:
@@ -60,8 +62,6 @@ def execute_query_with_failover_handling(query_func):
 ```
 
 For a complete example, see [MySQLSQLAlchemyFailover.py](../examples/MySQLSQLAlchemyFailover.py).
-
-For more information about the Failover Plugin, see the [Failover Plugin documentation](./using-plugins/UsingTheFailoverPlugin.md).
 
 ### Read/Write Splitting
 
