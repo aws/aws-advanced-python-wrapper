@@ -37,7 +37,7 @@ The AWS Advanced Python Wrapper supports a variety of plugins that enhance your 
 > SQLAlchemy reserves the `plugins` connection parameter for its own engine, pool, and dialect event listeners.
 > When using SQLAlchemy, enable AWS Advanced Python Wrapper plugins (such as the Aurora Initial Connection Strategy plugin) via `wrapper_plugins`. Otherwise, use `plugins` as usual.
 
-For a complete list of available plugins, see the [List of Available Plugins](./UsingThePythonWrapper.md#list-of-available-plugins) in the main driver documentation.
+For a complete list of available plugins, see the [Plugin Compatibility](#plugin-compatibility).
 
 
 ### Failover Plugin
@@ -48,7 +48,7 @@ For more information about the Failover Plugin, see the [Failover Plugin documen
 
 #### Handling Failover Events
 
-During a failover event, the driver will throw a `DBAPIError` exception after successfully connecting to a new instance. Your application should catch this exception, check which type of failover error occurred, and retry the failed query:
+During a failover event, the driver will throw a `DBAPIError` exception after successfully connecting to a new instance. Your application should catch this exception, check which type of [failover error](./using-plugins/UsingTheFailoverPlugin.md#failover-errors) occurred, and retry the failed query:
 
 ```python
 from aws_advanced_python_wrapper.errors import FailoverSuccessError
