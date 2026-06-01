@@ -27,6 +27,8 @@ See [the SQLALchemy official documentation](https://docs.sqlalchemy.org/en/20/co
 |-------------------|------------------|
 | `aws_wrapper_mysqlconnector` | `mysql` |
 
+Ensure what is passed to create_engine always starts with `"mysql+aws_wrapper_mysqlconnector:..."`. Further setting of the database dialect within the wrapper can be done with the wrapper_dialect parameter, for more details see: [Database Dialects](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/DatabaseDialects.md).
+
 ## Using Plugins with SQLAlchemy
 
 The AWS Advanced Python Wrapper supports a variety of plugins that enhance your SQLAlchemy application with features like failover handling, IAM authentication, and more. Most plugins can be enabled simply by adding them to the `wrapper_plugins` parameter in your database URL.
@@ -67,20 +69,20 @@ For a complete example, see [MySQLSQLAlchemyFailover.py](../examples/MySQLSQLAlc
 
 | Plugin name | Plugin Code | Supported? |
 |-------------------------------------------------------------------------------------------------|-------------------------------------------|-----|
-| [Failover Plugin](./using-plugins/UsingTheFailoverPlugin.md)                                    | `failover`                                | Yes |
-| [Failover Plugin v2](./using-plugins/UsingTheFailover2Plugin.md)                                | `failover_v2`                             | Yes |
-| [Host Monitoring Plugin](./using-plugins/UsingTheHostMonitoringPlugin.md)                       | `host_monitoring_v2` or `host_monitoring` | Yes |
-| [IAM Authentication Plugin](./using-plugins/UsingTheIamAuthenticationPlugin.md)                 | `iam`                                     | Yes |
-| [AWS Secrets Manager Plugin](./using-plugins/UsingTheAwsSecretsManagerPlugin.md)                | `aws_secrets_manager`                     | Yes |
-| [Federated Authentication Plugin](./using-plugins/UsingTheFederatedAuthenticationPlugin.md)     | `federated_auth`                          | Yes |
-| [Okta Authentication Plugin](./using-plugins/UsingTheOktaAuthenticationPlugin.md)               | `okta`                                    | Yes |
-| [Custom Endpoint Plugin](./using-plugins/UsingTheCustomEndpointPlugin.md)                       | `customEndpoint`                          | Yes |
-| Aurora Stale DNS Plugin                                                                         | `stale_dns`                               | Yes | 
-| [Aurora Connection Tracker Plugin](./using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)    | `aurora_connection_tracker`               | Yes |
-| [Fastest Response Strategy Plugin](./using-plugins/UsingTheFastestResponseStrategyPlugin.md)    | `fastest_response_strategy`               | Yes |
-| [Blue/Green Deployment Plugin](./using-plugins/UsingTheBlueGreenPlugin.md)                      | `bg`                                      | Yes |
-| [Limitless Plugin](./using-plugins/UsingTheLimitlessPlugin.md)                                  | `limitless`                               | Yes |
-| [Read Write Splitting Plugin](./using-plugins/UsingTheReadWriteSplittingPlugin.md)              | `read_write_splitting`                    | No  |
-| [Simple Read Write Splitting Plugin](./using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) | `srw`                                     | No  |
+| [Failover Plugin](./using-plugins/UsingTheFailoverPlugin.md)                                    | `failover`                                | <span style="color:yellow;font-size:15px">check;</span> |
+| [Failover Plugin v2](./using-plugins/UsingTheFailover2Plugin.md)                                | `failover_v2`                             | <span style="color:yellow;font-size:15px">check;</span> |
+| [Host Monitoring Plugin](./using-plugins/UsingTheHostMonitoringPlugin.md)                       | `host_monitoring_v2` or `host_monitoring` | <span style="color:yellow;font-size:15px">check;</span> |
+| [IAM Authentication Plugin](./using-plugins/UsingTheIamAuthenticationPlugin.md)                 | `iam`                                     | <span style="color:yellow;font-size:15px">check;</span> |
+| [AWS Secrets Manager Plugin](./using-plugins/UsingTheAwsSecretsManagerPlugin.md)                | `aws_secrets_manager`                     | <span style="color:yellow;font-size:15px">check;</span> |
+| [Federated Authentication Plugin](./using-plugins/UsingTheFederatedAuthenticationPlugin.md)     | `federated_auth`                          | <span style="color:yellow;font-size:15px">check;</span> |
+| [Okta Authentication Plugin](./using-plugins/UsingTheOktaAuthenticationPlugin.md)               | `okta`                                    | <span style="color:yellow;font-size:15px">check;</span> |
+| [Custom Endpoint Plugin](./using-plugins/UsingTheCustomEndpointPlugin.md)                       | `customEndpoint`                          | <span style="color:yellow;font-size:15px">check;</span> |
+| Aurora Stale DNS Plugin                                                                         | `stale_dns`                               | <span style="color:yellow;font-size:15px">check;</span> | 
+| [Aurora Connection Tracker Plugin](./using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)    | `aurora_connection_tracker`               | <span style="color:yellow;font-size:15px">check;</span> |
+| [Fastest Response Strategy Plugin](./using-plugins/UsingTheFastestResponseStrategyPlugin.md)    | `fastest_response_strategy`               | <span style="color:yellow;font-size:15px">check;</span> |
+| [Blue/Green Deployment Plugin](./using-plugins/UsingTheBlueGreenPlugin.md)                      | `bg`                                      | <span style="color:yellow;font-size:15px">check;</span> |
+| [Limitless Plugin](./using-plugins/UsingTheLimitlessPlugin.md)                                  | `limitless`                               | <span style="color:yellow;font-size:15px">check;</span> |
+| [Read Write Splitting Plugin](./using-plugins/UsingTheReadWriteSplittingPlugin.md)              | `read_write_splitting`                    | <span style="color:red;font-size:20px">&cross;</span>  |
+| [Simple Read Write Splitting Plugin](./using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) | `srw`                                     | <span style="color:red;font-size:20px">&cross;</span>  |
 
 For Read Write Splitting, SQLAlchemy provides session binding. See the [official SQLAlchemy documentation on the Session API](https://docs.sqlalchemy.org/en/20/orm/session_api.html) for more information on session binds.
