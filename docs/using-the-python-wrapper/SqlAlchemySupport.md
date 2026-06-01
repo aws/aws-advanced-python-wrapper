@@ -27,7 +27,7 @@ See [the SQLALchemy official documentation](https://docs.sqlalchemy.org/en/20/co
 |-------------------|------------------|
 | `aws_wrapper_mysqlconnector` | `mysql` |
 
-Ensure what is passed to create_engine always starts with `"mysql+aws_wrapper_mysqlconnector:..."`. Further setting of the database dialect within the wrapper can be done with the wrapper_dialect parameter, for more details see: [Database Dialects](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/DatabaseDialects.md).
+Ensure what is passed to create_engine always starts with `"mysql+aws_wrapper_mysqlconnector:..."`. Further setting of the database dialect within the wrapper can be done with the `wrapper_dialect` parameter, for more details see: [Database Dialects](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/DatabaseDialects.md).
 
 ## Using Plugins with SQLAlchemy
 
