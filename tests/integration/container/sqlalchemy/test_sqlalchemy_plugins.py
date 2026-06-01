@@ -50,6 +50,8 @@ class Base(DeclarativeBase):
     pass
 
 class TestModel(Base):
+    __test__ = False
+
     """Basic test model for SQLAlchemy ORM functionality"""
     __tablename__ = 'sqlalchemy_test_model'
 
@@ -120,6 +122,8 @@ def _build_url(user, password, host, port, dbname, wrapper_plugins=None, **extra
     query_params = {}
     if wrapper_plugins:
         query_params['wrapper_plugins'] = wrapper_plugins
+    else:
+        query_params['wrapper_plugins'] = ''
     query_params['connect_timeout'] = str(extra_options.get('connect_timeout', 10))
     for k, v in extra_options.items():
         if k != 'connect_timeout':
@@ -268,7 +272,7 @@ class TestSqlAlchemyPlugins:
         Base.metadata.create_all(engine, tables=[
             TestModel.__table__, DataTypeModel.__table__,
             Author.__table__, Book.__table__
-        ])
+        ], checkfirst=False)
 
         models = {
             'TestModel': TestModel,

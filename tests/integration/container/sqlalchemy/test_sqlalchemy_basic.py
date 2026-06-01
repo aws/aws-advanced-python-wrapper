@@ -42,6 +42,8 @@ class Base(DeclarativeBase):
 
 
 class TestModel(Base):
+    __test__ = False
+
     """Basic test model for SQLAlchemy ORM functionality"""
     __tablename__ = 'sqlalchemy_test_model'
 
