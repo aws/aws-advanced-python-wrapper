@@ -230,7 +230,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
     def init_host_provider(self, props: Properties, host_list_provider_service: HostListProviderService, init_host_provider_func: Callable):
         self._host_list_provider_service = host_list_provider_service
-        init_host_provider_func(props)
+        init_host_provider_func()
 
     def _has_no_readers(self) -> bool:
         if len(self._plugin_service.all_hosts) == 0:
