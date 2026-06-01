@@ -81,7 +81,8 @@ class WrapperProperty:
 
 
 class WrapperProperties:
-    DEFAULT_PLUGINS = "aurora_connection_tracker,failover,host_monitoring_v2"
+    DEFAULT_PLUGINS = "initial_connection,aurora_connection_tracker,failover_v2,host_monitoring_v2"
+    MYSQL_CONNECTOR_DEFAULT_PLUGINS = "initial_connection,aurora_connection_tracker,failover_v2"
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60
 
     PROFILE_NAME = WrapperProperty(

@@ -916,7 +916,10 @@ class PluginManager(CanReleaseResources):
         else:
             plugin_codes = WrapperProperties.PLUGINS.get(self._props)
             if plugin_codes is None:
-                plugin_codes = WrapperProperties.DEFAULT_PLUGINS
+                driver_dialect = self._container.plugin_service.driver_dialect
+                plugin_codes = WrapperProperties.MYSQL_CONNECTOR_DEFAULT_PLUGINS \
+                    if driver_dialect.dialect_code == "mysql-connector-python" \
+                    else WrapperProperties.DEFAULT_PLUGINS
 
             if plugin_codes != "":
                 plugin_factories = self.create_plugin_factories_from_list(plugin_codes.split(","))
