@@ -24,9 +24,9 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       - name: 'Set up Python 3.11'
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.11'
       - name: Install poetry
@@ -56,12 +56,12 @@ jobs:
       - name: 'Create a Package'
         run: poetry build
       - name: 'Upload to TestPyPI'
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # v1.14.0
         with:
           repository-url: https://test.pypi.org/legacy/
       - name: 'Create a Draft Release'
         if: always()
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
           draft: true
           name: "AWS Advanced Python Wrapper - v${{ env.RELEASE_VERSION }}"
