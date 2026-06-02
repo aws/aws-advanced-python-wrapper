@@ -39,6 +39,7 @@ def mock_plugin_service(mocker, mock_driver_dialect, mock_conn, host_info):
     service_mock.current_host_info = host_info
     # Use a real AuroraPgDialect to pass isinstance checks in Python 3.12+
     service_mock.database_dialect = AuroraPgDialect()
+    service_mock.props = Properties()
 
     type(service_mock).driver_dialect = mocker.PropertyMock(return_value=mock_driver_dialect)
     return service_mock

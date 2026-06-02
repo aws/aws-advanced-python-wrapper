@@ -385,7 +385,8 @@ def test_connect_with_specified_host(iam_host: str, mocker, mock_plugin_service,
 
 def test_aws_supported_regions_url_exists():
     url = "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RegionsAndAvailabilityZones.html"
-    assert 200 == urllib.request.urlopen(url).getcode()
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    assert 200 == urllib.request.urlopen(request).getcode()
 
 
 @pytest.mark.parametrize("host", [
