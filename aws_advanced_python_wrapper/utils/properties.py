@@ -40,8 +40,18 @@ class WrapperProperty:
     def __str__(self):
         return f"WrapperProperty(name={self.name}, default_value={self.default_value})"
 
-    def get(self, props: Properties) -> Optional[str]:
-        if self.default_value:
+    def get(self, props: Properties, return_default: bool = True) -> Optional[str]:
+        """Retrieve this property's value from the given properties.
+
+        :param props: the :class:`Properties` collection to read the value from.
+        :param return_default: if ``True``, fall back to this property's
+            ``default_value`` when the property is not present in ``props``.
+            If ``False``, the default value is ignored.
+        :return: the property's value, the default value when missing and
+            ``return_default`` is ``True``, or ``None`` if the property is
+            absent and no default applies.
+        """
+        if self.default_value and return_default:
             return props.get(self.name, self.default_value)
         return props.get(self.name)
 
@@ -61,11 +71,6 @@ class WrapperProperty:
                 return value  # type: ignore
             return value.lower() == "true" if isinstance(value, str) else bool(value)  # type: ignore
         return type_class(value)  # type: ignore
-
-    def get_or_default(self, props: Properties) -> str:
-        if not self.default_value:
-            raise ValueError(f"No default value found for property {self}")
-        return props.get(self.name, self.default_value)
 
     def get_int(self, props: Properties) -> int:
         return self.get_type(props, int)

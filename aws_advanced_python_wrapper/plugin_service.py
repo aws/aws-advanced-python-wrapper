@@ -914,7 +914,7 @@ class PluginManager(CanReleaseResources):
                     Messages.get_formatted("PluginManager.ConfigurationProfileNotFound", profile_name))
             plugin_factories = DriverConfigurationProfiles.get_plugin_factories(profile_name)
         else:
-            plugin_codes = WrapperProperties.PLUGINS.get(self._props)
+            plugin_codes = WrapperProperties.PLUGINS.get(self._props, False)
             if plugin_codes is None:
                 driver_dialect = self._container.plugin_service.driver_dialect
                 plugin_codes = WrapperProperties.MYSQL_CONNECTOR_DEFAULT_PLUGINS \

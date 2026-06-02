@@ -638,7 +638,7 @@ class BlueGreenPlugin(Plugin):
         self._telemetry_factory = plugin_service.get_telemetry_factory()
         self._provider_supplier: Callable[[PluginService, Properties, str], BlueGreenStatusProvider] = \
             lambda _plugin_service, _props, bg_id: BlueGreenStatusProvider(_plugin_service, _props, bg_id)
-        self._bg_id = WrapperProperties.BG_ID.get_or_default(props).strip().lower()
+        self._bg_id = WrapperProperties.BG_ID.get(props).strip().lower()
         self._rds_utils = RdsUtils()
         self._bg_status: Optional[BlueGreenStatus] = None
         self._is_iam_in_use = False
