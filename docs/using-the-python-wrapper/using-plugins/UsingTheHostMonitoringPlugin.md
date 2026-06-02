@@ -16,7 +16,7 @@ One use case is to pair EFM with the [Failover Connection Plugin](./UsingTheFail
 
 The Host Monitoring Connection Plugin will be loaded by default if the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) parameter is not specified. The Host Monitoring Connection Plugin can also be explicitly loaded by adding the plugin code `host_monitoring` to the [`plugins`](../UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters) parameter. Enhanced Failure Monitoring is enabled by default when the Host Monitoring Connection Plugin is loaded, but it can be disabled by setting the `failure_detection_enabled` parameter to `False`.
 
-This plugin only works with drivers that support aborting connections from a separate thread. At this moment, this plugin is incompatible with the MySQL Connector/Python driver.
+This plugin only works with drivers that support aborting connections from a separate thread. At this moment, this plugin is incompatible with the MySQL Connector/Python driver because the driver does not support aborting connections from a separate thread.
 
 > [IMPORTANT]\
 > The Host Monitoring Plugin creates monitoring threads in the background to monitor all connections established to each cluster instance. The monitoring threads can be cleaned up in two ways:
@@ -87,6 +87,9 @@ finally:
 
 Host Monitoring Plugin v2, also known as `host_monitoring_v2`, is an alternative implementation of enhanced failure monitoring and it is functionally equivalent to the Host Monitoring Plugin described above. Both plugins share the same set of [configuration parameters](#enhanced-failure-monitoring-parameters). The `host_monitoring_v2` plugin is designed to be a drop-in replacement for the `host_monitoring` plugin.
 The `host_monitoring_v2` plugin can be used in any scenario where the `host_monitoring` plugin is mentioned. This plugin is enabled by default. The original EFM plugin can still be used by specifying `host_monitoring` in the `plugins` parameter.
+
+> [!NOTE]\
+> Like the `host_monitoring` plugin, the `host_monitoring_v2` plugin only works with drivers that support aborting connections from a separate thread. At this moment, it is incompatible with the MySQL Connector/Python driver because the driver does not support aborting connections from a separate thread.
 
 > [!NOTE]\
 > Since these two plugins are separate plugins, users may decide to use them together with a single connection. While this should not have any negative side effects, it is not recommended. It is recommended to use either the `host_monitoring_v2` plugin, or the `host_monitoring` plugin where it's needed.

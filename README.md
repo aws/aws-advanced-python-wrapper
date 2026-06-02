@@ -154,6 +154,10 @@ Support for Blue/Green deployments using the AWS Advanced Python Wrapper require
 
 Please note that Aurora Global Database and RDS Multi-AZ clusters with Blue/Green deployments is currently not supported. For detailed information on supported database versions, refer to the [Blue/Green Deployment Plugin Documentation](docs/using-the-python-wrapper/using-plugins/UsingTheBlueGreenPlugin.md).
 
+#### Enhanced Failure Monitoring with MySQL
+
+Enhanced Failure Monitoring (both the `host_monitoring` and `host_monitoring_v2` plugins) is not supported with the MySQL Connector/Python driver. Both plugins rely on being able to abort an active connection from a separate monitoring thread when a host is determined to be unhealthy, and the MySQL Connector/Python driver does not support aborting connections from a separate thread. For more information, see the [Host Monitoring Plugin Documentation](docs/using-the-python-wrapper/using-plugins/UsingTheHostMonitoringPlugin.md).
+
 #### MySQL Connector/Python C Extension
 
 When connecting to Aurora MySQL clusters, it is recommended to use the Python implementation of the MySQL Connector/Python driver by setting the `use_pure` connection argument to `True`.
