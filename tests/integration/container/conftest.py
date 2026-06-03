@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import atexit
+import threading
 from typing import TYPE_CHECKING, Optional
 
 from aws_xray_sdk.core import xray_recorder  # type: ignore
@@ -53,6 +54,92 @@ from .utils.test_environment_features import TestEnvironmentFeatures
 logger = Logger(__name__)
 
 
+_DRAINABLE_POOL_NAMES = (
+    "TopologyUtils",
+    "AuroraTopologyUtils",
+    "MultiAzTopologyUtils",
+    "PluginServiceImplExecutor",
+    "DriverDialectExecutor",
+    "DatabaseDialectManagerExecutor",
+    "MySQLDriverDialectExecutor",
+)
+
+_DRAIN_TIMEOUT_SEC = 30.0
+
+
+def _drain_inflight_workers(timeout_sec: float = _DRAIN_TIMEOUT_SEC) -> None:
+    """
+    Wait for in-flight worker threads to finish before connections are torn down.
+    """
+    deadline = timeit.default_timer() + timeout_sec
+
+    # 1. Drain the shared pools. shutdown(wait=True) joins worker threads, which
+    #    only exit once their current work item (the stuck C call) returns.
+    for pool_name in _DRAINABLE_POOL_NAMES:
+        remaining = deadline - timeit.default_timer()
+        if remaining <= 0:
+            logger.warning("[drain] Timed out before draining pool: " + pool_name)
+            continue
+
+        drained = _drain_pool_with_timeout(pool_name, remaining)
+        if not drained:
+            logger.warning(
+                "[drain] Pool '%s' did not drain within timeout; a worker may still "
+                "be blocked on a disabled host." % pool_name)
+
+    # 2. Wait for any remaining wrapper helper threads (monitors, host monitors)
+    #    to wind down now that the network is back.
+    _join_wrapper_helper_threads(deadline)
+
+
+def _drain_pool_with_timeout(pool_name: str, timeout_sec: float) -> bool:
+    done = threading.Event()
+
+    def _shutdown():
+        try:
+            services_container.release_thread_pool(pool_name, wait=True)
+        finally:
+            done.set()
+
+    watcher = threading.Thread(
+        target=_shutdown, name="drain-%s" % pool_name, daemon=True)
+    watcher.start()
+    return done.wait(timeout=timeout_sec)
+
+
+def _join_wrapper_helper_threads(deadline: float) -> None:
+    current = threading.current_thread()
+    for thread in list(threading.enumerate()):
+        if thread is current or thread is threading.main_thread():
+            continue
+        if not thread.is_alive() or not thread.daemon:
+            continue
+
+        name = thread.name or ""
+        if not _is_wrapper_helper_thread(name):
+            continue
+
+        remaining = deadline - timeit.default_timer()
+        if remaining <= 0:
+            logger.warning("[drain] Timed out before joining thread: " + name)
+            return
+
+        thread.join(timeout=remaining)
+        if thread.is_alive():
+            logger.warning("[drain] Helper thread still alive after join: " + name)
+
+
+def _is_wrapper_helper_thread(name: str) -> bool:
+    helper_markers = (
+        "_monitor",          # ClusterTopologyMonitor._monitor thread
+        "HostMonitor",       # host monitoring threads
+        "MonitorService",    # monitor service cleanup
+    )
+    if any(marker in name for marker in helper_markers):
+        return True
+    return any(name.startswith(pool) for pool in _DRAINABLE_POOL_NAMES)
+
+
 @pytest.fixture(scope='module')
 def conn_utils():
     return ConnectionUtils()
@@ -84,6 +171,13 @@ def pytest_runtest_setup(item):
 
     if TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED in request.get_features():
         ProxyHelper.enable_all_connectivity()
+        # Prototype (option 1): the previous test may have left worker threads
+        # blocked against a host it disabled via Toxiproxy. Now that
+        # connectivity is restored, wait for them to unwind before this test's
+        # setup tears down / recreates connection-holding services below. This
+        # prevents the mid-suite use-after-free crash (observed as
+        # "none_dealloc: ... refcount error in a C extension").
+        _drain_inflight_workers()
 
     deployment = request.get_database_engine_deployment()
     if DatabaseEngineDeployment.AURORA == deployment or DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER == deployment:
@@ -167,6 +261,13 @@ def pytest_sessionstart(session):
 def pytest_sessionfinish(session, exitstatus):
     # Enable all connectivity in case any helper threads are still trying to execute against a disabled host
     ProxyHelper.enable_all_connectivity()
+
+    # Prototype (option 1): now that connectivity is restored, wait for any
+    # orphaned worker threads (stuck mid-query against the previously-disabled
+    # host) to actually finish before the interpreter exits and tears down the
+    # psycopg connection objects they hold. This closes the use-after-free
+    # window that produces the exit-time segfault.
+    _drain_inflight_workers()
 
 
 def log_exit():
