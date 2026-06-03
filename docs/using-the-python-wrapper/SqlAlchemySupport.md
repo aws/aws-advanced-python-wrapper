@@ -67,7 +67,7 @@ For a complete example, see [MySQLSQLAlchemyFailover.py](../examples/MySQLSQLAlc
 
 ### Plugin Compatibility
 
-| Plugin name | Plugin Code | Supported? |
+| Plugin name | Plugin Code                               | Supported? |
 |-------------------------------------------------------------------------------------------------|-------------------------------------------|-----|
 | [Failover Plugin](./using-plugins/UsingTheFailoverPlugin.md)                                    | `failover`                                | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Failover Plugin v2](./using-plugins/UsingTheFailover2Plugin.md)                                | `failover_v2`                             | <span style="color:yellow;font-size:15px">&check;</span> |
@@ -76,7 +76,7 @@ For a complete example, see [MySQLSQLAlchemyFailover.py](../examples/MySQLSQLAlc
 | [AWS Secrets Manager Plugin](./using-plugins/UsingTheAwsSecretsManagerPlugin.md)                | `aws_secrets_manager`                     | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Federated Authentication Plugin](./using-plugins/UsingTheFederatedAuthenticationPlugin.md)     | `federated_auth`                          | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Okta Authentication Plugin](./using-plugins/UsingTheOktaAuthenticationPlugin.md)               | `okta`                                    | <span style="color:yellow;font-size:15px">&check;</span> |
-| [Custom Endpoint Plugin](./using-plugins/UsingTheCustomEndpointPlugin.md)                       | `customEndpoint`                          | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Custom Endpoint Plugin](./using-plugins/UsingTheCustomEndpointPlugin.md)                       | `custom_endpoint`                         | <span style="color:yellow;font-size:15px">&check;</span> |
 | Aurora Stale DNS Plugin                                                                         | `stale_dns`                               | <span style="color:yellow;font-size:15px">&check;</span> | 
 | [Aurora Connection Tracker Plugin](./using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)    | `aurora_connection_tracker`               | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Fastest Response Strategy Plugin](./using-plugins/UsingTheFastestResponseStrategyPlugin.md)    | `fastest_response_strategy`               | <span style="color:yellow;font-size:15px">&check;</span> |

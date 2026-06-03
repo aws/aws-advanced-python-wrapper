@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 > | Multiple database clusters | Review all connection strings and add a unique `cluster_id` parameter per cluster. See the [Cluster ID documentation](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/ClusterId.md) for configuration guidance. |
 
 ### :magic_wand: Added
-* [SQLAlchemy ORM support](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/SQLAlchemySupport.md).
+* [SQLAlchemy ORM support](https://github.com/aws/aws-advanced-python-wrapper/blob/main/docs/using-the-python-wrapper/SqlAlchemySupport.md).
 
 ### :bug: Fixed
 * New pooled connections created with stale credentials, and PostgreSQL error handler unable to correctly handle auth errors nested in connection errors ([PR #1231](https://github.com/aws/aws-advanced-python-wrapper/pull/1231)).
