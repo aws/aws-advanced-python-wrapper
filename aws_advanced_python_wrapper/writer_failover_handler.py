@@ -36,6 +36,7 @@ from aws_advanced_python_wrapper.failover_result import (ReaderFailoverResult,
                                                          WriterFailoverResult)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.concurrent import shutdown_executor
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 
@@ -75,6 +76,8 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
     _current_reader_connection: Optional[Connection] = None
     _current_reader_host: Optional[HostInfo] = None
 
+    _EXECUTOR_SHUTDOWN_BUFFER_SEC = 5
+
     def __init__(
             self,
             plugin_service: PluginService,
@@ -86,10 +89,16 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         self._plugin_service = plugin_service
         self._reader_failover_handler = reader_failover_handler
         self._initial_connection_properties = initial_connection_properties
+        self._failover_connection_properties = \
+            PropertiesUtils.create_failover_connection_properties(initial_connection_properties)
         self._max_failover_timeout_sec = max_timeout_sec
         self._read_topology_interval_sec = read_topology_interval_sec
         self._reconnect_writer_interval_sec = reconnect_writer_interval_sec
         self._timeout_event = Event()
+
+    def _shutdown_executor(self, executor: ThreadPoolExecutor) -> None:
+        shutdown_timeout_sec = self._max_failover_timeout_sec + WriterFailoverHandlerImpl._EXECUTOR_SHUTDOWN_BUFFER_SEC
+        shutdown_executor(executor, shutdown_timeout_sec, "WriterFailoverHandlerExecutor")
 
     def failover(self, current_topology: Tuple[HostInfo, ...]) -> WriterFailoverResult:
         if current_topology is None or len(current_topology) == 0:
@@ -136,7 +145,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                         future.cancel()
             finally:
                 self._timeout_event.set()
-                executor.shutdown(wait=False)
+                self._shutdown_executor(executor)
 
         return WriterFailoverHandlerImpl.failed_writer_failover_result
 
@@ -174,7 +183,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                     if conn is not None:
                         conn.close()
 
-                    conn = self._plugin_service.force_connect(initial_writer_host, self._initial_connection_properties)
+                    conn = self._plugin_service.force_connect(initial_writer_host, self._failover_connection_properties)
                     latest_topology = self._plugin_service.host_list_provider.get_current_topology(
                         conn, initial_writer_host)
 
@@ -316,7 +325,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             # connect to new writer
             if writer_candidate is not None:
                 self._current_connection = \
-                    self._plugin_service.force_connect(writer_candidate, self._initial_connection_properties)
+                    self._plugin_service.force_connect(writer_candidate, self._failover_connection_properties)
                 self._plugin_service.set_availability(writer_candidate.as_aliases(), HostAvailability.AVAILABLE)
                 return True
         except Exception:

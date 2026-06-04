@@ -812,3 +812,20 @@ class PropertiesUtils:
     def create_topology_monitoring_properties(props: Properties) -> Properties:
         return PropertiesUtils.create_filtered_properties(props,
                                                           PropertiesUtils._TOPOLOGY_MONITORING_PROPERTY_PREFIX)
+
+    DEFAULT_FAILOVER_CONNECT_TIMEOUT_SEC = 10
+    DEFAULT_FAILOVER_SOCKET_TIMEOUT_SEC = 10
+
+    @staticmethod
+    def create_failover_connection_properties(props: Properties) -> Properties:
+        """
+        Apply default connect and socket timeouts to failover connections if none were set.
+        """
+        failover_properties = copy.deepcopy(props)
+        if WrapperProperties.CONNECT_TIMEOUT_SEC.get(failover_properties) is None:
+            WrapperProperties.CONNECT_TIMEOUT_SEC.set(
+                failover_properties, PropertiesUtils.DEFAULT_FAILOVER_CONNECT_TIMEOUT_SEC)
+        if WrapperProperties.SOCKET_TIMEOUT_SEC.get(failover_properties) is None:
+            WrapperProperties.SOCKET_TIMEOUT_SEC.set(
+                failover_properties, PropertiesUtils.DEFAULT_FAILOVER_SOCKET_TIMEOUT_SEC)
+        return failover_properties

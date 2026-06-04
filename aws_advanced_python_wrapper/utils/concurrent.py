@@ -14,12 +14,44 @@
 
 from __future__ import annotations
 
+import threading
+from concurrent.futures import Executor
 from threading import Condition, Lock, RLock
 from typing import (Callable, Dict, Generic, Iterator, List, Optional, Set,
                     TypeVar, Union)
 
+from aws_advanced_python_wrapper.utils.log import Logger
+
+logger = Logger(__name__)
+
 K = TypeVar('K')
 V = TypeVar('V')
+
+
+def shutdown_executor(executor: Executor, timeout_sec: float, executor_name: str = "executor") -> bool:
+    """
+    Shut down ``executor`` and wait up to ``timeout_sec`` for its worker threads to finish.
+    :param executor: the executor to shut down.
+    :param timeout_sec: the maximum number of seconds to wait for the workers to finish.
+    :param executor_name: executor name used for logging when the shutdown operation times out.
+    :return: ``True`` if the executor was shut down within the timeout, ``False`` otherwise.
+    """
+    done = threading.Event()
+
+    def _shutdown() -> None:
+        try:
+            executor.shutdown(wait=True)
+        finally:
+            done.set()
+
+    watcher = threading.Thread(
+        target=_shutdown, name=f"drain-{executor_name}", daemon=True)
+    watcher.start()
+
+    drained = done.wait(timeout=timeout_sec)
+    if not drained:
+        logger.warning("Concurrent.ExecutorDrainTimeout", timeout_sec, executor_name)
+    return drained
 
 
 class ConcurrentDict(Generic[K, V]):

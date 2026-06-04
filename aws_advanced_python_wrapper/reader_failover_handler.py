@@ -34,6 +34,7 @@ from typing import Optional
 from aws_advanced_python_wrapper.failover_result import ReaderFailoverResult
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.concurrent import shutdown_executor
 from aws_advanced_python_wrapper.utils.failover_mode import (FailoverMode,
                                                              get_failover_mode)
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -73,6 +74,10 @@ class ReaderFailoverHandler:
 class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
     failed_reader_failover_result = ReaderFailoverResult(None, False, None, None)
 
+    # Additional time to wait for a worker thread to complete.
+    # This timeout is applied on top of the existing connect/socket timeouts.
+    _EXECUTOR_SHUTDOWN_BUFFER_SEC = 5
+
     def __init__(
             self,
             plugin_service: PluginService,
@@ -81,6 +86,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             timeout_sec: float = 30):
         self._plugin_service = plugin_service
         self._properties = properties
+        self._failover_connection_properties = PropertiesUtils.create_failover_connection_properties(properties)
         self._max_failover_timeout_sec = max_timeout_sec
         self._timeout_sec = timeout_sec
         mode = get_failover_mode(self._properties)
@@ -94,6 +100,12 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
     @timeout_sec.setter
     def timeout_sec(self, value):
         self._timeout_sec = value
+
+    def _shutdown_executor(self, executor: ThreadPoolExecutor) -> None:
+        # Wait for worker threads to complete before returning.
+        # This prevents other threads freeing the connection held in worker threads while it is still in use.
+        shutdown_timeout_sec = self._timeout_sec + ReaderFailoverHandlerImpl._EXECUTOR_SHUTDOWN_BUFFER_SEC
+        shutdown_executor(executor, shutdown_timeout_sec, "ReaderFailoverHandlerExecutor")
 
     def failover(self, current_topology: Tuple[HostInfo, ...], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         if current_topology is None or len(current_topology) == 0:
@@ -112,7 +124,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
             except TimeoutError:
                 self._timeout_event.set()
         finally:
-            executor.shutdown(wait=False)
+            self._shutdown_executor(executor)
 
         return result
 
@@ -184,19 +196,19 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
                 for future in as_completed(futures, timeout=self.timeout_sec):
                     result = future.result()
                     if result.is_connected or result.exception is not None:
-                        executor.shutdown(wait=False)
+                        self._shutdown_executor(executor)
                         return result
             except TimeoutError:
                 self._timeout_event.set()
             finally:
                 self._timeout_event.set()
         finally:
-            executor.shutdown(wait=False)
+            self._shutdown_executor(executor)
 
         return ReaderFailoverHandlerImpl.failed_reader_failover_result
 
     def attempt_connection(self, host: HostInfo) -> ReaderFailoverResult:
-        props: Properties = deepcopy(self._properties)
+        props: Properties = deepcopy(self._failover_connection_properties)
         logger.debug("ReaderFailoverHandler.AttemptingReaderConnection", host.url, PropertiesUtils.mask_properties(props))
 
         try:
