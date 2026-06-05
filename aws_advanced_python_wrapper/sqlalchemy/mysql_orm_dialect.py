@@ -77,6 +77,20 @@ class SqlAlchemyOrmMysqlDialect(MySQLDialect_mysqlconnector):
         # Return empty args list and kwargs dict
         return [], opts
 
+    def do_ping(self, dbapi_connection) -> bool:
+        """
+        Liveness check for SQLAlchemy's pool_pre_ping.
+        The parent pings dbapi_connection directly, but AwsWrapperConnection
+        has no ping(), so ping the wrapped driver connection instead.
+        Return False on the native error so the pool invalidates and reconnects;
+        SQLAlchemy cannot classify it because import_dbapi reports the wrapper as the DBAPI.
+        """
+        try:
+            dbapi_connection.target_connection.ping(reconnect=False)
+            return True
+        except Error:
+            return False
+
     def _detect_charset(self, connection: Connection) -> str:
         if isinstance(connection, CMySQLConnection):
             return connection.charset
