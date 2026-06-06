@@ -28,6 +28,7 @@ from .utils.conditions import (disable_on_features, enable_on_deployments,
 from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.driver_helper import DriverHelper
 from .utils.rds_test_utility import RdsTestUtility
+from .utils.retry_helper import retry_until
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
@@ -231,7 +232,8 @@ class TestAwsSecretsManager:
             aurora_utility.assert_first_query_throws(aws_conn, FailoverSuccessError)
 
             current_connection_id = aurora_utility.query_instance_id(aws_conn)
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
             assert current_connection_id != initial_writer_id
 
     def validate_connection(self, target_driver_connect: Callable, **connect_params):

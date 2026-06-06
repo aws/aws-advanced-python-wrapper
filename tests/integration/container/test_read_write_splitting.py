@@ -40,6 +40,7 @@ from tests.integration.container.utils.database_engine_deployment import \
 from tests.integration.container.utils.driver_helper import DriverHelper
 from tests.integration.container.utils.proxy_helper import ProxyHelper
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
+from tests.integration.container.utils.retry_helper import retry_until
 from tests.integration.container.utils.test_driver import TestDriver
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
@@ -536,7 +537,8 @@ class TestReadWriteSplitting:
 
             new_writer_id = rds_utils.query_instance_id(conn)
             assert original_writer_id != new_writer_id
-            assert rds_utils.is_db_instance_writer(new_writer_id)
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: rds_utils.is_db_instance_writer(new_writer_id))
 
             PluginServiceImpl._host_availability_expiring_cache.clear()
 

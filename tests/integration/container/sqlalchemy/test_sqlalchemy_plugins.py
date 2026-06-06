@@ -42,6 +42,7 @@ from ..utils.conditions import (disable_on_features, enable_on_deployments,
                                 enable_on_num_instances)
 from ..utils.database_engine import DatabaseEngine
 from ..utils.database_engine_deployment import DatabaseEngineDeployment
+from ..utils.retry_helper import retry_until
 from ..utils.test_environment import TestEnvironment
 from ..utils.test_environment_features import TestEnvironmentFeatures
 
@@ -512,7 +513,8 @@ class TestSqlAlchemyPlugins:
                 current_writer_id = row._tuple()[0]
             else:
                 raise Exception("Failed to get current_writer_id from row because row was None.")
-            assert rds_utils.is_db_instance_writer(current_writer_id) is True
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: rds_utils.is_db_instance_writer(current_writer_id))
             assert current_writer_id != initial_writer_id
 
             session.query(TestModel).delete()
