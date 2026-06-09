@@ -61,6 +61,7 @@ class TestBasicFunctionality:
         p: Properties = Properties({
             "plugins": "aurora_connection_tracker,failover",
             "connect_timeout": 10,
+            "auxiliary_query_timeout_sec": 3,
             "autocommit": True,
             "cluster_id": "cluster1"})
 

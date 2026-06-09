@@ -221,6 +221,7 @@ class TestAwsSecretsManager:
             "connect_timeout": 10,
             "monitoring-connect_timeout": 5,
             "monitoring-socket_timeout": 5,
+            "auxiliary_query_timeout_sec": 3,
             "topology_refresh_ms": 10,
         })
 

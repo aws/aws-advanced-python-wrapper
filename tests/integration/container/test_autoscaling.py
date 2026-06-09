@@ -51,7 +51,7 @@ class TestAutoScaling:
 
     @pytest.fixture
     def props(self):
-        p: Properties = Properties({"plugins": "read_write_splitting", "connect_timeout": 10, "autocommit": True})
+        p: Properties = Properties({"plugins": "read_write_splitting", "connect_timeout": 10, "auxiliary_query_timeout_sec": 3, "autocommit": True})
 
         if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features() \
                 or TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED in TestEnvironment.get_current().get_features():

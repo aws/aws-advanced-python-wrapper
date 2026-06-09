@@ -73,6 +73,11 @@ class PgDriverDialect(DriverDialect):
 
     def abort_connection(self, conn: Connection):
         if isinstance(conn, psycopg.Connection):
+            try:
+                conn.cancel_safe()
+            except Exception:
+                # Best effort cancel
+                pass
             conn.close()
             return
         raise UnsupportedOperationError(

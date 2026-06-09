@@ -21,6 +21,7 @@ from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, FrozenSet,
                     Optional, Set)
 
 from aws_advanced_python_wrapper.utils.notifications import HostEvent
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.utils import Utils
 
 if TYPE_CHECKING:
@@ -52,6 +53,7 @@ class OpenedConnectionTracker:
     _shutdown_event: ClassVar[threading.Event] = threading.Event()
     _safe_to_check_closed_classes: ClassVar[Set[str]] = {"psycopg"}
     _default_sleep_time: ClassVar[int] = 30
+    _invalidate_executor_name: ClassVar[str] = "OpenedConnectionTrackerInvalidate"
 
     @classmethod
     def _start_prune_thread(cls):
@@ -166,9 +168,12 @@ class OpenedConnectionTracker:
         with self._lock:
             connection_set: Optional[WeakSet] = self._opened_connections.get(instance_endpoint)
             connections_list = list(connection_set) if connection_set is not None else None
+            if connection_set is not None:
+                connection_set.clear()
+                self._opened_connections.pop(instance_endpoint, None)
 
-        if connections_list is not None:
-            self._log_connection_set(instance_endpoint, connection_set)
+        if connections_list:
+            self._log_connection_set(instance_endpoint, connections_list)
             self._invalidate_connections(connections_list)
 
     def remove_connection_tracking(self, host_info: HostInfo, connection: Connection | None):
@@ -211,9 +216,8 @@ class OpenedConnectionTracker:
                 pass
 
     def _invalidate_connections(self, connections_list: list):
-        invalidate_connection_thread: Thread = Thread(daemon=True, target=self._task,
-                                                      args=[connections_list])  # type: ignore
-        invalidate_connection_thread.start()
+        executor = services_container.get_thread_pool(self._invalidate_executor_name, drain_first=True)
+        executor.submit(self._task, connections_list)
 
     def log_opened_connections(self):
         with self._lock:

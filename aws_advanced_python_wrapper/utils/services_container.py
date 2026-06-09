@@ -17,7 +17,7 @@ from __future__ import annotations
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
     AllowedAndBlockedHosts
@@ -37,6 +37,10 @@ class _ServicesContainer:
         self._storage_service: Optional[StorageService] = None
         self._monitor_service: Optional[MonitorService] = None
         self._thread_pools: Dict[str, ThreadPoolExecutor] = {}
+        # Some service pools must be drained BEFORE the monitor service is released and connections are closed.
+        # This prevents worker threads like the topology util threads from continuing to using connections
+        # after they are closed, causing segfaults.
+        self._drain_first_pools: Set[str] = set()
         self._lock = threading.Lock()
 
     def _ensure_initialized(self) -> None:
@@ -63,19 +67,24 @@ class _ServicesContainer:
         self._ensure_initialized()
         return self._monitor_service  # type: ignore
 
-    def get_thread_pool(self, name: str, max_workers: Optional[int] = None) -> ThreadPoolExecutor:
+    def get_thread_pool(self, name: str, max_workers: Optional[int] = None, drain_first: bool = False) -> ThreadPoolExecutor:
         pool = self._thread_pools.get(name)
         if pool is not None:
+            if drain_first:
+                self._drain_first_pools.add(name)
             return pool
         with self._lock:
             if name not in self._thread_pools:
                 self._thread_pools[name] = ThreadPoolExecutor(
                     max_workers=max_workers, thread_name_prefix=name)
+            if drain_first:
+                self._drain_first_pools.add(name)
             return self._thread_pools[name]
 
     def release_thread_pool(self, name: str, wait: bool = True) -> bool:
         with self._lock:
             pool = self._thread_pools.pop(name, None)
+            self._drain_first_pools.discard(name)
             if pool is not None:
                 try:
                     pool.shutdown(wait=wait)
@@ -85,6 +94,18 @@ class _ServicesContainer:
             return False
 
     def release_resources(self) -> None:
+        # Some thread pools need to be drained first before shutting down the monitor services.
+        # This prevents segfaults when monitor services shut down and close all the active monitoring connections.
+        with self._lock:
+            drain_names = list(self._drain_first_pools)
+        for name in drain_names:
+            pool = self._thread_pools.get(name)
+            if pool is not None:
+                try:
+                    pool.shutdown(wait=True)
+                except Exception as e:
+                    logger.debug("CoreServices.ErrorShuttingDownPool", name, e)
+
         if self._monitor_service is not None:
             try:
                 self._monitor_service.release_resources()
@@ -114,6 +135,7 @@ class _ServicesContainer:
                 except Exception as e:
                     logger.debug("CoreServices.ErrorShuttingDownPool", name, e)
             self._thread_pools.clear()
+            self._drain_first_pools.clear()
 
 
 _instance = _ServicesContainer()
@@ -132,8 +154,8 @@ def get_monitor_service() -> MonitorService:
     return _instance.monitor_service
 
 
-def get_thread_pool(name: str, max_workers: Optional[int] = None) -> ThreadPoolExecutor:
-    return _instance.get_thread_pool(name, max_workers)
+def get_thread_pool(name: str, max_workers: Optional[int] = None, drain_first: bool = False) -> ThreadPoolExecutor:
+    return _instance.get_thread_pool(name, max_workers, drain_first)
 
 
 def release_thread_pool(name: str, wait: bool = True) -> bool:

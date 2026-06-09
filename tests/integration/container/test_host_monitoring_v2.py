@@ -59,6 +59,7 @@ class TestHostMonitoringV2:
                                     "connect_timeout": 10,
                                     "monitoring-connect_timeout": 5,
                                     "monitoring-socket_timeout": 5,
+                                    "auxiliary_query_timeout_sec": 3,
                                     "failure_detection_time_ms": 5_000,
                                     "failure_detection_interval_ms": 5_000,
                                     "failure_detection_count": 1,

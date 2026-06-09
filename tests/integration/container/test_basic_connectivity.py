@@ -54,6 +54,7 @@ class TestBasicConnectivity:
         p: Properties = Properties({
             WrapperProperties.PLUGINS.name: "aurora_connection_tracker,failover",
             "connect_timeout": 3,
+            "auxiliary_query_timeout_sec": 3,
             "autocommit": True,
             "cluster_id": "cluster1"})
 
@@ -143,6 +144,7 @@ class TestBasicConnectivity:
             "connect_timeout": 5,
             "monitoring-connect_timeout": 3,
             "monitoring-socket_timeout": 3,
+            "auxiliary_query_timeout_sec": 3,
             "autocommit": True})
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         conn = AwsWrapperConnection.connect(target_driver_connect, **conn_utils.get_connect_params(conn_utils.reader_cluster_host), **props)

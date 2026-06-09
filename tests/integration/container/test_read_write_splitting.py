@@ -93,6 +93,7 @@ class TestReadWriteSplitting:
                 "plugins": plugin_value,
                 "socket_timeout": 10,
                 "connect_timeout": 10,
+                "auxiliary_query_timeout_sec": 3,
                 "autocommit": True,
             }
         )
@@ -134,6 +135,7 @@ class TestReadWriteSplitting:
             "plugins": f"{plugin_value},failover",
             "socket_timeout": 10,
             "connect_timeout": 10,
+            "auxiliary_query_timeout_sec": 3,
             "autocommit": True,
             "cluster_id": "cluster1"
         }

@@ -50,10 +50,20 @@ def dialect():
 
 def test_abort_connection(dialect, mock_conn, mock_invalid_conn):
     dialect.abort_connection(mock_conn)
+    mock_conn.cancel_safe.assert_called_once()
     mock_conn.close.assert_called_once()
 
     with pytest.raises(AwsWrapperError):
         dialect.abort_connection(mock_invalid_conn)
+
+
+def test_abort_connection_closes_even_if_cancel_fails(dialect, mock_conn):
+    mock_conn.cancel_safe.side_effect = Exception("cancel failed")
+
+    dialect.abort_connection(mock_conn)
+
+    mock_conn.cancel_safe.assert_called_once()
+    mock_conn.close.assert_called_once()
 
 
 def test_is_closed(dialect, mock_conn, mock_invalid_conn):

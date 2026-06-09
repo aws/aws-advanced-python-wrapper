@@ -464,7 +464,12 @@ class TopologyUtils(ABC):
 
         self.instance_template: HostInfo = instance_template
         self._max_timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_int(props)
-        self._thread_pool = services_container.get_thread_pool(self._executor_name)
+        # Need to drain topology query pools before monitor services shut down.
+        self._thread_pool = services_container.get_thread_pool(self._executor_name, drain_first=True)
+
+    @classmethod
+    def release_resources(cls, wait: bool = True) -> bool:
+        return services_container.release_thread_pool(cls._executor_name, wait=wait)
 
     def _validate_host_pattern(self, host: str):
         if not self._rds_utils.is_dns_pattern_valid(host):
@@ -495,8 +500,9 @@ class TopologyUtils(ABC):
         :return: a tuple of :py:class:`HostInfo` objects representing the database topology. If the query results did not include a writer instance,
         an empty tuple will be returned.
         """
+        thread_pool = services_container.get_thread_pool(self._executor_name, drain_first=True)
         query_for_topology_func_with_timeout = preserve_transaction_status_with_timeout(
-                    self._thread_pool, self._max_timeout_sec, driver_dialect, conn)(self._query_for_topology)
+                    thread_pool, self._max_timeout_sec, driver_dialect, conn)(self._query_for_topology)
         x = query_for_topology_func_with_timeout(conn)
         return x
 
