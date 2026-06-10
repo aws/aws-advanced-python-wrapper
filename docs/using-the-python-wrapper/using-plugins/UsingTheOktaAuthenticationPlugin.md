@@ -55,3 +55,24 @@ In the case of AD FS, the user signs into the AD FS sign in page. This generates
 ## Sample code
 [MySQLOktaAuthentication.py](../../examples/MySQLOktaAuthentication.py)
 [PGOktaAuthentication.py](../../examples/PGOktaAuthentication.py)
+
+## Using Okta Authentication with Global Databases
+
+When using Okta authentication with [Amazon Aurora Global Databases](https://aws.amazon.com/rds/aurora/global-database/), the IAM user or role requires the additional `rds:DescribeGlobalClusters` permission. This permission allows the wrapper to resolve the Global Database endpoint to the appropriate regional cluster for IAM token generation.
+
+Example IAM policy:
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "rds-db:connect",
+                "rds:DescribeGlobalClusters"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
