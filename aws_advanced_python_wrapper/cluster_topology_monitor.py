@@ -52,11 +52,11 @@ logger = Logger(__name__)
 
 class ClusterTopologyMonitor(ABC):
     @abstractmethod
-    def force_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
+    def force_refresh(self, should_verify_writer: bool, timeout_sec: float) -> Topology:
         pass
 
     @abstractmethod
-    def force_refresh_with_connection(self, connection: Connection, timeout_sec: int) -> Topology:
+    def force_refresh_with_connection(self, connection: Connection, timeout_sec: float) -> Topology:
         pass
 
     @property
@@ -133,7 +133,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
 
         self._start_monitoring()
 
-    def force_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
+    def force_refresh(self, should_verify_writer: bool, timeout_sec: float) -> Topology:
         current_time_nano = time.time_ns()
         if (self._ignore_new_topology_requests_end_time_nano > 0 and
                 current_time_nano < self._ignore_new_topology_requests_end_time_nano):
@@ -149,12 +149,12 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         result = self._wait_till_topology_gets_updated(timeout_sec)
         return result
 
-    def force_refresh_with_connection(self, connection: Connection, timeout_sec: int) -> Topology:
+    def force_refresh_with_connection(self, connection: Connection, timeout_sec: float) -> Topology:
         if self._is_verified_writer_connection:
             return self._wait_till_topology_gets_updated(timeout_sec)
         return self._fetch_topology_and_update_cache(connection)
 
-    def _wait_till_topology_gets_updated(self, timeout_sec: int) -> Topology:
+    def _wait_till_topology_gets_updated(self, timeout_sec: float) -> Topology:
         current_hosts = self._get_stored_hosts()
 
         self._request_to_update_topology.set()

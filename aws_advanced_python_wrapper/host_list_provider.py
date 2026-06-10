@@ -73,7 +73,7 @@ class HostListProvider(Protocol):
         """
         ...
 
-    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: float) -> Topology:
         ...
 
     def get_cluster_id(self) -> str:
@@ -248,7 +248,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             )
         )
 
-    def _force_refresh_monitor(self, should_verify_writer: bool, timeout_sec: int) -> Optional[Topology]:
+    def _force_refresh_monitor(self, should_verify_writer: bool, timeout_sec: float) -> Optional[Topology]:
         """Force refresh using monitor - matches Java's forceRefreshMonitor"""
         monitor = self._get_or_create_monitor()
         if monitor is None:
@@ -275,7 +275,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             return hosts
         return ()
 
-    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: float) -> Topology:
         """Public API for forcing monitor refresh"""
         self._initialize()
         hosts = self._force_refresh_monitor(should_verify_writer, timeout_sec)
@@ -363,7 +363,7 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
         self._initialize()
         return tuple(self._hosts)
 
-    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: int) -> Topology:
+    def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: float) -> Topology:
         raise AwsWrapperError(
                 Messages.get_formatted("HostListProvider.ForceMonitoringRefreshUnsupported", "ConnectionStringHostListProvider"))
 

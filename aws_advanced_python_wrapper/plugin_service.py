@@ -263,7 +263,7 @@ class PluginService(ExceptionHandler, Protocol):
     def force_refresh_host_list(self, connection: Optional[Connection] = None):
         ...
 
-    def force_monitoring_refresh_host_list(self, should_verify_writer: bool, timeout_ms: int) -> bool:
+    def force_monitoring_refresh_host_list(self, should_verify_writer: bool, timeout_sec: float) -> bool:
         ...
 
     def connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
@@ -594,7 +594,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             self._update_host_availability(updated_host_list)
             self._update_hosts(updated_host_list)
 
-    def force_monitoring_refresh_host_list(self, should_verify_writer: bool, timeout_sec: int) -> bool:
+    def force_monitoring_refresh_host_list(self, should_verify_writer: bool, timeout_sec: float) -> bool:
         try:
             updated_host_list = self.host_list_provider.force_monitoring_refresh(should_verify_writer, timeout_sec)
             if updated_host_list is not None:
