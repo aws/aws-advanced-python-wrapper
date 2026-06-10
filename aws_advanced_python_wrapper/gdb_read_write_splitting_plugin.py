@@ -36,7 +36,7 @@ logger = Logger(__name__)
 
 
 class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
-    """Read/write splitting plugin for Aurora Global Database.
+    """Read/write splitting plugin for Aurora Global Databases.
 
     Extends the topology-based :class:`ReadWriteSplittingPlugin` to keep
     reader and writer connections inside a configured home region. When
@@ -131,6 +131,7 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
         self, writer_conn: Connection, writer_host_info: HostInfo
     ) -> None:
         if self._is_writer_outside_home_region(writer_host_info):
+            self._close_connection(writer_conn)
             raise ReadWriteSplittingError(
                 Messages.get_formatted(
                     "GdbReadWriteSplittingPlugin.CantConnectWriterOutOfHomeRegion",
