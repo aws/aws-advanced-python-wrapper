@@ -14,12 +14,14 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Callable, Optional, Set
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
-    from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
+    from aws_advanced_python_wrapper.host_list_provider import \
+        HostListProviderService
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
@@ -27,161 +29,386 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
+logger = Logger(__name__)
+
+
+class InstanceSubstitutionStrategy(Enum):
+    """Determines which host the plugin should connect to when opening a new connection."""
+    SUBSTITUTE_WITH_WRITER = "writer"
+    SUBSTITUTE_WITH_READER = "reader"
+    SUBSTITUTE_WITH_ANY = "any"
+    DO_NOT_SUBSTITUTE = "none"
+
+    @classmethod
+    def from_property_value(cls, value: Optional[str]) -> Optional[InstanceSubstitutionStrategy]:
+        if value is None:
+            return None
+
+        strategy = _SUBSTITUTION_STRATEGY_BY_KEY.get(value.lower())
+        if strategy is None:
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.InvalidPropertyValue",
+                WrapperProperties.ENDPOINT_SUBSTITUTION_ROLE.name,
+                value,
+                ", ".join(item.value for item in cls)))
+        return strategy
+
+    def to_target_role(self) -> Optional[HostRole]:
+        if self is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER:
+            return HostRole.WRITER
+        if self is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_READER:
+            return HostRole.READER
+        return None
+
+
+_SUBSTITUTION_STRATEGY_BY_KEY: Dict[str, InstanceSubstitutionStrategy] = {
+    item.value: item for item in InstanceSubstitutionStrategy
+}
+
+
+class RoleVerificationSetting(Enum):
+    """Determines what role, if any, an opened connection should be verified against."""
+    WRITER = "writer"
+    READER = "reader"
+    NO_VERIFICATION = "none"
+
+    @classmethod
+    def from_property_value(cls, value: Optional[str]) -> Optional[RoleVerificationSetting]:
+        if value is None:
+            return None
+
+        setting = _VERIFICATION_SETTING_BY_KEY.get(value.lower())
+        if setting is None:
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.InvalidPropertyValue",
+                WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.name,
+                value,
+                ", ".join(item.value for item in cls)))
+        return setting
+
+
+_VERIFICATION_SETTING_BY_KEY: Dict[str, RoleVerificationSetting] = {
+    item.value: item for item in RoleVerificationSetting
+}
+
 
 class AuroraInitialConnectionStrategyPlugin(Plugin):
     _SUBSCRIBED_METHODS: Set[str] = {"init_host_provider", "connect"}
 
-    _host_list_provider_service: Optional[HostListProviderService] = None
+    def __init__(self, plugin_service: PluginService, props: Properties):
+        self._plugin_service: PluginService = plugin_service
+        self._rds_utils = RdsUtils()
+        self._host_list_provider_service: Optional[HostListProviderService] = None
+
+        self._retry_delay_ms: int = WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props)
+        self._open_connection_retry_timeout_ns: int = \
+            WrapperProperties.OPEN_CONNECTION_RETRY_TIMEOUT_MS.get_int(props) * 1_000_000
+
+        verify_role_value = WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.get(props)
+        self._verify_role_prop_value: Optional[str] = \
+            verify_role_value.lower() if verify_role_value is not None else None
+
+        # INITIAL_CONNECTION_HOST_SELECTOR_STRATEGY overrides the deprecated
+        # READER_INITIAL_HOST_SELECTOR_STRATEGY when it is explicitly set.
+        if WrapperProperties.INITIAL_CONNECTION_HOST_SELECTOR_STRATEGY.name in props:
+            self._selection_strategy: Optional[str] = \
+                WrapperProperties.INITIAL_CONNECTION_HOST_SELECTOR_STRATEGY.get(props)
+        else:
+            self._selection_strategy = WrapperProperties.READER_INITIAL_HOST_SELECTOR_STRATEGY.get(props)
 
     @property
     def subscribed_methods(self) -> Set[str]:
         return AuroraInitialConnectionStrategyPlugin._SUBSCRIBED_METHODS
 
-    def __init__(self, plugin_service: PluginService):
-        super()
-        self._plugin_service: PluginService = plugin_service
-        self._rds_utils = RdsUtils()
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: HostListProviderService,
+            init_host_provider_func: Callable):
+        self._host_list_provider_service = host_list_provider_service
+        init_host_provider_func()
 
-    def connect(self, target_driver_func: Callable, driver_dialect: DriverDialect, host_info: HostInfo, props: Properties,
-                is_initial_connection: bool, connect_func: Callable) -> Connection:
-        url_type: RdsUrlType = self._rds_utils.identify_rds_type(host_info.host)
-        if not url_type.is_rds_cluster:
-            return connect_func()
+    def connect(
+            self,
+            target_driver_func: Callable,
+            driver_dialect: DriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable) -> Connection:
+        original_host = host_info.host
+        url_type: RdsUrlType = self._rds_utils.identify_rds_type(original_host)
+        substitution_strategy = self._get_instance_substitution_strategy(
+            props, url_type, is_initial_connection, original_host)
+        role_to_verify = self._get_role_to_verify(url_type, is_initial_connection, props, original_host)
+        end_time_ns = perf_counter_ns() + self._open_connection_retry_timeout_ns
 
-        if url_type == RdsUrlType.RDS_WRITER_CLUSTER or url_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER:
-            writer_candidate_conn: Optional[Connection] = self._get_verified_writer_connection(props, is_initial_connection, connect_func)
-            if writer_candidate_conn is None:
-                return connect_func()
-            return writer_candidate_conn
+        while perf_counter_ns() < end_time_ns:
+            candidate_conn: Optional[Connection] = None
+            candidate_host: Optional[HostInfo] = None
+
+            try:
+                if substitution_strategy is InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE:
+                    candidate_host = host_info
+                    candidate_conn = connect_func()
+                else:
+                    candidate_host = self._get_candidate_host(host_info, url_type, substitution_strategy)
+                    if candidate_host is None or not self._rds_utils.is_rds_instance(candidate_host.host):
+                        # Unable to find an instance URL host. Topology may not exist yet, or may be outdated.
+                        candidate_conn = connect_func()
+                        candidate_host = host_info
+                        self._plugin_service.force_refresh_host_list(candidate_conn)
+                    else:
+                        candidate_conn = self._plugin_service.connect(candidate_host, props)
+
+                if role_to_verify is None:
+                    # No verification required.
+                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
+                    return candidate_conn
+
+                conn_role = self._plugin_service.get_host_role(candidate_conn)
+                if conn_role == role_to_verify:
+                    # Verification succeeded.
+                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
+                    return candidate_conn
+
+                # Verification failed. Retry, unless a reader was requested but the cluster has no readers.
+                self._plugin_service.force_refresh_host_list(candidate_conn)
+                if role_to_verify == HostRole.READER and self._has_hosts() and not self._has_readers():
+                    # A reader was requested but the cluster has no readers.
+                    # Simulate the reader cluster endpoint logic and return the current (writer) connection.
+                    if self._verify_role_prop_value == RoleVerificationSetting.READER.value:
+                        logger.debug(
+                            "AuroraInitialConnectionStrategyPlugin.VerifyReaderConfiguredButNoReadersExist",
+                            WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.name)
+                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
+                    return candidate_conn
+
+                logger.debug(
+                    "AuroraInitialConnectionStrategyPlugin.IncorrectRole", candidate_host.host, role_to_verify)
+                self._close_connection(candidate_conn)
+                self._delay(self._retry_delay_ms)
+            except Exception as e:
+                self._close_connection(candidate_conn)
+                if self._plugin_service.is_login_exception(e):
+                    raise
+
+                if candidate_host is not None:
+                    self._plugin_service.set_availability(
+                        candidate_host.as_aliases(), HostAvailability.UNAVAILABLE)
+
+                if self._plugin_service.is_network_exception(e):
+                    # Retry connection.
+                    continue
+
+                if (self._plugin_service.is_read_only_connection_exception(e)
+                        and (role_to_verify == HostRole.WRITER
+                             or substitution_strategy is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER)):
+                    # Retry connection.
+                    continue
+
+                raise
+
+        raise AwsWrapperError(Messages.get_formatted(
+            "AuroraInitialConnectionStrategyPlugin.Timeout",
+            self._open_connection_retry_timeout_ns // 1_000_000,
+            WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.name))
+
+    def _get_instance_substitution_strategy(
+            self,
+            props: Properties,
+            url_type: RdsUrlType,
+            is_initial_connection: bool,
+            original_host: str) -> InstanceSubstitutionStrategy:
+        if is_initial_connection:
+            strategy = InstanceSubstitutionStrategy.from_property_value(
+                WrapperProperties.ENDPOINT_SUBSTITUTION_ROLE.get(props))
+            if strategy is not None:
+                self._validate_substitution_strategy(strategy, url_type)
+                return strategy
+
+        # This is not an initial connection, or ENDPOINT_SUBSTITUTION_ROLE was not set.
+        # Pick a strategy according to the default behavior.
+        if url_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER:
+            return InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER
+
+        if url_type == RdsUrlType.RDS_WRITER_CLUSTER:
+            writer = self._get_writer()
+            if writer is None or not self._rds_utils.is_rds_instance(writer.host):
+                return InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE
+
+            if self._rds_utils.is_same_region(writer.host, original_host):
+                return InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER
+
+            # The cluster writer endpoint belongs to a different region than the current writer region.
+            # This means the cluster is an Aurora Global Database and the cluster writer endpoint is in a
+            # secondary region. In this case the cluster writer endpoint is inactive and doesn't represent
+            # the current writer. A user setting decides whether to substitute it with a writer instance URL.
+            inactive_strategy = InstanceSubstitutionStrategy.from_property_value(
+                WrapperProperties.INACTIVE_CLUSTER_WRITER_SUBSTITUTION_ROLE.get(props))
+            return inactive_strategy if inactive_strategy is not None \
+                else InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER
 
         if url_type == RdsUrlType.RDS_READER_CLUSTER:
-            reader_candidate_conn: Optional[Connection] = self._get_verified_reader_connection(props, is_initial_connection, connect_func)
-            if reader_candidate_conn is None:
-                return connect_func()
-            return reader_candidate_conn
+            return InstanceSubstitutionStrategy.SUBSTITUTE_WITH_READER
 
-        return connect_func()
+        return InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE
 
-    def _get_verified_writer_connection(self, props: Properties, is_initial_connection: bool, connect_func: Callable) -> Connection | None:
-        retry_delay_ms: int = WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props)
-        end_time_nano = perf_counter_ns() + (WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props) * 1000000)
+    def _validate_substitution_strategy(
+            self, setting: InstanceSubstitutionStrategy, url_type: RdsUrlType):
+        if setting is InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE:
+            return
 
-        writer_candidate_conn: Optional[Connection]
-        writer_candidate: Optional[HostInfo]
+        if url_type == RdsUrlType.RDS_INSTANCE:
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.InvalidSettingForInstanceEndpoint",
+                WrapperProperties.ENDPOINT_SUBSTITUTION_ROLE.name))
 
-        while perf_counter_ns() < end_time_nano:
-            writer_candidate_conn = None
+        if not url_type.is_rds_cluster:
+            return
 
-            try:
-                writer_candidate = self._get_writer()
-                if writer_candidate is None or self._rds_utils.is_rds_cluster_dns(writer_candidate.host):
-                    # Writer is not found. Topology is outdated.
-                    writer_candidate_conn = connect_func()
-                    self._plugin_service.force_refresh_host_list(writer_candidate_conn)
-                    writer_candidate = self._plugin_service.identify_connection(writer_candidate_conn)
+        # A custom cluster can only be of type "reader" or "any", so SUBSTITUTE_WITH_WRITER is not allowed.
+        if (setting is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER
+                and url_type in (RdsUrlType.RDS_READER_CLUSTER, RdsUrlType.RDS_CUSTOM_CLUSTER)):
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.InvalidSettingForEndpoint",
+                WrapperProperties.ENDPOINT_SUBSTITUTION_ROLE.name, "writer", "reader cluster or custom cluster"))
 
-                    if writer_candidate is None or writer_candidate.role != HostRole.WRITER:
-                        self._close_connection(writer_candidate_conn)
-                        self._delay(retry_delay_ms)
-                        continue
+        if (setting is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_READER
+                and url_type in (RdsUrlType.RDS_WRITER_CLUSTER, RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER)):
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.InvalidSettingForEndpoint",
+                WrapperProperties.ENDPOINT_SUBSTITUTION_ROLE.name, "reader", "writer cluster or global cluster"))
 
-                    if is_initial_connection and self._host_list_provider_service is not None:
-                        self._host_list_provider_service.initial_connection_host_info = writer_candidate
+        if (setting is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_ANY
+                and url_type != RdsUrlType.RDS_CUSTOM_CLUSTER):
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.InvalidSettingForEndpoint",
+                WrapperProperties.ENDPOINT_SUBSTITUTION_ROLE.name, "any",
+                "writer cluster, reader cluster, or global cluster"))
 
-                    return writer_candidate_conn
+    def _get_role_to_verify(
+            self,
+            url_type: RdsUrlType,
+            is_initial_connection: bool,
+            props: Properties,
+            original_host: str) -> Optional[HostRole]:
+        if not is_initial_connection:
+            return None
 
-                writer_candidate_conn = self._plugin_service.connect(writer_candidate, props)
+        setting = RoleVerificationSetting.from_property_value(self._verify_role_prop_value)
+        if setting is not None:
+            self._validate_verification_setting(setting, url_type)
 
-                if self._plugin_service.get_host_role(writer_candidate_conn) != HostRole.WRITER:
-                    self._plugin_service.force_refresh_host_list(writer_candidate_conn)
-                    self._close_connection(writer_candidate_conn)
-                    self._delay(retry_delay_ms)
-                    continue
+        if setting is RoleVerificationSetting.NO_VERIFICATION:
+            return None
+        if setting is RoleVerificationSetting.WRITER:
+            return HostRole.WRITER
+        if setting is RoleVerificationSetting.READER:
+            return HostRole.READER
 
-                # Writer connection is valid and verified.
-                if is_initial_connection and self._host_list_provider_service is not None:
-                    self._host_list_provider_service.initial_connection_host_info = writer_candidate
-                return writer_candidate_conn
-            except Exception as e:
-                self._close_connection(writer_candidate_conn)
-                raise e
+        # Role verification setting is not set. We still verify the correct role for a writer/reader cluster.
+        if url_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER:
+            return HostRole.WRITER
 
-        return None
+        if url_type == RdsUrlType.RDS_WRITER_CLUSTER:
+            writer = self._get_writer()
+            if (writer is not None and self._rds_utils.is_rds_instance(writer.host)
+                    and self._rds_utils.is_same_region(writer.host, original_host)):
+                # The cluster writer endpoint belongs to the same region as the current writer; it's active.
+                return HostRole.WRITER
 
-    def _get_verified_reader_connection(self, props: Properties, is_initial_connection: bool, connect_func: Callable) -> Optional[Connection]:
-        retry_delay_ms: int = WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props)
-        end_time_nano = perf_counter_ns() + (WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props) * 1000000)
+            # Writer is not found (topology cache may not be available yet) or the cluster writer endpoint
+            # belongs to a different region. In either case, assume the cluster writer endpoint may be
+            # inactive and use the corresponding setting.
+            inactive_strategy = InstanceSubstitutionStrategy.from_property_value(
+                WrapperProperties.VERIFY_INACTIVE_CLUSTER_WRITER_CONNECTION_ROLE.get(props))
+            return inactive_strategy.to_target_role() if inactive_strategy is not None else HostRole.WRITER
 
-        reader_candidate_conn: Optional[Connection]
-        reader_candidate: Optional[HostInfo]
-
-        while perf_counter_ns() < end_time_nano:
-            reader_candidate_conn = None
-            reader_candidate = None
-
-            try:
-                reader_candidate = self._get_reader(props)
-                if reader_candidate is None or self._rds_utils.is_rds_cluster_dns(reader_candidate.host):
-                    # READER is not found. Topology is outdated.
-                    reader_candidate_conn = connect_func()
-                    self._plugin_service.force_refresh_host_list(reader_candidate_conn)
-                    reader_candidate = self._plugin_service.identify_connection(reader_candidate_conn)
-
-                    if reader_candidate is None:
-                        self._close_connection(reader_candidate_conn)
-                        self._delay(retry_delay_ms)
-                        continue
-
-                    if reader_candidate is not None and reader_candidate.role != HostRole.READER:
-                        if self._has_no_readers():
-                            # Cluster has no readers. Simulate Aurora reader cluster endpoint logic and return the current writer connection.
-                            if is_initial_connection and self._host_list_provider_service is not None:
-                                self._host_list_provider_service.initial_connection_host_info = reader_candidate
-                            return reader_candidate_conn
-
-                        self._close_connection(reader_candidate_conn)
-                        self._delay(retry_delay_ms)
-                        continue
-
-                    if is_initial_connection and self._host_list_provider_service is not None:
-                        self._host_list_provider_service.initial_connection_host_info = reader_candidate
-                    return reader_candidate_conn
-
-                reader_candidate_conn = self._plugin_service.connect(reader_candidate, props)
-
-                if self._plugin_service.get_host_role(reader_candidate_conn) != HostRole.READER:
-                    # If the new connection resolves to a writer instance, the topology is outdated.
-                    # Force refresh to update the topology.
-                    self._plugin_service.force_refresh_host_list(reader_candidate_conn)
-
-                    if self._has_no_readers():
-                        # Cluster has no readers. Simulate Aurora reader cluster endpoint logic and return the current writer connection.
-                        if is_initial_connection and self._host_list_provider_service is not None:
-                            self._host_list_provider_service.initial_connection_host_info = reader_candidate
-                        return reader_candidate_conn
-
-                    self._close_connection(reader_candidate_conn)
-                    self._delay(retry_delay_ms)
-                    continue
-
-                # Reader connection is valid and verified.
-                if is_initial_connection and self._host_list_provider_service is not None:
-                    self._host_list_provider_service.initial_connection_host_info = reader_candidate
-                return reader_candidate_conn
-            except Exception as e:
-                self._close_connection(reader_candidate_conn)
-                if not self._plugin_service.is_login_exception(e) and reader_candidate is not None:
-                    self._plugin_service.set_availability(reader_candidate.as_aliases(), HostAvailability.UNAVAILABLE)
-
-                raise e
+        if url_type == RdsUrlType.RDS_READER_CLUSTER:
+            return HostRole.READER
 
         return None
+
+    def _validate_verification_setting(self, setting: RoleVerificationSetting, url_type: RdsUrlType):
+        if (setting is RoleVerificationSetting.READER
+                and url_type in (RdsUrlType.RDS_WRITER_CLUSTER, RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER)):
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.InvalidSettingForEndpoint",
+                WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.name, "reader", "writer cluster or global cluster"))
+
+        # A custom cluster can only be of type "reader" or "any".
+        if (setting is RoleVerificationSetting.WRITER
+                and url_type in (RdsUrlType.RDS_READER_CLUSTER, RdsUrlType.RDS_CUSTOM_CLUSTER)):
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.InvalidSettingForEndpoint",
+                WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.name, "writer", "reader cluster or custom cluster"))
+
+    def _get_candidate_host(
+            self,
+            original_connect_host: HostInfo,
+            url_type: RdsUrlType,
+            substitution_strategy: InstanceSubstitutionStrategy) -> Optional[HostInfo]:
+        if substitution_strategy is InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE:
+            return original_connect_host
+
+        if substitution_strategy is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER:
+            return self._get_writer()
+
+        if self._selection_strategy is None:
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.UnsupportedStrategy", self._selection_strategy))
+
+        target_role = substitution_strategy.to_target_role()
+        # SUBSTITUTE_WITH_ANY has no specific target role; default to READER for host selection,
+        # mirroring the JDBC behavior where the selector treats a null role as "any".
+        selection_role = target_role if target_role is not None else HostRole.READER
+
+        if not self._plugin_service.accepts_strategy(selection_role, self._selection_strategy):
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.UnsupportedStrategy", self._selection_strategy))
+
+        try:
+            aws_region = self._rds_utils.get_rds_region(original_connect_host.host) \
+                if url_type.has_region else None
+            if aws_region:
+                hosts_in_region: List[HostInfo] = [
+                    host for host in self._plugin_service.all_hosts
+                    if (host_region := self._rds_utils.get_rds_region(host.host)) is not None
+                    and aws_region.casefold() == host_region.casefold()]
+                return self._plugin_service.get_host_info_by_strategy(
+                    selection_role, self._selection_strategy, hosts_in_region)
+
+            return self._plugin_service.get_host_info_by_strategy(selection_role, self._selection_strategy)
+        except Exception:
+            # Unable to find a candidate host.
+            return None
+
+    def _set_initial_connection_host_info(
+            self, is_initial_connection: bool, host_info: Optional[HostInfo]):
+        if (is_initial_connection
+                and self._host_list_provider_service is not None
+                and host_info is not None):
+            self._host_list_provider_service.initial_connection_host_info = host_info
+
+    def _get_writer(self) -> Optional[HostInfo]:
+        for host in self._plugin_service.all_hosts:
+            if host.role == HostRole.WRITER:
+                return host
+        return None
+
+    def _has_hosts(self) -> bool:
+        return len(self._plugin_service.all_hosts) > 0
+
+    def _has_readers(self) -> bool:
+        return any(host.role == HostRole.READER for host in self._plugin_service.all_hosts)
 
     def _close_connection(self, connection: Optional[Connection]):
         if connection is not None:
@@ -194,56 +421,8 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
     def _delay(self, delay_ms: int):
         sleep(delay_ms / 1000)
 
-    def _get_writer(self) -> Optional[HostInfo]:
-        for host in self._plugin_service.all_hosts:
-            if host.role == HostRole.WRITER:
-                return host
-
-        return None
-
-    def _get_reader(self, props: Properties) -> Optional[HostInfo]:
-        strategy = WrapperProperties.READER_INITIAL_HOST_SELECTOR_STRATEGY.get(props)
-        if (self._plugin_service is not None
-                and strategy is not None
-                and self._plugin_service.accepts_strategy(HostRole.READER, strategy)):
-            try:
-                original_host = self._plugin_service.current_host_info
-                url_type = self._rds_utils.identify_rds_type(original_host.host) if original_host else None
-
-                if url_type and url_type.has_region:
-                    aws_region = self._rds_utils.get_rds_region(original_host.host)
-                    if aws_region:
-                        hosts_in_region = []
-                        for h in self._plugin_service.all_hosts:
-                            h_region = self._rds_utils.get_rds_region(h.host)
-                            if h_region and aws_region.lower() == h_region.lower():
-                                hosts_in_region.append(h)
-                        return self._plugin_service.get_host_info_by_strategy(
-                            HostRole.READER, strategy, hosts_in_region)
-
-                return self._plugin_service.get_host_info_by_strategy(HostRole.READER, strategy)
-            except Exception:
-                # Host isn't found.
-                return None
-
-        raise AwsWrapperError(Messages.get_formatted("AuroraInitialConnectionStrategyPlugin.UnsupportedStrategy", strategy))
-
-    def init_host_provider(self, props: Properties, host_list_provider_service: HostListProviderService, init_host_provider_func: Callable):
-        self._host_list_provider_service = host_list_provider_service
-        init_host_provider_func()
-
-    def _has_no_readers(self) -> bool:
-        if len(self._plugin_service.all_hosts) == 0:
-            return False
-
-        for host in self._plugin_service.all_hosts:
-            if host.role == HostRole.READER:
-                return False
-
-        return True
-
 
 class AuroraInitialConnectionStrategyPluginFactory(PluginFactory):
     @staticmethod
     def get_instance(plugin_service: PluginService, props: Properties) -> Plugin:
-        return AuroraInitialConnectionStrategyPlugin(plugin_service)
+        return AuroraInitialConnectionStrategyPlugin(plugin_service, props)

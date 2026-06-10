@@ -202,6 +202,14 @@ class RdsUtils:
             return elb_matcher.group(RdsUtils.REGION_GROUP)
         return None
 
+    def is_same_region(self, host1: Optional[str], host2: Optional[str]) -> bool:
+        if not host1 or not host1.strip() or not host2 or not host2.strip():
+            return False
+
+        host1_region = self.get_rds_region(host1)
+        host2_region = self.get_rds_region(host2)
+        return host1_region is not None and host2_region is not None and host1_region.casefold() == host2_region.casefold()
+
     def is_writer_cluster_dns(self, host: str) -> bool:
         dns_group = self._get_dns_group(self._get_prepared_host(host))
         return dns_group is not None and dns_group.casefold() == "cluster-"
