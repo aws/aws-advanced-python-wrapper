@@ -72,6 +72,8 @@ from aws_advanced_python_wrapper.exception_handling import (ExceptionHandler,
 from aws_advanced_python_wrapper.execute_time_plugin import \
     ExecuteTimePluginFactory
 from aws_advanced_python_wrapper.failover_plugin import FailoverPluginFactory
+from aws_advanced_python_wrapper.gdb_read_write_splitting_plugin import \
+    GdbReadWriteSplittingPluginFactory
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.host_list_provider import (
     ConnectionStringHostListProvider, HostListProvider,
@@ -830,6 +832,7 @@ class PluginManager(CanReleaseResources):
         "failover_v2": FailoverV2PluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,
         "srw": SimpleReadWriteSplittingPluginFactory,
+        "gdb_rw": GdbReadWriteSplittingPluginFactory,
         "fastest_response_strategy": FastestResponseStrategyPluginFactory,
         "stale_dns": StaleDnsPluginFactory,
         "custom_endpoint": CustomEndpointPluginFactory,
@@ -855,6 +858,7 @@ class PluginManager(CanReleaseResources):
         StaleDnsPluginFactory: 200,
         ReadWriteSplittingPluginFactory: 300,
         SimpleReadWriteSplittingPluginFactory: 310,
+        GdbReadWriteSplittingPluginFactory: 320,
         FailoverPluginFactory: 400,
         FailoverV2PluginFactory: 410,
         HostMonitoringPluginFactory: 500,

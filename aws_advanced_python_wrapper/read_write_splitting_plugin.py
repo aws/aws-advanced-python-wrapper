@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Callable, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -344,9 +344,10 @@ class AbstractReadWriteSplittingPlugin(Plugin):
         self._close_connection(self._writer_connection, close_only_if_idle)
 
     @staticmethod
-    def log_and_raise_exception(log_msg: str):
-        logger.error(log_msg)
-        raise ReadWriteSplittingError(Messages.get(log_msg))
+    def log_and_raise_exception(log_msg: str, *args):
+        msg = Messages.get_formatted(log_msg, *args) if args else Messages.get(log_msg)
+        logger.error(log_msg, *args)
+        raise ReadWriteSplittingError(msg)
 
     @staticmethod
     def _is_connection_usable(conn: Optional[Connection], driver_dialect: DriverDialect):
@@ -509,14 +510,14 @@ class ReadWriteSplittingPlugin(AbstractReadWriteSplittingPlugin):
         writer_host = self._get_writer_host_info()
         if writer_host is None:
             self.log_and_raise_exception(
-                "ReadWriteSplittingPlugin.FailedToConnectToWriter"
+                "ReadWriteSplittingPlugin.NoWriterFound"
             )
             return
 
         conn = self._plugin_service.connect(writer_host, self._properties, self)
         if conn is None:
             self.log_and_raise_exception(
-                "ReadWriteSplittingPlugin.FailedToConnectToWriter"
+                "ReadWriteSplittingPlugin.FailedToConnectToWriter", writer_host.url
             )
             return
 
@@ -595,16 +596,25 @@ class ReadWriteSplittingPlugin(AbstractReadWriteSplittingPlugin):
         hosts = [h.get_host_and_port() for h in self._hosts]
         return host_info.get_host_and_port() in hosts
 
+    def _get_reader_host_candidates(self) -> List[HostInfo]:
+        """Return the list of host candidates used when selecting a reader.
+
+        Subclasses can override this method to filter the candidate list,
+        for example to restrict readers to a specific region.
+        """
+        return list(self._plugin_service.hosts)
+
     def _open_new_reader_connection(
         self,
     ) -> tuple[Optional[Connection], Optional[HostInfo]]:
         conn: Optional[Connection] = None
         reader_host: Optional[HostInfo] = None
 
-        conn_attempts = len(self._plugin_service.hosts) * 2
+        host_candidates = self._get_reader_host_candidates()
+        conn_attempts = len(host_candidates) * 2
         for _ in range(conn_attempts):
             host = self._plugin_service.get_host_info_by_strategy(
-                HostRole.READER, self._reader_selector_strategy
+                HostRole.READER, self._reader_selector_strategy, host_candidates
             )
             if host is not None:
                 try:

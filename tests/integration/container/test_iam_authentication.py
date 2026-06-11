@@ -40,6 +40,7 @@ from tests.integration.container.utils.database_engine_deployment import \
     DatabaseEngineDeployment
 from tests.integration.container.utils.driver_helper import DriverHelper
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
+from tests.integration.container.utils.retry_helper import retry_until
 from tests.integration.container.utils.test_environment import TestEnvironment
 
 
@@ -164,7 +165,8 @@ class TestAwsIamAuthentication:
 
             # assert that we are connected to the new writer after failover happens and we can reuse the cursor
             current_connection_id = aurora_utility.query_instance_id(aws_conn)
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
             assert current_connection_id != initial_writer_id
 
     def get_ip_address(self, hostname: str):

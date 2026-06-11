@@ -38,6 +38,7 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
 from .utils.driver_helper import DriverHelper
 from .utils.rds_test_utility import RdsTestUtility
+from .utils.retry_helper import retry_until
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 
@@ -116,7 +117,8 @@ class TestAuroraFailover:
 
             # assert that we are connected to the new writer after failover happens.
             current_connection_id = aurora_utility.query_instance_id(aws_conn)
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
             assert current_connection_id != initial_writer_id
 
     @pytest.mark.parametrize("plugins", ["failover", "failover_v2"])
@@ -137,7 +139,8 @@ class TestAuroraFailover:
 
             # assert that we are connected to the new writer after failover happens and we can reuse the cursor
             current_connection_id = aurora_utility.query_instance_id(aws_conn)
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
             assert current_connection_id != initial_writer_id
 
     @pytest.mark.parametrize("plugins", ["failover,host_monitoring", "failover,host_monitoring_v2",
@@ -166,7 +169,8 @@ class TestAuroraFailover:
             current_connection_id = aurora_utility.query_instance_id(aws_conn)
 
             assert writer_id == current_connection_id
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
 
     @pytest.mark.parametrize("plugins", ["failover", "failover_v2"])
     @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
@@ -195,7 +199,8 @@ class TestAuroraFailover:
             # Attempt to query the instance id.
             current_connection_id = aurora_utility.query_instance_id(conn)
             # Assert that we are connected to the new writer after failover happens.
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
             next_cluster_writer_id = aurora_utility.get_cluster_writer_instance_id()
             assert current_connection_id == next_cluster_writer_id
             assert current_connection_id != initial_writer_id
@@ -229,7 +234,8 @@ class TestAuroraFailover:
             # Attempt to query the instance id.
             current_connection_id = aurora_utility.query_instance_id(conn)
             # Assert that we are connected to the new writer after failover happens.
-            assert aurora_utility.is_db_instance_writer(current_connection_id) is True
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
             next_cluster_writer_id = aurora_utility.get_cluster_writer_instance_id()
             assert current_connection_id == next_cluster_writer_id
             assert current_connection_id != initial_writer_id
@@ -265,7 +271,8 @@ class TestAuroraFailover:
             current_connection_id: str = aurora_utility.query_instance_id(conn)
 
             # assert that we are connected to the new writer after failover happens
-            assert aurora_utility.is_db_instance_writer(current_connection_id)
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
             next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
 
             assert current_connection_id == next_cluster_writer_id
@@ -311,7 +318,8 @@ class TestAuroraFailover:
             current_connection_id: str = aurora_utility.query_instance_id(conn)
 
             # assert that we are connected to the new writer after failover happens
-            assert aurora_utility.is_db_instance_writer(current_connection_id)
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
             next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
 
             assert current_connection_id == next_cluster_writer_id

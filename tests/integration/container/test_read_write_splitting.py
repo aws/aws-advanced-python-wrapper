@@ -23,12 +23,14 @@ from aws_advanced_python_wrapper.connection_provider import \
 from aws_advanced_python_wrapper.errors import (
     AwsWrapperError, FailoverFailedError, FailoverSuccessError,
     ReadWriteSplittingError, TransactionResolutionUnknownError)
+from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
     SqlAlchemyPooledConnectionProvider
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from tests.integration.container.utils.conditions import (
     disable_on_engines, disable_on_features, enable_on_deployments,
     enable_on_features, enable_on_num_instances)
@@ -38,6 +40,7 @@ from tests.integration.container.utils.database_engine_deployment import \
 from tests.integration.container.utils.driver_helper import DriverHelper
 from tests.integration.container.utils.proxy_helper import ProxyHelper
 from tests.integration.container.utils.rds_test_utility import RdsTestUtility
+from tests.integration.container.utils.retry_helper import retry_until
 from tests.integration.container.utils.test_driver import TestDriver
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
@@ -64,16 +67,37 @@ class TestReadWriteSplitting:
         release_resources()
         gc.collect()
 
+    @pytest.fixture(autouse=True)
+    def configure_prepare_host_func(self):
+        proxied_suffix = ".proxied"
+
+        def strip_proxied(host: str) -> str:
+            if host and host.endswith(proxied_suffix):
+                return host[: -len(proxied_suffix)]
+            return host
+
+        RdsUtils.set_prepare_host_func(strip_proxied)
+        RdsUtils.clear_cache()
+        try:
+            yield
+        finally:
+            RdsUtils.reset_prepare_host_func()
+            RdsUtils.clear_cache()
+
     # Plugin configurations
     @pytest.fixture(
-        params=[("read_write_splitting", "read_write_splitting"), ("srw", "srw")]
+        params=[
+            ("read_write_splitting", "read_write_splitting"),
+            ("srw", "srw"),
+            ("gdb_rw", "gdb_rw"),
+        ]
     )
     def plugin_config(self, request):
         return request.param
 
     @pytest.fixture(scope="class")
     def rds_utils(self):
-        region: str = TestEnvironment.get_current().get_info().get_region()
+        region: str = TestEnvironment.get_current().get_aurora_region()
         return RdsTestUtility(region)
 
     @pytest.fixture(autouse=True)
@@ -94,6 +118,7 @@ class TestReadWriteSplitting:
                 "socket_timeout": 10,
                 "connect_timeout": 10,
                 "autocommit": True,
+                "gdb_rw_home_region": TestEnvironment.get_current().get_aurora_region()
             }
         )
 
@@ -135,7 +160,8 @@ class TestReadWriteSplitting:
             "socket_timeout": 10,
             "connect_timeout": 10,
             "autocommit": True,
-            "cluster_id": "cluster1"
+            "cluster_id": "cluster1",
+            "gdb_rw_home_region": TestEnvironment.get_current().get_aurora_region()
         }
         # Add simple plugin specific configuration
         if plugin_name == "srw":
@@ -239,9 +265,9 @@ class TestReadWriteSplitting:
         plugin_config,
     ):
         plugin_name, _ = plugin_config
-        if plugin_name != "read_write_splitting":
+        if plugin_name not in ("read_write_splitting", "gdb_rw"):
             pytest.skip(
-                "Test only applies to read_write_splitting plugin: srw does not connect to instances"
+                "Test only applies to topology-based read/write splitting plugins: srw does not connect to instances"
             )
         target_driver_connect = DriverHelper.get_connect_func(test_driver)
         reader_instance = test_environment.get_instances()[1]
@@ -511,7 +537,10 @@ class TestReadWriteSplitting:
 
             new_writer_id = rds_utils.query_instance_id(conn)
             assert original_writer_id != new_writer_id
-            assert rds_utils.is_db_instance_writer(new_writer_id)
+            # RDS API lags behind the writer election, so we retry the check.
+            assert retry_until(lambda: rds_utils.is_db_instance_writer(new_writer_id))
+
+            PluginServiceImpl._host_availability_expiring_cache.clear()
 
             conn.read_only = True
             current_id = rds_utils.query_instance_id(conn)
@@ -521,7 +550,15 @@ class TestReadWriteSplitting:
             current_id = rds_utils.query_instance_id(conn)
             assert new_writer_id == current_id
 
-    @pytest.mark.parametrize("plugins", ["read_write_splitting,failover,host_monitoring", "read_write_splitting,failover,host_monitoring_v2"])
+    @pytest.mark.parametrize(
+        "plugins",
+        [
+            "read_write_splitting,failover,host_monitoring",
+            "read_write_splitting,failover,host_monitoring_v2",
+            "gdb_rw,failover,host_monitoring",
+            "gdb_rw,failover,host_monitoring_v2",
+        ],
+    )
     @enable_on_features([TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                          TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED])
     @enable_on_num_instances(min_instances=3)
@@ -537,10 +574,10 @@ class TestReadWriteSplitting:
         plugins
     ):
         plugin_name, _ = plugin_config
-        if plugin_name != "read_write_splitting":
+        if plugin_name not in ("read_write_splitting", "gdb_rw"):
             # Disabling the reader connection in srw, the srwReadEndpoint, results in defaulting to the writer not connecting to another reader.
             pytest.skip(
-                "Test only applies to read_write_splitting plugin: reader connection failover"
+                "Test only applies to topology-based read/write splitting plugins: reader connection failover"
             )
 
         WrapperProperties.FAILOVER_MODE.set(proxied_failover_props, "reader-or-writer")
@@ -1013,9 +1050,9 @@ class TestReadWriteSplitting:
         plugin_config,
     ):
         plugin_name, _ = plugin_config
-        if plugin_name != "read_write_splitting":
+        if plugin_name not in ("read_write_splitting", "gdb_rw"):
             pytest.skip(
-                "Test only applies to read_write_splitting plugin: reader host selector strategy"
+                "Test only applies to topology-based read/write splitting plugins: reader host selector strategy"
             )
 
         WrapperProperties.READER_HOST_SELECTOR_STRATEGY.set(props, "least_connections")
@@ -1062,9 +1099,9 @@ class TestReadWriteSplitting:
         plugin_config,
     ):
         plugin_name, _ = plugin_config
-        if plugin_name != "read_write_splitting":
+        if plugin_name not in ("read_write_splitting", "gdb_rw"):
             pytest.skip(
-                "Test only applies to read_write_splitting plugin: reader host selector strategy"
+                "Test only applies to topology-based read/write splitting plugins: reader host selector strategy"
             )
 
         WrapperProperties.READER_HOST_SELECTOR_STRATEGY.set(props, "least_connections")

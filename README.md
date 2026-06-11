@@ -121,6 +121,10 @@ The following table lists the connection properties used with the AWS Advanced P
 | `secrets_manager_secret_username_key`        |           [Secrets Manager Plugin](docs/using-the-python-wrapper/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
 | `secrets_manager_secret_password_key`        |           [Secrets Manager Plugin](docs/using-the-python-wrapper/using-plugins/UsingTheAwsSecretsManagerPlugin.md)           |
 | `reader_host_selector_strategy`              | [Connection Strategy](docs/using-the-python-wrapper/using-plugins/UsingTheReadWriteSplittingPlugin.md#connection-strategies) |
+| `gdb_rw_home_region`                         |    [GDB Read/Write Splitting Plugin](docs/using-the-python-wrapper/using-plugins/UsingTheGdbReadWriteSplittingPlugin.md)    |
+| `gdb_rw_restrict_writer_to_home_region`      |    [GDB Read/Write Splitting Plugin](docs/using-the-python-wrapper/using-plugins/UsingTheGdbReadWriteSplittingPlugin.md)    |
+| `gdb_rw_restrict_reader_to_home_region`      |    [GDB Read/Write Splitting Plugin](docs/using-the-python-wrapper/using-plugins/UsingTheGdbReadWriteSplittingPlugin.md)    |
+| `gdb_enable_global_write_forwarding`         |    [GDB Read/Write Splitting Plugin](docs/using-the-python-wrapper/using-plugins/UsingTheGdbReadWriteSplittingPlugin.md)    |
 | `db_user`                                    |   [Federated Authentication Plugin](docs/using-the-python-wrapper/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
 | `idp_username`                               |   [Federated Authentication Plugin](docs/using-the-python-wrapper/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
 | `idp_password`                               |   [Federated Authentication Plugin](docs/using-the-python-wrapper/using-plugins/UsingTheFederatedAuthenticationPlugin.md)    |
