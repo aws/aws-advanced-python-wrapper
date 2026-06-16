@@ -165,10 +165,14 @@ class OpenedConnectionTracker:
 
         with self._lock:
             connection_set: Optional[WeakSet] = self._opened_connections.get(instance_endpoint)
-            connections_list = list(connection_set) if connection_set is not None else None
+            if connection_set is not None:
+                connections_list = list(connection_set)
+                connection_set.clear()
+            else:
+                connections_list = None
 
-        if connections_list is not None:
-            self._log_connection_set(instance_endpoint, connection_set)
+        if connections_list:
+            self._log_connection_set(instance_endpoint, connections_list)
             self._invalidate_connections(connections_list)
 
     def remove_connection_tracking(self, host_info: HostInfo, connection: Connection | None):
@@ -228,11 +232,11 @@ class OpenedConnectionTracker:
         msg = "".join(msg_parts)
         return logger.debug("OpenedConnectionTracker.OpenedConnectionsTracked", msg)
 
-    def _log_connection_set(self, host: str, conn_set: Optional[WeakSet]):
-        if conn_set is None or len(conn_set) == 0:
+    def _log_connection_set(self, host: str, connections: Optional[list]):
+        if not connections:
             return
 
-        conn_parts = [f"\n\t\t{item}" for item in list(conn_set)]
+        conn_parts = [f"\n\t\t{item}" for item in connections]
         conn = "".join(conn_parts)
         msg = host + f"[{conn}\n]"
         logger.debug("OpenedConnectionTracker.InvalidatingConnections", msg)
