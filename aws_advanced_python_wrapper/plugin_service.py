@@ -29,6 +29,8 @@ from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
     FastestResponseStrategyPluginFactory
 from aws_advanced_python_wrapper.federated_plugin import \
     FederatedAuthPluginFactory
+from aws_advanced_python_wrapper.gdb_failover_plugin import \
+    GdbFailoverPluginFactory
 from aws_advanced_python_wrapper.limitless_plugin import LimitlessPluginFactory
 from aws_advanced_python_wrapper.okta_plugin import OktaAuthPluginFactory
 from aws_advanced_python_wrapper.states.session_state_service import (
@@ -830,6 +832,7 @@ class PluginManager(CanReleaseResources):
         "host_monitoring_v2": HostMonitoringV2PluginFactory,
         "failover": FailoverPluginFactory,
         "failover_v2": FailoverV2PluginFactory,
+        "gdb_failover": GdbFailoverPluginFactory,
         "read_write_splitting": ReadWriteSplittingPluginFactory,
         "srw": SimpleReadWriteSplittingPluginFactory,
         "gdb_rw": GdbReadWriteSplittingPluginFactory,
@@ -861,6 +864,7 @@ class PluginManager(CanReleaseResources):
         GdbReadWriteSplittingPluginFactory: 320,
         FailoverPluginFactory: 400,
         FailoverV2PluginFactory: 410,
+        GdbFailoverPluginFactory: 420,
         HostMonitoringPluginFactory: 500,
         HostMonitoringV2PluginFactory: 510,
         BlueGreenPluginFactory: 550,

@@ -17,7 +17,6 @@ import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
 
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
-from aws_advanced_python_wrapper.utils.utils import LogUtils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.host_list_provider import HostListProviderService
@@ -41,6 +40,7 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
+from aws_advanced_python_wrapper.utils.retry_util import RetryUtil
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
 
@@ -326,55 +326,32 @@ class FailoverV2Plugin(Plugin):
             "failover to writer host", TelemetryTraceLevel.NESTED)
 
         failover_start_time = time.time()
+        failover_end_time = failover_start_time + self._failover_timeout_sec
+        retry_util = RetryUtil()
+        result = None
         try:
             if not self._plugin_service.force_monitoring_refresh_host_list(True, self._failover_timeout_sec):
                 raise FailoverFailedError(Messages.get("FailoverPlugin.UnableToRefreshHostList"))
 
-            updated_hosts = self._plugin_service.all_hosts
-            writer_candidate = next((host for host in updated_hosts if host.role == HostRole.WRITER), None)
+            result = retry_util.get_writer_connection(
+                self._plugin_service, self._properties, self, True, failover_end_time)
 
-            if writer_candidate is None:
-                raise FailoverFailedError(Messages.get_formatted(
-                    "FailoverPlugin.NoWriterHostInTopology",
-                    LogUtils.log_topology(updated_hosts)))
-
-            logger.info("FailoverPlugin.FoundWriterCandidate", writer_candidate)
-
-            allowed_hosts = self._plugin_service.hosts
-            if not any(host.host == writer_candidate.host and host.port == writer_candidate.port
-                       for host in allowed_hosts):
-                raise FailoverFailedError(
-                    Messages.get_formatted(
-                        "FailoverPlugin.NewWriterNotAllowed",
-                        "<null>" if writer_candidate is None else writer_candidate.host,
-                        LogUtils.log_topology(allowed_hosts)))
-
-            try:
-                writer_candidate_conn = self._plugin_service.connect(writer_candidate, self._properties, self)
-            except Exception as e:
-                raise FailoverFailedError(Messages.get_formatted(
-                    "FailoverPlugin.ExceptionConnectingToWriter", e))
-
-            role = self._plugin_service.get_host_role(writer_candidate_conn)
-            if role != HostRole.WRITER:
-                try:
-                    self._plugin_service.driver_dialect.execute(
-                        DbApiMethod.CONNECTION_CLOSE.method_name, lambda: writer_candidate_conn.close())
-                except Exception:
-                    pass
-                raise FailoverFailedError(Messages.get_formatted(
-                    "FailoverPlugin.WriterFailoverConnectedToReader",
-                    writer_candidate.host))
-
-            self._plugin_service.set_current_connection(writer_candidate_conn, writer_candidate)
-            logger.info("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
-            self._throw_failover_success_exception()
+            if result.connection is not None and result.host_info is not None:
+                self._plugin_service.set_current_connection(result.connection, result.host_info)
+                result = None  # Prevents closing the returned connection in the finally block.
+                logger.info("FailoverPlugin.EstablishedConnection", self._plugin_service.current_host_info)
+                self._throw_failover_success_exception()
 
         except FailoverSuccessError as ex:
             if telemetry_context:
                 telemetry_context.set_success(True)
                 telemetry_context.set_exception(ex)
             raise ex
+        except TimeoutError as ex:
+            if telemetry_context:
+                telemetry_context.set_success(False)
+                telemetry_context.set_exception(ex)
+            raise FailoverFailedError(str(ex))
         except Exception as ex:
             if telemetry_context:
                 telemetry_context.set_success(False)
@@ -383,6 +360,8 @@ class FailoverV2Plugin(Plugin):
         finally:
             elapsed_time = (time.time() - failover_start_time) * 1000
             logger.info("FailoverPlugin.WriterFailoverTime", elapsed_time)
+            if result is not None and result.connection is not self._plugin_service.current_connection:
+                RetryUtil.close_connection(self._plugin_service, result.connection)
             if telemetry_context:
                 telemetry_context.close_context()
                 if self._telemetry_failover_additional_top_trace:
@@ -423,8 +402,11 @@ class FailoverV2Plugin(Plugin):
 
         # For STRICT_WRITER failover mode when connection exception indicate that the connection's in read-only mode,
         # initiate a failover by returning true.
-        return self._failover_mode == FailoverMode.STRICT_WRITER and \
+        return self._is_strict_writer_failover_mode() and \
             self._plugin_service.is_read_only_connection_exception(exception)
+
+    def _is_strict_writer_failover_mode(self) -> bool:
+        return self._failover_mode == FailoverMode.STRICT_WRITER
 
     def _can_direct_execute(self, method_name: str) -> bool:
         return method_name == DbApiMethod.CONNECTION_CLOSE.method_name or \

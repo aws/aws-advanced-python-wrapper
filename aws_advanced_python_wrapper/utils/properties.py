@@ -290,6 +290,27 @@ class WrapperProperties:
         "Enable/disable cluster-aware failover if the initial connection to the database fails due to a network exception.",
         False)
 
+    # GdbFailoverPlugin properties
+    FAILOVER_HOME_REGION = WrapperProperty(
+        "failover_home_region",
+        """Defines the home region for Global Database failover. Examples: 'us-west-2', 'us-east-1'.
+        If omitted, the value is parsed from the connection url when the endpoint includes a region.
+        This parameter is required when connecting using an IP address, custom domain, or Global Database
+        endpoint that has no region.""")
+    ACTIVE_HOME_FAILOVER_MODE = WrapperProperty(
+        "active_home_failover_mode",
+        """The failover mode to use when the Global Database primary region is the home region.
+        Possible values: strict-writer, strict-home-reader, strict-out-of-home-reader, strict-any-reader,
+        home-reader-or-writer, out-of-home-reader-or-writer, any-reader-or-writer. If omitted, the default
+        depends on the connection url (strict-writer for a writer/global writer cluster endpoint, otherwise
+        home-reader-or-writer).""")
+    INACTIVE_HOME_FAILOVER_MODE = WrapperProperty(
+        "inactive_home_failover_mode",
+        """The failover mode to use when the Global Database primary region is not the home region.
+        Possible values are the same as for active_home_failover_mode. If omitted, the default depends on
+        the connection url (strict-writer for a writer/global writer cluster endpoint, otherwise
+        home-reader-or-writer).""")
+
     # ClusterTopologyMonitor properties
     CLUSTER_TOPOLOGY_HIGH_REFRESH_RATE_MS = WrapperProperty(
         "cluster_topology_high_refresh_rate_ms",

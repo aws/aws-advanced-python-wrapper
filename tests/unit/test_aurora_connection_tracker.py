@@ -144,3 +144,35 @@ def test_prune_connections_logs_closed_connection(mocker, caplog):
         tracker._prune_connections()
 
     mock_conn_set.discard.assert_called_with(mock_conn)
+
+
+def test_invalidate_all_connections_drains_set(mocker):
+    tracker = OpenedConnectionTracker()
+    OpenedConnectionTracker._opened_connections = {}
+
+    mocker.patch.object(OpenedConnectionTracker, "_start_prune_thread")
+    mock_rds = mocker.MagicMock()
+    mock_rds.is_rds_instance.return_value = True
+    mock_rds.remove_port.side_effect = lambda value: value
+    mocker.patch.object(OpenedConnectionTracker, "_rds_utils", mock_rds)
+
+    captured = []
+    mocker.patch.object(
+        OpenedConnectionTracker,
+        "_invalidate_connections",
+        side_effect=lambda connections_list: captured.append(list(connections_list)))
+
+    host_info = HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com")
+    conn1 = mocker.MagicMock()
+    conn2 = mocker.MagicMock()
+    tracker.populate_opened_connection_set(host_info, conn1)
+    tracker.populate_opened_connection_set(host_info, conn2)
+
+    tracker.invalidate_all_connections(host_info=host_info)
+
+    assert len(captured) == 1
+    assert set(captured[0]) == {conn1, conn2}
+    assert all(len(conn_set) == 0 for conn_set in OpenedConnectionTracker._opened_connections.values())
+
+    tracker.invalidate_all_connections(host_info=host_info)
+    assert len(captured) == 1

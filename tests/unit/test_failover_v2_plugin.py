@@ -216,6 +216,7 @@ class TestFailoverV2Plugin:
         failover_v2_plugin._plugin_service.force_monitoring_refresh_host_list.return_value = True
         failover_v2_plugin._plugin_service.all_hosts = [writer_host]
         failover_v2_plugin._plugin_service.hosts = [writer_host]
+        failover_v2_plugin._plugin_service.get_host_info_by_strategy.return_value = writer_host
         failover_v2_plugin._plugin_service.connect.return_value = MagicMock()
         failover_v2_plugin._plugin_service.get_host_role.return_value = HostRole.WRITER
         failover_v2_plugin._throw_failover_success_exception = MagicMock(side_effect=FailoverSuccessError())
@@ -227,8 +228,10 @@ class TestFailoverV2Plugin:
 
     def test_failover_writer_no_writer_found(self, failover_v2_plugin):
         reader_host = HostInfo("reader.com", 5432, HostRole.READER)
+        failover_v2_plugin._failover_timeout_sec = 0.05
         failover_v2_plugin._plugin_service.force_monitoring_refresh_host_list.return_value = True
         failover_v2_plugin._plugin_service.all_hosts = [reader_host]
+        failover_v2_plugin._plugin_service.hosts = [reader_host]
 
         with pytest.raises(FailoverFailedError):
             failover_v2_plugin._failover_writer()
@@ -241,9 +244,11 @@ class TestFailoverV2Plugin:
 
     def test_failover_writer_connection_failed(self, failover_v2_plugin):
         writer_host = HostInfo("new-writer.com", 5432, HostRole.WRITER)
+        failover_v2_plugin._failover_timeout_sec = 0.05
         failover_v2_plugin._plugin_service.force_monitoring_refresh_host_list.return_value = True
         failover_v2_plugin._plugin_service.all_hosts = [writer_host]
         failover_v2_plugin._plugin_service.hosts = [writer_host]
+        failover_v2_plugin._plugin_service.get_host_info_by_strategy.return_value = writer_host
         failover_v2_plugin._plugin_service.connect.side_effect = Exception("Connection failed")
 
         with pytest.raises(FailoverFailedError):
@@ -251,9 +256,11 @@ class TestFailoverV2Plugin:
 
     def test_failover_writer_connected_to_reader(self, failover_v2_plugin):
         writer_host = HostInfo("new-writer.com", 5432, HostRole.WRITER)
+        failover_v2_plugin._failover_timeout_sec = 0.05
         failover_v2_plugin._plugin_service.force_monitoring_refresh_host_list.return_value = True
         failover_v2_plugin._plugin_service.all_hosts = [writer_host]
         failover_v2_plugin._plugin_service.hosts = [writer_host]
+        failover_v2_plugin._plugin_service.get_host_info_by_strategy.return_value = writer_host
         failover_v2_plugin._plugin_service.connect.return_value = MagicMock()
         failover_v2_plugin._plugin_service.get_host_role.return_value = HostRole.READER
 
