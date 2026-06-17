@@ -16,6 +16,8 @@ AWS Identity and Access Management (IAM) grants users access control across all 
 > 
 > For more information on configuring AWS credentials, see our [AWS credentials documentation](../AwsCredentials.md).
 
+- This plugin does not create or modify any IAM resources, therefore all permissions and policies must be correctly configured before using this plugin. If you plan on using [Amazon Aurora Global Databases](https://aws.amazon.com/rds/aurora/global-database/) with this plugin, please see the [Using IAM Authentication with Global Databases](#using-iam-authentication-with-global-databases) section as well.
+
 To enable the IAM Authentication Connection Plugin, add the plugin code `iam` to the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) parameter.
 
 ## AWS IAM Database Authentication

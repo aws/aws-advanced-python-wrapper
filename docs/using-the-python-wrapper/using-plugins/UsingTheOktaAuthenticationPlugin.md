@@ -21,6 +21,8 @@ In the case of AD FS, the user signs into the AD FS sign in page. This generates
 > 
 > For more information on configuring AWS credentials, see our [AWS credentials documentation](../AwsCredentials.md).
 
+- This plugin does not create or modify any Okta or IAM resources, therefore all permissions and policies must be correctly configured before using this plugin. If you plan on using [Amazon Aurora Global Databases](https://aws.amazon.com/rds/aurora/global-database/) with this plugin, please see the [Using Okta Authentication with Global Databases](#using-okta-authentication-with-global-databases) section as well.
+
 ## How to use the Okta Authentication Plugin with the AWS Advanced Python Wrapper 
 
 ### Enabling the Okta Authentication Plugin
