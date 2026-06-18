@@ -40,11 +40,36 @@ def mock_invalid_conn(mocker):
 
 
 def test_is_closed(dialect, mock_conn, mock_invalid_conn):
+    mock_conn.unread_result = False
     mock_conn.is_connected.return_value = False
     assert dialect.is_closed(mock_conn)
 
+    mock_conn.is_connected.return_value = True
+    assert not dialect.is_closed(mock_conn)
+
     with pytest.raises(AwsWrapperError):
         dialect.is_closed(mock_invalid_conn)
+
+
+def test_is_closed_pings_on_calling_thread(dialect, mock_conn):
+    # Regression for the env-4 SIGSEGV: the liveness ping must run on the CALLING
+    # thread, never a worker/pool thread. mysql.connector connections are not safe
+    # for concurrent use; offloading is_connected() (a ping == SSL I/O) to a pool
+    # let an abandoned ping run concurrently with the caller's use of the same
+    # connection -> two threads on one SSLSocket -> OpenSSL use-after-free.
+    import threading
+
+    mock_conn.unread_result = False
+    caller_tid = threading.get_ident()
+    seen = {}
+
+    def record():
+        seen["tid"] = threading.get_ident()
+        return True
+
+    mock_conn.is_connected.side_effect = record
+    assert dialect.is_closed(mock_conn) is False  # is_connected True -> not closed
+    assert seen["tid"] == caller_tid
 
 
 def test_is_in_transaction(dialect, mock_conn, mock_invalid_conn):

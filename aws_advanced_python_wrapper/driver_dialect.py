@@ -129,6 +129,7 @@ class DriverDialect(ABC):
             exec_func: Callable,
             *args: Any,
             exec_timeout: Optional[float] = None,
+            conn: Optional[Connection] = None,
             **kwargs: Any) -> Cursor:
         if DbApiMethod.ALL.method_name not in self.network_bound_methods and method_name not in self.network_bound_methods:
             return exec_func()
@@ -138,7 +139,11 @@ class DriverDialect(ABC):
 
         if exec_timeout > 0:
             try:
-                execute_with_timeout = timeout(self._thread_pool, exec_timeout)(exec_func)
+                # Pass conn so that, on timeout, the abandoned operation's socket is
+                # shut down and its worker thread is awaited before we propagate --
+                # otherwise a later close/reuse of conn races the still-running
+                # operation (cross-thread use-after-free in the driver, env-4 SIGSEGV).
+                execute_with_timeout = timeout(self._thread_pool, exec_timeout, conn)(exec_func)
                 return execute_with_timeout()
             except TimeoutError as e:
                 raise QueryTimeoutError(Messages.get_formatted("DriverDialect.ExecuteTimeout", method_name)) from e
@@ -161,7 +166,7 @@ class DriverDialect(ABC):
         try:
             with conn.cursor() as cursor:
                 query = DriverDialect._QUERY
-                self.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(query), query, exec_timeout=10)
+                self.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(query), query, exec_timeout=10, conn=conn)
                 cursor.fetchone()
                 return True
         except Exception:

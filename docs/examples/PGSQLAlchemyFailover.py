@@ -12,28 +12,33 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""SQLAlchemy + AWS Advanced Python Wrapper: failover on Aurora MySQL."""
+"""SQLAlchemy + AWS Advanced Python Wrapper: failover on Aurora PostgreSQL.
+
+This example shows how to build an SQLAlchemy Engine that routes through the
+AWS Advanced Python Wrapper's failover plugin, then perform a workload that
+survives an Aurora failover event by catching sqlalchemy.exc.OperationalError
+and retrying the unit of work.
+"""
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
 from aws_advanced_python_wrapper import release_resources
-from aws_advanced_python_wrapper.mysql_connector import connect
+from aws_advanced_python_wrapper.psycopg import connect
 
 CLUSTER_ENDPOINT = "database.cluster-xyz.us-east-1.rds.amazonaws.com"
-DB_NAME = "mysql"
+DB_NAME = "postgres"
 USER = "john"
 PASSWORD = "pwd"
 
 
 def build_engine():
     return create_engine(
-        "mysql+mysqlconnector://",
+        "postgresql+psycopg://",
         creator=lambda: connect(
-            f"host={CLUSTER_ENDPOINT} database={DB_NAME} user={USER} password={PASSWORD}",
-            wrapper_dialect="aurora-mysql",
-            plugins="failover",
-            use_pure=True,
+            f"host={CLUSTER_ENDPOINT} dbname={DB_NAME} user={USER} password={PASSWORD}",
+            wrapper_dialect="aurora-pg",
+            plugins="failover,host_monitoring_v2",
         ),
     )
 
@@ -42,9 +47,14 @@ def run_workload(engine, iterations: int = 20) -> None:
     for i in range(iterations):
         try:
             with engine.connect() as conn:
-                row = conn.execute(text("SELECT @@aurora_server_id")).one()
+                row = conn.execute(
+                    text("SELECT pg_catalog.aurora_db_instance_identifier()")
+                ).one()
                 print(f"iter {i}: connected to instance {row[0]}")
         except OperationalError as exc:
+            # FailoverSuccessError is reclassified as OperationalError by the
+            # wrapper; SA wraps it here. The correct response is to retry the
+            # unit of work against the new writer.
             print(f"iter {i}: operational error ({type(exc.orig).__name__}); retrying")
 
 

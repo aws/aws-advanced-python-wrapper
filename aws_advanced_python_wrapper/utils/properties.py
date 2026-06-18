@@ -56,21 +56,26 @@ class WrapperProperty:
         return props.get(self.name)
 
     def get_type(self, props: Properties, type_class: Type[T]) -> T:
+        # Runtime dispatch by ``type_class``: mypy can't prove that the
+        # concrete returned value matches the generic T, so narrow each
+        # branch's suppression to [return-value] rather than a bare
+        # ``# type: ignore`` -- that way new type errors elsewhere in
+        # the function still get surfaced.
         value = props.get(self.name, self.default_value) if self.default_value else props.get(self.name)
         if value is None:
             if type_class == int:
-                return -1  # type: ignore
+                return -1  # type: ignore[return-value]
             elif type_class == float:
-                return -1.0  # type: ignore
+                return -1.0  # type: ignore[return-value]
             elif type_class == bool:
-                return False  # type: ignore
+                return False  # type: ignore[return-value]
             else:
-                return None  # type: ignore
+                return None  # type: ignore[return-value]
         if type_class == bool:
             if isinstance(value, bool):
-                return value  # type: ignore
-            return value.lower() == "true" if isinstance(value, str) else bool(value)  # type: ignore
-        return type_class(value)  # type: ignore
+                return value  # type: ignore[return-value]
+            return value.lower() == "true" if isinstance(value, str) else bool(value)  # type: ignore[return-value]
+        return type_class(value)  # type: ignore[call-arg]
 
     def get_int(self, props: Properties) -> int:
         return self.get_type(props, int)
@@ -598,6 +603,19 @@ class WrapperProperties:
         1000,
     )
 
+    RWS_RECHECK_READER_ROLE = WrapperProperty(
+        "rws_recheck_reader_role",
+        "When the Read/Write Splitting Plugin picks a reader from topology, "
+        "query the freshly-opened connection's actual role via "
+        "``get_host_role``. If the live role does not match ``HostRole.READER`` "
+        "(e.g., Aurora's cluster topology lagged a recent failover and the "
+        "picked instance is actually the writer), close the connection, "
+        "force a topology refresh, and try another candidate. Defaults to "
+        "``True`` -- disable only if you're seeing the role-recheck query "
+        "show up as latency in your workload.",
+        True,
+    )
+
     # Simple Read/Write Splitting
     SRW_READ_ENDPOINT = WrapperProperty(
         "srw_read_endpoint",
@@ -634,6 +652,26 @@ class WrapperProperties:
         "srw_connect_retry_interval_ms",
         "Time in milliseconds between each retry of opening a connection.",
         1000,
+    )
+
+    # Retry budget for connections opened at sites that bypass the wrapper's
+    # plugin chain (SQLAlchemy pool creator, Django MySQL backend). Aurora's
+    # promoted writer can spend 15-60s rejecting connects during post-failover
+    # boot; these knobs let consumers extend or shorten the retry window
+    # without forking. See ``utils/transient_connect.py``.
+    CONNECTION_RETRY_MAX_ATTEMPTS = WrapperProperty(
+        "connection_retry_max_attempts",
+        "Maximum number of attempts when opening a connection at the SQLAlchemy "
+        "pool / Django backend layer (paths that bypass the plugin chain). "
+        "Total budget = sum of compute_backoff(0..N-1). Set to 1 to disable retry.",
+        10,
+    )
+
+    CONNECTION_RETRY_MAX_BACKOFF_S = WrapperProperty(
+        "connection_retry_max_backoff_s",
+        "Per-attempt backoff cap in seconds for the same retry path. Initial "
+        "backoff is 1.0s with a 1.5x multiplier; this caps the geometric growth.",
+        30.0,
     )
 
     # Global Database Read/Write Splitting

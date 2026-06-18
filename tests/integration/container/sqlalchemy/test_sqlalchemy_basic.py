@@ -117,7 +117,15 @@ class Book(Base):
 class TestSqlAlchemy:
     @pytest.fixture(scope="function")
     def engine(self, conn_utils):
-        conn_str = f'mysql+aws_wrapper_mysqlconnector://{conn_utils.user}:{conn_utils.password}@{conn_utils.writer_cluster_host}:{conn_utils.port}/{conn_utils.dbname}'
+        # Pin an EFM-free plugin chain. MySQL cannot use host_monitoring /
+        # host_monitoring_v2: MySQLDriverDialect has no supports_abort_connection,
+        # and EFM V2 hard-raises (HostMonitoringV2Plugin.ConfigurationNotSupported)
+        # at construction without it. A bare URL would inherit the library
+        # DEFAULT_PLUGINS, which includes host_monitoring_v2, so we must specify
+        # the plugins explicitly here.
+        conn_str = (f'mysql+aws_wrapper_mysqlconnector://{conn_utils.user}:{conn_utils.password}'
+                    f'@{conn_utils.writer_cluster_host}:{conn_utils.port}/{conn_utils.dbname}'
+                    f'?wrapper_plugins=aurora_connection_tracker,failover_v2')
         engine = create_engine(conn_str)
         Base.metadata.create_all(engine)
         yield engine
@@ -132,7 +140,7 @@ class TestSqlAlchemy:
         session.close()
 
     def test_sqlalchemy_backend_configuration(self, test_environment: TestEnvironment, session):
-        """Test SQLAlchemy backend configuration with empty plugins"""
+        """Test SQLAlchemy backend configuration with an EFM-free plugin chain"""
         # Verify that the connection is using the AWS wrapper
         assert session.connection().connection is not None
 

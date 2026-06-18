@@ -109,17 +109,28 @@ class RetryUtil:
 
                 while remaining_hosts and time.time() < retry_end_time:
                     candidate_host = None
-                    try:
-                        # The host selector requires a non-null role, so default to READER when
-                        # no specific role needs to be verified.
-                        candidate_host = plugin_service.get_host_info_by_strategy(
-                            verify_role if verify_role is not None else HostRole.READER,
-                            strategy,
-                            remaining_hosts)
-                    except Exception:
-                        # Strategy can't get a host according to the requested conditions.
-                        # Do nothing
-                        pass
+                    # When a specific role must be verified (writer failover), ask the
+                    # selector for exactly that role. Otherwise -- the GDB *_OR_WRITER
+                    # modes pass verify_role=None with an allowed list that already
+                    # includes the writer -- the selector still requires a concrete
+                    # role, so try a reader first (read-offload preference) then fall
+                    # back to the writer. Right after a failover the newly elected
+                    # writer can be the only reachable host; asking only for READER
+                    # would spin until the deadline and fail with
+                    # UnableToConnectToReader even though the writer is a valid target.
+                    if verify_role is not None:
+                        candidate_roles = [verify_role]
+                    else:
+                        candidate_roles = [HostRole.READER, HostRole.WRITER]
+                    for candidate_role in candidate_roles:
+                        try:
+                            candidate_host = plugin_service.get_host_info_by_strategy(
+                                candidate_role, strategy, remaining_hosts)
+                        except Exception:
+                            # Strategy can't get a host of this role; try the next.
+                            candidate_host = None
+                        if candidate_host is not None:
+                            break
 
                     if candidate_host is None:
                         logger.debug("RetryUtil.CandidateNone", verify_role)
@@ -164,7 +175,7 @@ class RetryUtil:
     def close_connection(plugin_service: PluginService, conn: Connection) -> None:
         try:
             plugin_service.driver_dialect.execute(
-                DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
+                DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close(), conn=conn)
         except Exception:
             pass
 

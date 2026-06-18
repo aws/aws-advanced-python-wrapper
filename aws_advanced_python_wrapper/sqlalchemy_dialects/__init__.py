@@ -12,11 +12,10 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from enum import Enum
+"""Custom SQLAlchemy dialects that swap the DBAPI module to the
+AWS Advanced Python Wrapper.
 
-
-class TargetPythonVersion(Enum):
-    PYTHON_3_11 = "PYTHON_3_11"
-    PYTHON_3_12 = "PYTHON_3_12"
-    PYTHON_3_13 = "PYTHON_3_13"
-    PYTHON_3_14 = "PYTHON_3_14"
+Users should prefer the SA dialect registry
+(``create_engine("postgresql+aws_wrapper_psycopg://...")``) over importing
+these classes directly.
+"""

@@ -14,8 +14,8 @@
 
 from unittest.mock import patch
 
-import psycopg  # type: ignore
-import pytest  # type: ignore
+import psycopg
+import pytest
 
 from aws_advanced_python_wrapper.database_dialect import (
     AuroraMysqlDialect, AuroraPgDialect, DatabaseDialectManager, DialectCode,

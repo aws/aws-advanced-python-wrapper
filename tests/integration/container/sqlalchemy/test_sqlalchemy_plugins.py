@@ -14,6 +14,20 @@
 
 # flake8: noqa: N806
 
+"""SQLAlchemy ORM + plugins integration tests.
+
+Salvaged from main's PR #1224 and now bound to the wrapper's own dialect via
+the ``mysql+aws_wrapper_mysqlconnector://`` URL (see SqlAlchemySupport.md).
+
+Validated on real Aurora MySQL (EC2 run, 2026-06-15): these pass on
+mysql-connector's default C extension -- including the failover variants
+(failover_during_query, iam_plugin, secrets_manager) -- so ``use_pure=True``
+is NOT required here. The README's concern that the C extension's
+``is_connected`` can block on network failure did not bite for these
+ORM-level failover paths. (The MySQL SA dialect is separately exercised under
+``use_pure=True`` in test_sqlalchemy.py.)
+"""
+
 from __future__ import annotations
 
 import json
@@ -121,7 +135,12 @@ class Book(Base):
 def _build_url(user, password, host, port, dbname, wrapper_plugins=None, **extra_options):
     """Build a SQLAlchemy connection URL using the aws wrapper dialect."""
     query_params = {}
-    if wrapper_plugins:
+    # ``is not None`` (not truthiness): an explicit empty string means "no
+    # plugins" and must be passed through as ``wrapper_plugins=`` so the
+    # wrapper loads zero plugins. Treating '' as falsy here would drop it and
+    # let the engine inherit DEFAULT_PLUGINS (which includes host_monitoring_v2,
+    # unsupported on MySQL) -- breaking test_sqlalchemy_with_no_plugins.
+    if wrapper_plugins is not None:
         query_params['wrapper_plugins'] = wrapper_plugins
     else:
         query_params['wrapper_plugins'] = ''

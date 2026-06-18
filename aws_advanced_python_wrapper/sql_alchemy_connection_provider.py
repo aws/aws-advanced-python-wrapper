@@ -14,14 +14,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Tuple
+import time
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, Optional,
+                    Tuple)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 
-from sqlalchemy import QueuePool, pool  # type: ignore
+from sqlalchemy import QueuePool, pool
 
 from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -29,6 +31,7 @@ from aws_advanced_python_wrapper.host_selector import (
     HighestWeightHostSelector, HostSelector, RandomHostSelector,
     RoundRobinHostSelector, WeightedRandomHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
+from aws_advanced_python_wrapper.utils import transient_connect
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -140,8 +143,8 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             raise AwsWrapperError(Messages.get_formatted("SqlAlchemyPooledConnectionProvider.PoolNone", host_info.url))
 
         queue_pool, creator_props = db_pool
-
-        # Update the password in the creator's captured properties so new pooled connections use the latest credentials
+        # Refresh the password held by the pool's creator closure so subsequent new
+        # connections use the latest credential (e.g. a freshly minted IAM token).
         password = WrapperProperties.PASSWORD.get(props)
         if password is not None:
             creator_props[WrapperProperties.PASSWORD.name] = password
@@ -173,8 +176,38 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         kwargs["creator"] = self._get_connection_func(target_func, prepared_properties)
         return self._create_sql_alchemy_pool(**kwargs), prepared_properties
 
+    # SA's pool refill goes straight through ``target_connect_func`` and
+    # bypasses the wrapper's plugin chain, so this layer needs its own
+    # transient-retry. Classification and backoff are centralised in
+    # ``utils.transient_connect`` so all retry sites (sync pool, Django
+    # backend) stay in sync. The budget itself is
+    # configurable via ``WrapperProperties.CONNECTION_RETRY_MAX_ATTEMPTS``
+    # and ``CONNECTION_RETRY_MAX_BACKOFF_S`` — defaults match
+    # ``transient_connect.DEFAULT_*`` for backwards compatibility.
+    _TRANSIENT_CONNECT_MAX_ATTEMPTS: ClassVar[int] = transient_connect.DEFAULT_MAX_ATTEMPTS
+
     def _get_connection_func(self, target_connect_func: Callable, props: Properties):
-        return lambda: target_connect_func(**props)
+        max_attempts = WrapperProperties.CONNECTION_RETRY_MAX_ATTEMPTS.get_int(props)
+        max_backoff = WrapperProperties.CONNECTION_RETRY_MAX_BACKOFF_S.get_float(props)
+
+        def _connect_with_transient_retry() -> Any:
+            last_exc: Optional[BaseException] = None
+            for attempt in range(max_attempts):
+                try:
+                    return target_connect_func(**props)
+                except Exception as exc:
+                    last_exc = exc
+                    if transient_connect.is_transient_connect_error(exc) \
+                            and attempt < max_attempts - 1:
+                        time.sleep(transient_connect.compute_backoff(
+                            attempt, max_backoff=max_backoff))
+                        continue
+                    raise
+            # Defensive: loop exits via return or raise above; this is
+            # unreachable but keeps mypy from inferring an implicit None.
+            assert last_exc is not None
+            raise last_exc
+        return _connect_with_transient_retry
 
     def _create_sql_alchemy_pool(self, **kwargs):
         return pool.QueuePool(**kwargs)

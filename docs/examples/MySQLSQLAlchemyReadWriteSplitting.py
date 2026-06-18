@@ -12,10 +12,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""SQLAlchemy + AWS Advanced Python Wrapper: failover on Aurora MySQL."""
+"""SQLAlchemy + AWS Advanced Python Wrapper: read/write splitting on Aurora MySQL."""
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import OperationalError
 
 from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.mysql_connector import connect
@@ -32,26 +31,30 @@ def build_engine():
         creator=lambda: connect(
             f"host={CLUSTER_ENDPOINT} database={DB_NAME} user={USER} password={PASSWORD}",
             wrapper_dialect="aurora-mysql",
-            plugins="failover",
+            plugins="readWriteSplitting",
             use_pure=True,
         ),
     )
 
 
-def run_workload(engine, iterations: int = 20) -> None:
-    for i in range(iterations):
-        try:
-            with engine.connect() as conn:
-                row = conn.execute(text("SELECT @@aurora_server_id")).one()
-                print(f"iter {i}: connected to instance {row[0]}")
-        except OperationalError as exc:
-            print(f"iter {i}: operational error ({type(exc.orig).__name__}); retrying")
+def instance_id(conn) -> str:
+    return conn.execute(text("SELECT @@aurora_server_id")).scalar_one()
 
 
 def main() -> None:
     engine = build_engine()
     try:
-        run_workload(engine)
+        with engine.connect() as conn:
+            print(f"writer: {instance_id(conn)}")
+            conn.commit()
+
+        with engine.connect().execution_options(mysql_readonly=True) as conn:
+            print(f"reader: {instance_id(conn)}")
+            conn.commit()
+
+        with engine.connect() as conn:
+            print(f"writer again: {instance_id(conn)}")
+            conn.commit()
     finally:
         engine.dispose()
         release_resources()
