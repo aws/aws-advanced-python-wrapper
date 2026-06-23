@@ -12,12 +12,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import socket
+
 import psycopg
 import pytest
 from mysql.connector import MySQLConnection
 from mysql.connector.cursor import MySQLCursor
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                UnsupportedOperationError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -145,3 +148,29 @@ def test_prepare_connect_info(dialect):
 
     result = dialect.prepare_connect_info(host_info, original_props)
     assert result == expected_props
+
+
+def test_abort_connection_shuts_down_socket(dialect, mock_conn, mocker):
+    # Pure-Python connector exposes the raw socket at conn._socket.sock. abort
+    # must shut it down (SHUT_RDWR) -- the thread-safe interrupt -- WITHOUT
+    # closing/freeing the connection (the owning thread does that).
+    mock_conn._socket = mocker.MagicMock()
+    dialect.abort_connection(mock_conn)
+    mock_conn._socket.sock.shutdown.assert_called_once_with(socket.SHUT_RDWR)
+
+
+def test_abort_connection_no_socket_is_noop(dialect, mock_conn):
+    # C-extension connections expose no raw socket -> best-effort no-op, no raise.
+    mock_conn._socket = None
+    dialect.abort_connection(mock_conn)  # must not raise
+
+
+def test_abort_connection_swallows_shutdown_oserror(dialect, mock_conn, mocker):
+    mock_conn._socket = mocker.MagicMock()
+    mock_conn._socket.sock.shutdown.side_effect = OSError("already shut down")
+    dialect.abort_connection(mock_conn)  # must not raise
+
+
+def test_abort_connection_rejects_non_mysql_connection(dialect, mock_invalid_conn):
+    with pytest.raises(UnsupportedOperationError):
+        dialect.abort_connection(mock_invalid_conn)

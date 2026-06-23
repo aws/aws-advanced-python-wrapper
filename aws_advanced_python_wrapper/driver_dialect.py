@@ -139,11 +139,13 @@ class DriverDialect(ABC):
 
         if exec_timeout > 0:
             try:
-                # Pass conn so that, on timeout, the abandoned operation's socket is
-                # shut down and its worker thread is awaited before we propagate --
-                # otherwise a later close/reuse of conn races the still-running
-                # operation (cross-thread use-after-free in the driver, env-4 SIGSEGV).
-                execute_with_timeout = timeout(self._thread_pool, exec_timeout, conn)(exec_func)
+                # Pass self (the driver dialect) + conn so that, on timeout, the
+                # abandoned operation's socket is shut down (via
+                # driver_dialect.abort_connection) and its worker thread is awaited
+                # before we propagate -- otherwise a later close/reuse of conn races
+                # the still-running operation (cross-thread use-after-free in the
+                # driver, env-4 SIGSEGV).
+                execute_with_timeout = timeout(self._thread_pool, exec_timeout, self, conn)(exec_func)
                 return execute_with_timeout()
             except TimeoutError as e:
                 raise QueryTimeoutError(Messages.get_formatted("DriverDialect.ExecuteTimeout", method_name)) from e

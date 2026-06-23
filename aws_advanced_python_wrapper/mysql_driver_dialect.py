@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import socket
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
 
 if TYPE_CHECKING:
@@ -159,11 +160,24 @@ class MySQLDriverDialect(DriverDialect):
         props[MySQLDriverDialect.AUTH_PLUGIN_PARAM] = MySQLDriverDialect.AUTH_METHOD
 
     def abort_connection(self, conn: Connection):
-        raise UnsupportedOperationError(
-            Messages.get_formatted(
-                "DriverDialect.UnsupportedOperationError",
-                self._driver_name,
-                "abort_connection"))
+        # Shut the connection's underlying socket down to interrupt an in-flight
+        # operation so the owning thread's blocked recv returns promptly, WITHOUT
+        # freeing the connection (the owning thread closes it -- freeing it here
+        # would race a cross-thread use-after-free in the driver, the env-4 SIGSEGV).
+        # Thread-safe equivalent of JDBC's Connection.abort(). Only the pure-Python
+        # connector exposes the raw socket; best-effort no-op for the C extension.
+        if not MySQLDriverDialect._is_mysql_connection(conn):
+            raise UnsupportedOperationError(
+                Messages.get_formatted(
+                    "DriverDialect.UnsupportedOperationError",
+                    self._driver_name,
+                    "abort_connection"))
+        sock = getattr(getattr(conn, "_socket", None), "sock", None)
+        if sock is not None and hasattr(sock, "shutdown"):
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
 
     def can_execute_query(self, conn: Connection) -> bool:
         if MySQLDriverDialect._is_mysql_connection(conn):
