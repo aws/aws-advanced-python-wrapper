@@ -84,6 +84,19 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def target_connection(self):
         return self._plugin_service.current_connection
 
+    def __getattr__(self, name: str) -> Any:
+        # Delegate unknown attributes to the live underlying driver connection so
+        # driver-specific extension methods that aren't on the wrapper's PEP-249
+        # surface (e.g. psycopg's add_notice_handler, called by SQLAlchemy) work
+        # transparently. __getattr__ runs only on a normal-lookup miss, so it never
+        # shadows the wrapper's own API. Underscore names are not delegated: that
+        # keeps Python internals (pickle/copy dunders) on the wrapper and prevents
+        # infinite recursion if an internal attr (e.g. _plugin_service) is read
+        # before it is set.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.target_connection, name)
+
     @property
     def is_closed(self):
         return self._plugin_service.driver_dialect.is_closed(self.target_connection)
@@ -258,6 +271,14 @@ class AwsWrapperCursor(Cursor):
     @property
     def target_cursor(self) -> Cursor:
         return self._target_cursor
+
+    def __getattr__(self, name: str) -> Any:
+        # See AwsWrapperConnection.__getattr__. Delegate unknown attributes to the
+        # underlying driver cursor (e.g. psycopg's statusmessage) so driver-specific
+        # extensions used by SQLAlchemy/application code work transparently.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.target_cursor, name)
 
     @property
     def description(self):

@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import psycopg
+import pytest
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -25,7 +26,8 @@ if TYPE_CHECKING:
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.plugin_service import (
     PluginServiceImpl, PluginServiceManagerContainer)
-from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.wrapper import (AwsWrapperConnection,
+                                                 AwsWrapperCursor)
 
 
 def test_connection_basic():
@@ -42,3 +44,42 @@ def test_connection_basic():
 
         connection_mock.connect.assert_called_with(host="localhost", dbname="postgres", user="postgres",
                                                    password="qwerty")
+
+
+def test_connection_getattr_delegates_to_underlying_connection():
+    # Driver-specific extension methods absent from the wrapper's PEP-249 surface
+    # (e.g. psycopg's add_notice_handler, called by SQLAlchemy) must reach the
+    # live underlying connection via __getattr__.
+    wrapper = AwsWrapperConnection.__new__(AwsWrapperConnection)
+    underlying = MagicMock()
+    plugin_service = MagicMock()
+    plugin_service.current_connection = underlying
+    wrapper._plugin_service = plugin_service
+
+    assert wrapper.add_notice_handler is underlying.add_notice_handler
+
+
+def test_connection_getattr_does_not_delegate_underscore_names():
+    # Underscore names are not delegated: keeps Python internals on the wrapper and
+    # prevents infinite recursion when an internal attr isn't set yet.
+    wrapper = AwsWrapperConnection.__new__(AwsWrapperConnection)
+    wrapper._plugin_service = MagicMock()
+
+    with pytest.raises(AttributeError):
+        _ = wrapper._not_a_real_internal_attr
+
+
+def test_cursor_getattr_delegates_to_target_cursor():
+    wrapper = AwsWrapperCursor.__new__(AwsWrapperCursor)
+    target_cursor = MagicMock()
+    wrapper._target_cursor = target_cursor
+
+    assert wrapper.statusmessage is target_cursor.statusmessage
+
+
+def test_cursor_getattr_does_not_delegate_underscore_names():
+    wrapper = AwsWrapperCursor.__new__(AwsWrapperCursor)
+    wrapper._target_cursor = MagicMock()
+
+    with pytest.raises(AttributeError):
+        _ = wrapper._not_a_real_internal_attr
