@@ -654,26 +654,6 @@ class WrapperProperties:
         1000,
     )
 
-    # Retry budget for connections opened at sites that bypass the wrapper's
-    # plugin chain (SQLAlchemy pool creator, Django MySQL backend). Aurora's
-    # promoted writer can spend 15-60s rejecting connects during post-failover
-    # boot; these knobs let consumers extend or shorten the retry window
-    # without forking. See ``utils/transient_connect.py``.
-    CONNECTION_RETRY_MAX_ATTEMPTS = WrapperProperty(
-        "connection_retry_max_attempts",
-        "Maximum number of attempts when opening a connection at the SQLAlchemy "
-        "pool / Django backend layer (paths that bypass the plugin chain). "
-        "Total budget = sum of compute_backoff(0..N-1). Set to 1 to disable retry.",
-        10,
-    )
-
-    CONNECTION_RETRY_MAX_BACKOFF_S = WrapperProperty(
-        "connection_retry_max_backoff_s",
-        "Per-attempt backoff cap in seconds for the same retry path. Initial "
-        "backoff is 1.0s with a 1.5x multiplier; this caps the geometric growth.",
-        30.0,
-    )
-
     # Global Database Read/Write Splitting
     GDB_RW_HOME_REGION = WrapperProperty(
         "gdb_rw_home_region",
