@@ -59,14 +59,26 @@ def test_connection_getattr_delegates_to_underlying_connection():
     assert wrapper.add_notice_handler is underlying.add_notice_handler
 
 
-def test_connection_getattr_does_not_delegate_underscore_names():
-    # Underscore names are not delegated: keeps Python internals on the wrapper and
-    # prevents infinite recursion when an internal attr isn't set yet.
+def test_connection_getattr_delegates_driver_attrs_including_underscore():
+    # Public AND single-underscore driver attrs delegate to the live underlying
+    # connection (SQLAlchemy's psycopg adapter reaches for underscore members like
+    # _close). Only dunders stay on the wrapper, and the recursion-critical
+    # _plugin_service name is guarded so a miss before it is set raises cleanly.
     wrapper = AwsWrapperConnection.__new__(AwsWrapperConnection)
-    wrapper._plugin_service = MagicMock()
+    underlying = MagicMock()
+    plugin_service = MagicMock()
+    plugin_service.current_connection = underlying
+    wrapper._plugin_service = plugin_service
 
+    # single-underscore driver attr delegates (regression: was wrongly blocked)
+    assert wrapper._close is underlying._close
+    # dunder stays on the wrapper, not delegated
     with pytest.raises(AttributeError):
-        _ = wrapper._not_a_real_internal_attr
+        _ = wrapper.__totally_made_up_dunder__
+    # the recursion-critical internal name is guarded when unset
+    fresh = AwsWrapperConnection.__new__(AwsWrapperConnection)
+    with pytest.raises(AttributeError):
+        _ = fresh._plugin_service
 
 
 def test_cursor_getattr_delegates_to_target_cursor():
@@ -77,9 +89,15 @@ def test_cursor_getattr_delegates_to_target_cursor():
     assert wrapper.statusmessage is target_cursor.statusmessage
 
 
-def test_cursor_getattr_does_not_delegate_underscore_names():
+def test_cursor_getattr_delegates_driver_attrs_including_underscore():
     wrapper = AwsWrapperCursor.__new__(AwsWrapperCursor)
-    wrapper._target_cursor = MagicMock()
+    target_cursor = MagicMock()
+    wrapper._target_cursor = target_cursor
 
+    # _close must delegate: SQLAlchemy's psycopg cursor adapter calls it.
+    assert wrapper._close is target_cursor._close
     with pytest.raises(AttributeError):
-        _ = wrapper._not_a_real_internal_attr
+        _ = wrapper.__totally_made_up_dunder__
+    fresh = AwsWrapperCursor.__new__(AwsWrapperCursor)
+    with pytest.raises(AttributeError):
+        _ = fresh._target_cursor

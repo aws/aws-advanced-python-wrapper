@@ -88,12 +88,14 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         # Delegate unknown attributes to the live underlying driver connection so
         # driver-specific extension methods that aren't on the wrapper's PEP-249
         # surface (e.g. psycopg's add_notice_handler, called by SQLAlchemy) work
-        # transparently. __getattr__ runs only on a normal-lookup miss, so it never
-        # shadows the wrapper's own API. Underscore names are not delegated: that
-        # keeps Python internals (pickle/copy dunders) on the wrapper and prevents
-        # infinite recursion if an internal attr (e.g. _plugin_service) is read
-        # before it is set.
-        if name.startswith("_"):
+        # transparently -- including single-underscore driver attributes, since
+        # SQLAlchemy's psycopg adapter reaches for names like _close. __getattr__
+        # runs only on a normal-lookup miss, so it never shadows the wrapper's own
+        # API. Only dunders are kept on the wrapper (pickle/copy internals), and
+        # _plugin_service is guarded by name -- it is the recursion-critical field
+        # this method dereferences (via target_connection), so a miss before it is
+        # set raises cleanly instead of recursing through this method.
+        if name == "_plugin_service" or name.startswith("__"):
             raise AttributeError(name)
         return getattr(self.target_connection, name)
 
@@ -274,9 +276,11 @@ class AwsWrapperCursor(Cursor):
 
     def __getattr__(self, name: str) -> Any:
         # See AwsWrapperConnection.__getattr__. Delegate unknown attributes to the
-        # underlying driver cursor (e.g. psycopg's statusmessage) so driver-specific
-        # extensions used by SQLAlchemy/application code work transparently.
-        if name.startswith("_"):
+        # underlying driver cursor (e.g. psycopg's statusmessage, and single-
+        # underscore driver methods like _close that SQLAlchemy's adapter calls).
+        # Only dunders stay on the wrapper, and _target_cursor is guarded by name
+        # so a miss before __init__ sets it raises instead of recursing.
+        if name == "_target_cursor" or name.startswith("__"):
             raise AttributeError(name)
         return getattr(self.target_cursor, name)
 
