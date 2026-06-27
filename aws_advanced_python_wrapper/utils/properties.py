@@ -603,19 +603,6 @@ class WrapperProperties:
         1000,
     )
 
-    RWS_RECHECK_READER_ROLE = WrapperProperty(
-        "rws_recheck_reader_role",
-        "When the Read/Write Splitting Plugin picks a reader from topology, "
-        "query the freshly-opened connection's actual role via "
-        "``get_host_role``. If the live role does not match ``HostRole.READER`` "
-        "(e.g., Aurora's cluster topology lagged a recent failover and the "
-        "picked instance is actually the writer), close the connection, "
-        "force a topology refresh, and try another candidate. Defaults to "
-        "``True`` -- disable only if you're seeing the role-recheck query "
-        "show up as latency in your workload.",
-        True,
-    )
-
     # Simple Read/Write Splitting
     SRW_READ_ENDPOINT = WrapperProperty(
         "srw_read_endpoint",
