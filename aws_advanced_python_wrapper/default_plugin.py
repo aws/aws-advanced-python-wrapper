@@ -100,12 +100,21 @@ class DefaultPlugin(Plugin):
             self._connection_provider_manager.default_provider)
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
+        # The connection the operation runs on, so driver_dialect.execute can
+        # interrupt-and-wait it on timeout instead of leaving it running on a
+        # worker thread for a later close/reuse to race (env-4 SIGSEGV). target is
+        # the raw cursor (cursor methods) or raw connection (connection methods).
+        driver_dialect = self._plugin_service.driver_dialect
+        timeout_conn = driver_dialect.get_connection_from_obj(target)
+        if timeout_conn is None:
+            timeout_conn = target
+
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         context = telemetry_factory.open_telemetry_context(
             self._plugin_service.driver_dialect.driver_name, TelemetryTraceLevel.NESTED)
 
         try:
-            result = self._plugin_service.driver_dialect.execute(method_name, execute_func, *args, **kwargs)
+            result = driver_dialect.execute(method_name, execute_func, *args, conn=timeout_conn, **kwargs)
         finally:
             if context is not None:
                 context.close_context()
