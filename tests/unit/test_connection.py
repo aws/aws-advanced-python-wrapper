@@ -101,3 +101,79 @@ def test_cursor_getattr_delegates_driver_attrs_including_underscore():
     fresh = AwsWrapperCursor.__new__(AwsWrapperCursor)
     with pytest.raises(AttributeError):
         _ = fresh._target_cursor
+
+
+def _make_sync_conn(target=None):
+    wrapper = AwsWrapperConnection.__new__(AwsWrapperConnection)
+    plugin_service = MagicMock()
+    plugin_service.current_connection = target if target is not None else MagicMock()
+    wrapper._plugin_service = plugin_service
+    wrapper._plugin_manager = MagicMock()
+    return wrapper, plugin_service.current_connection
+
+
+def test_connection_execute_routes_through_cursor_not_raw_driver():
+    # psycopg exposes conn.execute(); the wrapper must NOT forward it raw via
+    # __getattr__ (that would bypass the plugin chain). It opens a wrapper cursor.
+    wrapper, target = _make_sync_conn()
+    fake_cursor = MagicMock()
+    with patch.object(AwsWrapperConnection, "cursor", return_value=fake_cursor) as cursor_mock:
+        result = wrapper.execute("SELECT 1", None)
+    cursor_mock.assert_called_once()
+    fake_cursor.execute.assert_called_once()
+    assert result is fake_cursor
+    target.execute.assert_not_called()
+
+
+def test_connection_set_read_only_routes_through_plugin_manager():
+    # Must go through the plugin-aware read_only setter (plugin chain +
+    # session-state), not the raw driver set_read_only that __getattr__ would
+    # forward -- otherwise the read-only state is lost across failover.
+    wrapper, target = _make_sync_conn()
+    wrapper.set_read_only(True)
+    assert wrapper._plugin_manager.execute.called
+    target.set_read_only.assert_not_called()
+
+
+def test_connection_set_autocommit_routes_through_plugin_manager():
+    wrapper, target = _make_sync_conn()
+    wrapper.set_autocommit(True)
+    assert wrapper._plugin_manager.execute.called
+    target.set_autocommit.assert_not_called()
+
+
+def test_connection_invalidate_prefers_target_invalidate():
+    wrapper, target = _make_sync_conn()
+    wrapper.release_resources = MagicMock()
+    wrapper.invalidate()
+    target.invalidate.assert_called_once()
+    wrapper.release_resources.assert_called_once()
+
+
+def test_connection_invalidate_falls_back_to_close():
+    # A raw driver connection has no invalidate() -> fall back to close().
+    wrapper, _ = _make_sync_conn(MagicMock(spec=psycopg.Connection))
+    wrapper.close = MagicMock()
+    wrapper.invalidate()
+    wrapper.close.assert_called_once()
+
+
+def test_connection_closed_forwards_target_and_defaults_false():
+    wrapper, target = _make_sync_conn()
+    target.closed = True
+    assert wrapper.closed is True
+    # a target lacking `closed` normalizes to False instead of AttributeError
+    wrapper2, _ = _make_sync_conn(MagicMock(spec=[]))
+    assert wrapper2.closed is False
+
+
+def test_connection_prepare_threshold_and_prepared_max_forward():
+    wrapper, target = _make_sync_conn()
+    target.prepare_threshold = 7
+    target.prepared_max = 11
+    assert wrapper.prepare_threshold == 7
+    assert wrapper.prepared_max == 11
+    wrapper.prepare_threshold = 99
+    wrapper.prepared_max = 100
+    assert target.prepare_threshold == 99
+    assert target.prepared_max == 100

@@ -199,6 +199,30 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
                                      lambda: self.target_connection.close())
         self.release_resources()
 
+    def invalidate(self) -> None:
+        """Mark this connection as invalid and evict it from any owning pool.
+
+        For pool-proxied targets (e.g. SQLAlchemy's ``_ConnectionFairy``),
+        calls the underlying ``.invalidate()`` which closes the driver
+        connection AND removes it from the pool's tracking, so the next
+        pool checkout creates a fresh connection. For raw driver
+        connections (no ``invalidate`` method), falls back to ``close()``.
+
+        Use ``invalidate()`` when the connection is known to be in a
+        broken state (e.g. after a failover-eligible exception); use
+        ``close()`` when the connection was used normally and you intend
+        the pool to keep the underlying socket for reuse.
+        """
+        inv = getattr(self.target_connection, "invalidate", None)
+        if callable(inv):
+            try:
+                inv()
+                self.release_resources()
+                return
+            except Exception:  # noqa: BLE001 - fall through to close
+                pass
+        self.close()
+
     def cursor(self, *args: Any, **kwargs: Any) -> AwsWrapperCursor:
         _cursor = self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_CURSOR,
                                                lambda: self.target_connection.cursor(*args, **kwargs),
@@ -232,6 +256,69 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
     def tpc_recover(self) -> Any:
         return self._plugin_manager.execute(self.target_connection, DbApiMethod.CONNECTION_TPC_RECOVER,
                                             lambda: self.target_connection.tpc_recover())
+
+    # ---- psycopg3-parity passthroughs that need explicit handling ------
+    #
+    # Driver-specific attributes (add_notice_handler, info, broken, cancel,
+    # ...) are forwarded automatically by __getattr__. The members below stay
+    # explicit because __getattr__ can't express them: they route through the
+    # plugin chain, have setters, or implement a SQLAlchemy adapter contract
+    # rather than a plain driver forward.
+
+    @property
+    def closed(self) -> bool:
+        """Whether the underlying driver connection is closed.
+
+        psycopg3 exposes ``closed`` as a sync bool property; SA's psycopg
+        dialect reads it during pool-invalidation paths
+        (``sqlalchemy/dialects/postgresql/psycopg.py:595``) after a DBAPI
+        exception is classified. The wrapper has the plugin-aware sync
+        ``is_closed`` property, but SA's dialect probes the unprefixed
+        ``closed`` attribute directly. Without this passthrough, SA's
+        post-exception cleanup raises AttributeError on our proxy.
+        """
+        return bool(getattr(self.target_connection, "closed", False))
+
+    @property
+    def prepare_threshold(self) -> Any:
+        return self.target_connection.prepare_threshold
+
+    @prepare_threshold.setter
+    def prepare_threshold(self, value: Any) -> None:
+        self.target_connection.prepare_threshold = value
+
+    @property
+    def prepared_max(self) -> Any:
+        return self.target_connection.prepared_max
+
+    @prepared_max.setter
+    def prepared_max(self, value: Any) -> None:
+        self.target_connection.prepared_max = value
+
+    def set_read_only(self, value: Any) -> None:
+        # Route through the existing plugin-aware setter so read_only
+        # changes keep their intended plugin-chain semantics.
+        self.read_only = value
+
+    def set_autocommit(self, value: Any) -> None:
+        # Same plugin-chain routing as read_only.
+        self.autocommit = value
+
+    def execute(
+            self,
+            query: Any,
+            params: Any = None,
+            *,
+            prepare: Any = None,
+            binary: bool = False) -> Any:
+        # psycopg3's Connection.execute() is a shortcut that opens a cursor
+        # and runs the query in one call. Route via our cursor so the query
+        # goes through the plugin chain (failover, RWS, etc.) instead of
+        # bypassing it -- otherwise SQLAlchemy and other psycopg-aware
+        # callers can issue SQL that's invisible to plugins.
+        cursor = self.cursor()
+        cursor.execute(query, params, prepare=prepare, binary=binary)
+        return cursor
 
     def release_resources(self):
         self._plugin_manager.release_resources()
