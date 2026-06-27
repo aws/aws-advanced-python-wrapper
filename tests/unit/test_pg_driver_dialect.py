@@ -48,9 +48,33 @@ def dialect():
     return PgDriverDialect(Properties())
 
 
-def test_abort_connection(dialect, mock_conn, mock_invalid_conn):
+def test_abort_connection(dialect, mock_conn, mock_invalid_conn, mocker):
+    # abort_connection runs on the EFM monitor thread against a connection owned
+    # by another thread. It must NOT call close() (psycopg close() is PQfinish:
+    # it frees the libpq struct + tears down SSL with no lock, racing a
+    # use-after-free in libpq/OpenSSL -> SIGSEGV). It must shut the underlying
+    # socket down instead: that interrupts the owning thread's recv (even on an
+    # unreachable host) WITHOUT freeing the struct, and releases the fd without
+    # closing it (the connection still owns it).
+    mock_conn.closed = False
+    mock_conn.fileno.return_value = 7
+    mock_sock = mocker.MagicMock()
+    socket_ctor = mocker.patch(
+        "aws_advanced_python_wrapper.pg_driver_dialect.socket.socket", return_value=mock_sock)
+
     dialect.abort_connection(mock_conn)
-    mock_conn.close.assert_called_once()
+    socket_ctor.assert_called_once_with(fileno=7)
+    mock_sock.shutdown.assert_called_once()
+    mock_sock.detach.assert_called_once()
+    mock_conn.close.assert_not_called()
+
+    # already-closed connection: nothing to do
+    mock_conn.reset_mock()
+    socket_ctor.reset_mock()
+    mock_conn.closed = True
+    dialect.abort_connection(mock_conn)
+    socket_ctor.assert_not_called()
+    mock_conn.close.assert_not_called()
 
     with pytest.raises(AwsWrapperError):
         dialect.abort_connection(mock_invalid_conn)

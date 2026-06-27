@@ -56,21 +56,26 @@ class WrapperProperty:
         return props.get(self.name)
 
     def get_type(self, props: Properties, type_class: Type[T]) -> T:
+        # Runtime dispatch by ``type_class``: mypy can't prove that the
+        # concrete returned value matches the generic T, so narrow each
+        # branch's suppression to [return-value] rather than a bare
+        # ``# type: ignore`` -- that way new type errors elsewhere in
+        # the function still get surfaced.
         value = props.get(self.name, self.default_value) if self.default_value else props.get(self.name)
         if value is None:
             if type_class == int:
-                return -1  # type: ignore
+                return -1  # type: ignore[return-value]
             elif type_class == float:
-                return -1.0  # type: ignore
+                return -1.0  # type: ignore[return-value]
             elif type_class == bool:
-                return False  # type: ignore
+                return False  # type: ignore[return-value]
             else:
-                return None  # type: ignore
+                return None  # type: ignore[return-value]
         if type_class == bool:
             if isinstance(value, bool):
-                return value  # type: ignore
-            return value.lower() == "true" if isinstance(value, str) else bool(value)  # type: ignore
-        return type_class(value)  # type: ignore
+                return value  # type: ignore[return-value]
+            return value.lower() == "true" if isinstance(value, str) else bool(value)  # type: ignore[return-value]
+        return type_class(value)  # type: ignore[call-arg]
 
     def get_int(self, props: Properties) -> int:
         return self.get_type(props, int)

@@ -14,20 +14,19 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Set
+import socket
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
 
-from concurrent.futures import TimeoutError
 from inspect import signature
 
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
-from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
@@ -95,27 +94,62 @@ class MySQLDriverDialect(DriverDialect):
             if self.can_execute_query(conn):
                 socket_timeout = WrapperProperties.SOCKET_TIMEOUT_SEC.get_float(self._props)
                 timeout_sec = socket_timeout if socket_timeout > 0 else MySQLDriverDialect.IS_CLOSED_TIMEOUT_SEC
-                is_connected_with_timeout = timeout(
-                    self._thread_pool, timeout_sec)(conn.is_connected)  # type: ignore
-
+                # Run the liveness ping on the CALLING thread, never a worker
+                # thread. mysql.connector connections are not safe for concurrent
+                # use. The previous implementation offloaded conn.is_connected()
+                # (a COM_PING == SSL I/O) to a thread pool and, on timeout,
+                # abandoned the still-running ping on the pool thread while the
+                # caller went on to use/close the same connection -- two threads
+                # doing SSL read/write on one socket, a use-after-free in
+                # OpenSSL/libmysqlclient that crashes the process with SIGSEGV.
+                # Bound the ping with a temporary socket read timeout instead so
+                # it cannot hang, and never touch the connection from a second
+                # thread.
+                restore_timeout = MySQLDriverDialect._set_socket_timeout(conn, timeout_sec)
                 try:
-                    return not is_connected_with_timeout()
-                except TimeoutError:
-                    return False
+                    return not conn.is_connected()  # type: ignore[attr-defined]
+                finally:
+                    if restore_timeout is not None:
+                        restore_timeout()
             return False
 
         raise UnsupportedOperationError(Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "is_connected"))
 
+    @staticmethod
+    def _set_socket_timeout(conn: Connection, timeout_sec: float) -> Optional[Callable[[], None]]:
+        """Temporarily set a read timeout on the connection's underlying socket so
+        that a liveness ping issued on the calling thread cannot block forever.
+
+        Returns a callable that restores the previous timeout, or None when the
+        socket is not reachable (e.g. the C-extension connection, whose ping is
+        instead bounded by its connect-time read_timeout)."""
+        sock = getattr(getattr(conn, "_socket", None), "sock", None)
+        if sock is None:
+            return None
+        try:
+            previous = sock.gettimeout()
+            sock.settimeout(timeout_sec)
+        except OSError:
+            return None
+
+        def _restore() -> None:
+            try:
+                sock.settimeout(previous)
+            except OSError:
+                pass
+
+        return _restore
+
     def get_autocommit(self, conn: Connection) -> bool:
         if MySQLDriverDialect._is_mysql_connection(conn):
-            return conn.autocommit  # type: ignore
+            return conn.autocommit  # type: ignore[attr-defined]
 
         raise UnsupportedOperationError(
             Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "autocommit"))
 
     def set_autocommit(self, conn: Connection, autocommit: bool):
         if MySQLDriverDialect._is_mysql_connection(conn):
-            conn.autocommit = autocommit  # type: ignore
+            conn.autocommit = autocommit  # type: ignore[attr-defined]
             return
 
         raise UnsupportedOperationError(
@@ -126,21 +160,34 @@ class MySQLDriverDialect(DriverDialect):
         props[MySQLDriverDialect.AUTH_PLUGIN_PARAM] = MySQLDriverDialect.AUTH_METHOD
 
     def abort_connection(self, conn: Connection):
-        raise UnsupportedOperationError(
-            Messages.get_formatted(
-                "DriverDialect.UnsupportedOperationError",
-                self._driver_name,
-                "abort_connection"))
+        # Shut the connection's underlying socket down to interrupt an in-flight
+        # operation so the owning thread's blocked recv returns promptly, WITHOUT
+        # freeing the connection (the owning thread closes it -- freeing it here
+        # would race a cross-thread use-after-free in the driver, the env-4 SIGSEGV).
+        # Thread-safe equivalent of JDBC's Connection.abort(). Only the pure-Python
+        # connector exposes the raw socket; best-effort no-op for the C extension.
+        if not MySQLDriverDialect._is_mysql_connection(conn):
+            raise UnsupportedOperationError(
+                Messages.get_formatted(
+                    "DriverDialect.UnsupportedOperationError",
+                    self._driver_name,
+                    "abort_connection"))
+        sock = getattr(getattr(conn, "_socket", None), "sock", None)
+        if sock is not None and hasattr(sock, "shutdown"):
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
 
     def can_execute_query(self, conn: Connection) -> bool:
         if MySQLDriverDialect._is_mysql_connection(conn):
-            if conn.unread_result:  # type: ignore
-                return conn.can_consume_results  # type: ignore
+            if conn.unread_result:  # type: ignore[attr-defined]
+                return conn.can_consume_results  # type: ignore[attr-defined]
         return True
 
     def is_in_transaction(self, conn: Connection) -> bool:
         if MySQLDriverDialect._is_mysql_connection(conn):
-            return bool(conn.in_transaction)  # type: ignore
+            return bool(conn.in_transaction)  # type: ignore[attr-defined]
 
         raise UnsupportedOperationError(
             Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name,
@@ -178,7 +225,7 @@ class MySQLDriverDialect(DriverDialect):
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         if MySQLDriverDialect._is_mysql_connection(from_conn) and MySQLDriverDialect._is_mysql_connection(to_conn):
-            to_conn.autocommit = from_conn.autocommit  # type: ignore
+            to_conn.autocommit = from_conn.autocommit  # type: ignore[attr-defined]
 
     def ping(self, conn: Connection) -> bool:
         return not self.is_closed(conn)
