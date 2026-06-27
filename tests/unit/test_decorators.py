@@ -15,6 +15,7 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,7 +30,7 @@ class _Conn:
     pass
 
 
-def _dialect(abort_releases: threading.Event = None):
+def _dialect(abort_releases: Optional[threading.Event] = None):
     dialect = MagicMock()
     dialect.is_in_transaction.return_value = False
     if abort_releases is not None:
