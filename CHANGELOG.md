@@ -3,6 +3,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/#semantic-versioning-200).
 
+## [Unreleased]
+### :magic_wand: Added
+* Python 3.14 support. ([PR #1252](https://github.com/aws/aws-advanced-python-wrapper/pull/1252))
+
+### :bug: Fixed
+* Cross-thread use-after-free (SIGSEGV) when an offloaded query times out (e.g. during failover) and the connection is later closed or reused while the query is still running: on timeout the driver dialects now shut down the connection socket and wait for the worker to unwind before propagating, and leak rather than close a connection whose worker cannot be drained. ([PR #1252](https://github.com/aws/aws-advanced-python-wrapper/pull/1252))
+
 ## [3.0.0] - 2026-06-02
 
 ### :crab: Breaking Changes
