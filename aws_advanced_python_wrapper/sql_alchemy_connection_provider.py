@@ -14,8 +14,7 @@
 
 from __future__ import annotations
 
-from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
-                    Tuple)
+from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
