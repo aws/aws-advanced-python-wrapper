@@ -28,7 +28,7 @@ PASSWORD = "pwd"
 
 def build_engine():
     return create_engine(
-        "mysql+mysqlconnector://",
+        "mysql+aws_wrapper_mysqlconnector://",
         creator=lambda: connect(
             f"host={CLUSTER_ENDPOINT} database={DB_NAME} user={USER} password={PASSWORD}",
             wrapper_dialect="aurora-mysql",

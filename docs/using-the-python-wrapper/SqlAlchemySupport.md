@@ -19,12 +19,13 @@ from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.psycopg import connect
 
 engine = create_engine(
-    "postgresql+psycopg://",
+    "postgresql+aws_wrapper_psycopg://",
     creator=lambda: connect(
         "host=database.cluster-xyz.us-east-1.rds.amazonaws.com "
         "dbname=db user=john password=pwd",
         wrapper_dialect="aurora-pg",
         plugins="failover,host_monitoring_v2",
+        cluster_id="pg_sqlalchemy",
     ),
 )
 
@@ -37,7 +38,7 @@ finally:
     release_resources()
 ```
 
-The wrapper's connection options (`wrapper_dialect`, `plugins`, etc.) are passed as kwargs to `connect`; the `postgresql+psycopg://` URL tells SQLAlchemy which SQL compiler and type system to use.
+The wrapper's connection options (`wrapper_dialect`, `plugins`, etc.) are passed as kwargs to `connect`. PostgreSQL requires the wrapper's custom dialect (`postgresql+aws_wrapper_psycopg://`) even with the `creator=` pattern: SQLAlchemy's stock psycopg dialect calls `psycopg.TypeInfo.fetch()` during initialization, which `isinstance`-checks its argument against the real `psycopg.Connection` and raises `TypeError: expected Connection or AsyncConnection, got AwsWrapperConnection` on the wrapper proxy. The custom dialect unwraps to the native connection for those calls.
 
 ## Using the wrapper with SQLAlchemy (MySQL)
 
@@ -48,7 +49,7 @@ from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.mysql_connector import connect
 
 engine = create_engine(
-    "mysql+mysqlconnector://",
+    "mysql+aws_wrapper_mysqlconnector://",
     creator=lambda: connect(
         "host=database.cluster-xyz.us-east-1.rds.amazonaws.com "
         "database=db user=john password=pwd",
@@ -140,15 +141,29 @@ Two things must be torn down at shutdown, in this order:
 
 They are complementary: `engine.dispose()` does not reach the wrapper's background machinery, and `release_resources()` does not close SA's pool.
 
-## Combining with plugins
+## Plugin Compatibility
 
-Plugins are configured identically to non-SA usage — via the `plugins` connection property and any plugin-specific options. See:
+Plugins are configured identically to non-SA usage — via the `plugins` connection property (or `wrapper_plugins` in the URL) and any plugin-specific options.
 
-- [Failover Plugin](using-plugins/UsingTheFailoverPlugin.md) / [Failover v2 Plugin](using-plugins/UsingTheFailover2Plugin.md)
-- [Read/Write Splitting Plugin](using-plugins/UsingTheReadWriteSplittingPlugin.md)
-- [Host Monitoring Plugin (EFM)](using-plugins/UsingTheHostMonitoringPlugin.md)
-- [IAM Authentication Plugin](using-plugins/UsingTheIamAuthenticationPlugin.md)
-- [AWS Secrets Manager Plugin](using-plugins/UsingTheAwsSecretsManagerPlugin.md)
+| Plugin name | Plugin Code | Supported? |
+|-------------------------------------------------------------------------------------------------|-------------------------------------------|-----|
+| [Failover Plugin](using-plugins/UsingTheFailoverPlugin.md)                                    | `failover`                                | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Failover Plugin v2](using-plugins/UsingTheFailover2Plugin.md)                                | `failover_v2`                             | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Host Monitoring Plugin](using-plugins/UsingTheHostMonitoringPlugin.md)                       | `host_monitoring_v2` or `host_monitoring` | <span style="color:yellow;font-size:15px">&check;</span> |
+| [IAM Authentication Plugin](using-plugins/UsingTheIamAuthenticationPlugin.md)                 | `iam`                                     | <span style="color:yellow;font-size:15px">&check;</span> |
+| [AWS Secrets Manager Plugin](using-plugins/UsingTheAwsSecretsManagerPlugin.md)                | `aws_secrets_manager`                     | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Federated Authentication Plugin](using-plugins/UsingTheFederatedAuthenticationPlugin.md)     | `federated_auth`                          | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Okta Authentication Plugin](using-plugins/UsingTheOktaAuthenticationPlugin.md)               | `okta`                                    | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Custom Endpoint Plugin](using-plugins/UsingTheCustomEndpointPlugin.md)                       | `custom_endpoint`                         | <span style="color:yellow;font-size:15px">&check;</span> |
+| Aurora Stale DNS Plugin                                                                        | `stale_dns`                               | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Aurora Connection Tracker Plugin](using-plugins/UsingTheAuroraConnectionTrackerPlugin.md)    | `aurora_connection_tracker`               | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Fastest Response Strategy Plugin](using-plugins/UsingTheFastestResponseStrategyPlugin.md)    | `fastest_response_strategy`               | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Blue/Green Deployment Plugin](using-plugins/UsingTheBlueGreenPlugin.md)                      | `bg`                                      | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Limitless Plugin](using-plugins/UsingTheLimitlessPlugin.md)                                  | `limitless`                               | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Read Write Splitting Plugin](using-plugins/UsingTheReadWriteSplittingPlugin.md)              | `read_write_splitting`                    | <span style="color:red;font-size:20px">&cross;</span> |
+| [Simple Read Write Splitting Plugin](using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) | `srw`                                     | <span style="color:red;font-size:20px">&cross;</span> |
+
+Read/write splitting is **not** supported with SQLAlchemy: the plugins switch instances by setting `read_only` on a long-lived connection, and there is currently no routing of SQLAlchemy's `execution_options(...readonly=True)` to the wrapper's `read_only` attribute. For read/write workloads, use SQLAlchemy's own session binding — see the [official SQLAlchemy documentation on the Session API](https://docs.sqlalchemy.org/en/20/orm/session_api.html).
 
 ## See also
 
@@ -157,5 +172,3 @@ Plugins are configured identically to non-SA usage — via the `plugins` connect
 - Example scripts:
   - [`PGSQLAlchemyFailover.py`](../examples/PGSQLAlchemyFailover.py)
   - [`MySQLSQLAlchemyFailover.py`](../examples/MySQLSQLAlchemyFailover.py)
-  - [`PGSQLAlchemyReadWriteSplitting.py`](../examples/PGSQLAlchemyReadWriteSplitting.py)
-  - [`MySQLSQLAlchemyReadWriteSplitting.py`](../examples/MySQLSQLAlchemyReadWriteSplitting.py)

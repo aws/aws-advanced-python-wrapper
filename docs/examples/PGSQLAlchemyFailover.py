@@ -34,11 +34,12 @@ PASSWORD = "pwd"
 
 def build_engine():
     return create_engine(
-        "postgresql+psycopg://",
+        "postgresql+aws_wrapper_psycopg://",
         creator=lambda: connect(
             f"host={CLUSTER_ENDPOINT} dbname={DB_NAME} user={USER} password={PASSWORD}",
             wrapper_dialect="aurora-pg",
             plugins="failover,host_monitoring_v2",
+            cluster_id="pg_sqlalchemy",
         ),
     )
 
