@@ -35,6 +35,17 @@ class ExceptionHandler(Protocol):
     def is_login_exception(self, error: Optional[Exception] = None, sql_state: Optional[str] = None) -> bool:
         """
         Checks whether the given error is caused by failing to authenticate the user.
+
+        Note for subclassers: some callers (notably ``HostMonitor`` in
+        ``cluster_topology_monitor`` since commit ``724de17``) treat a
+        ``True`` result as **bounded transient** — they retry on Aurora's
+        PAM-service-restart window during writer promotion before giving up.
+        If you override this method and intend a fast-fail "credentials are
+        permanently bad" signal, be aware your override may be retried up
+        to ~5 seconds before propagating. Callers that need fail-fast
+        semantics should classify those errors elsewhere (e.g. as a
+        dedicated non-network non-login exception).
+
         :param error: The error raised by the target driver.
         :param sql_state: The SQL State associated with the error.
         :return: True if the error is caused by a login issue, False otherwise.

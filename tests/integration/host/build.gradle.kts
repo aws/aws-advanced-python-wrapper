@@ -59,6 +59,17 @@ tasks.withType<Test> {
     reports.html.required.set(false)
 
     systemProperty("java.util.logging.config.file", "${project.buildDir}/resources/test/logging-test.properties")
+
+    // Forward CLI -D system properties whose names start with "exclude-" to the
+    // forked Test task JVM. Without this, `gradle ... -Dexclude-python-3-11=true`
+    // sets the property only on the gradle process; TestEnvironmentConfiguration
+    // reads them inside the Test JVM and would see the defaults.
+    System.getProperties().forEach { k, v ->
+        val key = k.toString()
+        if (key.startsWith("exclude-")) {
+            systemProperty(key, v.toString())
+        }
+    }
 }
 
 tasks.register<Test>("test-python-3.11-mysql") {
@@ -68,6 +79,7 @@ tasks.register<Test>("test-python-3.11-mysql") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-3-12", "true")
         systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
@@ -85,6 +97,7 @@ tasks.register<Test>("test-python-3.11-pg") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-3-12", "true")
         systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
@@ -102,6 +115,7 @@ tasks.register<Test>("test-python-3.12-mysql") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-3-11", "true")
         systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-traces-telemetry", "true")
@@ -119,6 +133,7 @@ tasks.register<Test>("test-python-3.12-pg") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-3-11", "true")
         systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
@@ -136,6 +151,7 @@ tasks.register<Test>("test-python-3.13-mysql") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-3-11", "true")
         systemProperty("exclude-python-3-12", "true")
+        systemProperty("exclude-python-3-14", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")
@@ -153,6 +169,43 @@ tasks.register<Test>("test-python-3.13-pg") {
         systemProperty("exclude-performance", "true")
         systemProperty("exclude-python-3-11", "true")
         systemProperty("exclude-python-3-12", "true")
+        systemProperty("exclude-python-3-14", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-bg", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-mariadb-driver", "true")
+        systemProperty("exclude-mariadb-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.14-mysql") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-python-3-11", "true")
+        systemProperty("exclude-python-3-12", "true")
+        systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-bg", "true")
+        systemProperty("exclude-traces-telemetry", "true")
+        systemProperty("exclude-metrics-telemetry", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+    }
+}
+
+tasks.register<Test>("test-python-3.14-pg") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-python-3-11", "true")
+        systemProperty("exclude-python-3-12", "true")
+        systemProperty("exclude-python-3-13", "true")
         systemProperty("exclude-multi-az-cluster", "true")
         systemProperty("exclude-multi-az-instance", "true")
         systemProperty("exclude-bg", "true")

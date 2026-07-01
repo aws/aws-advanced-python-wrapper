@@ -575,7 +575,7 @@ class Monitor:
         driver_dialect = self._plugin_service.driver_dialect
         with conn.cursor() as cursor:
             query = Monitor._QUERY
-            driver_dialect.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(query), query, exec_timeout=timeout_sec)
+            driver_dialect.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(query), query, exec_timeout=timeout_sec, conn=conn)
             cursor.fetchone()
 
     def sleep(self, duration: int):

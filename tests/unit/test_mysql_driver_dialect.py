@@ -12,12 +12,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import socket
+
 import psycopg
 import pytest
 from mysql.connector import MySQLConnection
 from mysql.connector.cursor import MySQLCursor
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                UnsupportedOperationError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -40,11 +43,36 @@ def mock_invalid_conn(mocker):
 
 
 def test_is_closed(dialect, mock_conn, mock_invalid_conn):
+    mock_conn.unread_result = False
     mock_conn.is_connected.return_value = False
     assert dialect.is_closed(mock_conn)
 
+    mock_conn.is_connected.return_value = True
+    assert not dialect.is_closed(mock_conn)
+
     with pytest.raises(AwsWrapperError):
         dialect.is_closed(mock_invalid_conn)
+
+
+def test_is_closed_pings_on_calling_thread(dialect, mock_conn):
+    # Regression for the env-4 SIGSEGV: the liveness ping must run on the CALLING
+    # thread, never a worker/pool thread. mysql.connector connections are not safe
+    # for concurrent use; offloading is_connected() (a ping == SSL I/O) to a pool
+    # let an abandoned ping run concurrently with the caller's use of the same
+    # connection -> two threads on one SSLSocket -> OpenSSL use-after-free.
+    import threading
+
+    mock_conn.unread_result = False
+    caller_tid = threading.get_ident()
+    seen = {}
+
+    def record():
+        seen["tid"] = threading.get_ident()
+        return True
+
+    mock_conn.is_connected.side_effect = record
+    assert dialect.is_closed(mock_conn) is False  # is_connected True -> not closed
+    assert seen["tid"] == caller_tid
 
 
 def test_is_in_transaction(dialect, mock_conn, mock_invalid_conn):
@@ -120,3 +148,29 @@ def test_prepare_connect_info(dialect):
 
     result = dialect.prepare_connect_info(host_info, original_props)
     assert result == expected_props
+
+
+def test_abort_connection_shuts_down_socket(dialect, mock_conn, mocker):
+    # Pure-Python connector exposes the raw socket at conn._socket.sock. abort
+    # must shut it down (SHUT_RDWR) -- the thread-safe interrupt -- WITHOUT
+    # closing/freeing the connection (the owning thread does that).
+    mock_conn._socket = mocker.MagicMock()
+    dialect.abort_connection(mock_conn)
+    mock_conn._socket.sock.shutdown.assert_called_once_with(socket.SHUT_RDWR)
+
+
+def test_abort_connection_no_socket_is_noop(dialect, mock_conn):
+    # C-extension connections expose no raw socket -> best-effort no-op, no raise.
+    mock_conn._socket = None
+    dialect.abort_connection(mock_conn)  # must not raise
+
+
+def test_abort_connection_swallows_shutdown_oserror(dialect, mock_conn, mocker):
+    mock_conn._socket = mocker.MagicMock()
+    mock_conn._socket.sock.shutdown.side_effect = OSError("already shut down")
+    dialect.abort_connection(mock_conn)  # must not raise
+
+
+def test_abort_connection_rejects_non_mysql_connection(dialect, mock_invalid_conn):
+    with pytest.raises(UnsupportedOperationError):
+        dialect.abort_connection(mock_invalid_conn)

@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import socket
 from typing import TYPE_CHECKING, Any, Callable, Set
 
 import psycopg
@@ -28,10 +29,13 @@ from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
                                                           WrapperProperties)
+
+logger = Logger(__name__)
 
 
 class PgDriverDialect(DriverDialect):
@@ -73,10 +77,51 @@ class PgDriverDialect(DriverDialect):
 
     def abort_connection(self, conn: Connection):
         if isinstance(conn, psycopg.Connection):
-            conn.close()
+            # abort_connection is invoked from the host-monitoring (EFM) monitor
+            # thread to interrupt an in-flight operation when the host becomes
+            # unreachable, so the owning thread's blocked recv returns promptly.
+            #
+            # It must NOT call close(): psycopg close() is PQfinish, which frees
+            # the libpq connection struct and tears down the SSL session
+            # (SSL_free) with no lock. Freeing that struct while the owning thread
+            # is mid-SSL-op on the same connection races a use-after-free in
+            # libpq/OpenSSL and crashes the whole process with SIGSEGV.
+            #
+            # cancel()/cancel_safe() avoids the crash but cannot interrupt a query
+            # when the host is unreachable (the CancelRequest can't be delivered),
+            # which defeats the EFM's purpose on exactly the network-failure case
+            # it exists for.
+            #
+            # Shutting the underlying socket down is the thread-safe equivalent of
+            # JDBC's Connection.abort(): it unblocks the owning thread's recv
+            # immediately (even on a dead host) WITHOUT freeing any struct, so
+            # there is no SSL_free to race. The owning thread observes the broken
+            # connection and closes it on its own thread (the only safe place for
+            # PQfinish).
+            if conn.closed:
+                return
+            try:
+                fd = conn.fileno()
+            except Exception:
+                return
+            if fd is None or fd < 0:
+                return
+            try:
+                sock = socket.socket(fileno=fd)
+            except OSError as e:
+                logger.debug("PgDriverDialect.AbortConnectionShutdownFailed", e)
+                return
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError as e:
+                logger.debug("PgDriverDialect.AbortConnectionShutdownFailed", e)
+            finally:
+                # release the fd WITHOUT closing it; the connection still owns it
+                # and will PQfinish on its owning thread.
+                sock.detach()
             return
         raise UnsupportedOperationError(
-            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "cancel"))
+            Messages.get_formatted("DriverDialect.UnsupportedOperationError", self._driver_name, "abort_connection"))
 
     def is_in_transaction(self, conn: Connection) -> bool:
         if isinstance(conn, psycopg.Connection):

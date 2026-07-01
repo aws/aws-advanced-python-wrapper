@@ -26,6 +26,8 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, Topology
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.atomic import AtomicReference
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.events import (EventBase,
                                                       MonitorResetEvent)
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -392,7 +394,12 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
 
     def _close_connection(self, connection: Optional[Connection]) -> None:
         try:
-            if connection is not None:
+            # Skip connections an auxiliary-query worker could not be drained off
+            # (is_connection_abandoned): closing one while the worker is still
+            # using it is a cross-thread use-after-free that crashes the process.
+            # The worker holds the last reference and frees it safely on its own
+            # thread once it finishes.
+            if connection is not None and not is_connection_abandoned(connection):
                 connection.close()
         except Exception:
             pass

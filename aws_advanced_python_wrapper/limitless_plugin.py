@@ -254,7 +254,8 @@ class LimitlessQueryHelper:
             self._plugin_service.driver_dialect.execute(DbApiMethod.CURSOR_EXECUTE.method_name,
                                                         lambda: cursor.execute(query),
                                                         query,
-                                                        exec_timeout=LimitlessQueryHelper._DEFAULT_QUERY_TIMEOUT_SEC)
+                                                        exec_timeout=LimitlessQueryHelper._DEFAULT_QUERY_TIMEOUT_SEC,
+                                                        conn=connection)
             return self._map_result_set_to_host_info_list(cursor.fetchall(), host_port_to_map)
 
     def _map_result_set_to_host_info_list(self, result_set: List[Tuple[Any, Any]], host_port_to_map: int) -> List[HostInfo]:

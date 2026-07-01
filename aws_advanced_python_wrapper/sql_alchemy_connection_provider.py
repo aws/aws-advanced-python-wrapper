@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 
-from sqlalchemy import QueuePool, pool  # type: ignore
+from sqlalchemy import QueuePool, pool
 
 from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -140,8 +140,8 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
             raise AwsWrapperError(Messages.get_formatted("SqlAlchemyPooledConnectionProvider.PoolNone", host_info.url))
 
         queue_pool, creator_props = db_pool
-
-        # Update the password in the creator's captured properties so new pooled connections use the latest credentials
+        # Refresh the password held by the pool's creator closure so subsequent new
+        # connections use the latest credential (e.g. a freshly minted IAM token).
         password = WrapperProperties.PASSWORD.get(props)
         if password is not None:
             creator_props[WrapperProperties.PASSWORD.name] = password
