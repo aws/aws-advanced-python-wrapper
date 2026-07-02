@@ -375,13 +375,13 @@ class FailoverPlugin(Plugin):
         if self._plugin_service.is_in_transaction:
             self._plugin_service.update_in_transaction(True)
             try:
-                driver_dialect.execute(DbApiMethod.CONNECTION_ROLLBACK.method_name, lambda: conn.rollback())
+                driver_dialect.execute(DbApiMethod.CONNECTION_ROLLBACK.method_name, lambda: conn.rollback(), conn=conn)
                 conn.rollback()
             except Exception:
                 pass
 
         try:
-            return driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
+            return driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close(), conn=conn)
         except Exception:
             pass
 
