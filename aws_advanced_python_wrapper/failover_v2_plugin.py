@@ -281,7 +281,7 @@ class FailoverV2Plugin(Plugin):
 
                     remaining_readers.remove(reader_candidate)
                     self._plugin_service.driver_dialect.execute(
-                        DbApiMethod.CONNECTION_CLOSE.method_name, lambda: candidate_conn.close())
+                        DbApiMethod.CONNECTION_CLOSE.method_name, lambda: candidate_conn.close(), conn=candidate_conn)
 
                     if role == HostRole.WRITER:
                         reader_candidates.remove(reader_candidate)
@@ -301,7 +301,7 @@ class FailoverV2Plugin(Plugin):
                     return ReaderFailoverResult(candidate_conn, updated_host_info)
 
                 self._plugin_service.driver_dialect.execute(
-                        DbApiMethod.CONNECTION_CLOSE.method_name, lambda: candidate_conn.close())
+                        DbApiMethod.CONNECTION_CLOSE.method_name, lambda: candidate_conn.close(), conn=candidate_conn)
                 if role == HostRole.WRITER:
                     is_original_writer_still_writer = True
             except Exception:
@@ -381,7 +381,7 @@ class FailoverV2Plugin(Plugin):
 
         try:
             self._plugin_service.driver_dialect.execute(
-                        DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
+                        DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close(), conn=conn)
         except Exception:
             pass
 

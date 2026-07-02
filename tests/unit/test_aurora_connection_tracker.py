@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from _weakrefset import WeakSet
+from sqlalchemy.pool import QueuePool
 
 from aws_advanced_python_wrapper.errors import FailoverError
 
@@ -176,3 +177,49 @@ def test_invalidate_all_connections_drains_set(mocker):
 
     tracker.invalidate_all_connections(host_info=host_info)
     assert len(captured) == 1
+
+
+def test_task_invalidates_pool_proxied_connections(mocker):
+    pool_proxied_conn = mocker.MagicMock()
+
+    OpenedConnectionTracker._task([pool_proxied_conn])
+
+    pool_proxied_conn.invalidate.assert_called_once_with()
+    pool_proxied_conn.close.assert_not_called()
+
+
+def test_task_closes_plain_connections_without_invalidate(mocker):
+    plain_conn = mocker.MagicMock()
+    del plain_conn.invalidate
+
+    OpenedConnectionTracker._task([plain_conn])
+
+    plain_conn.close.assert_called_once_with()
+
+
+def test_task_discards_pooled_connection_from_queue_pool(mocker):
+    # End-to-end against a real SQLAlchemy QueuePool: invalidating the
+    # checked-out fairy must discard the underlying driver connection without
+    # running rollback-on-return against the failed host, so the pool opens a
+    # fresh connection on the next checkout instead of re-pooling the old one.
+    raw_connections = []
+
+    def creator():
+        raw_conn = mocker.MagicMock()
+        raw_connections.append(raw_conn)
+        return raw_conn
+
+    queue_pool = QueuePool(creator, pool_size=1, max_overflow=0)
+    fairy = queue_pool.connect()
+
+    OpenedConnectionTracker._task([fairy])
+
+    assert len(raw_connections) == 1
+    raw_connections[0].rollback.assert_not_called()
+    raw_connections[0].close.assert_called_once()
+
+    replacement = queue_pool.connect()
+    assert len(raw_connections) == 2
+    assert replacement.driver_connection is raw_connections[1]
+    replacement.close()
+    queue_pool.dispose()
