@@ -93,7 +93,7 @@ def test_global_aurora_dialect_selects_global_provider() -> None:
         Properties({
             "plugins": "failover",
             "global_cluster_instance_host_patterns": (
-                "us-east-1=global-db-us-east-1.cluster-xyz.us-east-1.rds.amazonaws.com"),
+                "us-east-1:global-db-us-east-1.cluster-xyz.us-east-1.rds.amazonaws.com"),
         }),
         dd,
         GlobalAuroraPgDialect(),

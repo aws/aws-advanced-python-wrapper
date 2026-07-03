@@ -36,8 +36,10 @@ import asyncio
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, List,
                     Optional, Protocol, Tuple, runtime_checkable)
 
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 logger = Logger(__name__)
@@ -165,6 +167,23 @@ class AsyncAuroraHostListProvider:
         # provider construction stays cheap and test-friendly.
         self._monitor: Optional[Any] = None  # AsyncClusterTopologyMonitor
         self._last_conn: Optional[Any] = None
+        # Panic-mode probe: opens a pipeline connection to a host and
+        # classifies its role, used by the monitor to discover the new
+        # writer when the monitoring connection dies (mirrors sync
+        # ClusterTopologyMonitor's per-host HostMonitor threads). Wired by
+        # the wrapper once the plugin service exists -- see
+        # aio/wrapper.py and cluster_topology_monitor.build_probe_host.
+        self._probe_host: Optional[Callable[..., Any]] = None
+
+    def set_probe_host(self, probe_host: Callable[..., Any]) -> None:
+        """Arm panic-mode writer discovery on the (future) topology monitor.
+
+        Must be called before the monitor is lazily created (the wrapper
+        calls it right after the plugin service is constructed, well before
+        the first refresh). A monitor created earlier keeps running without
+        panic mode -- same behavior as before wiring existed.
+        """
+        self._probe_host = probe_host
 
     def reconfigure_topology_query(
             self, topology_query: str, default_port: Optional[int] = None) -> None:
@@ -292,6 +311,7 @@ class AsyncAuroraHostListProvider:
             refresh_interval_sec=self._refresh_ns / 1_000_000_000,
             high_refresh_rate_sec=(
                 (high_refresh_ms / 1000.0) if high_refresh_ms else 1.0),
+            probe_host=self._probe_host,
             connection_factory=self._monitor_connection_factory,
         )
         monitor.start()
@@ -392,6 +412,15 @@ class AsyncAuroraHostListProvider:
                     role=HostRole.WRITER if is_writer else HostRole.READER,
                 )
             )
+        # No writer => invalid topology. Return empty so callers fall back to
+        # the cached topology instead of acting on a readers-only host list
+        # (matches sync AuroraTopologyUtils._process_query_results and the
+        # async MultiAz/GlobalAurora providers).
+        if hosts and not any(h.role == HostRole.WRITER for h in hosts):
+            logger.debug(
+                "[AsyncAuroraHostListProvider] topology query returned no "
+                "writer; returning empty topology (caller falls back to cache)")
+            return ()
         # Writer first, readers after.
         hosts.sort(key=lambda h: 0 if h.role == HostRole.WRITER else 1)
         return tuple(hosts)
@@ -493,6 +522,7 @@ class AsyncMultiAzHostListProvider(AsyncAuroraHostListProvider):
             instance_template_host: Optional[str] = None,
             monitor_connection_factory: Optional[
                 Callable[[], Awaitable[Any]]] = None,
+            writer_host_column_index: int = 0,
     ) -> None:
         super().__init__(
             props=props,
@@ -504,6 +534,12 @@ class AsyncMultiAzHostListProvider(AsyncAuroraHostListProvider):
         )
         self._writer_host_query = writer_host_query
         self._host_id_query = host_id_query
+        # Column of ``writer_host_query``'s result row holding the writer's
+        # ID. PG's query returns a single column (index 0); MySQL's
+        # ``SHOW REPLICA STATUS`` carries the source host at column 39 --
+        # matching sync ``MultiAzTopologyUtils`` /
+        # ``MultiAzClusterMysqlDialect._WRITER_HOST_COLUMN_INDEX``.
+        self._writer_host_column_index = writer_host_column_index
         self._instance_template_host = instance_template_host
         # Import locally to avoid widening the module's top-level import set.
         from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
@@ -532,7 +568,7 @@ class AsyncMultiAzHostListProvider(AsyncAuroraHostListProvider):
                 await cur.execute(self._writer_host_query)
                 writer_row = await cur.fetchone()
                 if writer_row is not None:
-                    writer_id = str(writer_row[0])
+                    writer_id = str(writer_row[self._writer_host_column_index])
                 else:
                     await cur.execute(self._host_id_query)
                     self_row = await cur.fetchone()
@@ -657,25 +693,34 @@ class AsyncGlobalAuroraHostListProvider(AsyncAuroraHostListProvider):
 
     @staticmethod
     def _parse_templates(raw: str) -> Dict[str, str]:
-        """Parse ``'region=pattern,region=pattern,...'`` into a dict.
+        """Parse ``'region:host:port,region:host,...'`` into a dict.
 
-        Malformed pairs (missing ``=``, empty) are silently dropped so
-        one bad entry doesn't drop the whole provider.
+        Same format as the sync ``GlobalAuroraTopologyUtils.parse_instance_templates``
+        (``region:host:port`` or ``region:host``, comma-separated) so one
+        ``global_cluster_instance_host_patterns`` value works for both the
+        sync and async wrappers. A pair without a host raises, matching sync.
         """
         result: Dict[str, str] = {}
         for pair in raw.split(","):
             pair = pair.strip()
-            if not pair or "=" not in pair:
+            if not pair:
                 continue
-            region, pattern = pair.split("=", 1)
-            region = region.strip()
-            pattern = pattern.strip()
-            if region and pattern:
-                result[region] = pattern
+            parts = pair.split(":", 2)
+            if len(parts) < 2 or not parts[0].strip() or not parts[1].strip():
+                raise AwsWrapperError(Messages.get_formatted(
+                    "GlobalAuroraTopologyUtils.invalidInstanceTemplate", pair))
+            region = parts[0].strip()
+            pattern = parts[1].strip()
+            if len(parts) > 2 and parts[2].strip():
+                pattern = f"{pattern}:{parts[2].strip()}"
+            result[region] = pattern
         return result
 
     def _rows_to_topology(self, rows: List[tuple]) -> Topology:
-        """Override. Rows are ``(server_id, region, is_writer)``.
+        """Override. Rows are ``(server_id, is_writer, lag, aws_region)`` —
+        the sync Global Aurora topology-query shape (``SERVER_ID``,
+        ``SESSION_ID``-derived writer flag, ``VISIBILITY_LAG_IN_MSEC``,
+        ``AWS_REGION``); the lag column is unused, matching sync.
 
         Each row's host is built from the region-specific template. Rows
         referencing a region without a configured template are skipped.
@@ -684,11 +729,11 @@ class AsyncGlobalAuroraHostListProvider(AsyncAuroraHostListProvider):
         """
         hosts: List[HostInfo] = []
         for row in rows:
-            if len(row) < 3:
+            if len(row) < 4:
                 continue
             server_id = str(row[0])
-            region = str(row[1])
-            is_writer = bool(row[2])
+            is_writer = bool(row[1])
+            region = str(row[3])
             template = self._templates_by_region.get(region)
             if template is None:
                 # No template for this region -- skip the host.

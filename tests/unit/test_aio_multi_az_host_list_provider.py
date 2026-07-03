@@ -155,6 +155,34 @@ def test_basic_topology_two_step_query():
     asyncio.run(_body())
 
 
+def test_writer_host_column_index_reads_mysql_replica_status_column():
+    """MultiAz MySQL identifies the writer from column 39 of
+    ``SHOW REPLICA STATUS`` (sync ``MultiAzClusterMysqlDialect.
+    _WRITER_HOST_COLUMN_INDEX``); the provider must honor the configured
+    column index instead of hardcoding column 0."""
+    async def _body() -> None:
+        writer_id = "db-WRITER"
+        reader_id = "db-READER"
+        # 40-column row; the writer host lives at index 39.
+        replica_status_row = tuple(["filler"] * 39 + [writer_id])
+        conn, prov = _conn_and_provider(
+            dict(
+                writer_row=replica_status_row,
+                topology_rows=[
+                    (writer_id, "host1.example.com", 3306),
+                    (reader_id, "host2.example.com", 3306),
+                ],
+            ),
+            writer_host_column_index=39,
+        )
+        topo = await prov.force_refresh(conn)
+        writers = [h for h in topo if h.role == HostRole.WRITER]
+        assert len(writers) == 1
+        assert writers[0].host_id == writer_id
+
+    asyncio.run(_body())
+
+
 # ---- MySQL fallback: empty writer_host_query -----------------------------
 
 

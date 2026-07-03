@@ -104,12 +104,18 @@ def _build_host_list_provider(
                 database_dialect, "_HOST_ID_QUERY",
                 getattr(database_dialect, "host_id_query", None))
             if writer_q and topology_q and host_id_q:
+                # MySQL's writer_host_query (SHOW REPLICA STATUS) carries the
+                # writer host at column 39; PG's single-column query uses 0.
+                # Sync threads this via MultiAzTopologyUtils -- mirror it here.
+                writer_col = getattr(
+                    database_dialect, "_WRITER_HOST_COLUMN_INDEX", 0)
                 return AsyncMultiAzHostListProvider(
                     props, driver_dialect,
                     writer_host_query=writer_q,
                     topology_query=topology_q,
                     host_id_query=host_id_q,
                     monitor_connection_factory=monitor_connection_factory,
+                    writer_host_column_index=writer_col,
                 )
         if "GlobalAurora" in dialect_name:
             topology_q = getattr(
@@ -791,6 +797,18 @@ class AsyncAwsWrapperConnection:
         plugin_service.database_dialect = database_dialect
         plugin_service.host_list_provider = host_list_provider
         plugin_service.initial_connection_host_info = host_info
+
+        # Arm the topology monitor's panic-mode writer discovery: when the
+        # monitoring connection dies mid-failover, the monitor probes every
+        # host through the plugin pipeline to find the new writer (mirrors
+        # sync ClusterTopologyMonitor's per-host HostMonitor threads). The
+        # probe needs the plugin service, which didn't exist when the
+        # provider was built above.
+        set_probe = getattr(host_list_provider, "set_probe_host", None)
+        if callable(set_probe):
+            from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
+                build_probe_host
+            set_probe(build_probe_host(plugin_service, props))
 
         # Resolve plugin list. Explicit `plugins=[...]` wins; otherwise
         # parse the `plugins` connection-property string via the factory

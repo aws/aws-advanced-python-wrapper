@@ -12,12 +12,14 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""Phase H deferred P1: ``AsyncGlobalAuroraHostListProvider`` unit tests.
+"""``AsyncGlobalAuroraHostListProvider`` unit tests.
 
 Validates region-template substitution, missing-region fallback,
-port-parsing, writer/reader role assignment from the
-``(server_id, region, is_writer)`` row shape, and the
-``GLOBAL_CLUSTER_INSTANCE_HOST_PATTERNS`` parser.
+port-parsing, writer/reader role assignment from the sync-parity
+``(server_id, is_writer, lag, aws_region)`` row shape (the real
+Global Aurora dialect topology-query columns), and the
+``GLOBAL_CLUSTER_INSTANCE_HOST_PATTERNS`` parser (sync-parity
+``region:host:port`` format).
 """
 
 from __future__ import annotations
@@ -25,12 +27,20 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
 from aws_advanced_python_wrapper.aio.host_list_provider import \
     AsyncGlobalAuroraHostListProvider
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.properties import Properties
 
-TOPOLOGY_QUERY = "SELECT server_id, region, is_writer FROM global_topology"
+# Matches the real GlobalAuroraMysqlDialect / GlobalAuroraPgDialect column
+# order: SERVER_ID, is_writer, VISIBILITY_LAG_IN_MSEC, AWS_REGION.
+TOPOLOGY_QUERY = (
+    "SELECT SERVER_ID, SESSION_ID = 'MASTER_SESSION_ID' AS is_writer, "
+    "VISIBILITY_LAG_IN_MSEC, AWS_REGION FROM global_topology"
+)
 
 
 def _props(**kwargs: Any) -> Properties:
@@ -52,21 +62,27 @@ def _make_provider(**overrides: Any) -> AsyncGlobalAuroraHostListProvider:
 # ---- _parse_templates ----------------------------------------------------
 
 
-def test_parse_templates_comma_separated_pairs():
-    """``region=pattern,region=pattern`` -> dict of 2 entries, whitespace
-    trimmed on each half; malformed entries (missing ``=``, empty) are
-    silently dropped rather than poisoning the whole config."""
+def test_parse_templates_colon_format_pairs():
+    """``region:host:port,region:host`` (the sync-documented
+    ``global_cluster_instance_host_patterns`` format) -> dict of entries,
+    whitespace trimmed; a port-less template gets no ``:port`` suffix."""
     raw = (
-        "us-east-1=?.xyz.us-east-1.rds.amazonaws.com:5432,"
-        " us-west-2 = ?.abc.us-west-2.rds.amazonaws.com:5432 ,"
-        "bad_entry_no_equals,"
-        ","
+        "us-east-1:?.xyz.us-east-1.rds.amazonaws.com:5432,"
+        " us-west-2 : ?.abc.us-west-2.rds.amazonaws.com , "
     )
     parsed = AsyncGlobalAuroraHostListProvider._parse_templates(raw)
     assert parsed == {
         "us-east-1": "?.xyz.us-east-1.rds.amazonaws.com:5432",
-        "us-west-2": "?.abc.us-west-2.rds.amazonaws.com:5432",
+        "us-west-2": "?.abc.us-west-2.rds.amazonaws.com",
     }
+
+
+def test_parse_templates_malformed_entry_raises():
+    """An entry without a host part raises, matching sync
+    ``GlobalAuroraTopologyUtils.parse_instance_templates``."""
+    with pytest.raises(AwsWrapperError):
+        AsyncGlobalAuroraHostListProvider._parse_templates(
+            "us-east-1:?.xyz.us-east-1.rds.amazonaws.com:5432,bad-entry-no-colon")
 
 
 # ---- _rows_to_topology ---------------------------------------------------
@@ -76,8 +92,8 @@ def test_empty_templates_returns_empty_topology():
     """No templates configured -> every row is skipped -> empty topology."""
     prov = _make_provider(instance_templates_by_region={})
     rows = [
-        ("instance-1", "us-east-1", True),
-        ("instance-2", "us-west-2", False),
+        ("instance-1", True, 0.0, "us-east-1"),
+        ("instance-2", False, 12.5, "us-west-2"),
     ]
     assert prov._rows_to_topology(rows) == ()
 
@@ -94,8 +110,8 @@ def test_region_without_matching_template_skipped():
         },
     )
     rows = [
-        ("instance-1", "us-east-1", True),
-        ("instance-2", "us-west-2", False),  # skipped
+        ("instance-1", True, 0.0, "us-east-1"),
+        ("instance-2", False, 12.5, "us-west-2"),  # skipped
     ]
     topo = prov._rows_to_topology(rows)
     assert len(topo) == 1
@@ -111,7 +127,7 @@ def test_template_substitution_with_port():
             "us-east-1": "?.xyz.us-east-1.rds.amazonaws.com:6000",
         },
     )
-    rows = [("my-instance", "us-east-1", True)]
+    rows = [("my-instance", True, 0.0, "us-east-1")]
     topo = prov._rows_to_topology(rows)
     assert len(topo) == 1
     assert topo[0].host == "my-instance.xyz.us-east-1.rds.amazonaws.com"
@@ -127,7 +143,7 @@ def test_template_substitution_without_port_uses_default_port():
             "us-east-1": "?.xyz.us-east-1.rds.amazonaws.com",
         },
     )
-    rows = [("my-instance", "us-east-1", True)]
+    rows = [("my-instance", True, 0.0, "us-east-1")]
     topo = prov._rows_to_topology(rows)
     assert len(topo) == 1
     assert topo[0].host == "my-instance.xyz.us-east-1.rds.amazonaws.com"
@@ -135,8 +151,8 @@ def test_template_substitution_without_port_uses_default_port():
 
 
 def test_writer_and_reader_roles_assigned_from_is_writer_column():
-    """``is_writer=True`` -> WRITER role; ``is_writer=False`` -> READER
-    role; writer is sorted first."""
+    """``is_writer`` (column 1) True -> WRITER role; False -> READER
+    role; writer is sorted first; lag column (2) is ignored."""
     prov = _make_provider(
         instance_templates_by_region={
             "us-east-1": "?.xyz.us-east-1.rds.amazonaws.com:5432",
@@ -144,9 +160,9 @@ def test_writer_and_reader_roles_assigned_from_is_writer_column():
         },
     )
     rows = [
-        ("reader-a", "us-west-2", False),
-        ("writer-a", "us-east-1", True),
-        ("reader-b", "us-west-2", False),
+        ("reader-a", False, 55.0, "us-west-2"),
+        ("writer-a", True, 0.0, "us-east-1"),
+        ("reader-b", False, 31.0, "us-west-2"),
     ]
     topo = prov._rows_to_topology(rows)
     assert len(topo) == 3
@@ -158,6 +174,22 @@ def test_writer_and_reader_roles_assigned_from_is_writer_column():
     assert reader_ids == {"reader-a", "reader-b"}
 
 
+def test_short_rows_are_skipped():
+    """A row with fewer than the 4 sync-parity columns is skipped rather
+    than mis-parsed (guards against a wrong/legacy query shape)."""
+    prov = _make_provider(
+        instance_templates_by_region={
+            "us-east-1": "?.xyz.us-east-1.rds.amazonaws.com:5432",
+        },
+    )
+    rows = [
+        ("legacy-row", "us-east-1", True),  # old 3-col shape: skipped
+        ("writer-a", True, 0.0, "us-east-1"),
+    ]
+    topo = prov._rows_to_topology(rows)
+    assert [h.host_id for h in topo] == ["writer-a"]
+
+
 def test_rows_without_writer_return_empty_tuple():
     """No writer among configured regions -> empty tuple (callers fall
     back to cache)."""
@@ -167,8 +199,8 @@ def test_rows_without_writer_return_empty_tuple():
         },
     )
     rows = [
-        ("reader-a", "us-east-1", False),
-        ("reader-b", "us-east-1", False),
+        ("reader-a", False, 10.0, "us-east-1"),
+        ("reader-b", False, 20.0, "us-east-1"),
     ]
     assert prov._rows_to_topology(rows) == ()
 
@@ -178,18 +210,19 @@ def test_rows_without_writer_return_empty_tuple():
 
 def test_construction_from_property_parses_patterns():
     """When ``instance_templates_by_region`` is omitted, the provider
-    reads ``GLOBAL_CLUSTER_INSTANCE_HOST_PATTERNS`` from props and parses
-    it. Subsequent ``_rows_to_topology`` calls use that map."""
+    reads ``GLOBAL_CLUSTER_INSTANCE_HOST_PATTERNS`` from props (sync
+    ``region:host:port`` format) and parses it. Subsequent
+    ``_rows_to_topology`` calls use that map."""
     patterns = (
-        "us-east-1=?.xyz.us-east-1.rds.amazonaws.com:5432,"
-        "us-west-2=?.abc.us-west-2.rds.amazonaws.com:5432"
+        "us-east-1:?.xyz.us-east-1.rds.amazonaws.com:5432,"
+        "us-west-2:?.abc.us-west-2.rds.amazonaws.com:5432"
     )
     prov = _make_provider(
         props=_props(global_cluster_instance_host_patterns=patterns),
     )
     rows = [
-        ("instance-1", "us-east-1", True),
-        ("instance-2", "us-west-2", False),
+        ("instance-1", True, 0.0, "us-east-1"),
+        ("instance-2", False, 15.0, "us-west-2"),
     ]
     topo = prov._rows_to_topology(rows)
     assert len(topo) == 2
