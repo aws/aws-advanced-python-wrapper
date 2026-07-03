@@ -27,11 +27,15 @@ classifiers = [
 # entry points under the ``sqlalchemy.dialects`` group, so the wrapper plugs in
 # as a driver under SQLAlchemy's existing dialects (matching stock
 # mysql+mysqlconnector / postgresql+psycopg) rather than as a parallel
-# top-level dialect name: postgresql+aws_wrapper_psycopg and
-# mysql+aws_wrapper_mysqlconnector.
+# top-level dialect name. postgresql+aws_wrapper_psycopg serves BOTH sync and
+# async: the sync dialect implements get_async_dialect_cls, so
+# create_async_engine swaps in the async dialect from the same URL (exactly how
+# stock postgresql+psycopg works). MySQL's sync and async paths are different
+# DBAPIs (mysql-connector-python vs aiomysql), so they use distinct driver names.
 [tool.poetry.plugins."sqlalchemy.dialects"]
 "postgresql.aws_wrapper_psycopg" = "aws_advanced_python_wrapper.sqlalchemy_dialects.pg:AwsWrapperPGPsycopgDialect"
 "mysql.aws_wrapper_mysqlconnector" = "aws_advanced_python_wrapper.sqlalchemy_dialects.mysql:AwsWrapperMySQLConnectorDialect"
+"mysql.aws_wrapper_aiomysql" = "aws_advanced_python_wrapper.sqlalchemy_dialects.mysql_async:AwsWrapperMySQLAiomysqlAsyncDialect"
 
 [tool.poetry.dependencies]
 python = "^3.10.0"
@@ -57,6 +61,8 @@ psycopg-binary = "^3.3.3"
 mysql-connector-python = "^9.7.0"
 django = "^5.2.13"
 django-stubs = "^5.2.9"
+aiomysql = ">=0.2"
+aiohttp = ">=3"
 
 [tool.poetry.group.test.dependencies]
 boto3 = "^1.42.95"
@@ -79,6 +85,7 @@ opentelemetry-exporter-otlp-proto-grpc = "^1.43.0"
 opentelemetry-sdk-extension-aws = "^2.1.0"
 pytest-timeout = "^2.4.0"
 pytest-repeat = "^0.9.4"
+greenlet = ">=3"
 
 [tool.isort]
 sections = "FUTURE,STDLIB,THIRDPARTY,FIRSTPARTY,LOCALFOLDER"
