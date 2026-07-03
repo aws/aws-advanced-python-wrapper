@@ -209,6 +209,9 @@ def test_enabled_failover_picks_reader_in_strict_reader_mode():
         reader_host = HostInfo(
             host="reader.example.com", port=5432, role=HostRole.READER)
         svc.get_host_info_by_strategy = MagicMock(return_value=reader_host)
+        # STRICT_READER data-plane-verifies the candidate role (sync
+        # failover_v2 parity); the picked reader really is a reader here.
+        svc.get_host_role = AsyncMock(return_value=HostRole.READER)
 
         async def _raiser() -> Any:
             raise ConnectionError("boom")
@@ -762,6 +765,8 @@ def test_failover_emits_reader_triggered_counter_on_reader_path():
     reader_host = HostInfo(
         host="reader.example.com", port=5432, role=HostRole.READER)
     svc.get_host_info_by_strategy = MagicMock(return_value=reader_host)
+    # STRICT_READER data-plane-verifies the candidate role (sync parity).
+    svc.get_host_role = AsyncMock(return_value=HostRole.READER)
     plugin._open_connection = AsyncMock(  # type: ignore[method-assign]
         return_value=MagicMock(name="new_conn"))
 
@@ -836,3 +841,75 @@ def test_failover_does_not_hang_when_open_connection_blocks():
         asyncio.run(plugin._do_failover(driver_dialect=driver_dialect))
     # Bounded: ~timeout + one inter-attempt sleep, nowhere near 30s.
     assert time.monotonic() - start < 5.0
+
+
+# ---- STRICT_READER data-plane role verification (sync failover_v2 parity) --
+
+
+def test_strict_reader_rejects_promoted_writer_and_accepts_demoted_original_writer():
+    """A topology-labeled reader that live-probes as WRITER is rejected, and
+    the original writer -- now demoted to a reader -- is accepted with its
+    VERIFIED role stamped on the bound HostInfo (sync failover_v2:275-308)."""
+    async def _body() -> None:
+        writer = HostInfo(host="writer.example.com", port=5432, role=HostRole.WRITER)
+        stale_reader = HostInfo(host="reader.example.com", port=5432, role=HostRole.READER)
+        plugin, svc, _hlp, driver_dialect = _build_plugin(
+            mode="strict_reader", topology=(writer, stale_reader))
+
+        reader_conn = MagicMock(name="promoted_writer_conn")
+        writer_conn = MagicMock(name="demoted_writer_conn")
+        conns = {"reader.example.com": reader_conn, "writer.example.com": writer_conn}
+
+        async def _open(host, _dd):
+            return conns[host.host]
+
+        plugin._open_connection = _open  # type: ignore[method-assign]
+        svc.get_host_info_by_strategy = MagicMock(return_value=stale_reader)
+
+        async def _role(conn):
+            # The "reader" was promoted (probes WRITER); the original writer
+            # was demoted (probes READER).
+            return HostRole.WRITER if conn is reader_conn else HostRole.READER
+
+        svc.get_host_role = _role  # type: ignore[method-assign]
+        svc.set_current_connection = AsyncMock()  # type: ignore[method-assign]
+
+        await plugin._do_failover(driver_dialect=driver_dialect)
+
+        bound_conn, bound_host = svc.set_current_connection.call_args[0]
+        assert bound_conn is writer_conn
+        assert bound_host.host == "writer.example.com"
+        assert bound_host.role == HostRole.READER  # verified role, not stale label
+        # The promoted writer's connection was rejected and closed.
+        reader_conn.close.assert_called()
+
+    asyncio.run(_body())
+
+
+def test_strict_reader_gives_up_when_original_writer_is_still_writer():
+    """When every candidate (including the original writer) live-probes as
+    WRITER, STRICT_READER fails over to nothing: the original writer is
+    probed once, remembered via is_original_writer_still_writer, and not
+    re-dialed every pass (sync failover_v2:292-308)."""
+    async def _body() -> None:
+        writer = HostInfo(host="writer.example.com", port=5432, role=HostRole.WRITER)
+        stale_reader = HostInfo(host="reader.example.com", port=5432, role=HostRole.READER)
+        plugin, svc, _hlp, driver_dialect = _build_plugin(
+            mode="strict_reader", topology=(writer, stale_reader),
+            timeout_sec=0.5)
+
+        plugin._open_connection = AsyncMock(  # type: ignore[method-assign]
+            return_value=MagicMock(name="conn"))
+        svc.get_host_info_by_strategy = MagicMock(return_value=stale_reader)
+        svc.get_host_role = AsyncMock(return_value=HostRole.WRITER)
+        svc.set_current_connection = AsyncMock()  # type: ignore[method-assign]
+
+        with pytest.raises(FailoverFailedError):
+            await plugin._do_failover(driver_dialect=driver_dialect)
+
+        svc.set_current_connection.assert_not_called()
+        # Probed the stale reader once + the original writer once; no re-dial
+        # of the confirmed-still-writer on later passes.
+        assert svc.get_host_role.await_count == 2
+
+    asyncio.run(_body())

@@ -219,6 +219,7 @@ def test_close_connection_swallows_errors():
 def _writer_svc(*, role=HostRole.WRITER, refresh_topology=(_W,)):
     svc = MagicMock()
     svc.set_availability = MagicMock()
+    svc.filter_hosts = MagicMock(side_effect=lambda hosts: list(hosts))
     svc.get_host_role = AsyncMock(return_value=role)
     svc.current_connection = MagicMock(name="old_conn")
     dd = MagicMock()

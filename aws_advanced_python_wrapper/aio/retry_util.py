@@ -118,7 +118,11 @@ class AsyncRetryUtil:
         """
         last_error: Optional[BaseException] = None
         while asyncio.get_event_loop().time() < timeout_end_time:
-            writer = next((host for host in topology if host.role == HostRole.WRITER), None)
+            # Enforce the allow/block list (custom endpoints): the new writer
+            # must be an allowed host, mirroring sync RetryUtil's
+            # allowed_writer_hosts filtering (utils/retry_util.py:59-70).
+            allowed = plugin_service.filter_hosts(list(topology))
+            writer = next((host for host in allowed if host.role == HostRole.WRITER), None)
             if writer is not None:
                 try:
                     new_conn = await self._bounded(

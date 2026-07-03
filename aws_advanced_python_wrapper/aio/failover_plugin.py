@@ -319,6 +319,14 @@ class AsyncFailoverPlugin(AsyncPlugin):
         Mirrors sync v2 _failover_reader / _failover_writer at
         failover_v2_plugin.py:254-310 / :323-390.
         """
+        # Mark the current (failed) host UNAVAILABLE first so selection
+        # strategies deprioritize it during the loops below (sync v2 marks it
+        # in _deal_with_original_exception, failover_v2_plugin.py:161).
+        failed_host = self._plugin_service.current_host_info
+        if failed_host is not None:
+            self._plugin_service.set_availability(
+                failed_host.as_aliases(), HostAvailability.UNAVAILABLE)
+
         # Invalidate the current (likely broken) connection before
         # attempting failover so any pool-proxied target is evicted from
         # the owning pool. Mirrors sync v2 _invalidate_current_connection
@@ -400,6 +408,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
         reader_candidates = [h for h in topology if h.role == HostRole.READER]
         original_writer = next(
             (h for h in topology if h.role == HostRole.WRITER), None)
+        is_original_writer_still_writer = False
         strategy = (WrapperProperties.FAILOVER_READER_HOST_SELECTOR_STRATEGY
                     .get(self._props) or "random")
 
@@ -426,32 +435,61 @@ class AsyncFailoverPlugin(AsyncPlugin):
                         remaining.remove(candidate)
                     continue
 
-                self._plugin_service.set_availability(
-                    candidate.as_aliases(), HostAvailability.AVAILABLE)
-                await self._plugin_service.set_current_connection(new_conn, candidate)
-                if self._failover_reader_completed is not None:
-                    self._failover_reader_completed.inc()
-                return
-
-            # Readers exhausted for this pass. Try original writer if mode allows.
-            if (original_writer is not None
-                    and self._mode != FailoverMode.STRICT_READER
-                    and asyncio.get_event_loop().time() < deadline):
-                try:
-                    new_conn = await self._within_deadline(
-                        self._open_connection(original_writer, driver_dialect), deadline)
-                except Exception as e:  # noqa: BLE001
+                # Data-plane role verification (sync failover_v2:275-289): the
+                # topology labeled this host a reader, but right after failover
+                # the label can be stale -- in STRICT_READER we must not hand
+                # back a promoted writer. Bind the VERIFIED role.
+                role = await self._probe_role(new_conn, HostRole.READER)
+                if role == HostRole.READER or self._mode != FailoverMode.STRICT_READER:
+                    verified = HostInfo(candidate.host, candidate.port, role)
                     self._plugin_service.set_availability(
-                        original_writer.as_aliases(), HostAvailability.UNAVAILABLE)
-                    last_error = e
-                else:
-                    self._plugin_service.set_availability(
-                        original_writer.as_aliases(), HostAvailability.AVAILABLE)
-                    await self._plugin_service.set_current_connection(
-                        new_conn, original_writer)
+                        candidate.as_aliases(), HostAvailability.AVAILABLE)
+                    await self._plugin_service.set_current_connection(new_conn, verified)
                     if self._failover_reader_completed is not None:
                         self._failover_reader_completed.inc()
                     return
+
+                # STRICT_READER and the live role is not READER: reject.
+                if candidate in remaining:
+                    remaining.remove(candidate)
+                await self._close_quietly(new_conn)
+                if role == HostRole.WRITER and candidate in reader_candidates:
+                    # It is the new writer -- drop it from future passes.
+                    reader_candidates.remove(candidate)
+
+            # Readers exhausted for this pass. Try the original writer -- also
+            # in STRICT_READER (a demoted old writer now serves as a reader),
+            # unless we already verified it is still the writer (sync
+            # failover_v2:292-308).
+            if (original_writer is None
+                    or asyncio.get_event_loop().time() >= deadline
+                    or (self._mode == FailoverMode.STRICT_READER
+                        and is_original_writer_still_writer)):
+                await asyncio.sleep(1.0)
+                continue
+
+            try:
+                new_conn = await self._within_deadline(
+                    self._open_connection(original_writer, driver_dialect), deadline)
+            except Exception as e:  # noqa: BLE001
+                self._plugin_service.set_availability(
+                    original_writer.as_aliases(), HostAvailability.UNAVAILABLE)
+                last_error = e
+            else:
+                role = await self._probe_role(new_conn, HostRole.WRITER)
+                if role == HostRole.READER or self._mode != FailoverMode.STRICT_READER:
+                    verified = HostInfo(
+                        original_writer.host, original_writer.port, role)
+                    self._plugin_service.set_availability(
+                        original_writer.as_aliases(), HostAvailability.AVAILABLE)
+                    await self._plugin_service.set_current_connection(
+                        new_conn, verified)
+                    if self._failover_reader_completed is not None:
+                        self._failover_reader_completed.inc()
+                    return
+                await self._close_quietly(new_conn)
+                if role == HostRole.WRITER:
+                    is_original_writer_still_writer = True
 
             await asyncio.sleep(1.0)
 
@@ -461,6 +499,28 @@ class AsyncFailoverPlugin(AsyncPlugin):
             "Failover could not establish a new reader within "
             f"{self._failover_timeout_sec}s"
         ) from last_error
+
+    async def _probe_role(self, conn: Any, assumed: HostRole) -> HostRole:
+        """Best-effort data-plane role probe; falls back to the topology's
+        assumed role when the probe itself fails (a broken probe should not
+        reject an otherwise healthy connection outside STRICT_READER --
+        matching sync, where a role-probe error drops the candidate via the
+        surrounding except; here we keep the failure non-fatal and let the
+        caller's mode logic decide)."""
+        try:
+            role = await self._plugin_service.get_host_role(conn)
+        except Exception:  # noqa: BLE001 - probe is advisory
+            return assumed
+        return role if isinstance(role, HostRole) else assumed
+
+    @staticmethod
+    async def _close_quietly(conn: Any) -> None:
+        try:
+            close_result = conn.close()
+            if asyncio.iscoroutine(close_result):
+                await close_result
+        except Exception:  # noqa: BLE001 - rejected candidate, best-effort close
+            pass
 
     async def _failover_writer(
             self,
