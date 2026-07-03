@@ -252,3 +252,16 @@ def test_pg_do_ping_returns_false_on_dead_connection():
 
     dialect = AwsWrapperPGPsycopgDialect()
     assert dialect.do_ping(wrapper) is False
+
+
+def test_async_dialects_define_do_ping():
+    """Async dialects must also implement do_ping (AWS ships sync MySQL only;
+    we port pool_pre_ping support to all four dialects)."""
+    from aws_advanced_python_wrapper.sqlalchemy_dialects.mysql_async import \
+        AwsWrapperMySQLAiomysqlAsyncDialect
+    from aws_advanced_python_wrapper.sqlalchemy_dialects.pg_async import \
+        AwsWrapperPGPsycopgAsyncDialect
+
+    # Each defines its own do_ping (not merely inherited from the stock base).
+    assert "do_ping" in AwsWrapperMySQLAiomysqlAsyncDialect.__dict__
+    assert "do_ping" in AwsWrapperPGPsycopgAsyncDialect.__dict__

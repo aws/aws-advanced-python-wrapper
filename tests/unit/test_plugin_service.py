@@ -15,7 +15,7 @@
 from concurrent.futures import TimeoutError
 from unittest.mock import MagicMock, patch
 
-import pytest  # type: ignore
+import pytest
 
 from aws_advanced_python_wrapper.database_dialect import (
     AuroraPgDialect, MultiAzClusterPgDialect, UnknownDatabaseDialect)

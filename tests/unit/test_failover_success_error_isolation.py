@@ -55,3 +55,12 @@ def test_failover_success_error_is_not_mysqlconnector_operational_error():
         "wrap_database_errors wraps it on the MySQL Django backend "
         "(test_django_failover_during_query regression)."
     )
+
+
+def test_failover_success_error_is_not_aiomysql_operational_error():
+    aiomysql = pytest.importorskip("aiomysql")
+    assert not issubclass(FailoverSuccessError, aiomysql.OperationalError), (
+        "FailoverSuccessError must not subclass aiomysql.OperationalError. "
+        "Same wrap_database_errors concern as the sync MySQL backend, "
+        "applied to any future Django-aiomysql integration."
+    )

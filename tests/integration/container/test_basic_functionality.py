@@ -59,7 +59,7 @@ class TestBasicFunctionality:
     @pytest.fixture(scope='class')
     def props(self):
         p: Properties = Properties({
-            "plugins": "aurora_connection_tracker,failover",
+            "plugins": "aurora_connection_tracker,failover_v2",
             "connect_timeout": 10,
             "autocommit": True,
             "cluster_id": "cluster1"})
