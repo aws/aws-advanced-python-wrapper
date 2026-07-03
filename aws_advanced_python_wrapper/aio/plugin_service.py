@@ -35,11 +35,14 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostRole
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
     ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.storage.cache_map import CacheMap
+
+logger = Logger(__name__)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
@@ -179,7 +182,19 @@ class AsyncPluginService(Protocol):
     async def get_host_role(
             self,
             connection: Optional[Any] = None,
-            timeout_sec: float = 5.0) -> HostRole:
+            timeout_sec: Optional[float] = None) -> HostRole:
+        ...
+
+    async def fill_aliases(
+            self,
+            connection: Optional[Any] = None,
+            host_info: Optional[HostInfo] = None) -> None:
+        """Populate ``host_info``'s aliases from the connection.
+
+        Adds the host:port alias plus any aliases reported by the database's
+        ``host_alias_query`` and by :meth:`identify_connection`. No-op when the
+        host already has aliases. Mirrors sync ``PluginServiceImpl.fill_aliases``.
+        """
         ...
 
     async def connect(
@@ -396,6 +411,48 @@ class AsyncPluginServiceImpl(AsyncPluginService):
 
     @property
     def current_host_info(self) -> Optional[HostInfo]:
+        """The host the current connection is bound to.
+
+        Port of sync ``PluginServiceImpl.current_host_info`` (:446-478): once
+        set it is returned directly; otherwise it falls back to the initial
+        connection host, then to the topology's writer (validated against the
+        allowed-hosts filter), then to the first allowed host.
+
+        Deviation from sync: where sync raises ``HostListEmpty`` /
+        ``CouldNotDetermineCurrentHost`` when no host can be resolved, async
+        returns ``None`` instead. The async failover / read-write-splitting
+        plugins (outside this change's scope) read ``current_host_info`` and
+        treat ``None`` as "no current host yet"; raising there would break their
+        pre-topology paths. The ``CurrentHostNotAllowed`` guard (a real
+        misconfiguration, not a not-yet-known state) IS still raised.
+        """
+        if self._current_host_info is not None:
+            return self._current_host_info
+
+        self._current_host_info = self._initial_connection_host_info
+        if self._current_host_info is not None:
+            return self._current_host_info
+
+        all_hosts = self._all_hosts
+        if not all_hosts:
+            # Sync raises HostListEmpty; async tolerates the not-yet-known state.
+            return None
+
+        writer = next((h for h in all_hosts if h.role == HostRole.WRITER), None)
+        allowed_hosts = self.filter_hosts(list(all_hosts))
+        if writer is not None:
+            target = writer.get_host_and_port()
+            if not any(h.get_host_and_port() == target for h in allowed_hosts):
+                allowed_str = ", ".join(h.get_host_and_port() for h in allowed_hosts)
+                raise AwsWrapperError(
+                    Messages.get_formatted(
+                        "PluginServiceImpl.CurrentHostNotAllowed", target, allowed_str))
+            self._current_host_info = writer
+        elif allowed_hosts:
+            self._current_host_info = allowed_hosts[0]
+
+        # Sync raises CouldNotDetermineCurrentHost when still unresolved; async
+        # returns None (same not-yet-known tolerance as the empty-list case).
         return self._current_host_info
 
     @property
@@ -725,12 +782,15 @@ class AsyncPluginServiceImpl(AsyncPluginService):
     async def get_host_role(
             self,
             connection: Optional[Any] = None,
-            timeout_sec: float = 5.0) -> HostRole:
+            timeout_sec: Optional[float] = None) -> HostRole:
         """Probe ``connection`` (or current_connection) to learn its role.
 
         Uses the resolved DatabaseDialect's ``is_reader_query`` via
         AsyncDialectUtils. Raises AwsWrapperError if no dialect is set,
         if the connection is None, or if the probe fails.
+
+        When ``timeout_sec`` is not supplied, defaults to
+        ``AUXILIARY_QUERY_TIMEOUT_SEC`` (sync parity) rather than a hardcoded 5s.
         """
         conn = connection if connection is not None else self._current_connection
         if conn is None:
@@ -740,6 +800,9 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             raise AwsWrapperError(
                 "AsyncPluginService.get_host_role requires a database_dialect; "
                 "it is populated by AsyncAwsWrapperConnection.connect.")
+        if timeout_sec is None:
+            timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_float(
+                self._props)
         from aws_advanced_python_wrapper.aio.dialect_utils import \
             AsyncDialectUtils
         return await AsyncDialectUtils.get_host_role(
@@ -748,6 +811,64 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             self._database_dialect.is_reader_query,
             timeout_sec=timeout_sec,
         )
+
+    async def fill_aliases(
+            self,
+            connection: Optional[Any] = None,
+            host_info: Optional[HostInfo] = None) -> None:
+        """Populate ``host_info``'s aliases -- port of sync
+        ``PluginServiceImpl.fill_aliases`` (plugin_service.py:671-706).
+
+        Adds the ``host:port`` alias, then any aliases the database reports via
+        ``host_alias_query``, then the aliases of the host that
+        :meth:`identify_connection` resolves the connection to. No-op when the
+        host already carries aliases (idempotent).
+        """
+        connection = self._current_connection if connection is None else connection
+        host_info = self.current_host_info if host_info is None else host_info
+        if connection is None or host_info is None:
+            return
+
+        if len(host_info.aliases) > 0:
+            logger.debug("PluginServiceImpl.NonEmptyAliases", host_info.aliases)
+            return
+
+        host_info.add_alias(host_info.as_alias())
+
+        aux_timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_float(
+            self._props)
+        try:
+            await asyncio.wait_for(
+                self._fill_aliases_from_query(connection, host_info),
+                timeout=aux_timeout_sec)
+        except asyncio.TimeoutError as e:
+            from aws_advanced_python_wrapper.errors import QueryTimeoutError
+            raise QueryTimeoutError(
+                Messages.get("PluginServiceImpl.FillAliasesTimeout")) from e
+        except Exception as e:  # noqa: BLE001 - alias query is best-effort
+            logger.debug("PluginServiceImpl.FailedToRetrieveHostPort", e)
+
+        host = await self.identify_connection(connection)
+        if host:
+            host_info.add_alias(*host.as_aliases())
+
+    async def _fill_aliases_from_query(
+            self, connection: Any, host_info: HostInfo) -> None:
+        dialect = self._database_dialect
+        if dialect is None:
+            return
+        from aws_advanced_python_wrapper.database_dialect import \
+            UnknownDatabaseDialect
+        if isinstance(dialect, UnknownDatabaseDialect):
+            return
+        alias_query = dialect.host_alias_query
+        if not alias_query:
+            return
+        async with connection.cursor() as cur:
+            await cur.execute(alias_query)
+            for row in await cur.fetchall():
+                if row:
+                    host_info.add_alias(row[0])
 
     async def connect(
             self,

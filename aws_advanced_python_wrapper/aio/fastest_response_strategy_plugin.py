@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from copy import copy
 from dataclasses import dataclass
 from threading import Lock
 from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, List,
@@ -43,6 +44,7 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import RandomHostSelector
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.notifications import ConnectionEvent
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 if TYPE_CHECKING:
@@ -64,6 +66,13 @@ _DEFAULT_PROBE_TIMEOUT_SEC = 2.0
 _DEFAULT_CACHE_TTL_SEC = 30.0
 _DEFAULT_MEASURE_INTERVAL_MS = 30_000
 _NUM_OF_MEASURES = 5
+# Monitoring-connection property prefix and default connect timeout, mirroring
+# sync HostResponseTimeMonitor (fastest_response_strategy_plugin.py:158-160).
+_MONITORING_PROPERTY_PREFIX = "frt-"
+_DEFAULT_MONITOR_CONNECT_TIMEOUT_SEC = 10
+# Response-time entries + idle monitors expire 10 minutes after their last
+# refresh, matching sync HostResponseTimeService._CACHE_EXPIRATION_NS (:315).
+_RESPONSE_CACHE_TTL_NS = 10 * 60 * 1_000_000_000
 
 
 @dataclass
@@ -74,29 +83,44 @@ class ResponseTimeHolder:
 
 
 class AsyncHostResponseTimeCache:
-    """Class-level per-host-URL response-time cache.
+    """Class-level per-host-URL response-time cache with 10-minute expiry.
 
-    Mirrors sync's storage-service-backed ``ResponseTimeHolder`` cache
-    without the full services-container machinery. Keyed by
-    ``HostInfo.url`` so sync+async plugins reading the same topology
-    converge on the same identifier.
+    Analogous to sync's storage-service-backed ``ResponseTimeHolder`` cache
+    (registered with a 10-minute ``item_expiration_time``) but independent of
+    it: this is the async plugin's OWN in-process cache, keyed by
+    ``HostInfo.url``. Values are measured round-trip times in NANOSECONDS
+    (sync stores milliseconds), so entries are NOT shared or comparable across
+    the sync and async plugins -- only the keying scheme (the host URL) is the
+    same. Each :meth:`put` refreshes the entry's expiry, so a monitored host's
+    entry stays live while it is being measured and lapses ~10 minutes after
+    its monitor stops writing.
     """
 
     _lock: ClassVar[Lock] = Lock()
-    _by_url: ClassVar[Dict[str, ResponseTimeHolder]] = {}
+    _by_url: ClassVar[Dict[str, Tuple[ResponseTimeHolder, int]]] = {}
+    # Time-to-live for cache entries (ns). Class attribute so tests can shrink
+    # it to exercise expiry deterministically.
+    _ttl_ns: ClassVar[int] = _RESPONSE_CACHE_TTL_NS
 
     @classmethod
     def put(cls, url: str, response_time_ns: int) -> None:
+        expiry_ns = time.perf_counter_ns() + cls._ttl_ns
         with cls._lock:
-            cls._by_url[url] = ResponseTimeHolder(url, response_time_ns)
+            cls._by_url[url] = (ResponseTimeHolder(url, response_time_ns), expiry_ns)
 
     @classmethod
     def get(cls, url: str) -> int:
         """Return the last recorded response-time ns, or ``_MAX_RESPONSE_NS``
-        if the URL has no measurement yet."""
+        if the URL has no live measurement (never recorded, or expired)."""
         with cls._lock:
-            holder = cls._by_url.get(url)
-        return holder.response_time_ns if holder is not None else _MAX_RESPONSE_NS
+            entry = cls._by_url.get(url)
+            if entry is None:
+                return _MAX_RESPONSE_NS
+            holder, expiry_ns = entry
+            if time.perf_counter_ns() >= expiry_ns:
+                cls._by_url.pop(url, None)
+                return _MAX_RESPONSE_NS
+            return holder.response_time_ns
 
     @classmethod
     def remove(cls, url: str) -> None:
@@ -132,15 +156,48 @@ class AsyncHostResponseTimeMonitor:
         self._plugin_service = plugin_service
         self._host_info = host_info
         self._props = props
+        # Monitoring connection uses the frt- prefixed overrides (prefix
+        # stripped) plus a default connect timeout, mirroring sync
+        # HostResponseTimeMonitor._open_connection (:286-302).
+        self._monitoring_props = self._build_monitoring_props(props)
         self._interval_sec = max(0.05, interval_ms / 1000.0)
         self._probe_timeout_sec = _DEFAULT_PROBE_TIMEOUT_SEC
         self._task: Optional[asyncio.Task[None]] = None
         self._stop_event = asyncio.Event()
         self._probe_conn: Optional[Any] = None
+        self._reset_requested = False
+        self._last_activity_ns = time.perf_counter_ns()
+
+    @staticmethod
+    def _build_monitoring_props(props: Properties) -> Properties:
+        monitoring_props = copy(props)
+        for key in list(props.keys()):
+            if key.startswith(_MONITORING_PROPERTY_PREFIX):
+                monitoring_props[key[len(_MONITORING_PROPERTY_PREFIX):]] = props[key]
+                monitoring_props.pop(key, None)
+        if monitoring_props.get(WrapperProperties.CONNECT_TIMEOUT_SEC.name) is None:
+            monitoring_props[WrapperProperties.CONNECT_TIMEOUT_SEC.name] = _DEFAULT_MONITOR_CONNECT_TIMEOUT_SEC
+        return monitoring_props
 
     @property
     def host_info(self) -> HostInfo:
         return self._host_info
+
+    @property
+    def last_activity_ns(self) -> int:
+        return self._last_activity_ns
+
+    def request_reset(self) -> None:
+        """Drop the current monitoring connection and cached response time on
+        the next measurement cycle, and evict the stale cache entry now.
+
+        Async parity for sync ``HostResponseTimeMonitor.process_event`` (:217):
+        sync resets a host's monitor when a :class:`MonitorResetEvent` names it.
+        Async has no monitor-service event bus, so the plugin drives this from
+        its ``notify_connection_changed`` hook instead (see the plugin below).
+        """
+        self._reset_requested = True
+        AsyncHostResponseTimeCache.remove(self._host_info.url)
 
     def is_running(self) -> bool:
         return self._task is not None and not self._task.done()
@@ -173,6 +230,12 @@ class AsyncHostResponseTimeMonitor:
             slept += step
 
     async def _measure_once(self) -> None:
+        self._last_activity_ns = time.perf_counter_ns()
+        if self._reset_requested:
+            # A connection-object change reset this host: drop the stale probe
+            # connection so the next measurement reopens against the new one.
+            self._reset_requested = False
+            await self._close_probe_conn()
         if self._probe_conn is None:
             self._probe_conn = await self._open_probe_connection()
             if self._probe_conn is None:
@@ -212,9 +275,11 @@ class AsyncHostResponseTimeMonitor:
                 self._host_info.url, _MAX_RESPONSE_NS)
 
     async def _open_probe_connection(self) -> Optional[Any]:
+        # Probe with force_connect (bypasses any pooled provider) using the
+        # frt-stripped monitoring props -- sync parity (:301).
         try:
-            return await self._plugin_service.connect(
-                self._host_info, self._props)
+            return await self._plugin_service.force_connect(
+                self._host_info, self._monitoring_props)
         except Exception:  # noqa: BLE001 - probe open best-effort
             return None
 
@@ -279,6 +344,11 @@ class AsyncHostResponseTimeService:
             self._known_urls = {h.url for h in hosts}
             return
 
+        # Dispose monitors that have gone idle (no measurement activity for
+        # ~10 min) before reconciling -- async parity for sync's monitor-service
+        # idle-expiry (fastest_response_strategy_plugin.py:326-338).
+        self._prune_idle_monitors()
+
         new_urls = {h.url for h in hosts}
         new_hosts_by_url = {h.url: h for h in hosts}
 
@@ -319,6 +389,32 @@ class AsyncHostResponseTimeService:
                     AsyncHostResponseTimeService._stop_tasks.discard)
 
         self._known_urls = new_urls
+
+    def reset_host(self, url: str) -> None:
+        """Reset the monitor for ``url`` (drop its probe conn + cached time).
+
+        Used by the plugin's ``notify_connection_changed`` hook when the
+        current connection object changes.
+        """
+        with AsyncHostResponseTimeService._lock:
+            monitor = AsyncHostResponseTimeService._monitors.get(url)
+        if monitor is not None:
+            monitor.request_reset()
+
+    def _prune_idle_monitors(self) -> None:
+        now_ns = time.perf_counter_ns()
+        idle: List[AsyncHostResponseTimeMonitor] = []
+        with AsyncHostResponseTimeService._lock:
+            for url, monitor in list(AsyncHostResponseTimeService._monitors.items()):
+                if now_ns - monitor.last_activity_ns > _RESPONSE_CACHE_TTL_NS:
+                    idle.append(monitor)
+                    del AsyncHostResponseTimeService._monitors[url]
+                    self._known_urls.discard(url)
+                    AsyncHostResponseTimeCache.remove(url)
+        for monitor in idle:
+            task = asyncio.create_task(monitor.stop())
+            AsyncHostResponseTimeService._stop_tasks.add(task)
+            task.add_done_callback(AsyncHostResponseTimeService._stop_tasks.discard)
 
     @staticmethod
     def get_response_time_ns(host_info: HostInfo) -> int:
@@ -538,6 +634,21 @@ class AsyncFastestResponseStrategyPlugin(AsyncPlugin):
         # Refresh the monitor set to match the new topology.
         self._response_time_service.set_hosts(
             self._plugin_service.all_hosts)
+
+    def notify_connection_changed(
+            self, changes: Set[ConnectionEvent]) -> None:
+        # Sync resets a host's response-time monitor when a MonitorResetEvent
+        # (published by BlueGreen / topology monitors) names that host's
+        # endpoint (process_event:217-222). Async has no such event bus, so we
+        # approximate it here: when the current connection OBJECT changes
+        # (failover / read-write-splitting swap), reset the monitor for the
+        # now-current host so its stale response time and probe connection are
+        # dropped and re-measured.
+        if ConnectionEvent.CONNECTION_OBJECT_CHANGED not in changes:
+            return
+        current = self._plugin_service.current_host_info
+        if current is not None:
+            self._response_time_service.reset_host(current.url)
 
     # ---- helpers ------------------------------------------------------
 

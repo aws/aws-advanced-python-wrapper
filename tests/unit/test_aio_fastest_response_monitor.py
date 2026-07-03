@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -55,7 +56,10 @@ def _make_plugin_service(
     svc.driver_dialect = MagicMock()
     svc.driver_dialect.ping = AsyncMock(return_value=ping_result)
     svc.driver_dialect.abort_connection = AsyncMock()
+    # The monitor probes via force_connect (sync parity), not connect.
+    svc.force_connect = AsyncMock(return_value=probe_conn)
     svc.connect = AsyncMock(return_value=probe_conn)
+    svc.current_host_info = None
     return svc
 
 
@@ -123,7 +127,7 @@ def test_monitor_measure_once_ping_failure_marks_unreachable() -> None:
 
 def test_monitor_measure_once_connect_failure_marks_unreachable() -> None:
     svc = _make_plugin_service(probe_conn=None)
-    svc.connect = AsyncMock(side_effect=RuntimeError("probe open failed"))
+    svc.force_connect = AsyncMock(side_effect=RuntimeError("probe open failed"))
     host = _host("h3")
     m = AsyncHostResponseTimeMonitor(svc, host, Properties(), 10_000)
 
@@ -132,6 +136,63 @@ def test_monitor_measure_once_connect_failure_marks_unreachable() -> None:
 
     asyncio.run(_body())
     assert AsyncHostResponseTimeCache.get(host.url) == _MAX_RESPONSE_NS
+
+
+def test_monitor_probes_via_force_connect_with_stripped_props() -> None:
+    """The monitor connects with force_connect, strips the frt- prefix from
+    monitoring props, and defaults CONNECT_TIMEOUT_SEC to 10."""
+    probe = MagicMock(name="probe_conn")
+    svc = _make_plugin_service(probe_conn=probe, ping_result=True)
+    props = Properties({"frt-connect_timeout": "3", "keep_me": "yes"})
+    host = _host("h1")
+    m = AsyncHostResponseTimeMonitor(svc, host, props, 10_000)
+
+    async def _body():
+        await m._measure_once()
+
+    asyncio.run(_body())
+
+    svc.force_connect.assert_awaited()
+    svc.connect.assert_not_awaited()
+    used_props = svc.force_connect.call_args.args[1]
+    # frt- prefix stripped: frt-connect_timeout -> connect_timeout=3 (user
+    # override wins over the default).
+    assert used_props.get("connect_timeout") == "3"
+    assert "frt-connect_timeout" not in used_props
+    assert used_props.get("keep_me") == "yes"
+
+
+def test_monitor_defaults_connect_timeout_to_10() -> None:
+    probe = MagicMock(name="probe_conn")
+    svc = _make_plugin_service(probe_conn=probe, ping_result=True)
+    host = _host("h1")
+    m = AsyncHostResponseTimeMonitor(svc, host, Properties(), 10_000)
+
+    async def _body():
+        await m._measure_once()
+
+    asyncio.run(_body())
+    used_props = svc.force_connect.call_args.args[1]
+    assert used_props.get("connect_timeout") == 10
+
+
+def test_monitor_request_reset_evicts_cache_and_drops_probe_conn() -> None:
+    probe = MagicMock(name="probe_conn")
+    svc = _make_plugin_service(probe_conn=probe, ping_result=True)
+    host = _host("h1")
+    m = AsyncHostResponseTimeMonitor(svc, host, Properties(), 10_000)
+
+    async def _body():
+        await m._measure_once()
+        assert AsyncHostResponseTimeCache.get(host.url) < _MAX_RESPONSE_NS
+        # Reset drops the cached time immediately and flags a probe reopen.
+        m.request_reset()
+        assert AsyncHostResponseTimeCache.get(host.url) == _MAX_RESPONSE_NS
+        # Next measurement closes the old probe before reusing it.
+        await m._measure_once()
+        svc.driver_dialect.abort_connection.assert_awaited()
+
+    asyncio.run(_body())
 
 
 def test_monitor_stop_is_idempotent() -> None:
@@ -252,5 +313,56 @@ def test_service_stop_all_clears_registry() -> None:
         service.set_hosts((_host("a"),))
         await AsyncHostResponseTimeService.stop_all()
         assert AsyncHostResponseTimeService._monitors == {}
+
+    asyncio.run(_body())
+
+
+# ----- Expiry + reset --------------------------------------------------
+
+
+def test_cache_entry_expires_after_ttl(monkeypatch) -> None:
+    # Shrink the TTL so a freshly-put entry is already expired on read.
+    monkeypatch.setattr(AsyncHostResponseTimeCache, "_ttl_ns", -1)
+    AsyncHostResponseTimeCache.put("u", 123)
+    assert AsyncHostResponseTimeCache.get("u") == _MAX_RESPONSE_NS
+
+
+def test_cache_entry_live_within_ttl() -> None:
+    AsyncHostResponseTimeCache.put("u", 123)
+    assert AsyncHostResponseTimeCache.get("u") == 123
+
+
+def test_service_reset_host_evicts_and_flags_monitor() -> None:
+    svc = _make_plugin_service()
+    service = AsyncHostResponseTimeService(svc, Properties(), 10_000)
+    host = _host("a")
+    monitor = AsyncHostResponseTimeMonitor(svc, host, Properties(), 10_000)
+    AsyncHostResponseTimeService._monitors[host.url] = monitor
+    AsyncHostResponseTimeCache.put(host.url, 42)
+
+    service.reset_host(host.url)
+
+    assert monitor._reset_requested is True
+    assert AsyncHostResponseTimeCache.get(host.url) == _MAX_RESPONSE_NS
+
+
+def test_service_prunes_idle_monitors_on_set_hosts() -> None:
+    svc = _make_plugin_service()
+    service = AsyncHostResponseTimeService(svc, Properties(), 10_000)
+    url = _host("a").url
+
+    async def _body():
+        service.set_hosts((_host("a"),))
+        old = AsyncHostResponseTimeService._monitors[url]
+        # Age the monitor past the 10-minute idle window.
+        old._last_activity_ns = time.perf_counter_ns() - (11 * 60 * 1_000_000_000)
+        # A subsequent reconcile prunes the idle monitor; since 'a' is still in
+        # the topology it is replaced by a fresh monitor.
+        service.set_hosts((_host("a"),))
+        await asyncio.sleep(0)
+        new = AsyncHostResponseTimeService._monitors.get(url)
+        assert new is not None
+        assert new is not old
+        await AsyncHostResponseTimeService.stop_all()
 
     asyncio.run(_body())

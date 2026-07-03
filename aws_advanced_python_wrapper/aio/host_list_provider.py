@@ -33,6 +33,7 @@ A background refresh loop (:class:`AsyncClusterTopologyMonitor`) lives in
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, List,
                     Optional, Protocol, Tuple, runtime_checkable)
 
@@ -51,6 +52,23 @@ if TYPE_CHECKING:
 
 
 Topology = Tuple[HostInfo, ...]
+
+
+def _is_programming_error(ex: BaseException) -> bool:
+    """True when ``ex`` is a PEP-249 ``ProgrammingError`` (bad SQL / not an
+    Aurora cluster), regardless of which driver raised it.
+
+    The async topology query runs on the raw driver connection, so the
+    exception is the driver's own ``ProgrammingError`` (psycopg / aiomysql) or
+    the wrapper's :class:`aws_advanced_python_wrapper.pep249.ProgrammingError`.
+    Match by class name across the MRO so all of them are recognized -- sync
+    catches ``pep249.ProgrammingError`` directly (host_list_provider.py:593).
+    """
+    from aws_advanced_python_wrapper.pep249 import \
+        ProgrammingError as WrapperProgrammingError
+    if isinstance(ex, WrapperProgrammingError):
+        return True
+    return any(cls.__name__ == "ProgrammingError" for cls in type(ex).__mro__)
 
 
 @runtime_checkable
@@ -382,12 +400,17 @@ class AsyncAuroraHostListProvider:
                 await cur.execute(self._topology_query)
                 return list(await cur.fetchall())
         except Exception as ex:
-            # A failed topology probe should not raise into the caller;
-            # the caller will see an empty topology and fall back to cache.
-            # Log so a genuinely broken query (wrong SQL after a dialect
-            # upgrade, missing permissions) is distinguishable from a
-            # genuinely empty result -- otherwise failover silently degrades
-            # to the seed host with no signal.
+            # A ProgrammingError means the query itself is invalid (wrong SQL
+            # after a dialect mismatch, or not an Aurora cluster) -- surface it
+            # rather than silently degrading, matching sync
+            # AuroraTopologyUtils._query_for_topology (:593-594).
+            if _is_programming_error(ex):
+                raise AwsWrapperError(
+                    Messages.get("RdsHostListProvider.InvalidQuery")) from ex
+            # Any OTHER failure (closed connection, timeout) should not raise
+            # into the caller; it sees an empty topology and falls back to the
+            # cache. Log so a transient probe failure stays distinguishable
+            # from a genuinely empty cluster.
             logger.debug(
                 f"[AsyncAuroraHostListProvider] topology query failed; "
                 f"returning empty topology (caller falls back to cache): {ex}")
@@ -399,31 +422,58 @@ class AsyncAuroraHostListProvider:
         # :meth:`_resolve_instance_pattern`.
         _, pattern_port = self._resolve_instance_pattern()
         port = pattern_port if pattern_port is not None else self._default_port
-        hosts: List[HostInfo] = []
+        # Dedup by resolved host (a row may repeat), matching sync
+        # AuroraTopologyUtils._process_query_results (:603-606).
+        host_map: Dict[str, HostInfo] = {}
         for row in rows:
             if not row:
                 continue
             server_id = row[0]
             is_writer = bool(row[1]) if len(row) > 1 else False
-            hosts.append(
-                HostInfo(
-                    host=self._host_from_server_id(server_id),
-                    port=port,
-                    role=HostRole.WRITER if is_writer else HostRole.READER,
-                )
+            # The topology query may include LAST_UPDATE_TIMESTAMP as a 5th
+            # column (sync _create_host:527-528); it disambiguates multiple
+            # writer rows during a failover window.
+            last_update = row[4] if len(row) > 4 and isinstance(row[4], datetime) else None
+            host = self._host_from_server_id(server_id)
+            host_map[host] = HostInfo(
+                host=host,
+                port=port,
+                role=HostRole.WRITER if is_writer else HostRole.READER,
+                last_update_time=last_update,
             )
+
+        readers = [h for h in host_map.values() if h.role != HostRole.WRITER]
+        writers = [h for h in host_map.values() if h.role == HostRole.WRITER]
+
+        if not host_map:
+            return ()
         # No writer => invalid topology. Return empty so callers fall back to
         # the cached topology instead of acting on a readers-only host list
         # (matches sync AuroraTopologyUtils._process_query_results and the
         # async MultiAz/GlobalAurora providers).
-        if hosts and not any(h.role == HostRole.WRITER for h in hosts):
+        if not writers:
             logger.debug(
                 "[AsyncAuroraHostListProvider] topology query returned no "
                 "writer; returning empty topology (caller falls back to cache)")
             return ()
-        # Writer first, readers after.
-        hosts.sort(key=lambda h: 0 if h.role == HostRole.WRITER else 1)
-        return tuple(hosts)
+        if len(writers) == 1:
+            chosen_writer = writers[0]
+        else:
+            # More than one writer row: take the most-recently-updated writer as
+            # the current writer and ignore the rest -- sync parity
+            # (_process_query_results:621-625). Writers without a timestamp are
+            # only considered if none carry one.
+            timestamped = [w for w in writers if w.last_update_time is not None]
+            if timestamped:
+                timestamped.sort(reverse=True, key=lambda h: h.last_update_time or datetime.min)
+                chosen_writer = timestamped[0]
+            else:
+                chosen_writer = writers[0]
+            logger.debug(
+                "[AsyncAuroraHostListProvider] topology query returned multiple "
+                "writers; using the latest-updated one")
+        # Writer first, readers after (async convention).
+        return (chosen_writer, *readers)
 
     def _resolve_instance_pattern(self) -> Tuple[Optional[str], Optional[int]]:
         """Resolve the instance host pattern and its explicit port (if any).
@@ -444,9 +494,14 @@ class AsyncAuroraHostListProvider:
         port, so every failover/reader connect to a topology host fails and
         writer failover is stranded (test_fail_from_reader_to_writer).
         """
-        pattern = WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(
+        user_pattern = WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(
             self._props
         )
+        pattern = user_pattern
+        if user_pattern and "?" not in user_pattern:
+            # The user explicitly set a pattern with no '?' placeholder --
+            # reject it (sync _validate_host_pattern:470-473).
+            self._validate_host_pattern(user_pattern.split(":", 1)[0])
         if not (pattern and "?" in pattern):
             from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
             derived = RdsUtils().get_rds_instance_host_pattern(
@@ -462,7 +517,30 @@ class AsyncAuroraHostListProvider:
                 port = int(port_str)
             except ValueError:
                 port = None
+        # Reject RDS Proxy / RDS Custom endpoints as instance host patterns
+        # (sync _validate_host_pattern:475-484).
+        self._validate_host_pattern(pattern)
         return pattern, port
+
+    def _validate_host_pattern(self, host: str) -> None:
+        """Reject invalid instance host patterns -- sync parity
+        (host_list_provider.py:469-484). An invalid pattern is a configuration
+        error and should fail loudly rather than silently yield no topology."""
+        from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
+        from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
+        rds_utils = RdsUtils()
+        if not rds_utils.is_dns_pattern_valid(host):
+            logger.error("RdsHostListProvider.InvalidPattern")
+            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidPattern"))
+        url_type = rds_utils.identify_rds_type(host)
+        if url_type == RdsUrlType.RDS_PROXY:
+            logger.error("RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy")
+            raise AwsWrapperError(
+                Messages.get("RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy"))
+        if url_type == RdsUrlType.RDS_CUSTOM_CLUSTER:
+            logger.error("RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom")
+            raise AwsWrapperError(
+                Messages.get("RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom"))
 
     def _host_from_server_id(self, server_id: str) -> str:
         """Translate an Aurora server ID into a reachable host name.
@@ -478,7 +556,19 @@ class AsyncAuroraHostListProvider:
         return server_id
 
     async def stop(self) -> None:
-        return None
+        """Tear down the provider's background topology monitor.
+
+        Sync parity: sync ``RdsHostListProvider`` stops its monitor on release.
+        The async provider previously no-op'd here, leaking the monitor task
+        (it only stopped via the global cleanup hook).
+        """
+        monitor = self._monitor
+        self._monitor = None
+        if monitor is not None:
+            try:
+                await monitor.stop()
+            except Exception:  # noqa: BLE001 - best-effort teardown
+                pass
 
 
 class AsyncMultiAzHostListProvider(AsyncAuroraHostListProvider):
@@ -583,10 +673,12 @@ class AsyncMultiAzHostListProvider(AsyncAuroraHostListProvider):
             self._writer_id = writer_id
             return rows
         except Exception as ex:
-            # Mirror AsyncAuroraHostListProvider: a failed probe yields
-            # an empty topology rather than raising into the caller. Log so a
-            # broken query (post dialect-upgrade SQL, permissions) is not
-            # silently indistinguishable from an empty cluster.
+            # A ProgrammingError means the query itself is invalid -- surface it
+            # (sync MultiAzTopologyUtils._query_for_topology:659-660). Any other
+            # failure yields an empty topology so callers fall back to cache.
+            if _is_programming_error(ex):
+                raise AwsWrapperError(
+                    Messages.get("RdsHostListProvider.InvalidQuery")) from ex
             logger.debug(
                 f"[AsyncMultiAzHostListProvider] topology query failed; "
                 f"returning empty topology (caller falls back to cache): {ex}")

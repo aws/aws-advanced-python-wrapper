@@ -32,11 +32,23 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from aws_advanced_python_wrapper.aio.fastest_response_strategy_plugin import \
-    AsyncFastestResponseStrategyPlugin
+from aws_advanced_python_wrapper.aio.fastest_response_strategy_plugin import (
+    AsyncFastestResponseStrategyPlugin, AsyncHostResponseTimeCache,
+    AsyncHostResponseTimeService)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.notifications import ConnectionEvent
 from aws_advanced_python_wrapper.utils.properties import Properties
+
+
+@pytest.fixture(autouse=True)
+def _reset_frt_singletons():
+    AsyncHostResponseTimeCache.clear()
+    AsyncHostResponseTimeService._reset_for_tests()
+    yield
+    AsyncHostResponseTimeCache.clear()
+    AsyncHostResponseTimeService._reset_for_tests()
+
 
 # ---- Helpers -----------------------------------------------------------
 
@@ -235,6 +247,43 @@ def test_notify_host_list_changed_clears_cache():
     plugin.notify_host_list_changed({})
 
     assert plugin._cached_fastest == {}
+
+
+# ---- notify_connection_changed resets current-host monitor ------------
+
+
+def test_notify_connection_changed_resets_current_host_monitor():
+    current = _reader("current-host")
+    plugin, plugin_service, _ = _build(all_hosts=(current,))
+    plugin_service.current_host_info = current
+
+    monitor = MagicMock(name="monitor")
+    AsyncHostResponseTimeService._monitors[current.url] = monitor
+    AsyncHostResponseTimeCache.put(current.url, 111)
+
+    plugin.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
+
+    monitor.request_reset.assert_called_once()
+
+
+def test_notify_connection_changed_ignores_other_events():
+    current = _reader("current-host")
+    plugin, plugin_service, _ = _build(all_hosts=(current,))
+    plugin_service.current_host_info = current
+
+    monitor = MagicMock(name="monitor")
+    AsyncHostResponseTimeService._monitors[current.url] = monitor
+
+    plugin.notify_connection_changed({ConnectionEvent.INITIAL_CONNECTION})
+
+    monitor.request_reset.assert_not_called()
+
+
+def test_notify_connection_changed_noop_when_no_current_host():
+    plugin, plugin_service, _ = _build()
+    plugin_service.current_host_info = None
+    # Must not raise even with no current host / no monitors registered.
+    plugin.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
 
 
 # ---- Subscribed methods sanity ----------------------------------------

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime
 from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -28,8 +29,35 @@ from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
 from aws_advanced_python_wrapper.aio.host_list_provider import (
     AsyncAuroraHostListProvider, AsyncHostListProvider,
     AsyncStaticHostListProvider)
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.properties import Properties
+
+
+def _build_error_cursor(exc: BaseException) -> MagicMock:
+    cur = MagicMock()
+    cur.execute = AsyncMock(side_effect=exc)
+    cur.fetchall = AsyncMock(return_value=[])
+    cur.__aenter__ = AsyncMock(return_value=cur)
+    cur.__aexit__ = AsyncMock(return_value=None)
+    return cur
+
+
+def _build_error_conn(exc: BaseException) -> MagicMock:
+    conn = MagicMock()
+    conn.cursor = MagicMock(return_value=_build_error_cursor(exc))
+    return conn
+
+
+class ProgrammingError(Exception):
+    """Stand-in for a driver ProgrammingError (matched by class name)."""
+
+
+def _aurora(**pattern_kwargs: Any) -> AsyncAuroraHostListProvider:
+    kwargs = {"cluster_instance_host_pattern":
+              "?.cluster-xyz.us-east-1.rds.amazonaws.com"}
+    kwargs.update({k: v for k, v in pattern_kwargs.items()})
+    return AsyncAuroraHostListProvider(_props(**kwargs), driver_dialect=MagicMock())
 
 # ---- Helpers ------------------------------------------------------------
 
@@ -217,6 +245,106 @@ def test_aurora_provider_force_refresh_bypasses_cache():
         second = await prov.force_refresh(conn)
         assert first != second
         assert second[0].host == "i2"
+
+    asyncio.run(_body())
+
+
+def test_topology_multiple_writers_picks_latest_updated_writer():
+    """5-column rows carry LAST_UPDATE_TIMESTAMP; when >1 writer is reported,
+    the latest-updated one wins and the rest are ignored (sync parity)."""
+    older = datetime(2020, 1, 1, 0, 0, 0)
+    newer = datetime(2020, 1, 1, 0, 5, 0)
+    rows = [
+        ("w-old", True, 0, 0, older),
+        ("w-new", True, 0, 0, newer),
+        ("r-1", False, 0, 0, newer),
+    ]
+    prov = _aurora()
+    topo = prov._rows_to_topology(rows)
+
+    writers = [h for h in topo if h.role == HostRole.WRITER]
+    readers = [h for h in topo if h.role == HostRole.READER]
+    assert len(writers) == 1
+    assert writers[0].host == "w-new.cluster-xyz.us-east-1.rds.amazonaws.com"
+    assert len(readers) == 1
+    # Writer first.
+    assert topo[0].role == HostRole.WRITER
+
+
+def test_topology_multiple_writers_without_timestamps_keeps_one():
+    rows = [("w-a", True), ("w-b", True), ("r-1", False)]
+    prov = _aurora()
+    topo = prov._rows_to_topology(rows)
+    writers = [h for h in topo if h.role == HostRole.WRITER]
+    assert len(writers) == 1
+
+
+def test_topology_query_programming_error_raises_invalid_query():
+    async def _body() -> None:
+        prov = _aurora()
+        conn = _build_error_conn(ProgrammingError("bad topology sql"))
+        with pytest.raises(AwsWrapperError, match="Aurora"):
+            await prov._run_topology_query(conn)
+
+    asyncio.run(_body())
+
+
+def test_topology_query_other_error_returns_empty():
+    async def _body() -> None:
+        prov = _aurora()
+        conn = _build_error_conn(RuntimeError("connection closed"))
+        # Non-ProgrammingError failures fall back to an empty topology (cache).
+        assert await prov._run_topology_query(conn) == []
+
+    asyncio.run(_body())
+
+
+# ---- _validate_host_pattern (sync parity) -----------------------------
+
+
+def test_validate_rejects_pattern_without_placeholder():
+    prov = AsyncAuroraHostListProvider(
+        _props(cluster_instance_host_pattern="no-placeholder.example.com"),
+        driver_dialect=MagicMock())
+    with pytest.raises(AwsWrapperError, match="must contain"):
+        prov._resolve_instance_pattern()
+
+
+def test_validate_rejects_rds_proxy_pattern():
+    prov = AsyncAuroraHostListProvider(
+        _props(cluster_instance_host_pattern="?.proxy-abc123.us-east-1.rds.amazonaws.com"),
+        driver_dialect=MagicMock())
+    with pytest.raises(AwsWrapperError, match="RDS Proxy"):
+        prov._resolve_instance_pattern()
+
+
+def test_validate_rejects_rds_custom_pattern():
+    prov = AsyncAuroraHostListProvider(
+        _props(cluster_instance_host_pattern="?.cluster-custom-abc123.us-east-1.rds.amazonaws.com"),
+        driver_dialect=MagicMock())
+    with pytest.raises(AwsWrapperError, match="RDS Custom"):
+        prov._resolve_instance_pattern()
+
+
+def test_validate_accepts_normal_cluster_pattern():
+    prov = _aurora()
+    host_pattern, port = prov._resolve_instance_pattern()
+    assert host_pattern == "?.cluster-xyz.us-east-1.rds.amazonaws.com"
+    assert port is None
+
+
+# ---- provider.stop() tears down the monitor ---------------------------
+
+
+def test_provider_stop_stops_monitor():
+    async def _body() -> None:
+        prov = _aurora()
+        mock_monitor = MagicMock()
+        mock_monitor.stop = AsyncMock()
+        prov._monitor = mock_monitor
+        await prov.stop()
+        mock_monitor.stop.assert_awaited_once()
+        assert prov._monitor is None
 
     asyncio.run(_body())
 

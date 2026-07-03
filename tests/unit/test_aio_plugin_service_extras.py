@@ -445,3 +445,144 @@ def test_remove_status_is_noop_for_missing_key():
 
     # Must not raise
     svc.remove_status(_Fake, "nope")
+
+
+# ---- current_host_info fallback chain (sync parity) -------------------
+
+
+def test_current_host_info_returns_set_value():
+    svc = _make_service()
+    h = HostInfo("h", 5432)
+    svc._current_host_info = h
+    assert svc.current_host_info is h
+
+
+def test_current_host_info_falls_back_to_initial_connection_host():
+    svc = _make_service()
+    h = HostInfo("init", 5432)
+    svc.initial_connection_host_info = h
+    assert svc.current_host_info is h
+
+
+def test_current_host_info_none_when_no_hosts():
+    svc = _make_service()
+    assert svc.current_host_info is None
+
+
+def test_current_host_info_picks_writer_from_topology():
+    svc = _make_service()
+    writer = HostInfo("w", 5432, HostRole.WRITER)
+    reader = HostInfo("r", 5432, HostRole.READER)
+    svc._all_hosts = (reader, writer)
+    assert svc.current_host_info is writer
+
+
+def test_current_host_info_falls_back_to_first_allowed_when_no_writer():
+    svc = _make_service()
+    reader = HostInfo("r", 5432, HostRole.READER)
+    svc._all_hosts = (reader,)
+    assert svc.current_host_info is reader
+
+
+def test_current_host_info_raises_when_writer_not_allowed():
+    from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
+        AllowedAndBlockedHosts
+    svc = _make_service()
+    writer = HostInfo("w-writer", 5432, HostRole.WRITER, host_id="w-writer")
+    svc._all_hosts = (writer,)
+    # Restrict allowed hosts to exclude the writer's instance id.
+    svc.allowed_and_blocked_hosts = AllowedAndBlockedHosts({"other-instance"}, None)
+    with pytest.raises(AwsWrapperError, match="not in the list of allowed"):
+        _ = svc.current_host_info
+
+
+# ---- fill_aliases (sync parity) --------------------------------------
+
+
+def _alias_cursor(rows):
+    cur = MagicMock()
+    cur.__aenter__ = AsyncMock(return_value=cur)
+    cur.__aexit__ = AsyncMock(return_value=None)
+    cur.execute = AsyncMock()
+    cur.fetchall = AsyncMock(return_value=rows)
+    return cur
+
+
+def test_fill_aliases_adds_self_query_and_identify_aliases():
+    async def _body():
+        svc = _make_service()
+        dialect = MagicMock(spec=DatabaseDialect)
+        dialect.host_alias_query = "SELECT CONCAT(...)"
+        svc.database_dialect = dialect
+
+        conn = MagicMock()
+        conn.cursor = MagicMock(return_value=_alias_cursor([("db-alias",)]))
+
+        identified = HostInfo("h", 5432)
+        identified.add_alias("id-alias")
+        svc.identify_connection = AsyncMock(return_value=identified)
+
+        host = HostInfo("h", 5432)
+        await svc.fill_aliases(conn, host)
+
+        assert "h:5432" in host.aliases       # host:port self-alias
+        assert "db-alias" in host.aliases     # from host_alias_query
+        assert "id-alias" in host.aliases     # from identify_connection
+
+    asyncio.run(_body())
+
+
+def test_fill_aliases_noop_when_already_has_aliases():
+    async def _body():
+        svc = _make_service()
+        host = HostInfo("h", 5432)
+        host.add_alias("existing")
+        conn = MagicMock()
+        await svc.fill_aliases(conn, host)
+        conn.cursor.assert_not_called()
+
+    asyncio.run(_body())
+
+
+def test_fill_aliases_noop_when_no_connection():
+    async def _body():
+        svc = _make_service()
+        host = HostInfo("h", 5432)
+        await svc.fill_aliases(None, host)
+        assert len(host.aliases) == 0
+
+    asyncio.run(_body())
+
+
+# ---- get_host_role default timeout (sync parity) ---------------------
+
+
+def test_get_host_role_defaults_timeout_to_auxiliary_query_timeout(monkeypatch):
+    from aws_advanced_python_wrapper.aio.dialect_utils import AsyncDialectUtils
+    captured = {}
+
+    async def _fake(conn, driver_dialect, query, timeout_sec):
+        captured["timeout"] = timeout_sec
+        return HostRole.WRITER
+
+    monkeypatch.setattr(AsyncDialectUtils, "get_host_role", _fake)
+
+    async def _body():
+        driver_dialect = MagicMock(spec=AsyncDriverDialect)
+        driver_dialect.network_bound_methods = set()
+        svc = AsyncPluginServiceImpl(
+            Properties({"auxiliary_query_timeout_sec": "12"}), driver_dialect)
+        dialect = MagicMock(spec=DatabaseDialect)
+        dialect.is_reader_query = "SELECT is_reader"
+        svc.database_dialect = dialect
+        svc._current_connection = MagicMock()
+
+        role = await svc.get_host_role()
+        assert role == HostRole.WRITER
+        assert captured["timeout"] == 12.0
+
+        # An explicit timeout still wins.
+        await svc.get_host_role(timeout_sec=3.5)
+        assert captured["timeout"] == 3.5
+
+    asyncio.run(_body())
