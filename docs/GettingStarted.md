@@ -4,7 +4,7 @@
 
 Before using the AWS Advanced Python Wrapper, you must install:
 
-- Python 3.10 - 3.13 (inclusive).
+- Python 3.10 - 3.14 (inclusive).
 - The AWS Advanced Python Wrapper.
 - Your choice of underlying Python driver. 
   - To use the wrapper with Aurora with PostgreSQL compatibility, install [Psycopg](https://github.com/psycopg/psycopg).

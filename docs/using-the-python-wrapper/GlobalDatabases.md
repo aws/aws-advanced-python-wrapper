@@ -26,8 +26,8 @@ Use the global cluster endpoint:
 |------------------------------------------|--------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
 | `cluster_id`                             | `1`                                                                            | See [cluster_id parameter documentation](./ClusterId.md)                                    |
 | `wrapper_dialect`                        | `global-aurora-mysql` or `global-aurora-pg`                                    |                                                                                             |
-| `plugins`                                | `initial_connection,failover2,efm2`                                            | Without connection pooling                                                                  |
-|                                          | `aurora_connection_tracker,initial_connection,failover2,efm2`                  | With connection pooling                                                                     |
+| `plugins`                                | `initial_connection,failover_v2,host_monitoring_v2`                                            | Without connection pooling                                                                  |
+|                                          | `aurora_connection_tracker,initial_connection,failover_v2,host_monitoring_v2`                  | With connection pooling                                                                     |
 | `global_cluster_instance_host_patterns`  | `us-east-2:?.XYZ1.us-east-2.rds.amazonaws.com,us-west-2:?.XYZ2.us-west-2.rds.amazonaws.com` | See [documentation](./using-plugins/UsingTheFailover2Plugin.md)                             |
 
 > **Note:** Add additional plugins as needed for your use case.
@@ -46,8 +46,8 @@ Use the cluster reader endpoint:
 |------------------------------------------|--------------------------------------------------------------------------------|------------------------------------------|
 | `cluster_id`                             | `1`                                                                            | Use the same value as writer connections |
 | `wrapper_dialect`                        | `global-aurora-mysql` or `global-aurora-pg`                                    |                                          |
-| `plugins`                                | `initial_connection,failover2,efm2`                                            | Without connection pooling               |
-|                                          | `aurora_connection_tracker,initial_connection,failover2,efm2`                  | With connection pooling                  |
+| `plugins`                                | `initial_connection,failover_v2,host_monitoring_v2`                                            | Without connection pooling               |
+|                                          | `aurora_connection_tracker,initial_connection,failover_v2,host_monitoring_v2`                  | With connection pooling                  |
 | `global_cluster_instance_host_patterns`  | Same as writer configuration                                                   |                                          |
 | `failover_mode`                          | `strict-reader` or `reader-or-writer`                                          | Depending on system requirements         |
 
@@ -65,7 +65,7 @@ from psycopg import Connection
 with AwsWrapperConnection.connect(
         Connection.connect,
         "host=my-global-db.global-xyz.global.rds.amazonaws.com dbname=mydb user=admin password=pwd",
-        plugins="initial_connection,failover2,efm2",
+        plugins="initial_connection,failover_v2,host_monitoring_v2",
         wrapper_dialect="global-aurora-pg",
         cluster_id="1",
         global_cluster_instance_host_patterns="us-east-1:?.abc123.us-east-1.rds.amazonaws.com,us-west-2:?.def456.us-west-2.rds.amazonaws.com",
@@ -79,7 +79,7 @@ with AwsWrapperConnection.connect(
 with AwsWrapperConnection.connect(
         Connection.connect,
         "host=my-cluster.cluster-ro-abc123.us-east-1.rds.amazonaws.com dbname=mydb user=admin password=pwd",
-        plugins="initial_connection,failover2,efm2",
+        plugins="initial_connection,failover_v2,host_monitoring_v2",
         wrapper_dialect="global-aurora-pg",
         cluster_id="1",
         global_cluster_instance_host_patterns="us-east-1:?.abc123.us-east-1.rds.amazonaws.com,us-west-2:?.def456.us-west-2.rds.amazonaws.com",
@@ -101,7 +101,7 @@ from mysql.connector import Connect
 with AwsWrapperConnection.connect(
         Connect,
         "host=my-global-db.global-xyz.global.rds.amazonaws.com database=mydb user=admin password=pwd",
-        plugins="initial_connection,failover2,efm2",
+        plugins="initial_connection,failover_v2,host_monitoring_v2",
         wrapper_dialect="global-aurora-mysql",
         cluster_id="1",
         global_cluster_instance_host_patterns="us-east-1:?.abc123.us-east-1.rds.amazonaws.com,us-west-2:?.def456.us-west-2.rds.amazonaws.com",
