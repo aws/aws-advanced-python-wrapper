@@ -21,6 +21,7 @@ itself (F3-B master spec invariant 8a).
 
 from __future__ import annotations
 
+import asyncio
 import socket
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -91,6 +92,15 @@ class AsyncPsycopgDriverDialect(AsyncDriverDialect):
         from aws_advanced_python_wrapper.utils.properties import \
             WrapperProperties
         prepared = super().prepare_connect_info(host_info, props)
+
+        # The base strips the wrapper-level ``database`` prop; psycopg spells
+        # it ``dbname``. Without this, URL-style connects
+        # (postgresql://host/db) and database= kwargs land on the DEFAULT
+        # database. Mirrors sync PgDriverDialect.prepare_connect_info
+        # (pg_driver_dialect.py:190-192).
+        database = WrapperProperties.DATABASE.get(props)
+        if database:
+            prepared["dbname"] = database
 
         connect_timeout = WrapperProperties.CONNECT_TIMEOUT_SEC.get(props)
         if connect_timeout is not None:
@@ -208,9 +218,9 @@ class AsyncPsycopgDriverDialect(AsyncDriverDialect):
         }
 
     async def transfer_session_state(self, from_conn: Any, to_conn: Any) -> None:
-        # Copy autocommit + read_only from the previous connection onto the
-        # new one. These are the two most common session-state bits plugins
-        # expect to survive failover.
+        # Copy autocommit + read_only + isolation_level from the previous
+        # connection onto the new one (sync parity:
+        # pg_driver_dialect.py:169-173 copies all three).
         await self.set_autocommit(to_conn, await self.get_autocommit(from_conn))
         try:
             await self.set_read_only(to_conn, await self.is_read_only(from_conn))
@@ -218,14 +228,34 @@ class AsyncPsycopgDriverDialect(AsyncDriverDialect):
             # Some psycopg versions reject set_read_only outside an idle txn.
             # A failed state transfer shouldn't block failover itself.
             pass
+        try:
+            isolation = getattr(from_conn, "isolation_level", None)
+            if isolation is not None:
+                setter = to_conn.set_isolation_level
+                result = setter(isolation)
+                if asyncio.iscoroutine(result):
+                    await result
+        except Exception:
+            # Same rationale as read_only: best-effort, never block failover.
+            pass
+
+    # Ping bound: matches sync DriverDialect.ping's exec_timeout=10
+    # (driver_dialect.py:167-175). Without it a blackholed host hangs the
+    # probe until the OS TCP timeout -- the exact case EFM liveness checks
+    # exist for.
+    _PING_TIMEOUT_SEC = 10.0
 
     async def ping(self, conn: Any) -> bool:
         if await self.is_closed(conn):
             return False
-        try:
+
+        async def _probe() -> None:
             async with conn.cursor() as cur:
                 await cur.execute("SELECT 1")
                 await cur.fetchone()
+
+        try:
+            await asyncio.wait_for(_probe(), self._PING_TIMEOUT_SEC)
             return True
         except Exception:
             return False

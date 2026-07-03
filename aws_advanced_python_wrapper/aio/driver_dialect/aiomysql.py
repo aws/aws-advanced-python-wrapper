@@ -263,11 +263,17 @@ class AsyncAiomysqlDriverDialect(AsyncDriverDialect):
             # Session-state transfer must not block failover.
             pass
 
+    # Ping bound: matches sync DriverDialect.ping's exec_timeout=10
+    # (driver_dialect.py:167-175); a blackholed host must not hang the probe
+    # until the OS TCP timeout.
+    _PING_TIMEOUT_SEC = 10.0
+
     async def ping(self, conn: Any) -> bool:
         if await self.is_closed(conn):
             return False
         try:
-            await conn.ping(reconnect=False)
+            await asyncio.wait_for(
+                conn.ping(reconnect=False), self._PING_TIMEOUT_SEC)
             return True
         except Exception:
             return False
