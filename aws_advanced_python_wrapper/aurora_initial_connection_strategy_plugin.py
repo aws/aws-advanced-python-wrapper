@@ -70,7 +70,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
     def _get_verified_writer_connection(self, props: Properties, is_initial_connection: bool, connect_func: Callable) -> Connection | None:
         retry_delay_ms: int = WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props)
-        end_time_nano = perf_counter_ns() + (WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props) * 1000000)
+        end_time_nano = perf_counter_ns() + (WrapperProperties.OPEN_CONNECTION_RETRY_TIMEOUT_MS.get_int(props) * 1000000)
 
         writer_candidate_conn: Optional[Connection]
         writer_candidate: Optional[HostInfo]
@@ -116,7 +116,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
     def _get_verified_reader_connection(self, props: Properties, is_initial_connection: bool, connect_func: Callable) -> Optional[Connection]:
         retry_delay_ms: int = WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props)
-        end_time_nano = perf_counter_ns() + (WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props) * 1000000)
+        end_time_nano = perf_counter_ns() + (WrapperProperties.OPEN_CONNECTION_RETRY_TIMEOUT_MS.get_int(props) * 1000000)
 
         reader_candidate_conn: Optional[Connection]
         reader_candidate: Optional[HostInfo]

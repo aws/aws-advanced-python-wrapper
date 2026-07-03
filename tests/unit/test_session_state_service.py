@@ -19,8 +19,8 @@ import pytest
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.plugin_service import PluginService
-from aws_advanced_python_wrapper.states.session_state_service import \
-    SessionStateServiceImpl
+from aws_advanced_python_wrapper.states.session_state_service import (
+    SessionStateServiceImpl, SessionStateTransferHandlers)
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
@@ -121,3 +121,15 @@ def test_transfer_to_new_connection_autocommit(mock_connection, mock_new_connect
     session_state_service.complete()
 
     mock_plugin_service.driver_dialect.set_autocommit.assert_called_with(mock_new_connection, value)
+
+
+def test_transfer_handler_reset_actually_clears(mocker):
+    """Regression (parity review): reset_transfer_session_state_on_switch_func
+    previously assigned a nonexistent attribute, silently keeping the old
+    handler registered."""
+    handler = mocker.MagicMock()
+    SessionStateTransferHandlers.set_transfer_session_state_on_switch_func(handler)
+    assert SessionStateTransferHandlers.get_transfer_session_state_on_switch_func() is handler
+
+    SessionStateTransferHandlers.reset_transfer_session_state_on_switch_func()
+    assert SessionStateTransferHandlers.get_transfer_session_state_on_switch_func() is None
