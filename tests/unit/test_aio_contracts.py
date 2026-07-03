@@ -308,3 +308,66 @@ def test_async_driver_dialect_prepare_connect_info_strips_wrapper_props():
     assert prepared["port"] == "5432"
     assert WrapperProperties.PLUGINS.name not in prepared
     assert prepared.get("user") == "u"
+
+
+# ---- per-operation socket timeout (sync DriverDialect.execute parity) ------
+
+
+def test_default_plugin_execute_times_out_and_aborts():
+    """With socket_timeout set, a wedged execute is bounded: the connection
+    is aborted and QueryTimeoutError raised (sync driver_dialect.py:126-153
+    parity, enforced at the terminal plugin)."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from aws_advanced_python_wrapper.aio.default_plugin import \
+        AsyncDefaultPlugin
+    from aws_advanced_python_wrapper.errors import QueryTimeoutError
+    from aws_advanced_python_wrapper.utils.properties import Properties
+
+    async def _body() -> None:
+        svc = MagicMock()
+        svc.props = Properties({"socket_timeout": "0.05"})
+        raw_conn = MagicMock(name="raw_conn")
+        # A raw driver connection has no driver_connection attr (only pool
+        # proxies do); stop MagicMock from fabricating one.
+        del raw_conn.driver_connection
+        svc.current_connection = raw_conn
+        svc.driver_dialect.abort_connection = AsyncMock()
+        plugin = AsyncDefaultPlugin(svc)
+
+        async def _wedged() -> None:
+            await asyncio.sleep(5)
+
+        try:
+            await plugin.execute(object(), "Cursor.execute", _wedged)
+            raise AssertionError("expected QueryTimeoutError")
+        except QueryTimeoutError:
+            pass
+        svc.driver_dialect.abort_connection.assert_awaited_once_with(raw_conn)
+
+    asyncio.run(_body())
+
+
+def test_default_plugin_execute_unbounded_without_socket_timeout():
+    """No socket_timeout -> no wait_for wrapping; fast ops pass through."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from aws_advanced_python_wrapper.aio.default_plugin import \
+        AsyncDefaultPlugin
+    from aws_advanced_python_wrapper.utils.properties import Properties
+
+    async def _body() -> None:
+        svc = MagicMock()
+        svc.props = Properties({})
+        svc.current_connection = MagicMock()
+        svc.update_in_transaction = AsyncMock()
+        plugin = AsyncDefaultPlugin(svc)
+
+        async def _op() -> str:
+            return "ok"
+
+        assert await plugin.execute(object(), "Cursor.execute", _op) == "ok"
+
+    asyncio.run(_body())

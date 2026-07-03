@@ -45,9 +45,11 @@ class AsyncDriverDialect(ABC):
 
     Static capabilities and pure property accessors stay sync; every method
     that touches driver state or the network is ``async``. Per SP-0 decision
-    D7, ``execute`` is NOT mirrored here -- per-query timeout lives in
-    ``AsyncPluginService`` / ``AsyncAwsWrapperCursor`` via
-    :func:`asyncio.wait_for`.
+    D7, ``execute`` is NOT mirrored here -- the per-operation
+    ``socket_timeout`` bound (sync ``DriverDialect.execute``'s
+    SOCKET_TIMEOUT_SEC + abort-on-timeout) is enforced by
+    ``AsyncDefaultPlugin.execute`` via :func:`asyncio.wait_for`, covering
+    every dispatched DBAPI method at the end of the plugin chain.
     """
 
     _dialect_code: str = DriverDialectCodes.GENERIC

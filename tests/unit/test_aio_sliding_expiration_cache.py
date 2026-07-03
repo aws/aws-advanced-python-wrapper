@@ -204,3 +204,23 @@ def test_cache_item_dataclass_holds_value_and_expiration():
     item = CacheItem(item="x", expiration_time=12345)
     assert item.item == "x"
     assert item.expiration_time == 12345
+
+
+def test_put_disposes_displaced_item():
+    """put() over an existing key disposes the displaced item (parity with
+    the sync cache's replace-and-dispose semantics)."""
+    async def _body() -> None:
+        disposed: list = []
+
+        async def _dispose(item: int) -> None:
+            disposed.append(item)
+
+        cache: AsyncSlidingExpirationCache[str, int] = AsyncSlidingExpirationCache(
+            item_disposal_func=_dispose)
+        one_minute_ns = 60_000_000_000
+        await cache.put("k", 1, one_minute_ns)
+        await cache.put("k", 2, one_minute_ns)
+        assert cache.get("k") == 2
+        assert disposed == [1]
+
+    asyncio.run(_body())

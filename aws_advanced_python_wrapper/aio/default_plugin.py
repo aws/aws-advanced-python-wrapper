@@ -22,16 +22,19 @@ before the default driver path is used. Mirrors sync
 
 from __future__ import annotations
 
+import asyncio
 import copy
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Optional, Set
 
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.connection_provider import \
     DriverConnectionProvider
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                QueryTimeoutError)
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
@@ -122,7 +125,23 @@ class AsyncDefaultPlugin(AsyncPlugin):
             execute_func: Callable[..., Awaitable[Any]],
             *args: Any,
             **kwargs: Any) -> Any:
-        result = await execute_func()
+        # Per-operation socket-timeout bound (sync parity: DriverDialect.execute
+        # wraps network-bound methods with SOCKET_TIMEOUT_SEC and aborts the
+        # connection on expiry, driver_dialect.py:126-153). As the terminal
+        # plugin this covers every dispatched DBAPI method. On timeout the
+        # connection socket is severed (abort_connection) so the wedged
+        # operation cannot poison a later reuse, then QueryTimeoutError is
+        # raised exactly like sync.
+        timeout_sec = self._socket_timeout_sec()
+        if timeout_sec is not None and timeout_sec > 0:
+            try:
+                result = await asyncio.wait_for(execute_func(), timeout_sec)
+            except asyncio.TimeoutError as e:
+                await self._abort_current_connection()
+                raise QueryTimeoutError(Messages.get_formatted(
+                    "DriverDialect.ExecuteTimeout", method_name)) from e
+        else:
+            result = await execute_func()
         # Track transaction state after each op so the failover plugin can tell
         # whether the caller was mid-transaction when failover struck (parity
         # with sync DefaultPlugin.execute:114). It must be refreshed here, while
@@ -136,6 +155,28 @@ class AsyncDefaultPlugin(AsyncPlugin):
             except Exception:  # noqa: BLE001 - tracking is best-effort
                 pass
         return result
+
+    def _socket_timeout_sec(self) -> Optional[float]:
+        if self._plugin_service is None:
+            return None
+        try:
+            timeout = WrapperProperties.SOCKET_TIMEOUT_SEC.get_float(
+                self._plugin_service.props)
+        except Exception:  # noqa: BLE001 - unset/malformed -> no bound
+            return None
+        return timeout if timeout > 0 else None
+
+    async def _abort_current_connection(self) -> None:
+        if self._plugin_service is None:
+            return
+        conn = self._plugin_service.current_connection
+        if conn is None:
+            return
+        try:
+            await self._plugin_service.driver_dialect.abort_connection(
+                getattr(conn, "driver_connection", conn))
+        except Exception:  # noqa: BLE001 - abort is best-effort
+            pass
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         if role == HostRole.UNKNOWN:
