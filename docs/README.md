@@ -2,6 +2,7 @@
 
 - [Getting Started](./GettingStarted.md)
 - [Using the AWS Python Wrapper](using-the-python-wrapper/UsingThePythonWrapper.md)
+  - [SQLAlchemy Support](using-the-python-wrapper/SqlAlchemySupport.md)
   - [Logging](using-the-python-wrapper/UsingThePythonWrapper.md#logging)
   - [Python Wrapper Parameters](using-the-python-wrapper/UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters)
   - [Support For RDS Multi-AZ Database Cluster](using-the-python-wrapper/SupportForRDSMultiAzDBCluster.md)

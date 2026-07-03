@@ -100,14 +100,16 @@ engine = create_engine(
 
 ### Naming
 
-The wrapper registers as a **driver under SQLAlchemy's existing dialects**, following SA's `<dialect>+<driver>` URL convention (the same shape as stock `postgresql+psycopg`, `mysql+mysqlconnector`):
+The wrapper registers as a **driver under SQLAlchemy's existing dialects**, following SA's `<dialect>+<driver>` URL convention (the same shape as stock `postgresql+psycopg`, `mysql+mysqlconnector`, `mysql+aiomysql`):
 
-| Engine | URL |
-|--------|-----|
-| PostgreSQL | `postgresql+aws_wrapper_psycopg://` |
-| MySQL | `mysql+aws_wrapper_mysqlconnector://` |
+| Engine | Sync URL | Async URL |
+|--------|----------|-----------|
+| PostgreSQL | `postgresql+aws_wrapper_psycopg://` | `postgresql+aws_wrapper_psycopg://` (same — see below) |
+| MySQL | `mysql+aws_wrapper_mysqlconnector://` | `mysql+aws_wrapper_aiomysql://` |
 
 This keeps the dialect identity correct (`engine.dialect.name == "postgresql"` / `"mysql"`), so dialect-specific type compilation, reserved-word handling, and any third-party `if dialect.name == ...` checks behave as expected.
+
+**PostgreSQL uses one URL for both sync and async.** psycopg3 is a single DBAPI that does both, so — exactly like stock `postgresql+psycopg` — `create_engine(...)` yields the sync dialect and `create_async_engine(...)` yields the async dialect from the *same* `postgresql+aws_wrapper_psycopg://` URL. The selection is made by which engine factory you call, not by the URL. MySQL cannot share a URL this way because its sync and async paths are different DBAPIs (`mysql-connector-python` vs `aiomysql`), hence the distinct `+aws_wrapper_mysqlconnector` / `+aws_wrapper_aiomysql` driver names.
 
 ### URL parameter `wrapper_plugins` (not `plugins`)
 
@@ -164,6 +166,70 @@ Plugins are configured identically to non-SA usage — via the `plugins` connect
 | [Simple Read Write Splitting Plugin](using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) | `srw`                                     | <span style="color:red;font-size:20px">&cross;</span> |
 
 Read/write splitting is **not** supported with SQLAlchemy: the plugins switch instances by setting `read_only` on a long-lived connection, and there is currently no routing of SQLAlchemy's `execution_options(...readonly=True)` to the wrapper's `read_only` attribute. For read/write workloads, use SQLAlchemy's own session binding — see the [official SQLAlchemy documentation on the Session API](https://docs.sqlalchemy.org/en/20/orm/session_api.html).
+
+## Async usage
+
+The wrapper exposes a native async path. `create_async_engine` works with the URL-based dialect:
+
+```python
+import asyncio
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from aws_advanced_python_wrapper.aio import release_resources_async
+
+
+async def main() -> None:
+    engine = create_async_engine(
+        # Same URL as the sync PG example above: create_async_engine selects
+        # the async dialect via the sync dialect's get_async_dialect_cls hook.
+        "postgresql+aws_wrapper_psycopg://john:pwd@"
+        "database.cluster-xyz.us-east-1.rds.amazonaws.com:5432/db"
+        "?wrapper_dialect=aurora-pg&wrapper_plugins=failover,host_monitoring_v2"
+    )
+    try:
+        async with engine.connect() as conn:
+            row = await conn.execute(
+                text("SELECT pg_catalog.aurora_db_instance_identifier()")
+            )
+            print(row.scalar_one())
+    finally:
+        await engine.dispose()
+        await release_resources_async()
+
+
+asyncio.run(main())
+```
+
+The async path:
+
+- Drives `psycopg.AsyncConnection` (PG) or `aiomysql` (MySQL) end-to-end. No greenlet hops through the wrapper's own pipeline — only SA's engine itself uses greenlet to adapt async DBAPI results.
+- Supports the same wrapper plugins via `wrapper_plugins`: `failover`, `host_monitoring_v2`, `iam`, `aws_secrets_manager`, plus the minor/observability plugins. The Plugin Compatibility table above applies to the async path as well — read/write splitting is not supported under SQLAlchemy in either mode.
+
+Async MySQL usage (via aiomysql):
+
+```python
+async def main() -> None:
+    engine = create_async_engine(
+        "mysql+aws_wrapper_aiomysql://john:pwd@"
+        "database.cluster-xyz.us-east-1.rds.amazonaws.com:3306/db"
+        "?wrapper_dialect=aurora-mysql&wrapper_plugins=failover"
+    )
+    try:
+        async with engine.connect() as conn:
+            row = await conn.execute(text("SELECT @@aurora_server_id"))
+            print(row.scalar_one())
+    finally:
+        await engine.dispose()
+        await release_resources_async()
+```
+
+At shutdown, call `engine.dispose()` first, then `aws_advanced_python_wrapper.aio.release_resources_async()` to drain async background tasks, then (optionally) the sync `release_resources()` to drain any sync-side threads the app may also have spun up.
+
+## Limitations (current)
+
+- **asyncmy and asyncpg drivers are not supported.** aiomysql covers MySQL async; psycopg covers PG async. asyncmy deferred pending user-facing perf demand on Aurora; asyncpg dropped because it's not PEP 249-compliant (would require a separate DBAPI adapter layer).
 
 ## See also
 
