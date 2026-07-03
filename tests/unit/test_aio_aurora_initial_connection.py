@@ -399,3 +399,82 @@ def test_reader_non_login_exception_marks_unavailable():
     assert reader.host in "".join(called_aliases)
     assert svc.set_availability.call_args_list[0][0][1] == \
         HostAvailability.UNAVAILABLE
+
+
+# ---- 9. E3: region-aware reader filtering -------------------------------
+
+
+_READER_INSTANCE_OTHER_REGION = \
+    "my-cluster-inst-3.XYZ.eu-west-1.rds.amazonaws.com"
+
+
+def _other_region_reader_host() -> HostInfo:
+    return HostInfo(
+        host=_READER_INSTANCE_OTHER_REGION, port=5432, role=HostRole.READER)
+
+
+def test_reader_candidates_restricted_to_connect_url_region():
+    """E3: sync parity (aurora_initial_connection_strategy_plugin.py:210-224)
+    -- when the connect URL encodes a region, only readers in that region
+    are offered to the selection strategy."""
+    writer = _writer_host()
+    in_region_reader = _reader_host()          # us-east-1
+    out_of_region_reader = _other_region_reader_host()  # eu-west-1
+    plugin, svc, driver_dialect = _build(
+        all_hosts=(writer, in_region_reader, out_of_region_reader),
+        role=HostRole.READER,
+        strategy_pick=in_region_reader,
+    )
+    reader_conn = MagicMock(name="reader_conn")
+    driver_dialect.connect.return_value = reader_conn
+
+    # Connect URL is the us-east-1 reader cluster endpoint.
+    host = _cluster_host_info(_READER_CLUSTER)
+
+    async def _connect_func():  # pragma: no cover - not used
+        return MagicMock(name="cluster_conn")
+
+    async def _run():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=host,
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func,
+        )
+
+    result = asyncio.run(_run())
+    assert result is reader_conn
+
+    # The strategy only ever saw the in-region reader.
+    assert svc.get_host_info_by_strategy.call_count >= 1
+    for call in svc.get_host_info_by_strategy.call_args_list:
+        candidate_list = call[0][2]
+        assert in_region_reader in candidate_list
+        assert out_of_region_reader not in candidate_list
+
+
+def test_filter_readers_by_region_no_connect_host_keeps_all():
+    plugin, svc, _ = _build()
+    readers = [_reader_host(), _other_region_reader_host()]
+    assert plugin._filter_readers_by_region(readers, None) == readers
+
+
+def test_filter_readers_by_region_keeps_all_when_no_region_in_url():
+    """A connect URL without a region (e.g. a bare hostname) must not
+    restrict the reader candidates."""
+    plugin, svc, _ = _build()
+    readers = [_reader_host(), _other_region_reader_host()]
+    no_region_host = HostInfo(host="some-random.example.com", port=5432)
+    assert plugin._filter_readers_by_region(readers, no_region_host) == readers
+
+
+def test_filter_readers_by_region_filters_cross_region_readers():
+    plugin, svc, _ = _build()
+    in_region = _reader_host()
+    out_of_region = _other_region_reader_host()
+    connect_host = _cluster_host_info(_READER_CLUSTER)  # us-east-1
+    filtered = plugin._filter_readers_by_region(
+        [in_region, out_of_region], connect_host)
+    assert filtered == [in_region]

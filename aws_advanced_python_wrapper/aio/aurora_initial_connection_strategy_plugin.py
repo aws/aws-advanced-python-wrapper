@@ -180,7 +180,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             candidate_conn: Optional[Any] = None
             reader_candidate: Optional[HostInfo] = None
             try:
-                reader_candidate = self._pick_reader(props)
+                reader_candidate = self._pick_reader(props, host_info)
                 if (reader_candidate is None
                         or self._rds_utils.is_rds_cluster_dns(reader_candidate.host)):
                     candidate_conn = await connect_func()
@@ -259,7 +259,10 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
                 return h
         return None
 
-    def _pick_reader(self, props: Properties) -> Optional[HostInfo]:
+    def _pick_reader(
+            self,
+            props: Properties,
+            connect_host: Optional[HostInfo] = None) -> Optional[HostInfo]:
         strategy = WrapperProperties.READER_INITIAL_HOST_SELECTOR_STRATEGY.get(props)
         if not strategy:
             return None
@@ -270,10 +273,37 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
         try:
             readers = [h for h in self._plugin_service.all_hosts
                        if h.role == HostRole.READER]
+            readers = self._filter_readers_by_region(readers, connect_host)
             return self._plugin_service.get_host_info_by_strategy(
                 HostRole.READER, strategy, readers)
         except Exception:  # noqa: BLE001
             return None
+
+    def _filter_readers_by_region(
+            self,
+            readers: list,
+            connect_host: Optional[HostInfo]) -> list:
+        """Restrict reader candidates to the connect URL's region.
+
+        Sync parity: aurora_initial_connection_strategy_plugin.py:210-224 --
+        when the connect URL encodes an AWS region (e.g. a Global Database
+        cluster endpoint), only topology hosts in that same region are
+        eligible; without a region the full reader list is used. Sync reads
+        the URL from ``plugin_service.current_host_info``, which at initial
+        connect is the connect-URL host -- here the connect pipeline passes
+        that host in directly.
+        """
+        if connect_host is None:
+            return readers
+        url_type = self._rds_utils.identify_rds_type(connect_host.host)
+        if not url_type.has_region:
+            return readers
+        aws_region = self._rds_utils.get_rds_region(connect_host.host)
+        if not aws_region:
+            return readers
+        return [h for h in readers
+                if (self._rds_utils.get_rds_region(h.host) or "").lower()
+                == aws_region.lower()]
 
     async def _identify_host_role(
             self,

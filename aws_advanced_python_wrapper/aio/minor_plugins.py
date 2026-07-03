@@ -43,6 +43,8 @@ from aws_advanced_python_wrapper.aio.aurora_connection_tracker import \
     AsyncAuroraConnectionTrackerPlugin  # noqa: F401
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.messages import Messages
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
@@ -51,6 +53,8 @@ if TYPE_CHECKING:
         AsyncPluginService
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.utils.properties import Properties
+
+logger = Logger(__name__)
 
 
 class AsyncConnectTimePlugin(AsyncPlugin):
@@ -62,7 +66,12 @@ class AsyncConnectTimePlugin(AsyncPlugin):
     production code (via the factory) always passes one.
     """
 
-    _SUBSCRIBED: Set[str] = {DbApiMethod.CONNECT.method_name}
+    # Mirrors sync ConnectTimePlugin.subscribed_methods (connect_time_plugin.py:46):
+    # timing applies both to plain connects and force-connects.
+    _SUBSCRIBED: Set[str] = {
+        DbApiMethod.CONNECT.method_name,
+        DbApiMethod.FORCE_CONNECT.method_name,
+    }
 
     def __init__(
             self,
@@ -95,30 +104,27 @@ class AsyncConnectTimePlugin(AsyncPlugin):
         try:
             return await connect_func()
         finally:
-            self.total_connect_time_ns += time.perf_counter_ns() - start_ns
+            elapsed_ns = time.perf_counter_ns() - start_ns
+            self.total_connect_time_ns += elapsed_ns
             self.connect_count += 1
             if self._connect_counter is not None:
                 self._connect_counter.inc()
+            # Sync parity: connect_time_plugin.py:63.
+            logger.debug("ConnectTimePlugin.ConnectTime", elapsed_ns)
 
 
 class AsyncExecuteTimePlugin(AsyncPlugin):
     """Record wall-clock time spent in execute().
 
-    Subscribes to everything network-bound; state is per-instance.
+    Subscribes to every pipeline method ("*"); state is per-instance.
     ``plugin_service`` is optional so tests that never exercise telemetry
     can keep constructing the plugin with no args; production code (via
     the factory) always passes one.
     """
 
-    _SUBSCRIBED: Set[str] = {
-        DbApiMethod.CURSOR_EXECUTE.method_name,
-        DbApiMethod.CURSOR_EXECUTEMANY.method_name,
-        DbApiMethod.CURSOR_FETCHONE.method_name,
-        DbApiMethod.CURSOR_FETCHMANY.method_name,
-        DbApiMethod.CURSOR_FETCHALL.method_name,
-        DbApiMethod.CONNECTION_COMMIT.method_name,
-        DbApiMethod.CONNECTION_ROLLBACK.method_name,
-    }
+    # Mirrors sync ExecuteTimePlugin.subscribed_methods (execute_time_plugin.py:41):
+    # subscribe to everything ("*") so every pipeline method is timed.
+    _SUBSCRIBED: Set[str] = {DbApiMethod.ALL.method_name}
 
     def __init__(
             self,
@@ -147,10 +153,14 @@ class AsyncExecuteTimePlugin(AsyncPlugin):
         try:
             return await execute_func()
         finally:
-            self.total_execute_time_ns += time.perf_counter_ns() - start_ns
+            elapsed_ns = time.perf_counter_ns() - start_ns
+            self.total_execute_time_ns += elapsed_ns
             self.execute_count += 1
             if self._execute_counter is not None:
                 self._execute_counter.inc()
+            # Sync parity: execute_time_plugin.py:51.
+            logger.debug(
+                "ExecuteTimePlugin.ExecuteTime", method_name, elapsed_ns)
 
 
 class AsyncDeveloperPlugin(AsyncPlugin):
@@ -166,7 +176,11 @@ class AsyncDeveloperPlugin(AsyncPlugin):
       (the raise is propagated) or return normally. Stays installed until
       cleared explicitly.
     * ``set_next_method_exception`` — one-shot exception for the next
-      :meth:`execute`; cleared after firing.
+      :meth:`execute`; cleared after firing. Accepts an optional
+      ``method_name`` filter (default ``"*"``): the exception fires only
+      when the executed method matches (mirrors sync
+      ``ExceptionSimulatorManager.raise_exception_on_next_method``,
+      developer_plugin.py:67-72, 93-94).
     * ``set_method_callback`` — callable invoked on every execute. Same
       semantics as the connect callback.
 
@@ -183,13 +197,14 @@ class AsyncDeveloperPlugin(AsyncPlugin):
     _next_connect_exception: ClassVar[Optional[BaseException]] = None
     _connect_callback: ClassVar[Optional[Callable[..., Any]]] = None
     _next_method_exception: ClassVar[Optional[BaseException]] = None
+    _next_method_name: ClassVar[Optional[str]] = None
     _method_callback: ClassVar[Optional[Callable[..., Any]]] = None
 
     # Retained for backwards compat with the one-shot execute-only API
     # shipped before this plugin grew the 4-mode surface. Delegates to
     # ``set_next_method_exception``; new callers should use the explicit name.
     def set_next_exception(self, exc: BaseException) -> None:
-        AsyncDeveloperPlugin._next_method_exception = exc
+        AsyncDeveloperPlugin.set_next_method_exception(exc)
 
     @classmethod
     def set_next_connect_exception(cls, exc: BaseException) -> None:
@@ -200,8 +215,14 @@ class AsyncDeveloperPlugin(AsyncPlugin):
         cls._connect_callback = cb
 
     @classmethod
-    def set_next_method_exception(cls, exc: BaseException) -> None:
+    def set_next_method_exception(
+            cls, exc: BaseException, method_name: str = "*") -> None:
+        # Sync parity: developer_plugin.py:67-72 -- reject empty method
+        # names; "*" (the default) matches any method.
+        if method_name == "":
+            raise RuntimeError(Messages.get("DeveloperPlugin.MethodNameEmpty"))
         cls._next_method_exception = exc
+        cls._next_method_name = method_name
 
     @classmethod
     def set_method_callback(cls, cb: Callable[..., Any]) -> None:
@@ -212,20 +233,21 @@ class AsyncDeveloperPlugin(AsyncPlugin):
         cls._next_connect_exception = None
         cls._connect_callback = None
         cls._next_method_exception = None
+        cls._next_method_name = None
         cls._method_callback = None
 
     @property
     def subscribed_methods(self) -> Set[str]:
         return set(self._SUBSCRIBED)
 
-    async def connect(
-            self,
-            target_driver_func: Callable,
-            driver_dialect: AsyncDriverDialect,
-            host_info: HostInfo,
-            props: Properties,
-            is_initial_connection: bool,
-            connect_func: Callable[..., Awaitable[Any]]) -> Any:
+    async def _apply_connect_injections(
+            self, host_info: HostInfo, props: Properties) -> None:
+        """Run the connect callback + one-shot connect exception.
+
+        Shared by :meth:`connect` and :meth:`force_connect` -- mirrors sync
+        ``DeveloperPlugin.raise_connect_exception_if_set`` being invoked
+        from both pipelines (developer_plugin.py:110-134).
+        """
         # Callback fires first; a raise here propagates and does NOT consume
         # the one-shot exception slot (callbacks are persistent, not one-shot).
         cb = AsyncDeveloperPlugin._connect_callback
@@ -236,8 +258,35 @@ class AsyncDeveloperPlugin(AsyncPlugin):
         exc = AsyncDeveloperPlugin._next_connect_exception
         if exc is not None:
             AsyncDeveloperPlugin._next_connect_exception = None
+            # Sync parity: developer_plugin.py:156.
+            logger.debug(
+                "DeveloperPlugin.RaisedExceptionOnConnect",
+                exc.__class__.__name__)
             raise exc
+
+    async def connect(
+            self,
+            target_driver_func: Callable,
+            driver_dialect: AsyncDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            connect_func: Callable[..., Awaitable[Any]]) -> Any:
+        await self._apply_connect_injections(host_info, props)
         return await connect_func()
+
+    async def force_connect(
+            self,
+            target_driver_func: Callable,
+            driver_dialect: AsyncDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            force_connect_func: Callable[..., Awaitable[Any]]) -> Any:
+        # Sync parity: developer_plugin.py:123-134 -- the injected connect
+        # exception applies to force_connect as well.
+        await self._apply_connect_injections(host_info, props)
+        return await force_connect_func()
 
     async def execute(
             self,
@@ -253,8 +302,18 @@ class AsyncDeveloperPlugin(AsyncPlugin):
                 await result
         exc = AsyncDeveloperPlugin._next_method_exception
         if exc is not None:
-            AsyncDeveloperPlugin._next_method_exception = None
-            raise exc
+            # Sync parity: developer_plugin.py:93-94 -- fire only when the
+            # executed method matches the registered name ("*" matches all).
+            expected = AsyncDeveloperPlugin._next_method_name
+            if (expected == DbApiMethod.ALL.method_name
+                    or method_name == expected):
+                AsyncDeveloperPlugin._next_method_exception = None
+                AsyncDeveloperPlugin._next_method_name = None
+                # Sync parity: developer_plugin.py:107.
+                logger.debug(
+                    "DeveloperPlugin.RaisedExceptionWhileExecuting",
+                    exc.__class__.__name__, method_name)
+                raise exc
         return await execute_func()
 
 

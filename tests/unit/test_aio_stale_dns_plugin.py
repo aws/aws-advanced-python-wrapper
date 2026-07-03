@@ -118,6 +118,55 @@ def test_subscribed_methods_covers_connect_and_notify():
     assert "notify_host_list_changed" in subs
 
 
+def test_subscribed_methods_covers_network_bound_execute_methods():
+    """D2: sync parity (stale_dns_plugin.py:166) -- the plugin subscribes
+    to the network-bound execute methods so topology stays fresh between
+    connects."""
+    plugin, *_ = _build()
+    subs = plugin.subscribed_methods
+    assert "Cursor.execute" in subs
+    assert "Cursor.fetchone" in subs
+    assert "Connection.commit" in subs
+    assert "Connection.rollback" in subs
+
+
+# ---- D2: execute refreshes the host list --------------------------------
+
+
+def test_execute_refreshes_host_list_and_passes_through():
+    """Sync parity (stale_dns_plugin.py:183-189): every intercepted execute
+    refreshes the host list before running the inner call."""
+    plugin, svc, _ = _build()
+
+    async def _work():
+        return "rows"
+
+    async def _run():
+        return await plugin.execute(MagicMock(), "Cursor.execute", _work)
+
+    result = asyncio.run(_run())
+    assert result == "rows"
+    svc.refresh_host_list.assert_awaited_once()
+
+
+def test_execute_swallows_refresh_failures():
+    """A refresh failure must not break the query (sync wraps the refresh
+    in try/except and passes through)."""
+    plugin, svc, _ = _build()
+    svc.refresh_host_list = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("refresh-down"))
+
+    async def _work():
+        return "rows"
+
+    async def _run():
+        return await plugin.execute(MagicMock(), "Cursor.execute", _work)
+
+    result = asyncio.run(_run())
+    assert result == "rows"
+    svc.refresh_host_list.assert_awaited_once()
+
+
 # ---- 1: non-writer-cluster host passes through -------------------------
 
 

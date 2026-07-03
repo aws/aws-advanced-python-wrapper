@@ -58,15 +58,28 @@ logger = Logger(__name__)
 class AsyncStaleDnsPlugin(AsyncPlugin):
     """Async counterpart of :class:`StaleDnsPlugin`.
 
-    Subscribes to ``connect`` and ``notify_host_list_changed``. On
-    connect to a writer cluster endpoint, verifies the connection
-    actually landed on the writer instance; swaps to a fresh
-    writer-direct connection when DNS is stale.
+    Subscribes to ``connect``, ``notify_host_list_changed`` and the
+    network-bound execute methods. On connect to a writer cluster
+    endpoint, verifies the connection actually landed on the writer
+    instance; swaps to a fresh writer-direct connection when DNS is
+    stale. On execute, refreshes the host list (best-effort) so
+    topology stays current between connects -- sync parity:
+    stale_dns_plugin.py:166, 183-189.
     """
 
+    # The async pipeline enumerates concrete network-bound method names
+    # (same set as AsyncAuroraConnectionTrackerPlugin) instead of sync's
+    # ``plugin_service.network_bound_methods``.
     _SUBSCRIBED: Set[str] = {
         DbApiMethod.CONNECT.method_name,
         DbApiMethod.NOTIFY_HOST_LIST_CHANGED.method_name,
+        DbApiMethod.CURSOR_EXECUTE.method_name,
+        DbApiMethod.CURSOR_EXECUTEMANY.method_name,
+        DbApiMethod.CURSOR_FETCHONE.method_name,
+        DbApiMethod.CURSOR_FETCHMANY.method_name,
+        DbApiMethod.CURSOR_FETCHALL.method_name,
+        DbApiMethod.CONNECTION_COMMIT.method_name,
+        DbApiMethod.CONNECTION_ROLLBACK.method_name,
     }
 
     def __init__(self, plugin_service: AsyncPluginService) -> None:
@@ -182,6 +195,22 @@ class AsyncStaleDnsPlugin(AsyncPlugin):
             return writer_conn
 
         return conn
+
+    async def execute(
+            self,
+            target: object,
+            method_name: str,
+            execute_func: Callable[..., Awaitable[Any]],
+            *args: Any,
+            **kwargs: Any) -> Any:
+        # Sync parity: stale_dns_plugin.py:183-189 -- refresh the host list
+        # (best-effort) before every network-bound call so writer changes
+        # surface via notify_host_list_changed.
+        try:
+            await self._plugin_service.refresh_host_list()
+        except Exception:  # noqa: BLE001 - refresh is best-effort
+            pass
+        return await execute_func()
 
     def notify_host_list_changed(
             self, changes: Dict[str, Set[HostEvent]]) -> None:

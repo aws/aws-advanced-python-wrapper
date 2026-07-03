@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import List
+from typing import List, Tuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,7 +39,7 @@ def test_monitor_starts_and_stops_cleanly():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=["instance-1", "instance-2"],
+            return_value=(["instance-1", "instance-2"], []),
         ):
             monitor = AsyncCustomEndpointMonitor(
                 cluster_identifier="my-cluster",
@@ -62,7 +62,7 @@ def test_monitor_start_is_idempotent():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=[],
+            return_value=([], []),
         ):
             monitor = AsyncCustomEndpointMonitor(
                 cluster_identifier="c",
@@ -86,11 +86,11 @@ def test_monitor_survives_boto3_errors():
         # call raises, subsequent calls succeed. The monitor must swallow the
         # error and keep polling. patch.object replaces the staticmethod with a
         # MagicMock (not bound), so it's called as (endpoint_id, region).
-        def _flaky(endpoint_id: str, region) -> List[str]:
+        def _flaky(endpoint_id: str, region) -> Tuple[List[str], List[str]]:
             call_count[0] += 1
             if call_count[0] == 1:
                 raise RuntimeError("transient AWS failure")
-            return ["i-good"]
+            return ["i-good"], []
 
         with patch.object(
             AsyncCustomEndpointMonitor,
@@ -114,28 +114,86 @@ def test_monitor_survives_boto3_errors():
     asyncio.run(_body())
 
 
-def test_monitor_extracts_static_members_from_describe_response():
-    """_fetch_members_blocking aggregates StaticMembers across returned endpoints."""
+def test_monitor_extracts_static_and_excluded_members_from_describe_response():
+    """_fetch_members_blocking aggregates StaticMembers AND ExcludedMembers
+    across returned endpoints (sync CustomEndpointInfo parity)."""
     fake_client = MagicMock()
     fake_client.describe_db_cluster_endpoints = MagicMock(
         return_value={
             "DBClusterEndpoints": [
-                {"StaticMembers": ["instance-1", "instance-2"]},
+                {"StaticMembers": ["instance-1", "instance-2"],
+                 "ExcludedMembers": ["instance-9"]},
                 {"StaticMembers": ["instance-3"]},
             ]
         }
     )
     with patch("boto3.client", return_value=fake_client):
-        members = AsyncCustomEndpointMonitor._fetch_members_blocking(
+        members, excluded = AsyncCustomEndpointMonitor._fetch_members_blocking(
             "e", "us-east-1"
         )
     assert members == ["instance-1", "instance-2", "instance-3"]
+    assert excluded == ["instance-9"]
     # Resolved by endpoint id + custom-type filter only -- never by
     # DBClusterIdentifier (the wrapper's CLUSTER_ID is not the real RDS id).
     fake_client.describe_db_cluster_endpoints.assert_called_once_with(
         DBClusterEndpointIdentifier="e",
         Filters=[{"Name": "db-cluster-endpoint-type", "Values": ["custom"]}],
     )
+
+
+def test_monitor_propagates_excluded_members_to_allowed_and_blocked_hosts():
+    """C4: ExcludedMembers become blocked_host_ids on the plugin service
+    (sync custom_endpoint_plugin.py:193 parity)."""
+    async def _body() -> None:
+        svc = MagicMock()
+        with patch.object(
+            AsyncCustomEndpointMonitor,
+            "_fetch_members_blocking",
+            return_value=(["i-1", "i-2"], ["i-x"]),
+        ):
+            monitor = AsyncCustomEndpointMonitor(
+                custom_endpoint_identifier="e",
+                region="us-east-1",
+                refresh_interval_sec=0.02,
+                plugin_service=svc,
+            )
+            monitor.start()
+            got = await monitor.wait_for_info(timeout_sec=1.0)
+            await monitor.stop()
+        assert got is True
+        assert monitor.member_instance_ids == ("i-1", "i-2")
+        assert monitor.excluded_member_instance_ids == ("i-x",)
+        hosts = svc.allowed_and_blocked_hosts
+        assert hosts.allowed_host_ids == {"i-1", "i-2"}
+        assert hosts.blocked_host_ids == {"i-x"}
+
+    asyncio.run(_body())
+
+
+def test_monitor_maps_empty_excluded_members_to_none():
+    """No ExcludedMembers -> blocked_host_ids is None (not an empty set)."""
+    async def _body() -> None:
+        svc = MagicMock()
+        with patch.object(
+            AsyncCustomEndpointMonitor,
+            "_fetch_members_blocking",
+            return_value=(["i-1"], []),
+        ):
+            monitor = AsyncCustomEndpointMonitor(
+                custom_endpoint_identifier="e",
+                region="us-east-1",
+                refresh_interval_sec=0.02,
+                plugin_service=svc,
+            )
+            monitor.start()
+            got = await monitor.wait_for_info(timeout_sec=1.0)
+            await monitor.stop()
+        assert got is True
+        hosts = svc.allowed_and_blocked_hosts
+        assert hosts.allowed_host_ids == {"i-1"}
+        assert hosts.blocked_host_ids is None
+
+    asyncio.run(_body())
 
 
 # ---- Plugin integration ------------------------------------------------
@@ -145,10 +203,45 @@ def _svc(props: Properties) -> AsyncPluginServiceImpl:
     return AsyncPluginServiceImpl(props, MagicMock(), HostInfo("h", 5432))
 
 
-def test_plugin_subscription_is_connect_only():
+def test_plugin_subscribes_to_connect_and_network_bound_methods():
+    """C5: sync parity (custom_endpoint_plugin.py:246+271) -- the plugin
+    intercepts CONNECT plus the network-bound execute methods so it can
+    re-ensure the monitor before queries run."""
     props = Properties({"host": "h"})
     plugin = AsyncCustomEndpointPlugin(_svc(props), props)
-    assert plugin.subscribed_methods == {DbApiMethod.CONNECT.method_name}
+    subs = plugin.subscribed_methods
+    assert DbApiMethod.CONNECT.method_name in subs
+    assert DbApiMethod.CURSOR_EXECUTE.method_name in subs
+    assert DbApiMethod.CURSOR_FETCHONE.method_name in subs
+    assert DbApiMethod.CONNECTION_COMMIT.method_name in subs
+    assert DbApiMethod.CONNECTION_ROLLBACK.method_name in subs
+
+
+def test_plugin_threads_refresh_rate_prop_into_monitor_interval():
+    """C2: sync parity (custom_endpoint_plugin.py:322) -- the monitor's
+    refresh cadence comes from CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS."""
+    props = Properties({
+        "host": "ep.cluster-custom-abc.us-east-1.rds.amazonaws.com",
+        "custom_endpoint_info_refresh_rate_ms": "1500",
+    })
+    plugin = AsyncCustomEndpointPlugin(_svc(props), props)
+    monitor = plugin._build_monitor(
+        HostInfo("ep.cluster-custom-abc.us-east-1.rds.amazonaws.com", 5432),
+        props)
+    assert monitor is not None
+    assert monitor._interval_sec == pytest.approx(1.5)
+
+
+def test_plugin_monitor_interval_defaults_to_30s_without_prop():
+    props = Properties({
+        "host": "ep.cluster-custom-abc.us-east-1.rds.amazonaws.com",
+    })
+    plugin = AsyncCustomEndpointPlugin(_svc(props), props)
+    monitor = plugin._build_monitor(
+        HostInfo("ep.cluster-custom-abc.us-east-1.rds.amazonaws.com", 5432),
+        props)
+    assert monitor is not None
+    assert monitor._interval_sec == pytest.approx(30.0)
 
 
 def test_plugin_does_not_spawn_monitor_for_non_custom_endpoint_host():
@@ -190,7 +283,7 @@ def test_plugin_spawns_monitor_for_custom_endpoint_host():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=["instance-a"],
+            return_value=(["instance-a"], []),
         ):
             raw_conn = MagicMock()
 
@@ -224,7 +317,10 @@ def test_plugin_spawns_monitor_for_custom_endpoint_host():
     asyncio.run(_body())
 
 
-def test_plugin_skips_monitor_when_cluster_id_missing():
+def test_plugin_spawns_monitor_without_cluster_id():
+    """C6: sync parity -- monitor creation requires only the endpoint id +
+    region (custom_endpoint_plugin.py:291-302). CLUSTER_ID (an internal
+    wrapper alias) must NOT gate membership enforcement."""
     async def _body() -> None:
         aio_cleanup.clear_shutdown_hooks()
         props = Properties({
@@ -237,18 +333,27 @@ def test_plugin_skips_monitor_when_cluster_id_missing():
         async def _connect_func() -> object:
             return raw_conn
 
-        await plugin.connect(
-            target_driver_func=lambda: None,
-            driver_dialect=MagicMock(),
-            host_info=HostInfo(
-                "my-endpoint.cluster-custom-abc.us-east-1.rds.amazonaws.com",
-                5432,
-            ),
-            props=props,
-            is_initial_connection=True,
-            connect_func=_connect_func,
-        )
-        assert plugin.monitor is None
+        with patch.object(
+            AsyncCustomEndpointMonitor,
+            "_fetch_members_blocking",
+            return_value=(["instance-a"], []),
+        ):
+            try:
+                await plugin.connect(
+                    target_driver_func=lambda: None,
+                    driver_dialect=MagicMock(),
+                    host_info=HostInfo(
+                        "my-endpoint.cluster-custom-abc.us-east-1.rds.amazonaws.com",
+                        5432,
+                    ),
+                    props=props,
+                    is_initial_connection=True,
+                    connect_func=_connect_func,
+                )
+                assert plugin.monitor is not None
+                assert plugin.monitor.is_running() is True
+            finally:
+                await aio_cleanup.release_resources_async()
 
     asyncio.run(_body())
 
@@ -268,7 +373,7 @@ def test_plugin_registers_stop_hook_with_release_resources_async():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=[],
+            return_value=([], []),
         ):
             raw_conn = MagicMock()
 
@@ -290,6 +395,141 @@ def test_plugin_registers_stop_hook_with_release_resources_async():
                 "plugin didn't register its monitor.stop with release_resources_async"
             )
             await aio_cleanup.release_resources_async()
+
+    asyncio.run(_body())
+
+
+# ---- C5: execute re-ensures monitor + waits for info --------------------
+
+
+def test_execute_passes_through_when_no_custom_endpoint_connection():
+    """Sync parity (custom_endpoint_plugin.py:352-353): a connection that
+    never went through a custom endpoint executes with zero overhead."""
+    async def _body() -> None:
+        props = Properties({"host": "plain.example.com"})
+        plugin = AsyncCustomEndpointPlugin(_svc(props), props)
+
+        async def _work() -> str:
+            return "rows"
+
+        result = await plugin.execute(object(), "Cursor.execute", _work)
+        assert result == "rows"
+        assert plugin.monitor is None
+
+    asyncio.run(_body())
+
+
+def test_execute_restarts_stopped_monitor_and_waits_for_info():
+    """Sync parity (custom_endpoint_plugin.py:351-359): execute re-creates
+    an absent/stopped monitor for the recorded custom endpoint and waits
+    for its info before running the query."""
+    async def _body() -> None:
+        aio_cleanup.clear_shutdown_hooks()
+        props = Properties({
+            "host": "ep.cluster-custom-abc.us-east-1.rds.amazonaws.com",
+            "wait_for_custom_endpoint_info_timeout_ms": "2000",
+        })
+        plugin = AsyncCustomEndpointPlugin(_svc(props), props)
+        # Simulate a prior connect through the custom endpoint whose monitor
+        # has since been stopped (e.g. released).
+        plugin._custom_endpoint_host_info = HostInfo(
+            "ep.cluster-custom-abc.us-east-1.rds.amazonaws.com", 5432)
+        assert plugin.monitor is None
+
+        with patch.object(
+            AsyncCustomEndpointMonitor,
+            "_fetch_members_blocking",
+            return_value=(["i-exec"], []),
+        ):
+            async def _work() -> str:
+                return "rows"
+
+            try:
+                result = await plugin.execute(object(), "Cursor.execute", _work)
+                assert result == "rows"
+                assert plugin.monitor is not None
+                assert plugin.monitor.is_running() is True
+                # The wait completed -- info is populated before the query ran.
+                assert plugin.member_instance_ids == ("i-exec",)
+            finally:
+                await aio_cleanup.release_resources_async()
+
+    asyncio.run(_body())
+
+
+def test_execute_raises_when_info_never_arrives():
+    """Sync parity: the execute-path wait times out with AwsWrapperError
+    when the monitor cannot produce custom endpoint info."""
+    async def _body() -> None:
+        aio_cleanup.clear_shutdown_hooks()
+        props = Properties({
+            "host": "ep.cluster-custom-abc.us-east-1.rds.amazonaws.com",
+            "wait_for_custom_endpoint_info_timeout_ms": "50",
+        })
+        plugin = AsyncCustomEndpointPlugin(_svc(props), props)
+        plugin._custom_endpoint_host_info = HostInfo(
+            "ep.cluster-custom-abc.us-east-1.rds.amazonaws.com", 5432)
+
+        with patch.object(
+            AsyncCustomEndpointMonitor,
+            "_fetch_members_blocking",
+            return_value=([], []),
+        ):
+            work_calls = [0]
+
+            async def _work() -> str:
+                work_calls[0] += 1
+                return "rows"
+
+            try:
+                from aws_advanced_python_wrapper.errors import AwsWrapperError
+                with pytest.raises(AwsWrapperError):
+                    await plugin.execute(object(), "Cursor.execute", _work)
+                assert work_calls[0] == 0
+            finally:
+                await aio_cleanup.release_resources_async()
+
+    asyncio.run(_body())
+
+
+def test_connect_records_custom_endpoint_host_for_execute_path():
+    """connect() to a custom endpoint records the host so later executes
+    can re-ensure the monitor (sync stores _custom_endpoint_host_info the
+    same way, custom_endpoint_plugin.py:288)."""
+    async def _body() -> None:
+        aio_cleanup.clear_shutdown_hooks()
+        props = Properties({
+            "host": "ep.cluster-custom-abc.us-east-1.rds.amazonaws.com",
+            "wait_for_custom_endpoint_info": "false",
+        })
+        plugin = AsyncCustomEndpointPlugin(_svc(props), props)
+        raw_conn = MagicMock()
+
+        async def _connect_func() -> object:
+            return raw_conn
+
+        with patch.object(
+            AsyncCustomEndpointMonitor,
+            "_fetch_members_blocking",
+            return_value=([], []),
+        ):
+            try:
+                await plugin.connect(
+                    target_driver_func=lambda: None,
+                    driver_dialect=MagicMock(),
+                    host_info=HostInfo(
+                        "ep.cluster-custom-abc.us-east-1.rds.amazonaws.com",
+                        5432,
+                    ),
+                    props=props,
+                    is_initial_connection=True,
+                    connect_func=_connect_func,
+                )
+                assert plugin._custom_endpoint_host_info is not None
+                assert plugin._custom_endpoint_host_info.host == \
+                    "ep.cluster-custom-abc.us-east-1.rds.amazonaws.com"
+            finally:
+                await aio_cleanup.release_resources_async()
 
     asyncio.run(_body())
 
@@ -331,7 +571,7 @@ def test_monitor_sets_info_ready_event_after_first_non_empty_refresh():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=["instance-x"],
+            return_value=(["instance-x"], []),
         ):
             monitor = AsyncCustomEndpointMonitor(
                 cluster_identifier="c",
@@ -357,7 +597,7 @@ def test_monitor_does_not_set_info_ready_on_empty_members():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=[],
+            return_value=([], []),
         ):
             monitor = AsyncCustomEndpointMonitor(
                 cluster_identifier="c",
@@ -385,7 +625,7 @@ def test_plugin_connect_waits_for_info_and_returns_conn_on_success():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=["i-waited"],
+            return_value=(["i-waited"], []),
         ):
             raw_conn = MagicMock()
 
@@ -433,7 +673,7 @@ def test_plugin_connect_raises_on_wait_timeout():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=[],
+            return_value=([], []),
         ):
             raw_conn = MagicMock()
             connect_called = [0]
@@ -493,7 +733,7 @@ def test_plugin_connect_skips_wait_when_wait_for_info_disabled():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=[],
+            return_value=([], []),
         ), patch.object(
             AsyncCustomEndpointMonitor,
             "wait_for_info",
@@ -539,7 +779,9 @@ def test_factory_registers_active_plugin_post_task_1b():
     assert len(plugins) == 1
     # The active class -- has `connect` that actually does work.
     assert isinstance(plugins[0], AsyncCustomEndpointPlugin)
-    assert plugins[0].subscribed_methods == {DbApiMethod.CONNECT.method_name}
+    # C5: CONNECT plus the network-bound execute methods.
+    assert DbApiMethod.CONNECT.method_name in plugins[0].subscribed_methods
+    assert DbApiMethod.CURSOR_EXECUTE.method_name in plugins[0].subscribed_methods
 
 
 # ---- Telemetry counters ------------------------------------------------
@@ -574,7 +816,7 @@ def test_plugin_emits_wait_for_info_counter_when_actually_waiting():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=[],
+            return_value=([], []),
         ):
             raw_conn = MagicMock()
 
@@ -636,7 +878,7 @@ def test_plugin_skips_wait_for_info_counter_when_wait_disabled():
         with patch.object(
             AsyncCustomEndpointMonitor,
             "_fetch_members_blocking",
-            return_value=[],
+            return_value=([], []),
         ):
             raw_conn = MagicMock()
 

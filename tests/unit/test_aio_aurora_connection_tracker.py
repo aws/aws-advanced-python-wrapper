@@ -30,6 +30,16 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
+@pytest.fixture(autouse=True)
+def _reset_refresh_window():
+    """The post-failover settling window is ClassVar state (sync parity);
+    reset it around every test so a FailoverError in one test doesn't leak
+    topology refreshes into the next."""
+    AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns = 0
+    yield
+    AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns = 0
+
+
 def _build():
     props = Properties({"host": "cluster.example.com", "port": "5432"})
     driver_dialect = MagicMock()
@@ -575,6 +585,140 @@ def test_tracker_fallback_to_host_port_for_non_rds_host():
     """Non-RDS hostnames use host:port as the canonical key (no RDS alias found)."""
     host = HostInfo(host="custom.example.com", port=5432)
     assert AsyncOpenedConnectionTracker._canonical_key(host) == "custom.example.com:5432"
+
+
+# ---- B2: post-failover settling window ----------------------------------
+
+
+def test_failover_error_opens_settling_window_and_keeps_refreshing():
+    """After a FailoverError, subsequent executes keep refreshing topology
+    until the 3-minute window elapses (sync
+    aurora_connection_tracker_plugin.py:313-342) -- not just the single
+    refresh inside the FailoverError handler."""
+    plugin, svc, driver_dialect, tracker = _build()
+    writer = HostInfo(host="w", port=5432, role=HostRole.WRITER)
+    svc._all_hosts = (writer,)
+    svc.refresh_host_list = AsyncMock()
+
+    async def _run():
+        async def _raising():
+            raise FailoverSuccessError("failover")
+
+        with pytest.raises(FailoverSuccessError):
+            await plugin.execute(MagicMock(), "Cursor.execute", _raising)
+
+        # Window opened + immediate refresh performed by the handler.
+        assert AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns > 0
+        after_failover = svc.refresh_host_list.await_count
+        assert after_failover == 1
+
+        # Every execute inside the window refreshes again.
+        async def _noop():
+            return None
+
+        await plugin.execute(MagicMock(), "Cursor.execute", _noop)
+        await plugin.execute(MagicMock(), "Cursor.execute", _noop)
+        assert svc.refresh_host_list.await_count == after_failover + 2
+        # Window still open (3 min is far longer than this test).
+        assert AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns > 0
+
+    asyncio.run(_run())
+
+
+def test_settling_window_expires_and_stops_refreshing():
+    """Once the window has elapsed, the next execute resets it to 0 and
+    stops refreshing (sync aurora_connection_tracker_plugin.py:321-324)."""
+    from time import perf_counter_ns
+
+    plugin, svc, driver_dialect, tracker = _build()
+    writer = HostInfo(host="w", port=5432, role=HostRole.WRITER)
+    svc._all_hosts = (writer,)
+    svc.refresh_host_list = AsyncMock()
+
+    # Simulate an already-elapsed window.
+    AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns = \
+        perf_counter_ns() - 1
+
+    async def _run():
+        async def _noop():
+            return None
+
+        await plugin.execute(MagicMock(), "Cursor.execute", _noop)
+
+    asyncio.run(_run())
+    svc.refresh_host_list.assert_not_awaited()
+    assert AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns == 0
+
+
+def test_settling_window_skips_connection_close():
+    """Connection.close never triggers a window refresh (sync gates the
+    window logic on non-close methods, aurora_connection_tracker_plugin.py:312)."""
+    from time import perf_counter_ns
+
+    plugin, svc, driver_dialect, tracker = _build()
+    svc.refresh_host_list = AsyncMock()
+
+    # Open window.
+    AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns = \
+        perf_counter_ns() + 60 * 1_000_000_000
+
+    async def _run():
+        async def _noop():
+            return None
+
+        await plugin.execute(MagicMock(), "Connection.close", _noop)
+
+    asyncio.run(_run())
+    svc.refresh_host_list.assert_not_awaited()
+    # Window untouched by the close.
+    assert AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns > 0
+
+
+def test_settling_window_refresh_detects_late_writer_change():
+    """A writer flip that surfaces only on a later refresh inside the window
+    still invalidates the demoted writer's connections."""
+    plugin, svc, driver_dialect, tracker = _build()
+    old_writer = HostInfo(host="old-w", port=5432, role=HostRole.WRITER)
+    new_writer = HostInfo(host="new-w", port=5432, role=HostRole.WRITER)
+    conn_to_old = _plain_conn("conn_to_old")
+
+    svc._all_hosts = (old_writer,)
+    tracker.track(old_writer, conn_to_old)
+
+    # First refresh (inside the FailoverError handler) still reports the old
+    # writer -- the metadata is lagging. A later in-window refresh reports
+    # the new writer.
+    refresh_results = [(old_writer,), (new_writer,)]
+
+    async def _refresh(*args, **kwargs):
+        svc._all_hosts = refresh_results.pop(0) if refresh_results \
+            else svc._all_hosts
+
+    svc.refresh_host_list = AsyncMock(side_effect=_refresh)
+
+    async def _run():
+        async def _noop():
+            return None
+
+        # Pin the old writer.
+        await plugin.execute(MagicMock(), "Cursor.execute", _noop)
+
+        async def _raising():
+            raise FailoverSuccessError("failover")
+
+        # Failover: handler refreshes -> still old writer -> no invalidation.
+        with pytest.raises(FailoverSuccessError):
+            await plugin.execute(MagicMock(), "Cursor.execute", _raising)
+        await asyncio.sleep(0.01)
+        conn_to_old.close.assert_not_called()
+
+        # Next execute inside the window refreshes again -> new writer ->
+        # invalidation fires.
+        await plugin.execute(MagicMock(), "Cursor.execute", _noop)
+        await asyncio.sleep(0.01)
+
+    asyncio.run(_run())
+    conn_to_old.close.assert_called()
 
 
 # ---- Telemetry counters ------------------------------------------------

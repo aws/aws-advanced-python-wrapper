@@ -39,6 +39,8 @@ host.
 from __future__ import annotations
 
 import asyncio
+import threading
+from time import perf_counter_ns
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Dict,
                     Optional, Set)
 from weakref import WeakSet
@@ -223,6 +225,18 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         DbApiMethod.CONNECTION_ROLLBACK.method_name,
     }
 
+    # Post-failover settling window -- port of sync
+    # ``aurora_connection_tracker_plugin.py:259-261``. After a FailoverError,
+    # topology changes (e.g. a lagging DNS/metadata flip of the demoted
+    # writer) are expected for up to 3 minutes, so every subsequent execute
+    # keeps refreshing the host list until the window elapses -- not just the
+    # single refresh performed inside the FailoverError handler. Class-level
+    # so all plugin instances (one per pooled connection) share the window,
+    # exactly like sync.
+    _host_list_refresh_end_time_ns: ClassVar[int] = 0
+    _refresh_lock: ClassVar[threading.Lock] = threading.Lock()
+    _TOPOLOGY_CHANGES_EXPECTED_TIME_NS: ClassVar[int] = 3 * 60 * 1_000_000_000  # 3 minutes
+
     def __init__(
             self,
             plugin_service: AsyncPluginService,
@@ -337,11 +351,38 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
             execute_func: Callable[..., Awaitable[Any]],
             *args: Any,
             **kwargs: Any) -> Any:
-        self._update_writer_from_topology()
+        if method_name != DbApiMethod.CONNECTION_CLOSE.method_name:
+            # Sync parity: aurora_connection_tracker_plugin.py:313-328 --
+            # while the post-failover settling window is open, keep
+            # refreshing topology on every execute so late writer flips are
+            # still detected; once it elapses, stop refreshing.
+            need_refresh_host_lists = False
+            cls = AsyncAuroraConnectionTrackerPlugin
+            with cls._refresh_lock:
+                end_time_ns = cls._host_list_refresh_end_time_ns
+                if end_time_ns > 0:
+                    if end_time_ns > perf_counter_ns():
+                        need_refresh_host_lists = True
+                    else:
+                        cls._host_list_refresh_end_time_ns = 0
+            if need_refresh_host_lists:
+                try:
+                    await self._plugin_service.refresh_host_list()
+                except Exception:  # noqa: BLE001 - refresh best-effort
+                    pass
+            self._update_writer_from_topology()
         try:
             return await execute_func()
         except Exception as exc:
             if isinstance(exc, FailoverError):
+                # Sync parity: aurora_connection_tracker_plugin.py:335-342 --
+                # open the 3-minute settling window, then refresh + recheck
+                # the writer immediately.
+                cls = AsyncAuroraConnectionTrackerPlugin
+                with cls._refresh_lock:
+                    cls._host_list_refresh_end_time_ns = (
+                        perf_counter_ns()
+                        + cls._TOPOLOGY_CHANGES_EXPECTED_TIME_NS)
                 try:
                     await self._plugin_service.refresh_host_list()
                 except Exception:  # noqa: BLE001 - refresh best-effort

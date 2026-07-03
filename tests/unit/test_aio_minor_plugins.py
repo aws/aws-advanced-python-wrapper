@@ -88,10 +88,20 @@ def test_execute_time_plugin_accumulates_elapsed_time():
     asyncio.run(_body())
 
 
-def test_execute_time_plugin_subscribed_methods_covers_cursor_ops():
+def test_execute_time_plugin_subscribes_to_all_methods():
+    # Sync parity (execute_time_plugin.py:41): subscribe to "*" so every
+    # pipeline method is timed, not just an enumerated cursor subset.
     p = AsyncExecuteTimePlugin()
-    assert DbApiMethod.CURSOR_EXECUTE.method_name in p.subscribed_methods
-    assert DbApiMethod.CURSOR_FETCHONE.method_name in p.subscribed_methods
+    assert p.subscribed_methods == {DbApiMethod.ALL.method_name}
+
+
+def test_connect_time_plugin_subscribes_to_connect_and_force_connect():
+    # Sync parity (connect_time_plugin.py:46).
+    p = AsyncConnectTimePlugin()
+    assert p.subscribed_methods == {
+        DbApiMethod.CONNECT.method_name,
+        DbApiMethod.FORCE_CONNECT.method_name,
+    }
 
 
 def test_developer_plugin_injects_configured_exception_then_passes_through():
@@ -329,6 +339,205 @@ def test_developer_plugin_state_is_class_level_shared_across_instances():
         assert await p1.execute(object(), "Cursor.execute", _work) == "ok"
 
     asyncio.run(_body())
+
+
+# --------------------------------------------------------------------------- #
+# A2: method-name filter on set_next_method_exception (sync
+# ExceptionSimulatorManager.raise_exception_on_next_method parity).
+# --------------------------------------------------------------------------- #
+
+
+def test_developer_plugin_method_exception_fires_only_for_matching_method():
+    async def _body() -> None:
+        p = AsyncDeveloperPlugin()
+        AsyncDeveloperPlugin.set_next_method_exception(
+            KeyError("targeted"), "Cursor.fetchone")
+
+        async def _work() -> str:
+            return "ok"
+
+        # Non-matching method passes through and does NOT consume the slot.
+        assert await p.execute(object(), "Cursor.execute", _work) == "ok"
+        assert AsyncDeveloperPlugin._next_method_exception is not None
+        assert AsyncDeveloperPlugin._next_method_name == "Cursor.fetchone"
+
+        # Matching method fires and clears both slots (one-shot).
+        with pytest.raises(KeyError, match="targeted"):
+            await p.execute(object(), "Cursor.fetchone", _work)
+        assert AsyncDeveloperPlugin._next_method_exception is None
+        assert AsyncDeveloperPlugin._next_method_name is None
+
+        # Subsequent matching call passes through.
+        assert await p.execute(object(), "Cursor.fetchone", _work) == "ok"
+
+    asyncio.run(_body())
+
+
+def test_developer_plugin_method_exception_star_matches_any_method():
+    async def _body() -> None:
+        p = AsyncDeveloperPlugin()
+        # Default method_name is "*" -- fires on the first method executed.
+        AsyncDeveloperPlugin.set_next_method_exception(ValueError("any"))
+
+        async def _work() -> str:
+            return "ok"
+
+        with pytest.raises(ValueError, match="any"):
+            await p.execute(object(), "Connection.commit", _work)
+
+    asyncio.run(_body())
+
+
+def test_developer_plugin_method_exception_rejects_empty_method_name():
+    with pytest.raises(RuntimeError, match="should not be empty"):
+        AsyncDeveloperPlugin.set_next_method_exception(ValueError("x"), "")
+    # Nothing was registered.
+    assert AsyncDeveloperPlugin._next_method_exception is None
+    assert AsyncDeveloperPlugin._next_method_name is None
+
+
+def test_developer_plugin_set_next_exception_compat_defaults_to_star():
+    async def _body() -> None:
+        p = AsyncDeveloperPlugin()
+        p.set_next_exception(ValueError("compat"))
+        assert AsyncDeveloperPlugin._next_method_name == "*"
+
+        async def _work() -> str:
+            return "ok"
+
+        with pytest.raises(ValueError, match="compat"):
+            await p.execute(object(), "Cursor.execute", _work)
+
+    asyncio.run(_body())
+
+
+# --------------------------------------------------------------------------- #
+# A4: force_connect applies the injected connect exception (sync
+# DeveloperPlugin.force_connect parity, developer_plugin.py:123-134).
+# --------------------------------------------------------------------------- #
+
+
+def test_developer_plugin_force_connect_applies_injected_exception():
+    async def _body() -> None:
+        AsyncDeveloperPlugin.set_next_connect_exception(RuntimeError("fc-boom"))
+        p = AsyncDeveloperPlugin()
+        calls = {"n": 0}
+
+        async def _force_connect() -> str:
+            calls["n"] += 1
+            return "conn"
+
+        with pytest.raises(RuntimeError, match="fc-boom"):
+            await p.force_connect(
+                force_connect_func=_force_connect, **_make_connect_kwargs())
+        assert calls["n"] == 0
+        # One-shot: cleared after firing; next force_connect passes through.
+        assert AsyncDeveloperPlugin._next_connect_exception is None
+        result = await p.force_connect(
+            force_connect_func=_force_connect, **_make_connect_kwargs())
+        assert result == "conn"
+
+    asyncio.run(_body())
+
+
+def test_developer_plugin_force_connect_runs_connect_callback():
+    async def _body() -> None:
+        p = AsyncDeveloperPlugin()
+        hits: list = []
+        AsyncDeveloperPlugin.set_connect_callback(
+            lambda host_info, props: hits.append(host_info))
+
+        async def _force_connect() -> str:
+            return "conn"
+
+        assert await p.force_connect(
+            force_connect_func=_force_connect, **_make_connect_kwargs()) == "conn"
+        assert len(hits) == 1
+
+    asyncio.run(_body())
+
+
+# --------------------------------------------------------------------------- #
+# A1: debug logs with the sync message keys.
+# --------------------------------------------------------------------------- #
+
+
+def test_connect_time_plugin_logs_connect_time(caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+
+    async def _body() -> None:
+        p = AsyncConnectTimePlugin()
+
+        async def _connect() -> str:
+            return "ok"
+
+        await p.connect(connect_func=_connect, **_make_connect_kwargs())
+
+    asyncio.run(_body())
+    # messages.properties: "[ConnectTimePlugin] Connected in {} nanos."
+    assert any("[ConnectTimePlugin] Connected in" in r.message
+               for r in caplog.records)
+
+
+def test_execute_time_plugin_logs_execute_time(caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+
+    async def _body() -> None:
+        p = AsyncExecuteTimePlugin()
+
+        async def _work() -> str:
+            return "rows"
+
+        await p.execute(object(), "Cursor.execute", _work)
+
+    asyncio.run(_body())
+    # messages.properties: "[ExecuteTimePlugin] Executed {} in {} nanos."
+    assert any("[ExecuteTimePlugin] Executed Cursor.execute in" in r.message
+               for r in caplog.records)
+
+
+def test_developer_plugin_logs_raised_method_exception(caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+
+    async def _body() -> None:
+        p = AsyncDeveloperPlugin()
+        AsyncDeveloperPlugin.set_next_method_exception(ValueError("boom"))
+
+        async def _work() -> str:
+            return "ok"
+
+        with pytest.raises(ValueError):
+            await p.execute(object(), "Cursor.execute", _work)
+
+    asyncio.run(_body())
+    # "[DeveloperPlugin] Raised an exception '{}' while executing '{}'"
+    assert any(
+        "Raised an exception 'ValueError' while executing 'Cursor.execute'"
+        in r.message for r in caplog.records)
+
+
+def test_developer_plugin_logs_raised_connect_exception(caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+
+    async def _body() -> None:
+        p = AsyncDeveloperPlugin()
+        AsyncDeveloperPlugin.set_next_connect_exception(RuntimeError("boom"))
+
+        async def _connect() -> str:
+            return "conn"
+
+        with pytest.raises(RuntimeError):
+            await p.connect(connect_func=_connect, **_make_connect_kwargs())
+
+    asyncio.run(_body())
+    # "[DeveloperPlugin] Raised an exception '{}' while opening a new connection."
+    assert any(
+        "Raised an exception 'RuntimeError' while opening a new connection"
+        in r.message for r in caplog.records)
 
 
 # --------------------------------------------------------------------------- #
