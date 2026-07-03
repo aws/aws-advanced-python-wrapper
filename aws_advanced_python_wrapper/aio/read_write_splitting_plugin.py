@@ -29,10 +29,12 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Optional, Set
 from aws_advanced_python_wrapper.aio._rws_failover_eviction import \
     _AsyncRwsFailoverEvictionMixin
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
-from aws_advanced_python_wrapper.errors import ReadWriteSplittingError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                ReadWriteSplittingError)
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import \
     OldConnectionSuggestedAction
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
@@ -143,6 +145,16 @@ class AsyncReadWriteSplittingPlugin(
             props: Properties,
             is_initial_connection: bool,
             connect_func: Callable[..., Awaitable[Any]]) -> Any:
+        # Sync parity (read_write_splitting_plugin.py:448-456): validate the
+        # configured reader-selection strategy up front so a typo'd strategy
+        # fails the connect instead of silently degrading later.
+        strategy = (WrapperProperties.READER_HOST_SELECTOR_STRATEGY
+                    .get(self._props) or "random")
+        if not self._plugin_service.accepts_strategy(host_info.role, strategy):
+            raise AwsWrapperError(Messages.get_formatted(
+                "ReadWriteSplittingPlugin.UnsupportedHostInfoSelectorStrategy",
+                strategy))
+
         conn = await connect_func()
         if is_initial_connection:
             # aio/wrapper.py builds the initial HostInfo with no role, so it
@@ -154,8 +166,14 @@ class AsyncReadWriteSplittingPlugin(
             # read_write_splitting_plugin.connect (lines 459-486).
             try:
                 actual_role = await self._plugin_service.get_host_role(conn)
-            except Exception:  # noqa: BLE001 - role probe is best-effort
+            except Exception:  # noqa: BLE001 - probe failure = unverifiable role
                 actual_role = None
+            if actual_role is None or actual_role == HostRole.UNKNOWN:
+                # Sync parity (read_write_splitting_plugin.py:466-470): an
+                # unverifiable initial role poisons every later switch
+                # decision -- fail fast.
+                raise ReadWriteSplittingError(Messages.get(
+                    "ReadWriteSplittingPlugin.ErrorVerifyingInitialHostSpecRole"))
             if (actual_role is not None
                     and actual_role != HostRole.UNKNOWN
                     and host_info.role != actual_role):
@@ -203,6 +221,11 @@ class AsyncReadWriteSplittingPlugin(
         current = self._plugin_service.current_connection
         if current is None:
             return
+        # Sync parity (read_write_splitting_plugin.py:188-195): setting
+        # read_only on an already-closed connection is an error, not a no-op.
+        if await driver_dialect.is_closed(current):
+            raise ReadWriteSplittingError(Messages.get(
+                "ReadWriteSplittingPlugin.SetReadOnlyOnClosedConnection"))
 
         # Current host role gates the switch: don't swap (and risk reusing a
         # stale cache) when we are already on the right kind of host. Mirrors
@@ -289,15 +312,14 @@ class AsyncReadWriteSplittingPlugin(
     def _is_pool_connection(self, conn: Any) -> bool:
         """Return True if ``conn`` is managed by a pool provider.
 
-        Primary check: ask the AsyncConnectionProviderManager whether
-        a user-registered pool provider accepts the current host info.
-        Falls back to the SQLAlchemy-pool module-string heuristic for
-        back-compat with deployments that hook SA's pool without
-        going through our provider manager.
+        Asks the AsyncConnectionProviderManager whether a user-registered
+        pool provider accepts the current host info -- mirroring sync
+        ReadWriteSplittingPlugin's provider check
+        (read_write_splitting_plugin.py:524-530). SQLAlchemy pools are out
+        of scope for RWS (SA+RWS is unsupported), so no module heuristics.
         """
         if conn is None:
             return False
-        # Provider-manager check (preferred).
         try:
             manager = self._plugin_service.get_connection_provider_manager()
             host_info = self._plugin_service.current_host_info
@@ -308,9 +330,7 @@ class AsyncReadWriteSplittingPlugin(
                     return True
         except Exception:  # noqa: BLE001 - best-effort
             pass
-        # Back-compat heuristic for SA pool connections.
-        module = getattr(type(conn), "__module__", "")
-        return module.startswith("sqlalchemy.pool")
+        return False
 
     async def _release_pool_conn(
             self,
@@ -389,15 +409,6 @@ class AsyncReadWriteSplittingPlugin(
         self._reader_host_info = None
 
         reader_candidates = self._select_reader_candidates(topology)
-        if not reader_candidates:
-            # Aurora's ``aurora_replica_status()`` transiently omits a reader
-            # row when the replica's LAST_UPDATE_TIMESTAMP lags the query's
-            # 300s freshness window, yielding a writer-only topology. Re-probe
-            # once with a forced refresh (bypasses the cache the transient may
-            # have just poisoned) before giving up.
-            topology = await self._host_list_provider.force_refresh(current)
-            topology = tuple(self._plugin_service.filter_hosts(list(topology)))
-            reader_candidates = self._select_reader_candidates(topology)
         if not reader_candidates:
             if self._plugin_service.allowed_and_blocked_hosts is not None:
                 # A custom endpoint constrains the host set and it has no

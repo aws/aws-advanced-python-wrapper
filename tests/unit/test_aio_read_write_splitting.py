@@ -27,7 +27,8 @@ from aws_advanced_python_wrapper.aio.plugin_service import \
     AsyncPluginServiceImpl
 from aws_advanced_python_wrapper.aio.read_write_splitting_plugin import \
     AsyncReadWriteSplittingPlugin
-from aws_advanced_python_wrapper.errors import ReadWriteSplittingError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                ReadWriteSplittingError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.properties import Properties
@@ -243,17 +244,26 @@ def test_reopens_reader_when_cached_reader_closed():
             _work,
             True,
         )
-        # Simulate reader conn being closed between requests.
-        dd.is_closed = AsyncMock(return_value=True)
-        dd.connect.reset_mock()
+        stale_reader = plugin._reader_conn
 
-        # Flip to writer, then back to reader -- should reopen.
+        # Flip back to the writer first (the reader is still healthy here);
+        # only THEN does the cached reader die. set_read_only on a closed
+        # CURRENT connection raises (sync parity), so the death must happen
+        # while the reader is cached, not current.
         await plugin.execute(
             object(),
             DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
             _work,
             False,
         )
+
+        async def _is_closed(conn):
+            return conn is stale_reader
+
+        dd.is_closed = AsyncMock(side_effect=_is_closed)
+        dd.connect.reset_mock()
+
+        # Back to reader -- the dead cached reader must be reopened.
         await plugin.execute(
             object(),
             DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
@@ -340,6 +350,9 @@ def test_initial_connect_seeds_writer_cache():
         plugin, svc, hlp, dd, _ = _build()
         # Clear the writer cache set in _build().
         plugin._writer_conn = None
+        # connect() fail-fasts when the initial role is unverifiable (sync
+        # parity); the initial host really is the writer here.
+        svc.get_host_role = AsyncMock(return_value=HostRole.WRITER)
 
         new_conn = MagicMock(name="fresh_writer")
 
@@ -415,29 +428,19 @@ def test_switch_to_reader_defaults_to_random_strategy():
     assert svc.get_host_info_by_strategy.call_args.args[1] == "random"
 
 
-def test_switch_to_reader_recovers_via_force_refresh_on_transient_no_reader():
-    """A transient writer-only refresh is retried with force_refresh; when the
-    retry surfaces the reader, the switch succeeds (no fallback, no raise)."""
+def test_switch_to_reader_stays_on_current_when_topology_has_no_reader():
+    """A writer-only topology means no reader to switch to: RWS warns and
+    stays on the current connection (sync
+    _initialize_reader_connection parity) -- it does NOT re-probe with
+    force_refresh or raise."""
     async def _body() -> None:
         plugin, svc, hlp, dd, _ = _build()
         writer_only = (
             HostInfo(host="writer.example", port=5432, role=HostRole.WRITER),)
-        full = (
-            HostInfo(host="writer.example", port=5432, role=HostRole.WRITER),
-            HostInfo(host="reader.example", port=5432, role=HostRole.READER),
-        )
         hlp.refresh = AsyncMock(return_value=writer_only)
-        hlp.force_refresh = AsyncMock(return_value=full)
-        # get_host_role is consulted by execute()'s gate, which probes the
-        # CURRENT (writer) connection -> WRITER so the switch proceeds. Keep
-        # the stub connection-aware so any probe of a non-writer connection
-        # reports READER.
-        _writer_conn = svc.current_connection
-
-        async def _role(conn=None, *a, **k):
-            return HostRole.WRITER if conn is _writer_conn else HostRole.READER
-
-        svc.get_host_role = _role
+        hlp.force_refresh = AsyncMock(return_value=writer_only)
+        # execute()'s gate probes the CURRENT (writer) connection.
+        svc.get_host_role = AsyncMock(return_value=HostRole.WRITER)
 
         async def _work() -> None:
             return None
@@ -446,9 +449,8 @@ def test_switch_to_reader_recovers_via_force_refresh_on_transient_no_reader():
             object(), DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
             _work, True)
 
-        hlp.force_refresh.assert_awaited()  # the transient retry happened
-        assert plugin._reader_host_info is not None
-        assert plugin._reader_host_info.role == HostRole.READER
+        hlp.force_refresh.assert_not_awaited()  # no async-only re-probe
+        assert plugin._reader_conn is None      # stayed on current
 
     asyncio.run(_body())
 
@@ -729,18 +731,25 @@ def test_cached_reader_reuse_still_works_when_host_in_topology():
     assert plugin._reader_conn is cached_reader_conn
 
 
-def test_swap_to_reader_releases_pool_backed_writer_conn():
-    """Pool-backed current conn is closed after swap so it returns to the pool."""
+def test_swap_to_reader_releases_provider_pooled_writer_conn():
+    """Current conn from a registered pool provider is closed after the swap
+    so it returns to that provider's pool (provider-manager check only --
+    the SA module heuristic is gone)."""
     reader = HostInfo(host="r", port=5432, role=HostRole.READER)
     writer = HostInfo(host="w", port=5432, role=HostRole.WRITER)
     plugin, svc, hlp, dd, _ = _build(topology=(writer, reader))
 
-    # Replace current connection with a SA-pool-looking mock
     pool_conn = MagicMock(name="pool_conn")
     pool_conn.close = MagicMock()
-    # Fake the __module__ on the MagicMock's type so the helper detects it
-    type(pool_conn).__module__ = "sqlalchemy.pool.base"
     svc._current_connection = pool_conn
+
+    # A registered (non-default) provider claims the current host.
+    provider_manager = MagicMock()
+    provider_manager.get_connection_provider = MagicMock(
+        return_value=MagicMock(name="pooled_provider"))
+    provider_manager.default_provider = MagicMock(name="default_provider")
+    svc.get_connection_provider_manager = MagicMock(  # type: ignore[method-assign]
+        return_value=provider_manager)
 
     svc.get_host_info_by_strategy = MagicMock(return_value=reader)
 
@@ -782,16 +791,17 @@ def test_swap_does_not_close_non_pool_conn():
 
 
 def test_is_pool_connection_helper():
-    """_is_pool_connection is now an instance method that consults the
-    ConnectionProviderManager first, falling back to the SA pool module
-    heuristic."""
+    """_is_pool_connection consults ONLY the ConnectionProviderManager (sync
+    parity) -- the SQLAlchemy module heuristic was removed with the SA+RWS
+    descoping, so an SA-pool-looking connection no longer counts as pooled
+    unless a registered provider claims the host."""
     plugin, *_ = _build()
     assert plugin._is_pool_connection(None) is False
 
     class _FakePool:
         pass
     _FakePool.__module__ = "sqlalchemy.pool.impl"
-    assert plugin._is_pool_connection(_FakePool()) is True
+    assert plugin._is_pool_connection(_FakePool()) is False
 
     class _FakeRaw:
         pass
@@ -908,5 +918,72 @@ def test_switch_to_writer_emits_telemetry_counter():
         )
 
         assert counters["rws.switches.to_writer.count"].inc.called
+
+    asyncio.run(_body())
+
+
+# ---- sync-parity guards (connect validation + closed-connection) ----------
+
+
+def test_set_read_only_on_closed_connection_raises():
+    """set_read_only on a closed CURRENT connection raises (sync
+    read_write_splitting_plugin.py:188-195 parity)."""
+    async def _body() -> None:
+        plugin, svc, _hlp, dd, _ = _build()
+        dd.is_closed = AsyncMock(return_value=True)
+
+        async def _work() -> None:
+            return None
+
+        with pytest.raises(ReadWriteSplittingError):
+            await plugin.execute(
+                object(), DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
+                _work, True)
+
+    asyncio.run(_body())
+
+
+def test_connect_raises_on_unsupported_reader_strategy():
+    """connect() validates the configured reader-selection strategy up front
+    (sync :448-456 parity)."""
+    async def _body() -> None:
+        plugin, svc, _hlp, dd, _ = _build()
+        plugin._props["reader_host_selector_strategy"] = "no_such_strategy"
+
+        async def _connect_func() -> object:
+            return MagicMock(name="conn")
+
+        with pytest.raises(AwsWrapperError):
+            await plugin.connect(
+                target_driver_func=lambda: None,
+                driver_dialect=dd,
+                host_info=HostInfo(host="w", port=5432),
+                props=plugin._props,
+                is_initial_connection=True,
+                connect_func=_connect_func,
+            )
+
+    asyncio.run(_body())
+
+
+def test_connect_raises_when_initial_role_unverifiable():
+    """connect() fail-fasts when the initial host's role cannot be verified
+    (sync :466-470 parity)."""
+    async def _body() -> None:
+        plugin, svc, _hlp, dd, _ = _build()
+        svc.get_host_role = AsyncMock(return_value=HostRole.UNKNOWN)
+
+        async def _connect_func() -> object:
+            return MagicMock(name="conn")
+
+        with pytest.raises(ReadWriteSplittingError):
+            await plugin.connect(
+                target_driver_func=lambda: None,
+                driver_dialect=dd,
+                host_info=HostInfo(host="w", port=5432),
+                props=plugin._props,
+                is_initial_connection=True,
+                connect_func=_connect_func,
+            )
 
     asyncio.run(_body())
