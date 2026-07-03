@@ -12,39 +12,40 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""Unit tests for :class:`AsyncLimitlessPlugin` (minimal port).
+"""Unit tests for the async Limitless connect state machine.
 
-Covers the five load-bearing branches of the minimal async port:
-
-1. Dialect missing ``limitless_router_endpoint_query`` -> return the
-   initial connection unchanged.
-2. Query returns no rows -> return the initial connection unchanged.
-3. Query returns routers and the strategy picks a different host ->
-   open a router connection, abort the initial one.
-4. Query returns routers and the picked router equals the original host
-   -> keep the initial connection (no new connect).
-5. Cache hit: a second connect within the TTL window re-uses the cached
-   router list without re-querying the database.
+The establish_connection cases mirror sync
+``tests/unit/test_limitless_router_service.py`` one-for-one (wait-for-router-info
+branches, cache/select paths, retry with least-loaded fallback, availability
+marking, MaxRetriesExceeded). The plugin-level cases mirror sync
+``tests/unit/test_limitless_plugin.py`` (dialect gate + FailedToConnectToHost).
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from aws_advanced_python_wrapper.aio.limitless_plugin import (
-    AsyncLimitlessPlugin, AsyncLimitlessRouterCache,
+    AsyncLimitlessContext, AsyncLimitlessPlugin, AsyncLimitlessRouterCache,
     AsyncLimitlessRouterService)
+from aws_advanced_python_wrapper.database_dialect import (AuroraPgDialect,
+                                                          MysqlDatabaseDialect)
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                UnsupportedOperationError)
+from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
+
+CLUSTER_ID: str = "some_cluster_id"
 
 
 @pytest.fixture(autouse=True)
 def _reset_limitless_singletons():
-    """Clear the cluster-level cache + running monitors between tests."""
     AsyncLimitlessRouterCache.clear()
     AsyncLimitlessRouterService._reset_for_tests()
     yield
@@ -55,254 +56,446 @@ def _reset_limitless_singletons():
     AsyncLimitlessRouterCache.clear()
     AsyncLimitlessRouterService._reset_for_tests()
 
-# ---- Helpers -----------------------------------------------------------
+
+# ----- fixtures ----------------------------------------------------
 
 
-def _host(host: str, port: int = 5432) -> HostInfo:
-    return HostInfo(host=host, port=port, role=HostRole.WRITER)
+@pytest.fixture
+def limitless_router1() -> HostInfo:
+    return HostInfo("limitless-router-1", 5432, HostRole.READER, HostAvailability.AVAILABLE)
 
 
-def _make_rows_cursor(rows: list) -> MagicMock:
-    """Build a mock cursor that acts as a psycopg/aiomysql async cursor.
-
-    The real cursor is returned from a sync ``connection.cursor()`` call,
-    supports ``async with`` context management, and exposes ``execute``
-    / ``fetchall`` as awaitables.
-    """
-    cur = MagicMock(name="cursor")
-    cur.__aenter__ = AsyncMock(return_value=cur)
-    cur.__aexit__ = AsyncMock(return_value=None)
-    cur.execute = AsyncMock(return_value=None)
-    cur.fetchall = AsyncMock(return_value=rows)
-    return cur
+@pytest.fixture
+def limitless_router2() -> HostInfo:
+    return HostInfo("limitless-router-2", 5432, HostRole.WRITER, HostAvailability.AVAILABLE)
 
 
-def _make_conn(rows: list) -> MagicMock:
-    conn = MagicMock(name="initial_conn")
-    conn.cursor = MagicMock(return_value=_make_rows_cursor(rows))
-    return conn
+@pytest.fixture
+def limitless_router3() -> HostInfo:
+    return HostInfo("limitless-router-3", 5432, HostRole.READER, HostAvailability.UNAVAILABLE)
 
 
-def _build(
-        *,
-        rows: list,
-        dialect_has_query: bool = True,
-        strategy_returns: Any = None,
-) -> tuple:
-    """Construct plugin + mocks.
-
-    Returns ``(plugin, plugin_service, driver_dialect, initial_conn)``.
-    ``strategy_returns`` is used as the return value of
-    ``plugin_service.get_host_info_by_strategy``.
-    """
-    initial_conn = _make_conn(rows)
-
-    database_dialect: Any
-    if dialect_has_query:
-        database_dialect = MagicMock(name="database_dialect")
-        database_dialect.limitless_router_endpoint_query = (
-            "SELECT router_endpoint, load FROM x")
-    else:
-        # Bare object() has no ``limitless_router_endpoint_query`` attr,
-        # so ``getattr(..., default=None)`` returns None and the plugin
-        # treats this as a non-Limitless dialect. MagicMock would
-        # auto-create the attribute, so it's unsuitable here.
-        database_dialect = object()
-
-    plugin_service = MagicMock(name="plugin_service")
-    plugin_service.database_dialect = database_dialect
-    plugin_service.get_host_info_by_strategy = MagicMock(
-        return_value=strategy_returns)
-
-    driver_dialect = MagicMock(name="driver_dialect")
-    driver_dialect.connect = AsyncMock()
-    driver_dialect.abort_connection = AsyncMock()
-
-    # Router connections now route through plugin_service.connect (pipeline).
-    # Alias it onto driver_dialect.connect so tests that configure
-    # driver_dialect.connect.return_value carry over; individual tests
-    # may override plugin_service.connect directly for finer control.
-    plugin_service.connect = driver_dialect.connect
-
-    plugin = AsyncLimitlessPlugin(plugin_service, Properties({}))
-    return plugin, plugin_service, driver_dialect, initial_conn
+@pytest.fixture
+def limitless_router4() -> HostInfo:
+    return HostInfo("limitless-router-4", 5432, HostRole.READER, HostAvailability.AVAILABLE)
 
 
-async def _connect_func_factory(conn: Any):
-    async def _connect_func() -> Any:
-        return conn
-    return _connect_func
+@pytest.fixture
+def limitless_routers(limitless_router1, limitless_router2, limitless_router3, limitless_router4):
+    return [limitless_router1, limitless_router2, limitless_router3, limitless_router4]
 
 
-# ---- 1: dialect missing query ----------------------------------------
+@pytest.fixture
+def host_info() -> HostInfo:
+    return HostInfo(host="host-info", role=HostRole.READER)
 
 
-def test_connect_returns_initial_conn_when_dialect_has_no_query():
-    async def _body() -> None:
-        plugin, plugin_service, driver_dialect, initial_conn = _build(
-            rows=[], dialect_has_query=False)
-        connect_func = await _connect_func_factory(initial_conn)
+@pytest.fixture
+def props() -> Properties:
+    return Properties()
 
-        result = await plugin.connect(
-            target_driver_func=MagicMock(),
-            driver_dialect=driver_dialect,
-            host_info=_host("shard-group.example"),
-            props=Properties({}),
-            is_initial_connection=True,
-            connect_func=connect_func,
-        )
 
-        assert result is initial_conn
-        # No router selection attempted, no driver.connect, no abort.
-        plugin_service.get_host_info_by_strategy.assert_not_called()
-        driver_dialect.connect.assert_not_awaited()
-        driver_dialect.abort_connection.assert_not_awaited()
+@pytest.fixture
+def mock_conn() -> MagicMock:
+    return MagicMock(name="mock_conn")
+
+
+@pytest.fixture
+def mock_plugin_service() -> MagicMock:
+    svc = MagicMock(name="plugin_service")
+    svc.host_list_provider = MagicMock()
+    svc.host_list_provider.get_cluster_id.return_value = CLUSTER_ID
+    svc.driver_dialect = MagicMock()
+    svc.driver_dialect.is_closed = AsyncMock(return_value=False)
+    svc.driver_dialect.abort_connection = AsyncMock()
+    svc.connect = AsyncMock()
+    svc.get_host_info_by_strategy = MagicMock()
+    svc.is_login_exception = MagicMock(return_value=False)
+    svc.database_dialect = MagicMock()
+    return svc
+
+
+@pytest.fixture
+def mock_query_helper() -> MagicMock:
+    helper = MagicMock(name="query_helper")
+    helper.query_for_limitless_routers = AsyncMock(return_value=[])
+    return helper
+
+
+@pytest.fixture
+def connection_plugin() -> MagicMock:
+    return MagicMock(name="connection_plugin")
+
+
+def _context(host_info, props, connect_func, connection_plugin, plugin_service):
+    return AsyncLimitlessContext(
+        host_info, props, None, connect_func, [], connection_plugin, plugin_service)
+
+
+# ----- establish_connection: wait-for-router-info branch -----------
+
+
+def test_establish_connection_empty_routers_wait_then_raises(
+        mock_conn, mock_query_helper, host_info, props, mock_plugin_service, connection_plugin):
+    mock_query_helper.query_for_limitless_routers = AsyncMock(return_value=[])
+    connect_func = AsyncMock(return_value=mock_conn)
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(host_info, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        with pytest.raises(AwsWrapperError) as exc:
+            await service.establish_connection(context)
+        assert str(exc.value) == Messages.get("LimitlessRouterService.NoRoutersAvailable")
 
     asyncio.run(_body())
 
 
-# ---- 2: empty router list ---------------------------------------------
+def test_establish_connection_empty_routers_do_not_wait_calls_connect_func(
+        mock_conn, mock_query_helper, host_info, props, mock_plugin_service, connection_plugin):
+    WrapperProperties.WAIT_FOR_ROUTER_INFO.set(props, False)
+    connect_func = AsyncMock(return_value=mock_conn)
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(host_info, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        await service.establish_connection(context)
+
+    asyncio.run(_body())
+
+    assert context.get_connection() is mock_conn
+    connect_func.assert_awaited_once()
 
 
-def test_connect_returns_initial_conn_when_router_list_is_empty():
-    async def _body() -> None:
-        plugin, plugin_service, driver_dialect, initial_conn = _build(
-            rows=[])
-        connect_func = await _connect_func_factory(initial_conn)
+# ----- establish_connection: host already a router -----------------
 
-        result = await plugin.connect(
-            target_driver_func=MagicMock(),
-            driver_dialect=driver_dialect,
-            host_info=_host("shard-group.example"),
-            props=Properties({}),
-            is_initial_connection=True,
-            connect_func=connect_func,
-        )
 
-        assert result is initial_conn
-        plugin_service.get_host_info_by_strategy.assert_not_called()
-        driver_dialect.connect.assert_not_awaited()
+def test_establish_connection_host_in_cache_calls_connect_func(
+        mock_conn, mock_query_helper, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_routers):
+    AsyncLimitlessRouterCache.put(CLUSTER_ID, limitless_routers)
+    connect_func = AsyncMock(return_value=mock_conn)
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(limitless_router1, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        await service.establish_connection(context)
+
+    asyncio.run(_body())
+
+    assert context.get_connection() is mock_conn
+    connect_func.assert_awaited_once()
+
+
+def test_establish_connection_fetch_router_list_host_in_list_calls_connect_func(
+        mock_conn, mock_query_helper, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_routers):
+    mock_query_helper.query_for_limitless_routers = AsyncMock(return_value=limitless_routers)
+    connect_func = AsyncMock(return_value=mock_conn)
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(limitless_router1, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        await service.establish_connection(context)
+
+    asyncio.run(_body())
+
+    assert context.get_connection() is mock_conn
+    assert AsyncLimitlessRouterCache.get(CLUSTER_ID) == limitless_routers
+    mock_query_helper.query_for_limitless_routers.assert_awaited_once()
+    connect_func.assert_awaited_once()
+
+
+# ----- establish_connection: select a router -----------------------
+
+
+def test_establish_connection_cache_then_select_host(
+        mock_conn, mock_query_helper, host_info, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_routers):
+    AsyncLimitlessRouterCache.put(CLUSTER_ID, limitless_routers)
+    mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
+    mock_plugin_service.connect = AsyncMock(return_value=mock_conn)
+    connect_func = AsyncMock(return_value=None)
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(host_info, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        await service.establish_connection(context)
+
+    asyncio.run(_body())
+
+    assert context.get_connection() is mock_conn
+    assert AsyncLimitlessRouterCache.get(CLUSTER_ID) == limitless_routers
+    mock_plugin_service.get_host_info_by_strategy.assert_called_once_with(
+        HostRole.WRITER, "weighted_random", limitless_routers)
+    mock_plugin_service.connect.assert_awaited_once_with(
+        limitless_router1, props, plugin_to_skip=connection_plugin)
+    connect_func.assert_not_called()
+
+
+def test_establish_connection_fetch_then_select_host(
+        mock_conn, mock_query_helper, host_info, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_routers):
+    mock_query_helper.query_for_limitless_routers = AsyncMock(return_value=limitless_routers)
+    mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
+    mock_plugin_service.connect = AsyncMock(return_value=mock_conn)
+    connect_func = AsyncMock(return_value=None)
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(host_info, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        await service.establish_connection(context)
+
+    asyncio.run(_body())
+
+    assert context.get_connection() is mock_conn
+    assert AsyncLimitlessRouterCache.get(CLUSTER_ID) == limitless_routers
+    mock_query_helper.query_for_limitless_routers.assert_awaited_once()
+    mock_plugin_service.get_host_info_by_strategy.assert_called_once_with(
+        HostRole.WRITER, "weighted_random", limitless_routers)
+    mock_plugin_service.connect.assert_awaited_once_with(
+        limitless_router1, props, plugin_to_skip=connection_plugin)
+    connect_func.assert_awaited_once()
+
+
+# ----- establish_connection: retry with least-loaded fallback ------
+
+
+def test_establish_connection_host_in_cache_connect_func_raises_then_retries(
+        mock_conn, mock_query_helper, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_routers):
+    AsyncLimitlessRouterCache.put(CLUSTER_ID, limitless_routers)
+    mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
+    mock_plugin_service.connect = AsyncMock(return_value=mock_conn)
+    connect_func = AsyncMock(side_effect=Exception())
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(limitless_router1, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        await service.establish_connection(context)
+
+    asyncio.run(_body())
+
+    assert context.get_connection() is mock_conn
+    mock_plugin_service.get_host_info_by_strategy.assert_called_once_with(
+        HostRole.WRITER, "highest_weight", limitless_routers)
+    mock_plugin_service.connect.assert_awaited_once_with(
+        limitless_router1, props, plugin_to_skip=connection_plugin)
+    connect_func.assert_awaited_once()
+
+
+def test_establish_connection_selected_host_raises_then_retries(
+        mock_conn, mock_query_helper, host_info, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_routers):
+    AsyncLimitlessRouterCache.put(CLUSTER_ID, limitless_routers)
+    mock_plugin_service.get_host_info_by_strategy.side_effect = [Exception(), limitless_router1]
+    mock_plugin_service.connect = AsyncMock(return_value=mock_conn)
+    connect_func = AsyncMock(side_effect=Exception())
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(host_info, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        await service.establish_connection(context)
+
+    asyncio.run(_body())
+
+    assert context.get_connection() is mock_conn
+    assert mock_plugin_service.get_host_info_by_strategy.call_count == 2
+    mock_plugin_service.get_host_info_by_strategy.assert_called_with(
+        HostRole.WRITER, "highest_weight", limitless_routers)
+    mock_plugin_service.connect.assert_awaited_once_with(
+        limitless_router1, props, plugin_to_skip=connection_plugin)
+
+
+def test_establish_connection_selected_host_none_then_retries(
+        mock_conn, mock_query_helper, host_info, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_routers):
+    AsyncLimitlessRouterCache.put(CLUSTER_ID, limitless_routers)
+    mock_plugin_service.get_host_info_by_strategy.side_effect = [None, limitless_router1]
+    mock_plugin_service.connect = AsyncMock(return_value=mock_conn)
+    connect_func = AsyncMock(side_effect=Exception())
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(host_info, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        await service.establish_connection(context)
+
+    asyncio.run(_body())
+
+    assert context.get_connection() is mock_conn
+    assert mock_plugin_service.get_host_info_by_strategy.call_count == 2
+    mock_plugin_service.get_host_info_by_strategy.assert_called_with(
+        HostRole.WRITER, "highest_weight", limitless_routers)
+    mock_plugin_service.connect.assert_awaited_once_with(
+        limitless_router1, props, plugin_to_skip=connection_plugin)
+
+
+def test_establish_connection_service_connect_raises_then_retries(
+        mock_conn, mock_query_helper, host_info, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_router2, limitless_routers):
+    AsyncLimitlessRouterCache.put(CLUSTER_ID, limitless_routers)
+    mock_plugin_service.get_host_info_by_strategy.side_effect = [limitless_router1, limitless_router2]
+    mock_plugin_service.connect = AsyncMock(side_effect=[Exception(), mock_conn])
+    connect_func = AsyncMock(side_effect=Exception())
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(host_info, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        await service.establish_connection(context)
+
+    asyncio.run(_body())
+
+    assert context.get_connection() is mock_conn
+    assert mock_plugin_service.get_host_info_by_strategy.call_count == 2
+    assert mock_plugin_service.connect.await_count == 2
+    # The first (weighted_random) pick failed to connect and was marked down.
+    assert limitless_router1.get_availability() == HostAvailability.UNAVAILABLE
+    mock_plugin_service.connect.assert_awaited_with(
+        limitless_router2, props, plugin_to_skip=connection_plugin)
+
+
+def test_establish_connection_max_retries_exceeded_raises(
+        mock_conn, mock_query_helper, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_routers):
+    WrapperProperties.MAX_RETRIES_MS.set(props, 3)
+    AsyncLimitlessRouterCache.put(CLUSTER_ID, limitless_routers)
+    mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
+    mock_plugin_service.connect = AsyncMock(side_effect=Exception())
+    connect_func = AsyncMock(side_effect=Exception())
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(limitless_router1, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        with pytest.raises(AwsWrapperError) as exc:
+            await service.establish_connection(context)
+        assert str(exc.value) == Messages.get("LimitlessRouterService.MaxRetriesExceeded")
+
+    asyncio.run(_body())
+
+    assert mock_plugin_service.connect.await_count == 3
+    assert mock_plugin_service.get_host_info_by_strategy.call_count == 3
+
+
+# ----- plugin connect gate + FailedToConnectToHost -----------------
+
+
+def _mock_service_for_plugin_gate():
+    svc = MagicMock(name="plugin_service")
+    svc.driver_dialect = MagicMock()
+    svc.driver_dialect.is_closed = AsyncMock(return_value=False)
+    return svc
+
+
+def _mock_router_service():
+    router_service = MagicMock(name="router_service")
+    router_service.dispose_stale_monitors = AsyncMock()
+    router_service.start_monitoring = MagicMock()
+    return router_service
+
+
+def test_plugin_connect_returns_established_connection(host_info, props, mock_conn):
+    svc = _mock_service_for_plugin_gate()
+    svc.database_dialect = AuroraPgDialect()
+    plugin = AsyncLimitlessPlugin(svc, props)
+    router_service = _mock_router_service()
+
+    def _set_conn(context):
+        context._connection = mock_conn
+        return None
+
+    router_service.establish_connection = AsyncMock(side_effect=_set_conn)
+    plugin._limitless_router_service = router_service
+    connect_func = AsyncMock(return_value=None)
+
+    async def _body():
+        return await plugin.connect(
+            MagicMock(), MagicMock(), host_info, props, True, connect_func)
+
+    result = asyncio.run(_body())
+
+    assert result is mock_conn
+    connect_func.assert_not_called()
+    router_service.start_monitoring.assert_called_once_with(host_info, props)
+    router_service.establish_connection.assert_awaited_once()
+
+
+def test_plugin_connect_none_connection_raises(host_info, props, mock_conn):
+    svc = _mock_service_for_plugin_gate()
+    svc.database_dialect = AuroraPgDialect()
+    plugin = AsyncLimitlessPlugin(svc, props)
+    router_service = _mock_router_service()
+
+    def _set_none(context):
+        context._connection = None
+        return None
+
+    router_service.establish_connection = AsyncMock(side_effect=_set_none)
+    plugin._limitless_router_service = router_service
+    connect_func = AsyncMock(return_value=mock_conn)
+
+    async def _body():
+        with pytest.raises(AwsWrapperError) as exc:
+            await plugin.connect(
+                MagicMock(), MagicMock(), host_info, props, True, connect_func)
+        assert str(exc.value) == Messages.get_formatted(
+            "LimitlessPlugin.FailedToConnectToHost", host_info.host)
+
+    asyncio.run(_body())
+
+    router_service.start_monitoring.assert_called_once_with(host_info, props)
+    router_service.establish_connection.assert_awaited_once()
+
+
+def test_plugin_connect_unsupported_dialect_raises(host_info, props, mock_conn):
+    svc = _mock_service_for_plugin_gate()
+    unsupported = MysqlDatabaseDialect()
+    svc.database_dialect = unsupported
+    plugin = AsyncLimitlessPlugin(svc, props)
+    plugin._limitless_router_service = _mock_router_service()
+    connect_func = AsyncMock(return_value=mock_conn)
+
+    async def _body():
+        with pytest.raises(UnsupportedOperationError) as exc:
+            await plugin.connect(
+                MagicMock(), MagicMock(), host_info, props, True, connect_func)
+        assert str(exc.value) == Messages.get_formatted(
+            "LimitlessPlugin.UnsupportedDialectOrDatabase", type(unsupported).__name__)
 
     asyncio.run(_body())
 
 
-# ---- 3: strategy picks a router -> swap connection --------------------
+def test_plugin_connect_supported_dialect_after_refresh(host_info, props, mock_conn):
+    # First dialect read is unsupported, the re-read (refresh) is supported --
+    # mirrors sync connect's refresh-then-recheck (limitless_plugin.py:83-89).
+    class _RefreshingService:
+        def __init__(self, dialects, driver_dialect):
+            self._dialects = iter(dialects)
+            self.driver_dialect = driver_dialect
 
+        @property
+        def database_dialect(self):
+            return next(self._dialects)
 
-def test_connect_opens_router_connection_when_strategy_picks_one():
-    async def _body() -> None:
-        rows = [("router-a.example", 0.1), ("router-b.example", 0.5)]
-        picked = _host("router-a.example")
-        plugin, plugin_service, driver_dialect, initial_conn = _build(
-            rows=rows, strategy_returns=picked)
+    driver_dialect = MagicMock()
+    driver_dialect.is_closed = AsyncMock(return_value=False)
+    svc = _RefreshingService([MysqlDatabaseDialect(), AuroraPgDialect()], driver_dialect)
 
-        router_conn = MagicMock(name="router_conn")
-        plugin_service.connect = AsyncMock(return_value=router_conn)
+    plugin = AsyncLimitlessPlugin(svc, props)
+    router_service = _mock_router_service()
 
-        connect_func = await _connect_func_factory(initial_conn)
+    def _set_conn(context):
+        context._connection = mock_conn
+        return None
 
-        result = await plugin.connect(
-            target_driver_func=MagicMock(),
-            driver_dialect=driver_dialect,
-            host_info=_host("shard-group.example"),
-            props=Properties({}),
-            is_initial_connection=True,
-            connect_func=connect_func,
-        )
+    router_service.establish_connection = AsyncMock(side_effect=_set_conn)
+    plugin._limitless_router_service = router_service
+    connect_func = AsyncMock(return_value=None)
 
-        assert result is router_conn
-        # The strategy must be asked for a router.
-        plugin_service.get_host_info_by_strategy.assert_called_once()
-        args, _ = plugin_service.get_host_info_by_strategy.call_args
-        # role, strategy, router-list
-        assert args[0] == HostRole.WRITER
-        assert args[1] == "weighted_random"
-        # Two routers parsed from rows.
-        assert len(args[2]) == 2
-        # Router conn was opened through the pipeline; initial conn
-        # was aborted.
-        plugin_service.connect.assert_awaited_once()
-        driver_dialect.abort_connection.assert_awaited_once_with(
-            initial_conn)
+    async def _body():
+        return await plugin.connect(
+            MagicMock(), MagicMock(), host_info, props, True, connect_func)
 
-    asyncio.run(_body())
+    result = asyncio.run(_body())
 
-
-# ---- 4: picked router == original host -> keep initial conn -----------
-
-
-def test_connect_keeps_initial_conn_when_host_already_a_router():
-    async def _body() -> None:
-        # host_info.host matches one of the router endpoints; plugin
-        # must short-circuit and not open a second connection.
-        rows = [("shard-group.example", 0.1), ("router-b.example", 0.5)]
-        plugin, plugin_service, driver_dialect, initial_conn = _build(
-            rows=rows, strategy_returns=_host("router-b.example"))
-
-        connect_func = await _connect_func_factory(initial_conn)
-
-        result = await plugin.connect(
-            target_driver_func=MagicMock(),
-            driver_dialect=driver_dialect,
-            host_info=_host("shard-group.example"),
-            props=Properties({}),
-            is_initial_connection=True,
-            connect_func=connect_func,
-        )
-
-        assert result is initial_conn
-        # Strategy should NOT be consulted -- we short-circuit before it.
-        plugin_service.get_host_info_by_strategy.assert_not_called()
-        driver_dialect.connect.assert_not_awaited()
-        driver_dialect.abort_connection.assert_not_awaited()
-
-    asyncio.run(_body())
-
-
-# ---- 5: cache hit on second connect within TTL ------------------------
-
-
-def test_second_connect_within_ttl_reuses_cached_router_list():
-    async def _body() -> None:
-        rows = [("router-a.example", 0.1)]
-        picked = _host("router-a.example")
-        plugin, plugin_service, driver_dialect, initial_conn = _build(
-            rows=rows, strategy_returns=picked)
-
-        # First connect: query fires, cache gets populated.
-        router_conn1 = MagicMock(name="router_conn1")
-        router_conn2 = MagicMock(name="router_conn2")
-        plugin_service.connect = AsyncMock(
-            side_effect=[router_conn1, router_conn2])
-
-        connect_func1 = await _connect_func_factory(initial_conn)
-        await plugin.connect(
-            target_driver_func=MagicMock(),
-            driver_dialect=driver_dialect,
-            host_info=_host("shard-group.example"),
-            props=Properties({}),
-            is_initial_connection=True,
-            connect_func=connect_func1,
-        )
-        first_cursor_calls = initial_conn.cursor.call_count
-        assert first_cursor_calls == 1  # one query issued
-
-        # Second connect: fresh initial conn, but the plugin's cache is
-        # still warm so no cursor() should be invoked on the new conn.
-        initial_conn2 = _make_conn(rows)
-        connect_func2 = await _connect_func_factory(initial_conn2)
-        await plugin.connect(
-            target_driver_func=MagicMock(),
-            driver_dialect=driver_dialect,
-            host_info=_host("shard-group.example"),
-            props=Properties({}),
-            is_initial_connection=False,
-            connect_func=connect_func2,
-        )
-
-        assert initial_conn2.cursor.call_count == 0, (
-            "Second connect within TTL must NOT re-query the database.")
-        # Strategy should still have been consulted both times.
-        assert plugin_service.get_host_info_by_strategy.call_count == 2
-
-    asyncio.run(_body())
+    assert result is mock_conn
+    router_service.start_monitoring.assert_called_once_with(host_info, props)
+    router_service.establish_connection.assert_awaited_once()
