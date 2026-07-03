@@ -406,8 +406,6 @@ class AsyncReadWriteSplittingPlugin(
         # removing from the pool ensures we make forward progress.
         remaining = list(reader_candidates)
         last_error: Optional[Exception] = None
-        recheck_role = WrapperProperties.RWS_RECHECK_READER_ROLE.get_bool(
-            self._props)
         for _ in range(2 * len(reader_candidates)):
             if not remaining:
                 break
@@ -421,31 +419,6 @@ class AsyncReadWriteSplittingPlugin(
                 last_error = exc
                 remaining = [h for h in remaining if h != reader]
                 continue
-
-            # Aurora's topology can briefly disagree with the data plane
-            # after a failover (the picked instance was a reader at
-            # topology-query time but has since been promoted). Verify
-            # the live role and refresh on mismatch so we don't hand back
-            # a writer as a reader. Mirrors sync
-            # ``read_write_splitting_plugin.open_new_reader_connection``.
-            if recheck_role:
-                try:
-                    actual_role = await self._plugin_service.get_host_role(new_conn)
-                except Exception:
-                    actual_role = None
-                if actual_role is not None and actual_role != HostRole.READER:
-                    try:
-                        close_result = new_conn.close()
-                        if asyncio.iscoroutine(close_result):
-                            await close_result
-                    except Exception:
-                        pass
-                    try:
-                        await self._host_list_provider.refresh(current)
-                    except Exception:
-                        pass
-                    remaining = [h for h in remaining if h != reader]
-                    continue
 
             self._reader_conn = new_conn
             self._reader_host_info = reader

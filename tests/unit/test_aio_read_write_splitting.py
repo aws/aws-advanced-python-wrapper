@@ -422,10 +422,10 @@ def test_switch_to_reader_recovers_via_force_refresh_on_transient_no_reader():
         )
         hlp.refresh = AsyncMock(return_value=writer_only)
         hlp.force_refresh = AsyncMock(return_value=full)
-        # get_host_role is now consulted twice: execute()'s gate probes the
-        # CURRENT (writer) connection -> WRITER so the switch proceeds, and the
-        # reader-role recheck inside _switch_to_reader probes the freshly-opened
-        # reader -> READER so it's accepted. So make it connection-aware.
+        # get_host_role is consulted by execute()'s gate, which probes the
+        # CURRENT (writer) connection -> WRITER so the switch proceeds. Keep
+        # the stub connection-aware so any probe of a non-writer connection
+        # reports READER.
         _writer_conn = svc.current_connection
 
         async def _role(conn=None, *a, **k):
