@@ -14,12 +14,17 @@
 
 """``AsyncPluginManager`` -- async counterpart of :class:`PluginManager`.
 
-SP-1 ships the shell: pipeline-build + dispatch for ``connect`` and
-``execute``. NO plugin factory registry (each plugin-SP registers its own
-factory later); NO telemetry wrapping (shared TelemetryFactory can be
-threaded in by a future SP if it becomes load-bearing); NO pipeline cache
-(build-per-call is simpler for the shell and the optimization can land
-once real plugins are in place).
+Builds + dispatches the plugin pipeline for ``connect`` and ``execute``, and
+wraps dispatch in telemetry spans mirroring sync ``PluginManager`` (source of
+truth: plugin_service.py:1004-1095): ``execute`` opens a TOP_LEVEL context
+named for the method, ``connect`` opens a NESTED context, and every plugin
+invocation in the chain is wrapped in a NESTED context named after the plugin
+class. The factory is fetched once in ``__init__``; with the default
+:class:`NullTelemetryFactory` (or any factory returning ``None`` contexts) the
+spans collapse to guard checks, so dispatch behavior is unchanged.
+
+NO plugin factory registry (each plugin registers its own factory); NO pipeline
+cache (build-per-call).
 """
 
 from __future__ import annotations
@@ -33,6 +38,8 @@ from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import \
     OldConnectionSuggestedAction
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+    TelemetryTraceLevel
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
@@ -44,6 +51,8 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.utils.notifications import (
         ConnectionEvent, HostEvent)
     from aws_advanced_python_wrapper.utils.properties import Properties
+    from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+        TelemetryFactory
 
 
 class AsyncPluginManager:
@@ -59,6 +68,9 @@ class AsyncPluginManager:
             plugins: Optional[List[AsyncPlugin]] = None) -> None:
         self._plugin_service = plugin_service
         self._props = props
+        # Cache the telemetry factory once (mirrors sync PluginManager.__init__)
+        # so per-call dispatch adds only guard checks when telemetry is off.
+        self._telemetry_factory: TelemetryFactory = plugin_service.get_telemetry_factory()
         # Explicit list of plugins is what SP-1 accepts. SP-4+ will add a
         # factory-registry-based constructor overload so `plugins="failover,host_monitoring_v2"`
         # in connection props can build the list.
@@ -87,18 +99,27 @@ class AsyncPluginManager:
             props: Properties,
             is_initial_connection: bool,
             plugin_to_skip: Optional[AsyncPlugin] = None) -> Any:
-        return await self._dispatch(
-            DbApiMethod.CONNECT,
-            lambda plugin, next_func: plugin.connect(
-                target_driver_func,
-                driver_dialect,
-                host_info,
-                props,
-                is_initial_connection,
-                next_func,
-            ),
-            plugin_to_skip,
-        )
+        # NESTED telemetry span around connect (sync plugin_service.py:1105-1116):
+        # named "connect", closed in finally, no success flag. Per-plugin NESTED
+        # spans are added inside _dispatch.
+        context = self._telemetry_factory.open_telemetry_context(
+            DbApiMethod.CONNECT.method_name, TelemetryTraceLevel.NESTED)
+        try:
+            return await self._dispatch(
+                DbApiMethod.CONNECT,
+                lambda plugin, next_func: plugin.connect(
+                    target_driver_func,
+                    driver_dialect,
+                    host_info,
+                    props,
+                    is_initial_connection,
+                    next_func,
+                ),
+                plugin_to_skip,
+            )
+        finally:
+            if context is not None:
+                context.close_context()
 
     async def force_connect(
             self,
@@ -169,13 +190,32 @@ class AsyncPluginManager:
             if obj_conn is not None and current is not None and obj_conn is not current:
                 raise AwsWrapperError(Messages.get_formatted(
                     "PluginManager.MethodInvokedAgainstOldConnection", target))
-        return await self._dispatch(
-            method,
-            lambda plugin, next_func: plugin.execute(
-                target, method.method_name, next_func, *args, **kwargs),
-            plugin_to_skip=None,
-            terminal_call=target_driver_func,
-        )
+
+        # TOP_LEVEL telemetry span around the whole call (sync plugin_service.py:
+        # 1004-1026): named for the method, tagged with python_call, success set,
+        # closed in finally. Guards keep this a no-op under the Null factory.
+        context = self._telemetry_factory.open_telemetry_context(
+            method.method_name, TelemetryTraceLevel.TOP_LEVEL)
+        if context is not None:
+            context.set_attribute("python_call", method.method_name)
+        try:
+            result = await self._dispatch(
+                method,
+                lambda plugin, next_func: plugin.execute(
+                    target, method.method_name, next_func, *args, **kwargs),
+                plugin_to_skip=None,
+                terminal_call=target_driver_func,
+            )
+            if context is not None:
+                context.set_success(True)
+            return result
+        except Exception:
+            if context is not None:
+                context.set_success(False)
+            raise
+        finally:
+            if context is not None:
+                context.close_context()
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         all_methods = DbApiMethod.ALL.method_name
@@ -251,6 +291,22 @@ class AsyncPluginManager:
     # ------------------------------------------------------------------
     # Pipeline mechanics
 
+    async def _execute_with_telemetry(
+            self,
+            plugin_name: str,
+            func: Callable[[], Awaitable[Any]]) -> Any:
+        """Wrap a single plugin invocation in a NESTED telemetry context named
+        after the plugin class (sync ``_execute_with_telemetry``,
+        plugin_service.py:1028-1034). The context is closed in ``finally`` so a
+        raising plugin still cleans up; guards keep it a no-op under Null."""
+        context = self._telemetry_factory.open_telemetry_context(
+            plugin_name, TelemetryTraceLevel.NESTED)
+        try:
+            return await func()
+        finally:
+            if context is not None:
+                context.close_context()
+
     async def _dispatch(
             self,
             method: DbApiMethod,
@@ -290,7 +346,12 @@ class AsyncPluginManager:
             async def _step(
                     _plugin: AsyncPlugin = plugin,
                     _next: Callable[..., Awaitable[Any]] = next_in_chain) -> Any:
-                return await plugin_call(_plugin, _next)
+                # Each plugin invocation gets its own NESTED telemetry span named
+                # after the plugin class (sync bakes this into _make_pipeline via
+                # _execute_with_telemetry, plugin_service.py:1079-1095).
+                return await self._execute_with_telemetry(
+                    _plugin.__class__.__name__,
+                    lambda: plugin_call(_plugin, _next))
 
             chain = _step
 

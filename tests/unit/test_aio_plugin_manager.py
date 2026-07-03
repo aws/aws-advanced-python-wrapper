@@ -24,7 +24,9 @@ and dispatches the chain for ``connect`` and ``execute``, and that
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Dict, List, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
+
+import pytest
 
 from aws_advanced_python_wrapper.aio.default_plugin import AsyncDefaultPlugin
 from aws_advanced_python_wrapper.aio.driver_dialect.base import \
@@ -37,6 +39,8 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.notifications import ConnectionEvent
 from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
+    TelemetryContext, TelemetryFactory, TelemetryTraceLevel)
 
 # ---- Fakes --------------------------------------------------------------
 
@@ -384,3 +388,233 @@ def test_plugin_service_is_network_bound_method_delegates_to_driver_dialect():
     # so every method should count as network-bound.
     assert svc.is_network_bound_method(DbApiMethod.CURSOR_EXECUTE.method_name) is True
     assert svc.is_network_bound_method("any.random.method") is True
+
+
+# ---- Telemetry spans (task 13) -----------------------------------------
+
+
+class _RecordingContext(TelemetryContext):
+    """Records the span's name/level and lifecycle for assertions."""
+
+    def __init__(self, name: str, trace_level: Any) -> None:
+        self.name = name
+        self.trace_level = trace_level
+        self.attributes: Dict[str, Any] = {}
+        self.success: Optional[bool] = None
+        self.closed = False
+
+    def set_attribute(self, key: str, value: Any) -> None:
+        self.attributes[key] = value
+
+    def set_success(self, success: bool) -> None:
+        self.success = success
+
+    def set_exception(self, exception: Exception) -> None:
+        pass
+
+    def close_context(self) -> None:
+        self.closed = True
+
+    def get_name(self) -> str:
+        return self.name
+
+
+class _RecordingFactory(TelemetryFactory):
+    """TelemetryFactory stand-in that records every opened context.
+
+    When ``return_none`` is set, ``open_telemetry_context`` returns ``None``
+    (like a factory that produces no span) so the guard checks can be verified.
+    """
+
+    def __init__(self, return_none: bool = False) -> None:
+        self.opened: List[_RecordingContext] = []
+        self.open_calls: List[tuple] = []
+        self._return_none = return_none
+
+    def open_telemetry_context(self, name: str, trace_level: Any):
+        self.open_calls.append((name, trace_level))
+        if self._return_none:
+            return None
+        ctx = _RecordingContext(name, trace_level)
+        self.opened.append(ctx)
+        return ctx
+
+    def post_copy(self, context: Any, trace_level: Any) -> None:
+        pass
+
+    def create_counter(self, name: str) -> Any:
+        return object()
+
+    def create_gauge(self, name: str, callback: Any) -> Any:
+        return object()
+
+    def in_use(self) -> bool:
+        return True
+
+
+def _mgr_with_factory(factory: _RecordingFactory, plugins: List[AsyncPlugin]) -> AsyncPluginManager:
+    """Wire ``factory`` onto the service BEFORE building the manager, which
+    caches the factory in __init__ (mirrors sync)."""
+    svc = _mk_service()
+    svc.set_telemetry_factory(factory)
+    return AsyncPluginManager(svc, _props(), plugins=plugins)
+
+
+def test_execute_opens_top_level_context_with_python_call_and_success():
+    tf = _RecordingFactory()
+    mgr = _mgr_with_factory(tf, [RecorderPlugin("A", [])])
+
+    async def _target() -> str:
+        return "rows"
+
+    result = asyncio.run(mgr.execute(
+        target=object, method=DbApiMethod.CURSOR_EXECUTE, target_driver_func=_target))
+    assert result == "rows"
+
+    top = tf.opened[0]
+    assert top.name == DbApiMethod.CURSOR_EXECUTE.method_name
+    assert top.trace_level == TelemetryTraceLevel.TOP_LEVEL
+    assert top.attributes.get("python_call") == DbApiMethod.CURSOR_EXECUTE.method_name
+    assert top.success is True
+    assert top.closed is True
+
+
+def test_execute_wraps_each_plugin_in_nested_context_in_chain_order():
+    tf = _RecordingFactory()
+    mgr = _mgr_with_factory(tf, [RecorderPlugin("A", []), RecorderPlugin("B", [])])
+
+    async def _target() -> str:
+        return "rows"
+
+    asyncio.run(mgr.execute(
+        target=object, method=DbApiMethod.CURSOR_EXECUTE, target_driver_func=_target))
+
+    names_levels = [(c.name, c.trace_level) for c in tf.opened]
+    # First span is the TOP_LEVEL method span; then one NESTED span per plugin
+    # in chain order (A, B, then the terminal AsyncDefaultPlugin).
+    assert names_levels[0] == (
+        DbApiMethod.CURSOR_EXECUTE.method_name, TelemetryTraceLevel.TOP_LEVEL)
+    assert names_levels[1:] == [
+        ("RecorderPlugin", TelemetryTraceLevel.NESTED),
+        ("RecorderPlugin", TelemetryTraceLevel.NESTED),
+        ("AsyncDefaultPlugin", TelemetryTraceLevel.NESTED),
+    ]
+    assert all(c.closed for c in tf.opened)
+
+
+def test_connect_opens_nested_method_context_plus_per_plugin_nested():
+    tf = _RecordingFactory()
+    mgr = _mgr_with_factory(tf, [RecorderPlugin("A", [])])
+    svc_dialect = mgr._plugin_service.driver_dialect
+
+    async def _target() -> None:
+        return None
+
+    asyncio.run(mgr.connect(
+        target_driver_func=_target,
+        driver_dialect=svc_dialect,
+        host_info=_host_info(),
+        props=_props(),
+        is_initial_connection=True,
+    ))
+
+    method_ctx = tf.opened[0]
+    assert method_ctx.name == DbApiMethod.CONNECT.method_name
+    assert method_ctx.trace_level == TelemetryTraceLevel.NESTED
+    # Sync connect does not set success on the method span.
+    assert method_ctx.success is None
+    assert method_ctx.closed is True
+    # Per-plugin NESTED spans follow (RecorderPlugin, then AsyncDefaultPlugin).
+    assert [c.name for c in tf.opened[1:]] == [
+        "RecorderPlugin", "AsyncDefaultPlugin"]
+    assert all(c.trace_level == TelemetryTraceLevel.NESTED for c in tf.opened[1:])
+
+
+def test_force_connect_has_no_method_span_but_wraps_plugins():
+    tf = _RecordingFactory()
+    mgr = _mgr_with_factory(tf, [RecorderPlugin("A", [])])
+    svc_dialect = mgr._plugin_service.driver_dialect
+
+    async def _target() -> None:
+        return None
+
+    asyncio.run(mgr.force_connect(
+        target_driver_func=_target,
+        driver_dialect=svc_dialect,
+        host_info=_host_info(),
+        props=_props(),
+        is_initial_connection=True,
+    ))
+
+    # Sync force_connect opens no method-level span; only per-plugin NESTED spans.
+    assert all(name != DbApiMethod.FORCE_CONNECT.method_name
+               for name, _ in tf.open_calls)
+    assert [c.name for c in tf.opened] == ["RecorderPlugin", "AsyncDefaultPlugin"]
+    assert all(c.trace_level == TelemetryTraceLevel.NESTED for c in tf.opened)
+
+
+def test_no_context_operations_when_factory_returns_none():
+    tf = _RecordingFactory(return_none=True)
+    mgr = _mgr_with_factory(tf, [RecorderPlugin("A", [])])
+
+    async def _target() -> str:
+        return "rows"
+
+    # Must not raise despite every open returning None (guards skip set/close).
+    result = asyncio.run(mgr.execute(
+        target=object, method=DbApiMethod.CURSOR_EXECUTE, target_driver_func=_target))
+    assert result == "rows"
+    # open was attempted (TOP_LEVEL + per-plugin) but no context objects exist.
+    assert tf.opened == []
+    assert tf.open_calls  # opens were attempted
+
+
+def test_execute_closes_contexts_and_marks_failure_on_exception():
+    tf = _RecordingFactory()
+
+    class _BoomPlugin(AsyncPlugin):
+        @property
+        def subscribed_methods(self) -> Set[str]:
+            return {DbApiMethod.ALL.method_name}
+
+        async def execute(self, target, method_name, execute_func, *args, **kwargs):
+            raise RuntimeError("boom")
+
+    mgr = _mgr_with_factory(tf, [_BoomPlugin()])
+
+    async def _target() -> str:
+        return "rows"
+
+    with pytest.raises(RuntimeError, match="boom"):
+        asyncio.run(mgr.execute(
+            target=object, method=DbApiMethod.CURSOR_EXECUTE, target_driver_func=_target))
+
+    top = tf.opened[0]
+    assert top.trace_level == TelemetryTraceLevel.TOP_LEVEL
+    assert top.success is False  # failure recorded
+    # Every opened span (method + per-plugin) was closed despite the exception.
+    assert all(c.closed for c in tf.opened)
+
+
+def test_telemetry_wrapping_does_not_change_dispatch_order():
+    """With the recording factory active, the plugin call order is identical to
+    the no-telemetry path -- telemetry wraps dispatch, never alters it."""
+    log: List[str] = []
+    tf = _RecordingFactory()
+    a = RecorderPlugin("A", log)
+    b = RecorderPlugin("B", log)
+    mgr = _mgr_with_factory(tf, [a, b])
+
+    async def _target() -> str:
+        log.append("driver:call")
+        return "rows"
+
+    asyncio.run(mgr.execute(
+        target=object, method=DbApiMethod.CURSOR_EXECUTE, target_driver_func=_target))
+    assert log == [
+        "A:execute:enter:Cursor.execute",
+        "B:execute:enter:Cursor.execute",
+        "driver:call",
+        "B:execute:exit:Cursor.execute",
+        "A:execute:exit:Cursor.execute",
+    ]
