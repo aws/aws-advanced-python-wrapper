@@ -452,9 +452,8 @@ class AsyncAuroraHostListProvider:
         # (matches sync AuroraTopologyUtils._process_query_results and the
         # async MultiAz/GlobalAurora providers).
         if not writers:
-            logger.debug(
-                "[AsyncAuroraHostListProvider] topology query returned no "
-                "writer; returning empty topology (caller falls back to cache)")
+            # Caller falls back to the cached topology on the empty result.
+            logger.debug("RdsHostListProvider.InvalidTopology")
             return ()
         if len(writers) == 1:
             chosen_writer = writers[0]

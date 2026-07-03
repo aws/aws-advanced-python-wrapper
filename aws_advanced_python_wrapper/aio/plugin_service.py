@@ -599,8 +599,7 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             return
         if self._current_connection is None:
             raise AwsWrapperError(
-                "AsyncPluginService.update_in_transaction requires a "
-                "connection or an explicit is_in_transaction value.")
+                Messages.get("PluginServiceImpl.UnableToUpdateTransactionStatus"))
         self._is_in_transaction = await self._driver_dialect.is_in_transaction(
             self._current_connection)
 
@@ -616,7 +615,7 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         conn = connection if connection is not None else self._current_connection
         if conn is None:
             raise AwsWrapperError(
-                "AsyncPluginService.identify_connection requires a connection")
+                Messages.get("PluginServiceImpl.ErrorIdentifyConnection"))
         if self._host_list_provider is None:
             return None
         if self._database_dialect is None:
@@ -795,7 +794,7 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         conn = connection if connection is not None else self._current_connection
         if conn is None:
             raise AwsWrapperError(
-                "AsyncPluginService.get_host_role requires a connection")
+                Messages.get("PluginServiceImpl.GetHostRoleConnectionNone"))
         if self._database_dialect is None:
             raise AwsWrapperError(
                 "AsyncPluginService.get_host_role requires a database_dialect; "

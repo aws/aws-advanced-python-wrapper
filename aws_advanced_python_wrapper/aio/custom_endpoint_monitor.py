@@ -41,6 +41,7 @@ from aws_advanced_python_wrapper.custom_endpoint_plugin import (
     CustomEndpointInfo, CustomEndpointRoleType)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.region_utils import RegionUtils
 
@@ -290,13 +291,9 @@ class AsyncCustomEndpointPlugin(AsyncPlugin):
                     info_ready = await monitor.wait_for_info(
                         timeout_ms / 1000.0)
                     if not info_ready:
-                        raise AwsWrapperError(
-                            "Custom endpoint monitor did not produce "
-                            "member instance info within "
-                            f"{timeout_ms}ms. Increase "
-                            "wait_for_custom_endpoint_info_timeout_ms or "
-                            "disable wait_for_custom_endpoint_info to "
-                            "accept unfiltered connections.")
+                        raise AwsWrapperError(Messages.get_formatted(
+                            "CustomEndpointPlugin.TimedOutWaitingForCustomEndpointInfo",
+                            timeout_ms, host_info.host))
         return await connect_func()
 
     def _build_monitor(

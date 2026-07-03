@@ -39,9 +39,11 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import HostEvent
 from aws_advanced_python_wrapper.utils.properties import Properties
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
+from aws_advanced_python_wrapper.utils.utils import LogUtils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
@@ -159,10 +161,10 @@ class AsyncStaleDnsPlugin(AsyncPlugin):
                     allowed,
                     self._writer_host_info.host,
                     self._writer_host_info.port):
-                raise AwsWrapperError(
-                    "Stale DNS detected: current writer "
-                    f"{self._writer_host_info.get_host_and_port()} "
-                    "is not in the allowed topology.")
+                raise AwsWrapperError(Messages.get_formatted(
+                    "StaleDnsHelper.CurrentWriterNotAllowed",
+                    self._writer_host_info.get_host_and_port(),
+                    LogUtils.log_topology(allowed)))
 
             # Open a fresh connection to the actual writer through the
             # plugin pipeline (skipping ourselves to avoid recursion),
@@ -214,8 +216,7 @@ class AsyncStaleDnsPlugin(AsyncPlugin):
         hlp = self._plugin_service.host_list_provider
         if isinstance(hlp, AsyncStaticHostListProvider):
             raise AwsWrapperError(
-                "StaleDnsPlugin requires a dynamic host list provider; "
-                "a static provider is configured.")
+                Messages.get("StaleDnsPlugin.RequireDynamicProvider"))
 
     async def _resolve_dns(self, host: str) -> Optional[str]:
         try:

@@ -49,6 +49,7 @@ from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional,
 
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.messages import Messages
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.host_list_provider import (
@@ -213,10 +214,11 @@ class AsyncClusterTopologyMonitor:
                         # drop it so the next tick reopens to a live host. Log
                         # so a PERSISTENTLY failing monitor (auth/query mismatch)
                         # isn't invisible while topology silently goes stale.
+                        # The (dropped) monitoring connection is reopened lazily
+                        # on the next tick.
                         logger.debug(
-                            f"[AsyncClusterTopologyMonitor] topology refresh "
-                            f"tick failed; dropping monitoring connection and "
-                            f"retrying next tick: {ex}")
+                            "ClusterTopologyMonitor.ErrorFetchingTopology",
+                            self._provider.get_cluster_id(), ex)
                         await self._drop_owned_connection()
                 elif self._should_panic():
                     self._spawn_panic_probes()
@@ -429,9 +431,9 @@ class AsyncClusterTopologyMonitor:
                 timeout=timeout_sec,
             )
         except asyncio.TimeoutError as e:
-            raise TimeoutError(
-                f"Topology refresh did not complete within {timeout_sec}s"
-            ) from e
+            raise TimeoutError(Messages.get_formatted(
+                "ClusterTopologyMonitor.TopologyNotUpdated",
+                self._provider.get_cluster_id(), timeout_sec * 1000)) from e
         self._last_topology = topology
         self._check_for_writer_change(topology)
         return topology

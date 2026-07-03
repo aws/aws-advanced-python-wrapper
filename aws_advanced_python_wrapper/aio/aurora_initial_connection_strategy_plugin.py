@@ -43,6 +43,7 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
@@ -263,8 +264,9 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
         if not strategy:
             return None
         if not self._plugin_service.accepts_strategy(HostRole.READER, strategy):
-            raise AwsWrapperError(
-                f"Unsupported READER_INITIAL_HOST_SELECTOR_STRATEGY: {strategy!r}")
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.UnsupportedStrategy",
+                strategy))
         try:
             readers = [h for h in self._plugin_service.all_hosts
                        if h.role == HostRole.READER]

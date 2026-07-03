@@ -42,6 +42,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
@@ -91,11 +92,13 @@ class AsyncSimpleReadWriteSplittingPlugin(
         read_endpoint = WrapperProperties.SRW_READ_ENDPOINT.get(props)
         write_endpoint = WrapperProperties.SRW_WRITE_ENDPOINT.get(props)
         if not read_endpoint:
-            raise AwsWrapperError(
-                f"'{WrapperProperties.SRW_READ_ENDPOINT.name}' is required.")
+            raise AwsWrapperError(Messages.get_formatted(
+                "SimpleReadWriteSplittingPlugin.MissingRequiredConfigParameter",
+                WrapperProperties.SRW_READ_ENDPOINT.name))
         if not write_endpoint:
-            raise AwsWrapperError(
-                f"'{WrapperProperties.SRW_WRITE_ENDPOINT.name}' is required.")
+            raise AwsWrapperError(Messages.get_formatted(
+                "SimpleReadWriteSplittingPlugin.MissingRequiredConfigParameter",
+                WrapperProperties.SRW_WRITE_ENDPOINT.name))
 
         self._verify_new_connections = bool(
             WrapperProperties.SRW_VERIFY_NEW_CONNECTIONS.get_bool(props))
@@ -238,9 +241,7 @@ class AsyncSimpleReadWriteSplittingPlugin(
             # the RWS plugin and refuse.
             if current is not None and await driver_dialect.is_in_transaction(current):
                 raise ReadWriteSplittingError(
-                    "Cannot switch back to the writer while in a transaction. "
-                    "Commit or roll back before setting the connection "
-                    "read-write.")
+                    Messages.get("ReadWriteSplittingPlugin.SetReadOnlyFalseInTransaction"))
             await self._switch_to(
                 self._write_host_info, HostRole.WRITER, driver_dialect)
 
@@ -264,9 +265,15 @@ class AsyncSimpleReadWriteSplittingPlugin(
             new_conn = await self._open(driver_dialect, host_info)
 
         if new_conn is None:
-            raise ReadWriteSplittingError(
-                f"Could not open a verified {expected_role.name} connection "
-                f"to {host_info.host}:{host_info.port}.")
+            # Same catalog entries the sync SRW plugin raises when a verified
+            # connection cannot be established (NoReadersAvailable /
+            # FailedToConnectToWriter).
+            if expected_role == HostRole.READER:
+                raise ReadWriteSplittingError(
+                    Messages.get("ReadWriteSplittingPlugin.NoReadersAvailable"))
+            raise ReadWriteSplittingError(Messages.get_formatted(
+                "ReadWriteSplittingPlugin.FailedToConnectToWriter",
+                host_info.url))
 
         if expected_role == HostRole.READER:
             self._reader_conn = new_conn
@@ -372,9 +379,9 @@ class AsyncSimpleReadWriteSplittingPlugin(
             return HostRole.READER
         if s == "writer":
             return HostRole.WRITER
-        raise ValueError(
-            f"Invalid {WrapperProperties.SRW_VERIFY_INITIAL_CONNECTION_TYPE.name}: "
-            f"{role_str!r}")
+        raise ValueError(Messages.get_formatted(
+            "SimpleReadWriteSplittingPlugin.IncorrectConfiguration",
+            WrapperProperties.SRW_VERIFY_INITIAL_CONNECTION_TYPE.name))
 
 
 __all__ = ["AsyncSimpleReadWriteSplittingPlugin"]

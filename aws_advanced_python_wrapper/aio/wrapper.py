@@ -625,7 +625,7 @@ class AsyncAwsWrapperConnection:
         # which fails when operating on a closed connection).
         if self.is_closed:
             raise AwsWrapperError(
-                "Cannot set read-only mode on a closed connection.")
+                Messages.get("ReadWriteSplittingPlugin.SetReadOnlyOnClosedConnection"))
 
         async def _call() -> None:
             # Terminal mirrors sync _set_read_only: track session state, then
