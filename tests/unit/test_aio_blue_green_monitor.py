@@ -354,9 +354,10 @@ def test_suspend_until_found_releases_on_completed() -> None:
 def test_suspend_until_found_releases_when_pair_appears() -> None:
     svc = _mock_plugin_service()
     empty = BlueGreenStatus("bg", BlueGreenPhase.PREPARATION)
+    ch: ConcurrentDict = ConcurrentDict()
+    ch.put("h", (HostInfo("h"), HostInfo("green")))
     ready = BlueGreenStatus(
-        "bg", BlueGreenPhase.PREPARATION,
-        corresponding_hosts={"h": (HostInfo("h"), HostInfo("green"))})
+        "bg", BlueGreenPhase.PREPARATION, corresponding_hosts=ch)
     calls = {"n": 0}
 
     def _gs(*_a, **_k):
@@ -418,8 +419,10 @@ def test_corresponding_hosts_writer_and_readers_map_by_role() -> None:
 
     assert provider._corresponding_hosts.get(bw.host) == (bw, gw)
     # Blue readers sorted by host -> green readers sorted by host, index-matched.
-    assert provider._corresponding_hosts.get(br1.host)[1] is gr1
-    assert provider._corresponding_hosts.get(br2.host)[1] is gr2
+    pair1 = provider._corresponding_hosts.get(br1.host)
+    pair2 = provider._corresponding_hosts.get(br2.host)
+    assert pair1 is not None and pair1[1] is gr1
+    assert pair2 is not None and pair2[1] is gr2
 
 
 def test_corresponding_hosts_more_blue_readers_than_green_wraps_modulo() -> None:
@@ -434,8 +437,10 @@ def test_corresponding_hosts_more_blue_readers_than_green_wraps_modulo() -> None
     provider._process_interim_status(BlueGreenRole.TARGET, _interim(BlueGreenPhase.CREATED, start_topology=(gw, gr1)))
 
     # Two blue readers, one green reader -> both blue readers map to the single green reader.
-    assert provider._corresponding_hosts.get(br1.host)[1] is gr1
-    assert provider._corresponding_hosts.get(br2.host)[1] is gr1
+    pair1 = provider._corresponding_hosts.get(br1.host)
+    pair2 = provider._corresponding_hosts.get(br2.host)
+    assert pair1 is not None and pair1[1] is gr1
+    assert pair2 is not None and pair2[1] is gr1
 
 
 def test_corresponding_hosts_no_green_readers_map_to_green_writer() -> None:
@@ -447,7 +452,8 @@ def test_corresponding_hosts_no_green_readers_map_to_green_writer() -> None:
     provider._process_interim_status(BlueGreenRole.SOURCE, _interim(BlueGreenPhase.CREATED, start_topology=(bw, br1)))
     provider._process_interim_status(BlueGreenRole.TARGET, _interim(BlueGreenPhase.CREATED, start_topology=(gw,)))
 
-    assert provider._corresponding_hosts.get(br1.host)[1] is gw
+    pair = provider._corresponding_hosts.get(br1.host)
+    assert pair is not None and pair[1] is gw
 
 
 def test_corresponding_hosts_cluster_dns_mapping() -> None:
@@ -463,9 +469,10 @@ def test_corresponding_hosts_cluster_dns_mapping() -> None:
     provider._process_interim_status(BlueGreenRole.TARGET, target)
 
     writer_pair = provider._corresponding_hosts.get(BLUE_WRITER)
-    assert writer_pair is not None and writer_pair[1].host == GREEN_WRITER
+    assert writer_pair is not None and writer_pair[1] is not None
+    assert writer_pair[1].host == GREEN_WRITER
     reader_pair = provider._corresponding_hosts.get(BLUE_READER_CLUSTER)
-    assert reader_pair is not None
+    assert reader_pair is not None and reader_pair[1] is not None
     assert reader_pair[1].host == "bg-green.cluster-ro-abc123.us-east-2.rds.amazonaws.com"
 
 
@@ -475,9 +482,11 @@ def test_corresponding_hosts_cluster_dns_mapping() -> None:
 def test_created_phase_has_no_routings() -> None:
     provider = _make_provider()
     provider._process_interim_status(BlueGreenRole.SOURCE, _interim(BlueGreenPhase.CREATED, host_names={BLUE_WRITER}))
-    assert provider._summary_status.phase == BlueGreenPhase.CREATED
-    assert provider._summary_status.connect_routings == []
-    assert provider._summary_status.execute_routings == []
+    status = provider._summary_status
+    assert status is not None
+    assert status.phase == BlueGreenPhase.CREATED
+    assert status.connect_routings == []
+    assert status.execute_routings == []
 
 
 def test_in_progress_phase_suspends_connect_and_execute() -> None:
@@ -486,6 +495,7 @@ def test_in_progress_phase_suspends_connect_and_execute() -> None:
     provider._process_interim_status(BlueGreenRole.TARGET, _interim(BlueGreenPhase.IN_PROGRESS, host_names={GREEN_WRITER}))
 
     status = provider._summary_status
+    assert status is not None
     assert status.phase == BlueGreenPhase.IN_PROGRESS
     assert any(isinstance(r, SuspendConnectRouting) for r in status.connect_routings)
     assert len(status.execute_routings) >= 2
@@ -503,6 +513,7 @@ def test_post_phase_emits_reject_and_suspend_until_found() -> None:
     provider._process_interim_status(BlueGreenRole.TARGET, _interim(BlueGreenPhase.POST, start_topology=(gr,)))
 
     status = provider._summary_status
+    assert status is not None
     assert status.phase == BlueGreenPhase.POST
     assert provider._corresponding_hosts.get(bw.host) == (bw, None)
     assert any(isinstance(r, SuspendUntilCorrespondingHostFoundConnectRouting) for r in status.connect_routings)
