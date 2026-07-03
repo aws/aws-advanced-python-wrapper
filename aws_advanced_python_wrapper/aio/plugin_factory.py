@@ -318,33 +318,40 @@ PLUGIN_FACTORIES: Dict[str, AsyncPluginFactory] = {
 }
 
 
-# Relative weights for auto-sort (lower = earlier in pipeline).
-# Matches the sync PluginManager.PLUGIN_FACTORY_WEIGHTS semantics.
+# A factory marked with this sentinel sorts immediately after whatever
+# plugin precedes it in the USER'S plugin list (sync
+# PluginManager.WEIGHT_RELATIVE_TO_PRIOR_PLUGIN semantics).
+WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
+
+# Weights for auto-sort (lower = earlier in pipeline).
+# Matches the sync PluginManager.PLUGIN_FACTORY_WEIGHTS table exactly
+# (the v1/v2 sync codes collapse onto one async factory, which takes the
+# v1 slot: failover 400, host_monitoring 500).
 PLUGIN_FACTORY_WEIGHTS: Dict[Type[Any], int] = {
     _CustomEndpointFactory: 40,
     _InitialConnectionFactory: 50,
     _AuroraConnectionTrackerFactory: 100,
     _StaleDnsFactory: 200,
     _ReadWriteSplittingFactory: 300,
+    _SimpleReadWriteSplittingFactory: 310,
     _GdbReadWriteSplittingFactory: 320,
-    _SimpleReadWriteSplittingFactory: 300,
     _FailoverFactory: 400,
     _GdbFailoverFactory: 420,
     _HostMonitoringFactory: 500,
-    _IamAuthFactory: 700,
-    _AwsSecretsManagerFactory: 800,
-    _FederatedAuthFactory: 820,
-    _OktaAuthFactory: 830,
-    _FastestResponseFactory: 600,
-    _ConnectTimeFactory: 900,
-    _ExecuteTimeFactory: 910,
-    _LimitlessFactory: 950,
-    _DeveloperFactory: 1000,
     # Blue/Green sorts late so routing dispatch sees already-bound host
     # info from earlier plugins. Matches sync weight.
     _BlueGreenFactory: 550,
+    _FastestResponseFactory: 600,
+    _IamAuthFactory: 700,
+    _AwsSecretsManagerFactory: 800,
+    _FederatedAuthFactory: 900,
+    _LimitlessFactory: 950,
+    _OktaAuthFactory: 1000,
+    _ConnectTimeFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
+    _ExecuteTimeFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
+    _DeveloperFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
     # All stub factories share one type; a single entry covers every
-    # remaining Phase H.2 stub. Weight sits above _DeveloperFactory so
+    # remaining Phase H.2 stub. Weight sits above every fixed weight so
     # stubs sort last (they subscribe to nothing, so order is cosmetic).
     _AsyncStubFactory: 2000,
 }
@@ -391,27 +398,25 @@ def sort_factories_by_weight(
         factories: List[AsyncPluginFactory]) -> List[AsyncPluginFactory]:
     """Stable-sort factories by their registered weight.
 
-    Unknown factories get a weight just above the last known weight
-    (preserving their relative input order among themselves).
+    Mirrors sync ``PluginManager.get_factory_weights``: a factory whose
+    table entry is ``WEIGHT_RELATIVE_TO_PRIOR_PLUGIN`` (or that is unknown)
+    sorts immediately after the factory that precedes it in the user's
+    plugin list -- the connect/execute-time and developer plugins are
+    position-sensitive, they measure whatever the user placed them next to.
     """
-    seen_weights: Dict[Type[Any], int] = {}
-    max_known = max(PLUGIN_FACTORY_WEIGHTS.values(), default=0)
-    unknown_next = max_known + 1
+    last_weight = 0
+    effective: List[int] = []
+    for f in factories:
+        w = PLUGIN_FACTORY_WEIGHTS.get(type(f))
+        if w is None or w == WEIGHT_RELATIVE_TO_PRIOR_PLUGIN:
+            last_weight += 1
+            effective.append(last_weight)
+        else:
+            effective.append(w)
+            last_weight = w
 
-    def weight_of(f: AsyncPluginFactory) -> int:
-        nonlocal unknown_next
-        cls = type(f)
-        w = PLUGIN_FACTORY_WEIGHTS.get(cls)
-        if w is None:
-            # Each unknown factory class gets its own distinct weight so
-            # sort is stable across different factory types.
-            if cls not in seen_weights:
-                seen_weights[cls] = unknown_next
-                unknown_next += 1
-            return seen_weights[cls]
-        return w
-
-    return sorted(factories, key=weight_of)
+    return [f for _, f in sorted(
+        zip(effective, factories), key=lambda pair: pair[0])]
 
 
 def build_async_plugins(

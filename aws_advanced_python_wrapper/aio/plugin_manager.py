@@ -306,8 +306,10 @@ class AsyncPluginManager:
             if plugin_to_skip is not None and plugin_to_skip is plugin:
                 continue
             subs: Set[str] = plugin.subscribed_methods
-            if (all_methods_marker in subs
-                    or method.method_name in subs
-                    or method.always_use_pipeline):
+            # Sync parity (PluginManager._make_pipeline): even for
+            # always_use_pipeline methods (CONNECT/FORCE_CONNECT) only
+            # SUBSCRIBED plugins join the chain -- the flag forces the
+            # pipeline to run, not unsubscribed plugins into it.
+            if all_methods_marker in subs or method.method_name in subs:
                 result.append(plugin)
         return result
