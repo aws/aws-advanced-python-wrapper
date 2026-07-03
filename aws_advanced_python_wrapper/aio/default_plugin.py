@@ -31,6 +31,7 @@ from aws_advanced_python_wrapper.connection_provider import \
     DriverConnectionProvider
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
+from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -83,15 +84,18 @@ class AsyncDefaultPlugin(AsyncPlugin):
         # resolution; the default provider only touches it via
         # ``prepare_conn_props`` so we guard before calling.
         if database_dialect is None:
-            return await driver_dialect.connect(
+            conn = await driver_dialect.connect(
                 host_info, target_driver_props, target_driver_func)
-        return await provider.connect(
-            target_driver_func,
-            driver_dialect,
-            database_dialect,
-            host_info,
-            target_driver_props,
-        )
+        else:
+            conn = await provider.connect(
+                target_driver_func,
+                driver_dialect,
+                database_dialect,
+                host_info,
+                target_driver_props,
+            )
+        self._post_connect_bookkeeping(host_info, provider)
+        return conn
 
     async def force_connect(
             self,
@@ -108,15 +112,37 @@ class AsyncDefaultPlugin(AsyncPlugin):
         provider = self._plugin_service.get_connection_provider_manager().default_provider
         database_dialect = self._plugin_service.database_dialect
         if database_dialect is None:
-            return await driver_dialect.connect(
+            conn = await driver_dialect.connect(
                 host_info, target_driver_props, target_driver_func)
-        return await provider.connect(
-            target_driver_func,
-            driver_dialect,
-            database_dialect,
-            host_info,
-            target_driver_props,
-        )
+        else:
+            conn = await provider.connect(
+                target_driver_func,
+                driver_dialect,
+                database_dialect,
+                host_info,
+                target_driver_props,
+            )
+        self._post_connect_bookkeeping(host_info, provider)
+        return conn
+
+    def _post_connect_bookkeeping(self, host_info: HostInfo, connection_provider: Any) -> None:
+        """Post-connect bookkeeping after a successful connect.
+
+        Sync parity: ``DefaultPlugin._connect`` (default_plugin.py:80-82) marks
+        every alias of the just-connected host AVAILABLE and lets the service
+        re-pick the driver dialect for the provider that produced the
+        connection (a no-op on async today). Sync additionally calls
+        ``plugin_service.update_dialect(conn)`` to auto-upgrade the DATABASE
+        dialect from the live connection; the async plugin service has no
+        ``update_dialect`` yet -- the async connect path instead upgrades the
+        dialect in ``AsyncAwsWrapperConnection.connect`` via
+        ``_upgrade_database_dialect_after_connect``.
+        """
+        if self._plugin_service is None:
+            return
+        self._plugin_service.set_availability(
+            host_info.as_aliases(), HostAvailability.AVAILABLE)
+        self._plugin_service.update_driver_dialect(connection_provider)
 
     async def execute(
             self,
@@ -196,8 +222,11 @@ class AsyncDefaultPlugin(AsyncPlugin):
         if role == HostRole.UNKNOWN:
             raise AwsWrapperError(Messages.get("DefaultPlugin.UnknownHosts"))
         if self._plugin_service is not None:
+            # Sync parity (default_plugin.py:136): consult the FILTERED
+            # ``hosts`` view (allowed/blocked custom-endpoint permissions),
+            # not the raw ``all_hosts``; an explicit host_list still wins.
             hosts = (tuple(host_list) if host_list is not None
-                     else self._plugin_service.all_hosts)
+                     else self._plugin_service.hosts)
             if not hosts:
                 raise AwsWrapperError(Messages.get("DefaultPlugin.EmptyHosts"))
             return self._plugin_service.get_connection_provider_manager().get_host_info_by_strategy(

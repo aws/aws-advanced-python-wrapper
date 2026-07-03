@@ -236,3 +236,38 @@ def test_identify_connection_returns_none_without_database_dialect() -> None:
     svc._database_dialect = None
     result = asyncio.run(svc.identify_connection())
     assert result is None
+
+
+# ----- hosts (filtered topology view; sync plugin_service.py:362-378) ----
+
+
+def test_hosts_returns_raw_topology_when_no_filter() -> None:
+    svc = _make_service()
+    topo = (
+        HostInfo("w.cluster.rds", host_id="w", role=HostRole.WRITER),
+        HostInfo("r.cluster.rds", host_id="r", role=HostRole.READER),
+    )
+    svc._all_hosts = topo
+    assert svc.hosts == topo
+    assert isinstance(svc.hosts, tuple)
+
+
+def test_hosts_applies_allowed_and_blocked_filter() -> None:
+    svc = _make_service()
+    w = HostInfo("w.cluster.rds", host_id="w", role=HostRole.WRITER)
+    r1 = HostInfo("r1.cluster.rds", host_id="r1", role=HostRole.READER)
+    r2 = HostInfo("r2.cluster.rds", host_id="r2", role=HostRole.READER)
+    svc._all_hosts = (w, r1, r2)
+    # allowed w+r1, but r1 is also blocked -> only w survives.
+    svc.allowed_and_blocked_hosts = AllowedAndBlockedHosts({"w", "r1"}, {"r1"})
+    assert svc.hosts == (w,)
+    # ``all_hosts`` stays the raw, unfiltered view (sync parity).
+    assert svc.all_hosts == (w, r1, r2)
+
+
+def test_hosts_empty_tuple_when_filter_excludes_everything() -> None:
+    svc = _make_service()
+    r1 = HostInfo("r1.cluster.rds", host_id="r1", role=HostRole.READER)
+    svc._all_hosts = (r1,)
+    svc.allowed_and_blocked_hosts = AllowedAndBlockedHosts({"unrelated"}, None)
+    assert svc.hosts == ()

@@ -586,3 +586,133 @@ def test_get_host_role_defaults_timeout_to_auxiliary_query_timeout(monkeypatch):
         assert captured["timeout"] == 3.5
 
     asyncio.run(_body())
+
+
+# ---- default plugin post-connect bookkeeping (sync default_plugin.py:80-82)
+
+
+def _bookkeeping_service_and_provider(connect_result=None, connect_error=None):
+    svc = MagicMock()
+    provider = MagicMock()
+    if connect_error is not None:
+        provider.connect = AsyncMock(side_effect=connect_error)
+    else:
+        provider.connect = AsyncMock(
+            return_value=connect_result if connect_result is not None else MagicMock(name="conn"))
+    manager = svc.get_connection_provider_manager.return_value
+    manager.get_connection_provider.return_value = provider
+    manager.default_provider = provider
+    return svc, provider
+
+
+def test_default_plugin_connect_marks_host_available_and_updates_driver_dialect():
+    conn = MagicMock(name="conn")
+    svc, provider = _bookkeeping_service_and_provider(connect_result=conn)
+    plugin = AsyncDefaultPlugin(svc)
+    host = HostInfo("writer-1.cluster.rds", 5432)
+
+    async def _body():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=MagicMock(),
+            host_info=host,
+            props=Properties(),
+            is_initial_connection=True,
+            connect_func=AsyncMock(),
+        )
+
+    result = asyncio.run(_body())
+    assert result is conn
+    svc.set_availability.assert_called_once_with(
+        host.as_aliases(), HostAvailability.AVAILABLE)
+    svc.update_driver_dialect.assert_called_once_with(provider)
+
+
+def test_default_plugin_force_connect_marks_host_available():
+    svc, provider = _bookkeeping_service_and_provider()
+    plugin = AsyncDefaultPlugin(svc)
+    host = HostInfo("writer-1.cluster.rds", 5432)
+
+    async def _body():
+        return await plugin.force_connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=MagicMock(),
+            host_info=host,
+            props=Properties(),
+            is_initial_connection=False,
+            force_connect_func=AsyncMock(),
+        )
+
+    asyncio.run(_body())
+    svc.set_availability.assert_called_once_with(
+        host.as_aliases(), HostAvailability.AVAILABLE)
+    svc.update_driver_dialect.assert_called_once_with(provider)
+
+
+def test_default_plugin_connect_failure_skips_bookkeeping():
+    svc, _provider = _bookkeeping_service_and_provider(
+        connect_error=RuntimeError("connect blew up"))
+    plugin = AsyncDefaultPlugin(svc)
+
+    async def _body():
+        await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=MagicMock(),
+            host_info=HostInfo("writer-1.cluster.rds", 5432),
+            props=Properties(),
+            is_initial_connection=True,
+            connect_func=AsyncMock(),
+        )
+
+    with pytest.raises(RuntimeError, match="connect blew up"):
+        asyncio.run(_body())
+    svc.set_availability.assert_not_called()
+    svc.update_driver_dialect.assert_not_called()
+
+
+# ---- default plugin strategy uses the FILTERED hosts view --------------
+# (sync default_plugin.py:136 reads plugin_service.hosts, not all_hosts)
+
+
+def _service_with_filtered_topology():
+    from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
+        AllowedAndBlockedHosts
+    driver_dialect = MagicMock(spec=AsyncDriverDialect)
+    driver_dialect.network_bound_methods = set()
+    svc = AsyncPluginServiceImpl(Properties(), driver_dialect)
+    allowed_reader = HostInfo(
+        "r1.cluster.rds", 5432, HostRole.READER, host_id="r1")
+    blocked_reader = HostInfo(
+        "r2.cluster.rds", 5432, HostRole.READER, host_id="r2")
+    svc._all_hosts = (allowed_reader, blocked_reader)
+    svc.allowed_and_blocked_hosts = AllowedAndBlockedHosts({"r1"}, None)
+    return svc, allowed_reader, blocked_reader
+
+
+def test_default_plugin_strategy_uses_filtered_hosts():
+    svc, allowed_reader, _blocked = _service_with_filtered_topology()
+    plugin = AsyncDefaultPlugin(svc)
+    # random over the filtered view can only ever return the allowed reader.
+    for _ in range(20):
+        assert plugin.get_host_info_by_strategy(
+            HostRole.READER, "random") is allowed_reader
+
+
+def test_default_plugin_strategy_explicit_host_list_overrides_filter():
+    svc, _allowed, blocked_reader = _service_with_filtered_topology()
+    plugin = AsyncDefaultPlugin(svc)
+    # An explicit host_list wins over the service's filtered view (parity
+    # with the async signature's host_list override).
+    chosen = plugin.get_host_info_by_strategy(
+        HostRole.READER, "random", [blocked_reader])
+    assert chosen is blocked_reader
+
+
+def test_default_plugin_strategy_raises_when_filter_empties_topology():
+    from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
+        AllowedAndBlockedHosts
+    svc, _allowed, _blocked = _service_with_filtered_topology()
+    svc.allowed_and_blocked_hosts = AllowedAndBlockedHosts({"none-match"}, None)
+    plugin = AsyncDefaultPlugin(svc)
+    with pytest.raises(AwsWrapperError):
+        plugin.get_host_info_by_strategy(HostRole.READER, "random")

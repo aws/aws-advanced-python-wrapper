@@ -39,6 +39,10 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
                                                           WrapperProperties)
+from aws_advanced_python_wrapper.utils.telemetry.default_telemetry_factory import \
+    DefaultTelemetryFactory
+from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+    TelemetryTraceLevel
 
 logger = Logger(__name__)
 
@@ -49,6 +53,8 @@ if TYPE_CHECKING:
         AsyncHostListProvider
     from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
+    from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+        TelemetryFactory
 
 
 _TOPOLOGY_REQUIRING_PLUGINS = frozenset({
@@ -330,6 +336,22 @@ class AsyncAwsWrapperCursor:
             self, DbApiMethod.CURSOR_FETCHALL, _call,
         )
 
+    def __aiter__(self) -> AsyncAwsWrapperCursor:
+        """Async-idiomatic port of the sync cursor's ``__iter__``
+        (wrapper.py:432-433): supports ``async for row in cursor``.
+
+        Deliberate deviation from sync: sync iterates the raw driver cursor
+        directly (bypassing plugins); here each row is fetched via the
+        plugin-routed :meth:`fetchone` so failover/RWS see the fetches.
+        """
+        return self
+
+    async def __anext__(self) -> Any:
+        row = await self.fetchone()
+        if row is None:
+            raise StopAsyncIteration
+        return row
+
     async def close(self) -> None:
         await self._resolve_target_cursor()
 
@@ -465,6 +487,12 @@ class AsyncAwsWrapperConnection:
         callers to ``await`` it, inconsistent with the sync wrapper. The setter
         is still :meth:`set_autocommit` (a coroutine), since property setters
         can't be async.
+
+        NOTE: because a property getter can't ``await``, this reads the DRIVER
+        connection directly and BYPASSES the plugin chain (unlike the sync
+        wrapper's ``autocommit`` getter, wrapper.py:131-136, which routes
+        ``CONNECTION_AUTOCOMMIT`` through the plugins). Use the coroutine
+        :meth:`get_autocommit` for the plugin-routed read.
         """
         target = self._target_conn
         ac = getattr(target, "autocommit", False)
@@ -506,6 +534,25 @@ class AsyncAwsWrapperConnection:
                     f"[AsyncAwsWrapperConnection] failed to record autocommit "
                     f"in session state; it may not survive a connection "
                     f"switch (failover / RWS): {ex}")
+
+    async def get_autocommit(self) -> bool:
+        """Read autocommit through the plugin chain.
+
+        Coroutine counterpart of the sync wrapper's ``autocommit`` getter
+        (wrapper.py:131-136), which routes ``CONNECTION_AUTOCOMMIT`` through
+        ``plugin_manager.execute`` with the driver dialect's ``get_autocommit``
+        as the terminal call. The sync :attr:`autocommit` property stays as a
+        direct driver read for back-compat (it can't await).
+        """
+        async def _call() -> bool:
+            conn = self._plugin_service.current_connection
+            if conn is None:
+                conn = self._target_conn
+            return await self._plugin_service.driver_dialect.get_autocommit(conn)
+
+        return await self._plugin_manager.execute(
+            self, DbApiMethod.CONNECTION_AUTOCOMMIT, _call,
+        )
 
     @property
     def isolation_level(self) -> Any:
@@ -602,11 +649,41 @@ class AsyncAwsWrapperConnection:
         driver dialects' ``is_read_only`` normalization so callers get the
         same ``bool`` surface as the sync wrapper -- a bare passthrough
         returns psycopg's ``None`` and fails ``assert conn.read_only is False``.
+
+        NOTE: because a property getter can't ``await``, this reads the DRIVER
+        connection directly and BYPASSES the plugin chain (unlike the sync
+        wrapper's ``read_only`` getter, wrapper.py:106-111, which routes
+        ``CONNECTION_IS_READ_ONLY`` through the plugins). Use the coroutine
+        :meth:`get_read_only` for the plugin-routed read.
         """
         val = getattr(self._target_conn, "read_only", None)
         if val is None:
             val = getattr(self._target_conn, "_aws_read_only", False)
         return bool(val)
+
+    async def get_read_only(self) -> bool:
+        """Read read-only state through the plugin chain.
+
+        Coroutine counterpart of the sync wrapper's ``read_only`` getter
+        (wrapper.py:106-111 + ``_is_read_only`` at :121-124): routes
+        ``CONNECTION_IS_READ_ONLY`` through ``plugin_manager.execute``; the
+        terminal call asks the driver dialect and records the pristine
+        read-only in the session-state service (so a later plugin-driven
+        connection switch can restore it). The sync :attr:`read_only` property
+        stays as a direct driver read for back-compat (it can't await).
+        """
+        async def _call() -> bool:
+            conn = self._plugin_service.current_connection
+            if conn is None:
+                conn = self._target_conn
+            is_read_only = await self._plugin_service.driver_dialect.is_read_only(conn)
+            await self._plugin_service.session_state_service.setup_pristine_readonly(
+                is_read_only)
+            return is_read_only
+
+        return await self._plugin_manager.execute(
+            self, DbApiMethod.CONNECTION_IS_READ_ONLY, _call,
+        )
 
     async def set_read_only(self, value: Any) -> None:
         """Set read-only, routing through the plugin pipeline.
@@ -721,6 +798,37 @@ class AsyncAwsWrapperConnection:
         props: Properties = PropertiesUtils.parse_properties(
             conn_info=conninfo, **kwargs)
 
+        # TOP_LEVEL telemetry span around the connect body, mirroring the
+        # sync wrapper (wrapper.py:172-195): the context is named after this
+        # module (sync uses its own ``__name__``), gets the exception + a
+        # failed-success flag on error, and is closed in ``finally``.
+        # None-guarded like the plugin manager's spans -- with telemetry
+        # disabled (the default) DefaultTelemetryFactory returns ``None``
+        # contexts and this collapses to guard checks.
+        telemetry_factory = DefaultTelemetryFactory(props)
+        context = telemetry_factory.open_telemetry_context(
+            __name__, TelemetryTraceLevel.TOP_LEVEL)
+        try:
+            return await AsyncAwsWrapperConnection._connect_pipeline(
+                target_func, props, plugins, telemetry_factory)
+        except Exception as ex:
+            if context is not None:
+                context.set_exception(ex)
+                context.set_success(False)
+            raise ex
+        finally:
+            if context is not None:
+                context.close_context()
+
+    @staticmethod
+    async def _connect_pipeline(
+            target_func: Callable,
+            props: Properties,
+            plugins: Optional[List[AsyncPlugin]],
+            telemetry_factory: TelemetryFactory) -> AsyncAwsWrapperConnection:
+        """Body of :meth:`connect`, factored out so the TOP_LEVEL telemetry
+        span in ``connect`` brackets it exactly like the sync wrapper's
+        try/except/finally (wrapper.py:175-195)."""
         # Parity with the sync wrapper (PluginManager.create_plugins): when
         # NEITHER an explicit plugin list (``plugins=[...]``) NOR a ``plugins``
         # connection property is supplied, apply the default plugin list so
@@ -791,6 +899,11 @@ class AsyncAwsWrapperConnection:
             driver_dialect=driver_dialect,
             host_info=host_info,
         )
+        # Share the connect-time telemetry factory (sync parity: sync passes
+        # DefaultTelemetryFactory into PluginManager). Must happen BEFORE
+        # AsyncPluginManager is built -- the manager caches the service's
+        # factory in its __init__.
+        plugin_service.set_telemetry_factory(telemetry_factory)
         # Phase A wiring: populate plugin service slots so plugins that
         # reach for them in their own ``connect`` hook (e.g., failover
         # checking ``is_network_exception``) have them available.
@@ -932,6 +1045,18 @@ class AsyncAwsWrapperConnection:
         await self._plugin_manager.execute(
             self, DbApiMethod.CONNECTION_CLOSE, _call,
         )
+        # Sync parity (wrapper.py:197-200, 323-338): close() also releases
+        # per-connection plugin-service resources (background topology
+        # monitors, the aborted connection itself). The service's
+        # release_resources is documented idempotent + non-raising, but the
+        # guard keeps close() itself exception-free even against a
+        # misbehaving override. The GLOBAL cleanup path
+        # (aio.cleanup.release_resources_async) is unaffected -- plugins'
+        # long-lived monitors registered there still need it at program exit.
+        try:
+            await self._plugin_service.release_resources()
+        except Exception:  # noqa: BLE001 - release is best-effort
+            pass
 
     async def invalidate(self) -> None:
         """Async equivalent of :meth:`AwsWrapperConnection.invalidate`.
@@ -965,6 +1090,69 @@ class AsyncAwsWrapperConnection:
 
         await self._plugin_manager.execute(
             self, DbApiMethod.CONNECTION_ROLLBACK, _call,
+        )
+
+    # ---- two-phase-commit (PEP 249 TPC extension) -----------------------
+    #
+    # Routed through the plugin manager exactly like the sync wrapper
+    # (wrapper.py:240-258). psycopg's AsyncConnection exposes these as
+    # coroutines; the return value is probed (like close/scroll/callproc)
+    # so a driver with sync tpc_* methods also works. aiomysql has no TPC
+    # support -- the AttributeError from the raw driver surfaces as-is.
+
+    async def tpc_begin(self, xid: Any) -> None:
+        async def _call() -> Any:
+            result = self._target_conn.tpc_begin(xid)
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+        await self._plugin_manager.execute(
+            self, DbApiMethod.CONNECTION_TPC_BEGIN, _call, xid,
+        )
+
+    async def tpc_prepare(self) -> None:
+        async def _call() -> Any:
+            result = self._target_conn.tpc_prepare()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+        await self._plugin_manager.execute(
+            self, DbApiMethod.CONNECTION_TPC_PREPARE, _call,
+        )
+
+    async def tpc_commit(self, xid: Any = None) -> None:
+        async def _call() -> Any:
+            result = self._target_conn.tpc_commit(xid)
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+        await self._plugin_manager.execute(
+            self, DbApiMethod.CONNECTION_TPC_COMMIT, _call, xid,
+        )
+
+    async def tpc_rollback(self, xid: Any = None) -> None:
+        async def _call() -> Any:
+            result = self._target_conn.tpc_rollback(xid)
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+        await self._plugin_manager.execute(
+            self, DbApiMethod.CONNECTION_TPC_ROLLBACK, _call, xid,
+        )
+
+    async def tpc_recover(self) -> Any:
+        async def _call() -> Any:
+            result = self._target_conn.tpc_recover()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+
+        return await self._plugin_manager.execute(
+            self, DbApiMethod.CONNECTION_TPC_RECOVER, _call,
         )
 
     async def __aenter__(self) -> AsyncAwsWrapperConnection:

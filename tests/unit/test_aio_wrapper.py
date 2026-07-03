@@ -100,6 +100,12 @@ def _make_mock_async_conn() -> MagicMock:
     """Build a MagicMock shaped like a psycopg.AsyncConnection."""
     conn = MagicMock()
     conn.close = AsyncMock()
+    # wrapper.close() releases plugin-service resources (sync parity), whose
+    # abort_connection probes conn.fileno(); a MagicMock would fabricate a
+    # non-int fd and push abort into its close() fallback, double-closing the
+    # mock. A raising fileno makes abort a no-op, like a real conn whose
+    # socket is already gone.
+    conn.fileno = MagicMock(side_effect=OSError("mock conn has no real fd"))
     conn.commit = AsyncMock()
     conn.rollback = AsyncMock()
     conn.closed = False
@@ -665,6 +671,10 @@ def test_psycopg_driver_dialect_lifecycle_ops_against_mock():
         conn.set_read_only.assert_awaited_once_with(True)
 
         assert await dialect.can_execute_query(conn) is True
+        # A reachable-but-unusable fd (non-int / negative) pushes abort into
+        # its close() fallback; the shared mock raises from fileno() (abort
+        # no-op), so restore the fallback shape for this assertion.
+        conn.fileno = MagicMock(return_value=-1)
         await dialect.abort_connection(conn)
         conn.close.assert_awaited_once()
 
@@ -946,3 +956,303 @@ def test_async_cursor_getattr_delegates_driver_attrs_including_underscore():
     fresh = AsyncAwsWrapperCursor.__new__(AsyncAwsWrapperCursor)
     with pytest.raises(AttributeError):
         _ = fresh._target_cursor
+
+
+# ---- Parity fixes: TPC routing, async iteration, routed getters, --------
+# ---- connect telemetry span, close-releases-resources -------------------
+
+
+def test_tpc_methods_route_through_plugin_pipeline():
+    # Sync parity (wrapper.py:240-258): all five PEP 249 TPC methods route
+    # through the plugin manager with their CONNECTION_TPC_* DbApiMethods.
+    log: List[str] = []
+    plugin = RecorderPlugin(log)
+    raw_conn = _make_mock_async_conn()
+    raw_conn.tpc_begin = AsyncMock()
+    raw_conn.tpc_prepare = AsyncMock()
+    raw_conn.tpc_commit = AsyncMock()
+    raw_conn.tpc_rollback = AsyncMock()
+    raw_conn.tpc_recover = AsyncMock(return_value=["xid-1"])
+
+    async def _body() -> Any:
+        wrapper = await AsyncAwsWrapperConnection.connect(
+            target=_build_mock_psycopg_connect(raw_conn),
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins=[plugin],
+        )
+        await wrapper.tpc_begin("xid-1")
+        await wrapper.tpc_prepare()
+        await wrapper.tpc_commit("xid-1")
+        await wrapper.tpc_rollback("xid-1")
+        return await wrapper.tpc_recover()
+
+    recovered = asyncio.run(_body())
+    assert recovered == ["xid-1"]
+    assert [e for e in log if e.startswith("execute:Connection.tpc_")] == [
+        "execute:Connection.tpc_begin",
+        "execute:Connection.tpc_prepare",
+        "execute:Connection.tpc_commit",
+        "execute:Connection.tpc_rollback",
+        "execute:Connection.tpc_recover",
+    ]
+    raw_conn.tpc_begin.assert_awaited_once_with("xid-1")
+    raw_conn.tpc_prepare.assert_awaited_once_with()
+    raw_conn.tpc_commit.assert_awaited_once_with("xid-1")
+    raw_conn.tpc_rollback.assert_awaited_once_with("xid-1")
+    raw_conn.tpc_recover.assert_awaited_once_with()
+
+
+def test_tpc_methods_probe_sync_driver_shape():
+    # A driver whose tpc_* methods are sync (return a value, not a coroutine)
+    # works through the same probe-and-await pattern used for close/scroll.
+    raw_conn = _make_mock_async_conn()
+    raw_conn.tpc_recover = MagicMock(return_value=["xid-sync"])
+    wrapper = _connected_wrapper(raw_conn)
+
+    async def _body() -> Any:
+        return await wrapper.tpc_recover()
+
+    assert asyncio.run(_body()) == ["xid-sync"]
+    raw_conn.tpc_recover.assert_called_once_with()
+
+
+def test_cursor_async_for_iterates_via_plugin_routed_fetchone():
+    # Async-idiomatic port of sync cursor __iter__ (wrapper.py:432-433):
+    # ``async for`` pulls rows through the plugin-routed fetchone() and stops
+    # on None (StopAsyncIteration).
+    log: List[str] = []
+    plugin = RecorderPlugin(log)
+    raw_conn = _make_mock_async_conn()
+    target_cur = _make_mock_async_cursor()
+    target_cur.connection = raw_conn
+    target_cur.fetchone = AsyncMock(side_effect=[("r1",), ("r2",), None])
+    raw_conn.cursor = MagicMock(return_value=target_cur)
+
+    async def _body() -> List[Any]:
+        wrapper = await AsyncAwsWrapperConnection.connect(
+            target=_build_mock_psycopg_connect(raw_conn),
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins=[plugin],
+        )
+        rows: List[Any] = []
+        async for row in wrapper.cursor():
+            rows.append(row)
+        return rows
+
+    rows = asyncio.run(_body())
+    assert rows == [("r1",), ("r2",)]
+    # Three fetchone dispatches (two rows + the terminating None), all routed.
+    assert log.count("execute:Cursor.fetchone") == 3
+
+
+def test_get_read_only_routes_through_plugin_pipeline():
+    # Sync parity (wrapper.py:106-111): the read-only GETTER routes
+    # CONNECTION_IS_READ_ONLY through the plugin chain. The sync property
+    # `.read_only` stays a direct driver read (documented); the routed read
+    # is the coroutine get_read_only().
+    log: List[str] = []
+    plugin = RecorderPlugin(log)
+    raw_conn = _make_mock_async_conn()
+    raw_conn.read_only = True
+
+    async def _body() -> bool:
+        wrapper = await AsyncAwsWrapperConnection.connect(
+            target=_build_mock_psycopg_connect(raw_conn),
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins=[plugin],
+        )
+        return await wrapper.get_read_only()
+
+    assert asyncio.run(_body()) is True
+    assert "execute:Connection.is_read_only" in log
+
+
+def test_get_autocommit_routes_through_plugin_pipeline():
+    # Sync parity (wrapper.py:131-136): the autocommit GETTER routes
+    # CONNECTION_AUTOCOMMIT through the plugin chain.
+    log: List[str] = []
+    plugin = RecorderPlugin(log)
+    raw_conn = _make_mock_async_conn()
+    raw_conn.autocommit = False
+
+    async def _body() -> bool:
+        wrapper = await AsyncAwsWrapperConnection.connect(
+            target=_build_mock_psycopg_connect(raw_conn),
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins=[plugin],
+        )
+        return await wrapper.get_autocommit()
+
+    assert asyncio.run(_body()) is False
+    assert "execute:Connection.autocommit" in log
+
+
+class _RecordingTelemetryContext:
+    def __init__(self, name: Any, trace_level: Any) -> None:
+        self.name = name
+        self.trace_level = trace_level
+        self.closed = False
+        self.success: Any = None
+        self.exception: Any = None
+
+    def set_success(self, success: bool) -> None:
+        self.success = success
+
+    def set_exception(self, exception: Exception) -> None:
+        self.exception = exception
+
+    def set_attribute(self, key: str, value: Any) -> None:
+        pass
+
+    def close_context(self) -> None:
+        self.closed = True
+
+
+class _RecordingTelemetryFactory:
+    def __init__(self) -> None:
+        self.contexts: List[_RecordingTelemetryContext] = []
+
+    def open_telemetry_context(
+            self, name: Any, trace_level: Any) -> _RecordingTelemetryContext:
+        ctx = _RecordingTelemetryContext(name, trace_level)
+        self.contexts.append(ctx)
+        return ctx
+
+    def post_copy(self, context: Any, trace_level: Any) -> None:
+        pass
+
+    def create_counter(self, name: str) -> Any:
+        return None
+
+    def create_gauge(self, name: str, callback: Any) -> Any:
+        return None
+
+    def in_use(self) -> bool:
+        return True
+
+
+def test_connect_opens_and_closes_top_level_telemetry_context(monkeypatch):
+    # Sync parity (wrapper.py:172-195): connect opens a TOP_LEVEL context
+    # named after the wrapper module and closes it in finally. On success no
+    # success flag is set (sync only sets it on failure).
+    from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
+        TelemetryTraceLevel
+    created: List[_RecordingTelemetryFactory] = []
+
+    def _factory(props: Any) -> _RecordingTelemetryFactory:
+        f = _RecordingTelemetryFactory()
+        created.append(f)
+        return f
+
+    monkeypatch.setattr(
+        "aws_advanced_python_wrapper.aio.wrapper.DefaultTelemetryFactory",
+        _factory)
+    raw_conn = _make_mock_async_conn()
+
+    async def _body() -> None:
+        await AsyncAwsWrapperConnection.connect(
+            target=_build_mock_psycopg_connect(raw_conn),
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins="",
+        )
+
+    asyncio.run(_body())
+    assert created, "DefaultTelemetryFactory was never constructed"
+    top = created[0].contexts[0]
+    assert top.name == "aws_advanced_python_wrapper.aio.wrapper"
+    assert top.trace_level == TelemetryTraceLevel.TOP_LEVEL
+    assert top.closed is True
+    assert top.success is None
+    assert top.exception is None
+
+
+def test_connect_telemetry_context_records_failure_and_closes(monkeypatch):
+    # Failure path: the exception is recorded on the context, success is set
+    # False, and the context is still closed (finally).
+    created: List[_RecordingTelemetryFactory] = []
+
+    def _factory(props: Any) -> _RecordingTelemetryFactory:
+        f = _RecordingTelemetryFactory()
+        created.append(f)
+        return f
+
+    monkeypatch.setattr(
+        "aws_advanced_python_wrapper.aio.wrapper.DefaultTelemetryFactory",
+        _factory)
+
+    async def _boom_target(**kwargs: Any) -> Any:
+        raise ValueError("boom")
+
+    async def _body() -> None:
+        await AsyncAwsWrapperConnection.connect(
+            target=_boom_target,
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins="",
+        )
+
+    with pytest.raises(ValueError, match="boom"):
+        asyncio.run(_body())
+    top = created[0].contexts[0]
+    assert top.closed is True
+    assert top.success is False
+    assert isinstance(top.exception, ValueError)
+
+
+def test_close_releases_plugin_service_resources():
+    # Sync parity (wrapper.py:197-200): close() runs CONNECTION_CLOSE through
+    # the pipeline, then releases plugin-service resources. plugins="" keeps
+    # default-plugin background machinery (topology monitor teardown closes)
+    # out of the close count.
+    raw_conn = _make_mock_async_conn()
+    release = AsyncMock()
+
+    async def _body() -> None:
+        wrapper = await AsyncAwsWrapperConnection.connect(
+            target=_build_mock_psycopg_connect(raw_conn),
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins="",
+        )
+        wrapper._plugin_service.release_resources = release  # type: ignore[method-assign]
+        await wrapper.close()
+
+    asyncio.run(_body())
+    release.assert_awaited_once()
+    raw_conn.close.assert_awaited_once()
+
+
+def test_aexit_releases_plugin_service_resources():
+    # The async context-manager exit path goes through close() and therefore
+    # also releases resources (sync parity: __exit__ at wrapper.py:335-338).
+    raw_conn = _make_mock_async_conn()
+    release = AsyncMock()
+
+    async def _body() -> None:
+        async with await AsyncAwsWrapperConnection.connect(
+                target=_build_mock_psycopg_connect(raw_conn),
+                conninfo="host=h user=u password=p dbname=d port=5432",
+                plugins="",
+        ) as conn:
+            conn._plugin_service.release_resources = release  # type: ignore[method-assign]
+
+    asyncio.run(_body())
+    release.assert_awaited_once()
+    raw_conn.close.assert_awaited_once()
+
+
+def test_close_swallows_release_resources_errors():
+    # release_resources is best-effort: a misbehaving release must not turn a
+    # successful close() into a failure.
+    raw_conn = _make_mock_async_conn()
+
+    async def _body() -> None:
+        wrapper = await AsyncAwsWrapperConnection.connect(
+            target=_build_mock_psycopg_connect(raw_conn),
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins="",
+        )
+        wrapper._plugin_service.release_resources = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("release blew up"))
+        await wrapper.close()  # must not raise
+
+    asyncio.run(_body())
+    raw_conn.close.assert_awaited_once()

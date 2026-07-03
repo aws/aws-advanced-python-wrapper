@@ -148,6 +148,16 @@ class AsyncPluginService(Protocol):
         ...
 
     @property
+    def hosts(self) -> Tuple[HostInfo, ...]:
+        """Topology filtered through ``allowed_and_blocked_hosts``.
+
+        Mirrors sync ``PluginService.hosts`` (plugin_service.py:362-378):
+        ``all_hosts`` is the raw topology; ``hosts`` is the allowed/blocked-
+        filtered view plugins should use when picking connection targets.
+        """
+        ...
+
+    @property
     def initial_connection_host_info(self) -> Optional[HostInfo]:
         """First host the user connected to. ``None`` before connect."""
         ...
@@ -651,6 +661,17 @@ class AsyncPluginServiceImpl(AsyncPluginService):
     @property
     def all_hosts(self) -> Tuple[HostInfo, ...]:
         return self._all_hosts
+
+    @property
+    def hosts(self) -> Tuple[HostInfo, ...]:
+        """Allowed/blocked-filtered view of the topology.
+
+        Sync parity: ``PluginServiceImpl.hosts`` (plugin_service.py:362-378)
+        filters ``all_hosts`` through the custom-endpoint/blue-green host
+        permissions; ``all_hosts`` stays the raw view. The filtering itself is
+        delegated to :meth:`filter_hosts` so both surfaces stay consistent.
+        """
+        return tuple(self.filter_hosts(list(self._all_hosts)))
 
     @property
     def initial_connection_host_info(self) -> Optional[HostInfo]:
