@@ -913,3 +913,85 @@ def test_strict_reader_gives_up_when_original_writer_is_still_writer():
         assert svc.get_host_role.await_count == 2
 
     asyncio.run(_body())
+
+
+# ---- connect-time failover (sync failover_v2_plugin.py:127-180 parity) -----
+
+
+def test_connect_time_failover_on_failover_worthy_connect_error():
+    """With enable_connect_failover, a network error on the initial dial
+    marks the host UNAVAILABLE, runs failover, and returns the new current
+    connection instead of surfacing the error."""
+    async def _body() -> None:
+        plugin, svc, _hlp, driver_dialect = _build_plugin()
+        plugin._enable_connect_failover = True
+        svc.is_network_exception = MagicMock(return_value=True)
+        svc.set_availability = MagicMock()
+        failover_conn = MagicMock(name="failover_conn")
+
+        async def _fake_failover(driver_dialect=None, **_kw):
+            svc._current_connection = failover_conn
+
+        plugin._do_failover = _fake_failover  # type: ignore[method-assign]
+
+        async def _dial():
+            raise ConnectionError("boom")
+
+        host = HostInfo(host="writer.example.com", port=5432)
+        conn = await plugin.connect(
+            MagicMock(), driver_dialect, host, Properties({}), True, _dial)
+        assert conn is failover_conn
+        marked_aliases, marked_avail = svc.set_availability.call_args_list[0][0]
+        assert marked_avail == HostAvailability.UNAVAILABLE
+        assert host.as_aliases() == marked_aliases
+
+    asyncio.run(_body())
+
+
+def test_connect_time_failover_skips_dial_for_known_unavailable_host():
+    """A target already known UNAVAILABLE is not dialed at all -- topology is
+    refreshed and failover runs directly (sync :168-172)."""
+    async def _body() -> None:
+        dead = HostInfo(host="writer.example.com", port=5432, role=HostRole.WRITER)
+        dead.set_availability(HostAvailability.UNAVAILABLE)
+        plugin, svc, _hlp, driver_dialect = _build_plugin()
+        plugin._enable_connect_failover = True
+        svc.refresh_host_list = AsyncMock()
+        svc.filter_hosts = MagicMock(side_effect=lambda hosts: hosts)
+        svc._all_hosts = (dead,)
+        failover_conn = MagicMock(name="failover_conn")
+
+        async def _fake_failover(driver_dialect=None, **_kw):
+            svc._current_connection = failover_conn
+
+        plugin._do_failover = _fake_failover  # type: ignore[method-assign]
+        dialed = {"n": 0}
+
+        async def _dial():
+            dialed["n"] += 1
+            return MagicMock()
+
+        conn = await plugin.connect(
+            MagicMock(), driver_dialect, dead, Properties({}), True, _dial)
+        assert conn is failover_conn
+        assert dialed["n"] == 0  # never dialed the known-dead host
+
+    asyncio.run(_body())
+
+
+def test_connect_error_propagates_when_connect_failover_disabled():
+    """enable_connect_failover=False -> the dial error surfaces untouched."""
+    async def _body() -> None:
+        plugin, svc, _hlp, driver_dialect = _build_plugin()
+        plugin._enable_connect_failover = False
+
+        async def _dial():
+            raise ConnectionError("boom")
+
+        with pytest.raises(ConnectionError):
+            await plugin.connect(
+                MagicMock(), driver_dialect,
+                HostInfo(host="writer.example.com", port=5432),
+                Properties({}), True, _dial)
+
+    asyncio.run(_body())

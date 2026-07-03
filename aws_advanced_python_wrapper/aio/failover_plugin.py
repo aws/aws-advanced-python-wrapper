@@ -33,7 +33,7 @@ from typing import (TYPE_CHECKING, Any, Awaitable, Callable, List, NoReturn,
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.aio.retry_util import AsyncRetryUtil
 from aws_advanced_python_wrapper.errors import (
-    FailoverFailedError, FailoverSuccessError,
+    AwsWrapperError, FailoverFailedError, FailoverSuccessError,
     TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
@@ -142,12 +142,8 @@ class AsyncFailoverPlugin(AsyncPlugin):
             props: Properties,
             is_initial_connection: bool,
             connect_func: Callable[..., Awaitable[Any]]) -> Any:
-        # Connect-time failover is not implemented yet; the initial connect
-        # itself passes straight through. When async grows connect-time
-        # failover it will be gated by ``self._enabled and
-        # self._enable_connect_failover``, matching sync v2 at
-        # ``failover_v2_plugin.py:140``.
-        conn = await connect_func()
+        conn = await self._connect_with_failover(
+            driver_dialect, host_info, connect_func)
 
         # Eagerly populate the topology cache from the LIVE initial connection,
         # mirroring sync failover_v2_plugin.py:177-178
@@ -172,6 +168,53 @@ class AsyncFailoverPlugin(AsyncPlugin):
             except Exception:  # noqa: BLE001 - topology will be (re)fetched later
                 pass
 
+        return conn
+
+    async def _connect_with_failover(
+            self,
+            driver_dialect: AsyncDriverDialect,
+            host_info: HostInfo,
+            connect_func: Callable[..., Awaitable[Any]]) -> Any:
+        """Connect-time failover (sync failover_v2_plugin.py:127-180 parity).
+
+        With ``enable_connect_failover`` (and failover) enabled: a
+        failover-worthy connect error marks the target host UNAVAILABLE and
+        runs failover instead of surfacing the error; a target already known
+        to be UNAVAILABLE skips the doomed dial entirely and fails over
+        directly (after a topology refresh). FailoverFailedError propagates,
+        matching sync. Stale-DNS verification is not embedded here -- async
+        ships it as the separate stale_dns plugin.
+        """
+        if not (self._enabled and self._enable_connect_failover):
+            return await connect_func()
+
+        known = next(
+            (h for h in self._plugin_service.hosts
+             if h.host == host_info.host and h.port == host_info.port),
+            None)
+
+        if known is None or known.get_availability() != HostAvailability.UNAVAILABLE:
+            try:
+                return await connect_func()
+            except Exception as e:
+                if not self._should_failover(e):
+                    raise
+                self._plugin_service.set_availability(
+                    host_info.as_aliases(), HostAvailability.UNAVAILABLE)
+                await self._do_failover(driver_dialect)
+        else:
+            # Known-dead target: refresh topology and fail over without
+            # dialing it (sync :168-172).
+            try:
+                await self._plugin_service.refresh_host_list()
+            except Exception:  # noqa: BLE001 - failover refreshes again itself
+                pass
+            await self._do_failover(driver_dialect)
+
+        conn = self._plugin_service.current_connection
+        if conn is None:
+            # Sync raises the same bare message at failover_v2_plugin.py:174.
+            raise AwsWrapperError("Unable to connect")
         return conn
 
     async def execute(
