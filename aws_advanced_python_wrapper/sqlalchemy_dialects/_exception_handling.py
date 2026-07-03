@@ -34,8 +34,8 @@ wrapper exception is preserved via ``__cause__`` so callers that need the
 exact wrapper type can ``isinstance(exc.__cause__, FailoverSuccessError)``.
 
 Each concrete dialect declares its target class via
-``_failover_success_target_cls``; the mixin wraps the dialect's
-``do_execute`` / ``do_executemany`` calls.
+``_failover_success_target_cls``; the mixin handles both sync and async
+``do_execute`` shapes.
 
 Scope: only ``do_execute`` and ``do_executemany`` are wrapped. If
 ``FailoverSuccessError`` ever surfaces from ``do_commit`` / ``do_rollback``
@@ -103,7 +103,7 @@ class _FailoverSuccessRewrapMixin:
 
     Concrete dialect subclasses set ``_failover_success_target_cls`` to the
     driver's own ``OperationalError`` class (e.g. ``psycopg.OperationalError``,
-    ``mysql.connector.errors.OperationalError``).
+    ``mysql.connector.errors.OperationalError``, ``aiomysql.OperationalError``).
     The mixin's ``do_execute`` wraps the parent's call: on
     ``FailoverSuccessError``, it raises the target class with the same message,
     chaining the original via ``__cause__``. SA's classifier reliably maps
@@ -162,4 +162,60 @@ class _FailoverSuccessRewrapMixin:
             raise
 
 
-__all__ = ["_FailoverSuccessRewrapMixin"]
+class _AsyncFailoverSuccessRewrapMixin:
+    """Async counterpart of :class:`_FailoverSuccessRewrapMixin`.
+
+    IMPORTANT: ``do_execute`` / ``do_executemany`` MUST be SYNCHRONOUS even for
+    async dialects. SQLAlchemy's execution context calls
+    ``dialect.do_execute(...)`` synchronously inside a greenlet; the async work
+    is bridged *inside* SA's ``AsyncAdapt_*_cursor.execute`` (a sync method that
+    uses ``await_only``). An ``async def do_execute`` here would merely build a
+    coroutine that SA never awaits -- the query would never run, leaving the
+    cursor with no result, so ``description`` is ``None`` and SA raises
+    ``ResourceClosedError`` ("This result object does not return rows") from
+    ``dialect.initialize``'s ``SELECT version()`` (the ``sqlalchemy_creator_*``
+    integration tests). So this mixin is functionally identical to the sync
+    one; it exists as a distinct class only so async dialects can be wired to a
+    different ``_failover_success_target_cls`` / ``_driver_error_module``.
+    """
+
+    _failover_success_target_cls: ClassVar[Optional[Type[BaseException]]] = None
+
+    def _driver_error_module(self):
+        """See :meth:`_FailoverSuccessRewrapMixin._driver_error_module`."""
+        return None
+
+    def do_execute(  # type: ignore[no-untyped-def]
+            self, cursor, statement, parameters, context=None):
+        try:
+            super().do_execute(  # type: ignore[misc]
+                cursor, statement, parameters, context)
+        except FailoverSuccessError as e:
+            target = self._failover_success_target_cls
+            if target is None:
+                raise
+            raise target(str(e)) from e
+        except Exception as e:
+            normalized = _normalize_driver_error(e, self._driver_error_module())
+            if normalized is not None:
+                raise normalized from e
+            raise
+
+    def do_executemany(  # type: ignore[no-untyped-def]
+            self, cursor, statement, parameters, context=None):
+        try:
+            super().do_executemany(  # type: ignore[misc]
+                cursor, statement, parameters, context)
+        except FailoverSuccessError as e:
+            target = self._failover_success_target_cls
+            if target is None:
+                raise
+            raise target(str(e)) from e
+        except Exception as e:
+            normalized = _normalize_driver_error(e, self._driver_error_module())
+            if normalized is not None:
+                raise normalized from e
+            raise
+
+
+__all__ = ["_FailoverSuccessRewrapMixin", "_AsyncFailoverSuccessRewrapMixin"]

@@ -1,0 +1,280 @@
+#  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License").
+#  You may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+"""``AsyncPluginManager`` -- async counterpart of :class:`PluginManager`.
+
+SP-1 ships the shell: pipeline-build + dispatch for ``connect`` and
+``execute``. NO plugin factory registry (each plugin-SP registers its own
+factory later); NO telemetry wrapping (shared TelemetryFactory can be
+threaded in by a future SP if it becomes load-bearing); NO pipeline cache
+(build-per-call is simpler for the shell and the optimization can land
+once real plugins are in place).
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Optional, Set
+
+from aws_advanced_python_wrapper.aio.default_plugin import AsyncDefaultPlugin
+from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils.messages import Messages
+
+if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.aio.driver_dialect.base import \
+        AsyncDriverDialect
+    from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
+    from aws_advanced_python_wrapper.aio.plugin_service import \
+        AsyncPluginService
+    from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+    from aws_advanced_python_wrapper.utils.notifications import ConnectionEvent
+    from aws_advanced_python_wrapper.utils.properties import Properties
+
+
+class AsyncPluginManager:
+    """Builds the async plugin pipeline and dispatches ``connect`` /
+    ``execute`` through it. Always appends :class:`AsyncDefaultPlugin` as
+    the terminal plugin.
+    """
+
+    def __init__(
+            self,
+            plugin_service: AsyncPluginService,
+            props: Properties,
+            plugins: Optional[List[AsyncPlugin]] = None) -> None:
+        self._plugin_service = plugin_service
+        self._props = props
+        # Explicit list of plugins is what SP-1 accepts. SP-4+ will add a
+        # factory-registry-based constructor overload so `plugins="failover,host_monitoring_v2"`
+        # in connection props can build the list.
+        user_plugins: List[AsyncPlugin] = list(plugins) if plugins else []
+        self._plugins: List[AsyncPlugin] = [
+            *user_plugins,
+            AsyncDefaultPlugin(plugin_service),
+        ]
+
+    @property
+    def num_plugins(self) -> int:
+        return len(self._plugins)
+
+    @property
+    def plugins(self) -> List[AsyncPlugin]:
+        return list(self._plugins)
+
+    # ------------------------------------------------------------------
+    # Public dispatch methods
+
+    async def connect(
+            self,
+            target_driver_func: Callable,
+            driver_dialect: AsyncDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            plugin_to_skip: Optional[AsyncPlugin] = None) -> Any:
+        return await self._dispatch(
+            DbApiMethod.CONNECT,
+            lambda plugin, next_func: plugin.connect(
+                target_driver_func,
+                driver_dialect,
+                host_info,
+                props,
+                is_initial_connection,
+                next_func,
+            ),
+            plugin_to_skip,
+        )
+
+    async def force_connect(
+            self,
+            target_driver_func: Callable,
+            driver_dialect: AsyncDriverDialect,
+            host_info: HostInfo,
+            props: Properties,
+            is_initial_connection: bool,
+            plugin_to_skip: Optional[AsyncPlugin] = None) -> Any:
+        return await self._dispatch(
+            DbApiMethod.FORCE_CONNECT,
+            lambda plugin, next_func: plugin.force_connect(
+                target_driver_func,
+                driver_dialect,
+                host_info,
+                props,
+                is_initial_connection,
+                next_func,
+            ),
+            plugin_to_skip,
+        )
+
+    @staticmethod
+    def _unwrap_conn(conn: Any) -> Any:
+        """Reduce a connection-ish object to its underlying raw driver
+        connection: a pool proxy -> its ``driver_connection``; anything else
+        -> itself."""
+        if conn is None:
+            return None
+        return getattr(conn, "driver_connection", conn)
+
+    def _target_connection(self, target: object) -> Any:
+        """The raw driver connection a cursor/connection target is bound to.
+
+        Cursor: the raw cursor's ``connection`` (the conn it was created on).
+        Connection wrapper: its current ``_target_conn``. Both are unwrapped
+        to the underlying driver connection for a like-for-like comparison.
+
+        Uses ``isinstance`` rather than ``getattr`` probing: the connection
+        wrapper's ``__getattr__`` forwards unknown attributes to the driver
+        connection, so a plain ``getattr(target, "_target_cursor")`` would
+        wrongly resolve (and a MagicMock target would even fabricate it).
+        """
+        # Lazy import to avoid the wrapper<->plugin_manager import cycle.
+        from aws_advanced_python_wrapper.aio.wrapper import (
+            AsyncAwsWrapperConnection, AsyncAwsWrapperCursor)
+        if isinstance(target, AsyncAwsWrapperCursor):
+            return self._unwrap_conn(getattr(target._target_cursor, "connection", None))
+        if isinstance(target, AsyncAwsWrapperConnection):
+            return self._unwrap_conn(target._target_conn)
+        return None
+
+    async def execute(
+            self,
+            target: object,
+            method: DbApiMethod,
+            target_driver_func: Callable[..., Awaitable[Any]],
+            *args: Any,
+            **kwargs: Any) -> Any:
+        # Old-connection guard (parity with sync plugin_service.execute:987).
+        # A cursor/connection bound to a connection that is no longer the
+        # current one -- e.g. an old cursor reused after an RWS reader/writer
+        # swap or a failover -- must not silently run against the stale
+        # connection. CLOSE methods are exempt (they clean up old objects).
+        if method not in (DbApiMethod.CURSOR_CLOSE, DbApiMethod.CONNECTION_CLOSE):
+            obj_conn = self._target_connection(target)
+            current = self._unwrap_conn(self._plugin_service.current_connection)
+            if obj_conn is not None and current is not None and obj_conn is not current:
+                raise AwsWrapperError(Messages.get_formatted(
+                    "PluginManager.MethodInvokedAgainstOldConnection", target))
+        return await self._dispatch(
+            method,
+            lambda plugin, next_func: plugin.execute(
+                target, method.method_name, next_func, *args, **kwargs),
+            plugin_to_skip=None,
+            terminal_call=target_driver_func,
+        )
+
+    def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
+        all_methods = DbApiMethod.ALL.method_name
+        strategy_method = DbApiMethod.GET_HOST_INFO_BY_STRATEGY.method_name
+        for plugin in self._plugins:
+            subs = plugin.subscribed_methods
+            if all_methods in subs or strategy_method in subs:
+                if plugin.accepts_strategy(role, strategy):
+                    return True
+        return False
+
+    def get_host_info_by_strategy(
+            self,
+            role: HostRole,
+            strategy: str,
+            host_list: Optional[List[HostInfo]] = None) -> Optional[HostInfo]:
+        all_methods = DbApiMethod.ALL.method_name
+        strategy_method = DbApiMethod.GET_HOST_INFO_BY_STRATEGY.method_name
+        for plugin in self._plugins:
+            subs = plugin.subscribed_methods
+            if all_methods in subs or strategy_method in subs:
+                host = plugin.get_host_info_by_strategy(role, strategy, host_list)
+                if host is not None:
+                    return host
+        return None
+
+    def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> None:
+        """Notify every plugin that the current connection object changed.
+
+        Mirrors sync ``PluginManager.notify_connection_changed``. The
+        host-monitoring (EFM) plugin resets its per-connection failure state in
+        this hook; without the call, after failover swaps the connection the
+        monitor keeps the OLD (dead) host's UNAVAILABLE flag set and re-raises
+        "Host ... is unavailable" on the next query, even though the new
+        connection is healthy (test_fail_from_reader_to_writer). Each plugin's
+        hook is best-effort -- a raising hook must not abort the switch.
+        """
+        for plugin in self._plugins:
+            try:
+                plugin.notify_connection_changed(changes)
+            except Exception:  # noqa: BLE001 - a notify hook must not break the switch
+                pass
+
+    # ------------------------------------------------------------------
+    # Pipeline mechanics
+
+    async def _dispatch(
+            self,
+            method: DbApiMethod,
+            plugin_call: Callable[[AsyncPlugin, Callable[..., Awaitable[Any]]], Awaitable[Any]],
+            plugin_to_skip: Optional[AsyncPlugin],
+            terminal_call: Optional[Callable[..., Awaitable[Any]]] = None) -> Any:
+        """Build a chain over subscribed plugins and await the head.
+
+        The pipeline walks plugins from first to last. Each subscribed plugin
+        is wrapped so that ``plugin.execute(..., next_func)`` awaits
+        ``next_func()`` to continue down the chain. The terminal ``next_func``
+        is the target driver call (for ``execute``) or a no-op (for ``connect``
+        -- the DefaultPlugin handles the actual driver call in its ``connect``
+        override).
+        """
+        subscribed = self._subscribed_plugins(method, plugin_to_skip)
+        if not subscribed:
+            # No plugin wants to intercept this method; just run the terminal.
+            if terminal_call is None:
+                raise AwsWrapperError(Messages.get("PluginManager.PipelineNone"))
+            return await terminal_call()
+
+        # Build call chain back-to-front.
+        async def _terminal() -> Any:
+            if terminal_call is not None:
+                return await terminal_call()
+            # No terminal call: the last plugin (AsyncDefaultPlugin) is
+            # responsible for producing the result itself.
+            return None
+
+        chain: Callable[..., Awaitable[Any]] = _terminal
+
+        for plugin in reversed(subscribed):
+            # Capture plugin + next in default args to pin the closure vars.
+            next_in_chain = chain
+
+            async def _step(
+                    _plugin: AsyncPlugin = plugin,
+                    _next: Callable[..., Awaitable[Any]] = next_in_chain) -> Any:
+                return await plugin_call(_plugin, _next)
+
+            chain = _step
+
+        return await chain()
+
+    def _subscribed_plugins(
+            self,
+            method: DbApiMethod,
+            plugin_to_skip: Optional[AsyncPlugin]) -> List[AsyncPlugin]:
+        result: List[AsyncPlugin] = []
+        all_methods_marker = DbApiMethod.ALL.method_name
+        for plugin in self._plugins:
+            if plugin_to_skip is not None and plugin_to_skip is plugin:
+                continue
+            subs: Set[str] = plugin.subscribed_methods
+            if (all_methods_marker in subs
+                    or method.method_name in subs
+                    or method.always_use_pipeline):
+                result.append(plugin)
+        return result

@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 from enum import Enum
 
-from boto3 import Session  # type: ignore
+from boto3 import Session
 
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory

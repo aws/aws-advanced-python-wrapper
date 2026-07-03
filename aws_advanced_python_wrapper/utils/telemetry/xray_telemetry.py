@@ -43,7 +43,7 @@ class XRayTelemetryContext(TelemetryContext):
             self.is_segment = True
             logger.debug("XRayTelemetryContext.TraceID", self._name, self._trace_entity.trace_id)
         elif trace_level == TelemetryTraceLevel.NESTED:
-            self._trace_entity = xray_recorder.begin_subsegment(self._name)  # type: ignore
+            self._trace_entity = xray_recorder.begin_subsegment(self._name)  # type: ignore[assignment]
             self.set_attribute(TelemetryConst.TRACE_NAME_ANNOTATION, self._name)
             self.is_segment = False
         elif trace_level == TelemetryTraceLevel.NO_TRACE:

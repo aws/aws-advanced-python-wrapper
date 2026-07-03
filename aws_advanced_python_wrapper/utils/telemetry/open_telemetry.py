@@ -46,7 +46,7 @@ class OpenTelemetryContext(TelemetryContext):
         self._meter: Meter
         self._token: Optional[object] = None
 
-        current_span: Span = trace.get_current_span()  # type: ignore
+        current_span: Span = trace.get_current_span()  # type: ignore[assignment]
         is_root = (current_span is None or current_span == trace.INVALID_SPAN)
 
         if is_root and trace_level == TelemetryTraceLevel.NESTED:
@@ -61,21 +61,21 @@ class OpenTelemetryContext(TelemetryContext):
                     links = [trace.Link(current_span.get_span_context())]
 
             self._span = self._tracer.start_span(self._name, context=context_api.Context(),
-                                                 links=links, start_time=start_time)  # type: ignore
+                                                 links=links, start_time=start_time)  # type: ignore[assignment]
             if not is_root:
                 self.set_attribute(TelemetryConst.TRACE_NAME_ANNOTATION, self._name)
 
-            ctx = trace.set_span_in_context(self._span)  # type: ignore
+            ctx = trace.set_span_in_context(self._span)  # type: ignore[arg-type]
             self._token = context_api.attach(ctx)
             logger.debug("OpenTelemetryContext.TelemetryTraceID", self._name,
-                         self._span.get_span_context().trace_id)  # type: ignore
+                         self._span.get_span_context().trace_id)  # type: ignore[union-attr]
 
         elif trace_level == TelemetryTraceLevel.NESTED:
             if link_span is not None:
                 links = [trace.Link(link_span.get_span_context())]
 
-            self._span = self._tracer.start_span(self._name, links=links, start_time=start_time)  # type: ignore
-            ctx = trace.set_span_in_context(self._span)  # type: ignore
+            self._span = self._tracer.start_span(self._name, links=links, start_time=start_time)  # type: ignore[assignment]
+            ctx = trace.set_span_in_context(self._span)  # type: ignore[arg-type]
             self._token = context_api.attach(ctx)
             self.set_attribute(TelemetryConst.TRACE_NAME_ANNOTATION, self._name)
 
@@ -129,13 +129,13 @@ def _clone_and_close_context(context: OpenTelemetryContext, trace_level: Telemet
         context.tracer, TelemetryConst.COPY_TRACE_NAME_PREFIX + context.get_name(),
         trace_level, context.span.start_time, context.span)
 
-    for key in context.span.attributes:  # type: ignore
-        value = context.span.attributes[key]  # type: ignore
+    for key in context.span.attributes:  # type: ignore[union-attr]
+        value = context.span.attributes[key]  # type: ignore[index]
         clone.set_attribute(key, value)
 
-    clone.span.set_status(context.span.status)  # type: ignore
+    clone.span.set_status(context.span.status)  # type: ignore[union-attr]
     clone.set_attribute(TelemetryConst.SOURCE_TRACE_ANNOTATION, str(context.span.get_span_context().trace_id))
-    clone.span.end(context.span.end_time)  # type: ignore
+    clone.span.end(context.span.end_time)  # type: ignore[union-attr]
 
     return clone
 
@@ -174,7 +174,7 @@ class OpenTelemetryGauge(TelemetryGauge):
 
 class OpenTelemetryFactory(TelemetryFactory):
     def open_telemetry_context(self, name: str, trace_level: TelemetryTraceLevel) -> TelemetryContext | None:
-        return OpenTelemetryContext(trace.get_tracer(INSTRUMENTATION_NAME), name, trace_level)  # type: ignore
+        return OpenTelemetryContext(trace.get_tracer(INSTRUMENTATION_NAME), name, trace_level)  # type: ignore[arg-type]
 
     def post_copy(self, context: TelemetryContext, trace_level: TelemetryTraceLevel):
         if isinstance(context, OpenTelemetryContext):
