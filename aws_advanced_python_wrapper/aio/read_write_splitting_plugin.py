@@ -279,9 +279,7 @@ class AsyncReadWriteSplittingPlugin(
             if current_role != HostRole.WRITER:
                 if await driver_dialect.is_in_transaction(current):
                     raise ReadWriteSplittingError(
-                        "Cannot switch back to the writer while in a transaction. "
-                        "Commit or roll back before setting the connection "
-                        "read-write.")
+                        Messages.get("ReadWriteSplittingPlugin.SetReadOnlyFalseInTransaction"))
                 await self._switch_to_writer(driver_dialect, current)
 
     @staticmethod
@@ -464,8 +462,7 @@ class AsyncReadWriteSplittingPlugin(
             return
 
         raise ReadWriteSplittingError(
-            f"Could not open a reader connection after "
-            f"{2 * len(reader_candidates)} candidate attempts."
+            Messages.get("ReadWriteSplittingPlugin.NoReadersAvailable")
         ) from last_error
 
     async def _switch_to_writer(
@@ -518,7 +515,7 @@ class AsyncReadWriteSplittingPlugin(
 
         if writer is None:
             raise ReadWriteSplittingError(
-                "No writer host available in the current topology."
+                Messages.get("ReadWriteSplittingPlugin.NoWriterFound")
             )
         new_conn = await self._open(driver_dialect, writer)
         self._writer_conn = new_conn

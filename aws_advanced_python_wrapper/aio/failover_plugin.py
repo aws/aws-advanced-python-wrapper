@@ -40,6 +40,7 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.failover_mode import (FailoverMode,
                                                              get_failover_mode)
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
@@ -307,10 +308,10 @@ class AsyncFailoverPlugin(AsyncPlugin):
             except Exception:  # noqa: BLE001
                 pass
             raise TransactionResolutionUnknownError(
-                "Failover succeeded mid-transaction; transaction state is unknown."
+                Messages.get("FailoverPlugin.TransactionResolutionUnknownError")
             ) from original_exc
         raise FailoverSuccessError(
-            "Connection was replaced as part of failover; please retry the transaction."
+            Messages.get("FailoverPlugin.ConnectionChangedError")
         ) from original_exc
 
     async def _do_failover(self, driver_dialect: AsyncDriverDialect) -> None:
@@ -496,8 +497,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
         if self._failover_reader_failed is not None:
             self._failover_reader_failed.inc()
         raise FailoverFailedError(
-            "Failover could not establish a new reader within "
-            f"{self._failover_timeout_sec}s"
+            Messages.get("FailoverPlugin.UnableToConnectToReader")
         ) from last_error
 
     async def _probe_role(self, conn: Any, assumed: HostRole) -> HostRole:
@@ -567,8 +567,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
             if self._failover_writer_failed is not None:
                 self._failover_writer_failed.inc()
             raise FailoverFailedError(
-                "Failover could not establish a new writer within "
-                f"{self._failover_timeout_sec}s"
+                Messages.get("FailoverPlugin.UnableToConnectToWriter")
             ) from (last_error or e)
         await self._plugin_service.set_current_connection(result.connection, result.host_info)
         if self._failover_writer_completed is not None:
