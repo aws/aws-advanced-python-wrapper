@@ -25,7 +25,9 @@ from aws_advanced_python_wrapper.aio.auth_plugins import (
     AsyncAwsSecretsManagerPlugin, AsyncIamAuthPlugin)
 from aws_advanced_python_wrapper.aio.plugin_service import \
     AsyncPluginServiceImpl
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
+from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.properties import Properties
@@ -90,7 +92,7 @@ def test_iam_plugin_caches_token_within_expiration_window():
 
         call_count = [0]
 
-        def _gen_token(host, port, user, region):
+        def _gen_token(*args):
             call_count[0] += 1
             return f"tok-{call_count[0]}"
 
@@ -313,7 +315,7 @@ def test_secrets_manager_caches_result():
 
         call_count = [0]
 
-        def _fetch(secret_id, region, endpoint=None):
+        def _fetch(*args, **kwargs):
             call_count[0] += 1
             return {"username": f"u{call_count[0]}", "password": f"p{call_count[0]}"}
 
@@ -433,9 +435,11 @@ def test_base_plugin_does_not_retry_when_credentials_were_fresh():
             MagicMock(), MagicMock(), host, props, True, _connect_func))
 
 
-def test_base_plugin_propagates_network_exception_unwrapped():
-    """Network / failover exceptions must NOT be wrapped -- the failover
-    plugin needs the raw exception to drive the failover decision."""
+def test_base_plugin_wraps_network_exception_as_aws_connect_error():
+    """Network / failover exceptions are wrapped as AwsConnectError (parity with
+    sync iam_plugin.py:139 / aws_secrets_manager_plugin.py:126). AwsConnectError
+    is-a network exception per the dialect handlers, so the failover plugin
+    still recognizes it and triggers failover."""
     from aws_advanced_python_wrapper.aio.auth_plugins import \
         AsyncAuthPluginBase
 
@@ -459,7 +463,7 @@ def test_base_plugin_propagates_network_exception_unwrapped():
         raise _NetErr("net down")
 
     host = HostInfo(host="h", port=5432)
-    with pytest.raises(_NetErr, match="net down"):
+    with pytest.raises(AwsConnectError, match="net down"):
         asyncio.run(plugin.connect(
             MagicMock(), MagicMock(), host, props, True, _connect_func))
 
@@ -479,7 +483,7 @@ def test_secrets_manager_wraps_botocore_fetch_errors():
     svc = _svc(props)
     plugin = AsyncAwsSecretsManagerPlugin(svc, props)
 
-    def _boom(secret_id, region, endpoint=None):
+    def _boom(*args, **kwargs):
         raise ClientError(
             {"Error": {"Code": "ResourceNotFoundException", "Message": "nope"}},
             "GetSecretValue")
@@ -657,9 +661,10 @@ def test_iam_plugin_uses_database_dialect_default_port_when_port_missing():
                       return_value="tok") as gen:
         asyncio.run(plugin._resolve_credentials(host, props))
 
-    # _generate_token_blocking signature: (host, port, user, region)
+    # _generate_token_blocking signature:
+    # (host_info, props, user, host, port, region)
     args = gen.call_args[0]
-    assert args[1] == 3306  # port argument was 3306, not 5432
+    assert args[4] == 3306  # port argument was 3306, not 5432
 
 
 # ---- Secrets Manager: TTL + endpoint + ARN region + invalidate (E.3) -----
@@ -683,8 +688,22 @@ def test_secrets_plugin_uses_secrets_manager_expiration_property():
     assert fetch.call_count == 1  # second call cached
 
 
-def test_secrets_plugin_passes_endpoint_override_to_boto3():
-    """SECRETS_MANAGER_ENDPOINT is forwarded to boto3.client as endpoint_url."""
+def _patch_secrets_client(secret_json: str):
+    """Patch AwsCredentialsManager.get_session/get_client so the secrets fetch
+    routes through the credentials manager (parity with sync) without a real
+    boto3 call. Returns (get_session_patch, get_client_patch, mock_client)."""
+    mock_client = MagicMock()
+    mock_client.get_secret_value.return_value = {"SecretString": secret_json}
+    return (
+        patch.object(AwsCredentialsManager, "get_session", return_value=MagicMock()),
+        patch.object(AwsCredentialsManager, "get_client", return_value=mock_client),
+    )
+
+
+def test_secrets_plugin_forwards_endpoint_override_to_credentials_manager():
+    """SECRETS_MANAGER_ENDPOINT flows through AwsCredentialsManager.get_client
+    as the endpoint_url argument (routing parity with sync
+    _fetch_latest_credentials)."""
     props = Properties({
         "host": "h", "port": "5432",
         "secrets_manager_secret_id": "my-secret",
@@ -694,20 +713,20 @@ def test_secrets_plugin_passes_endpoint_override_to_boto3():
     plugin = AsyncAwsSecretsManagerPlugin(_svc(props), props)
     host = HostInfo(host="h", port=5432)
 
-    with patch("boto3.client") as boto_client:
-        mock_client = MagicMock()
-        mock_client.get_secret_value.return_value = {
-            "SecretString": '{"username": "u", "password": "p"}'
-        }
-        boto_client.return_value = mock_client
+    session_patch, client_patch = _patch_secrets_client(
+        '{"username": "u", "password": "p"}')
+    with session_patch, client_patch as get_client:
         asyncio.run(plugin._resolve_credentials(host, props))
 
-    _, kwargs = boto_client.call_args
-    assert kwargs.get("endpoint_url") == "https://vpc-endpoint.example.com"
+    # get_client(service, session, host, region, endpoint) -- endpoint is arg 4.
+    args = get_client.call_args[0]
+    assert args[0] == "secretsmanager"
+    assert args[4] == "https://vpc-endpoint.example.com"
 
 
 def test_secrets_plugin_extracts_region_from_arn_when_region_unset():
-    """ARN-form secret_id provides region when SECRETS_MANAGER_REGION is absent."""
+    """ARN-form secret_id provides region when SECRETS_MANAGER_REGION is absent;
+    the region flows into AwsCredentialsManager.get_session."""
     props = Properties({
         "host": "h", "port": "5432",
         "secrets_manager_secret_id": "arn:aws:secretsmanager:us-west-2:123456789012:secret:my-secret-AbCdEf",
@@ -716,16 +735,14 @@ def test_secrets_plugin_extracts_region_from_arn_when_region_unset():
     plugin = AsyncAwsSecretsManagerPlugin(_svc(props), props)
     host = HostInfo(host="h", port=5432)
 
-    with patch("boto3.client") as boto_client:
-        mock_client = MagicMock()
-        mock_client.get_secret_value.return_value = {
-            "SecretString": '{"username": "u", "password": "p"}'
-        }
-        boto_client.return_value = mock_client
+    session_patch, client_patch = _patch_secrets_client(
+        '{"username": "u", "password": "p"}')
+    with session_patch as get_session, client_patch:
         asyncio.run(plugin._resolve_credentials(host, props))
 
-    _, kwargs = boto_client.call_args
-    assert kwargs.get("region_name") == "us-west-2"
+    # get_session(host_info, props, region) -- region is arg 2.
+    args = get_session.call_args[0]
+    assert args[2] == "us-west-2"
 
 
 def test_secrets_plugin_raises_when_no_region_and_no_arn():
@@ -851,3 +868,206 @@ def test_secrets_plugin_emits_fetch_credentials_counter_on_fresh_secret():
             HostInfo(host="h", port=5432), props))
 
     assert counters["secrets_manager.fetch_credentials.count"].inc.called
+
+
+# ---- Error-key mapping: AwsConnectError / ConnectException / UnhandledException ----
+
+_RDS_HOST = "inst.abc123.us-east-1.rds.amazonaws.com"
+
+
+def _iam_props():
+    return Properties({
+        "host": _RDS_HOST, "port": "5432", "user": "u",
+        "iam_region": "us-east-1",
+    })
+
+
+def test_iam_plugin_network_exception_wrapped_as_aws_connect_error():
+    """A network failure at connect time becomes AwsConnectError with the
+    IamAuthPlugin.ConnectException message (sync iam_plugin.py:139)."""
+    async def _body():
+        props = _iam_props()
+        svc = _svc(props)
+        svc.is_network_exception = MagicMock(return_value=True)
+        plugin = AsyncIamAuthPlugin(svc, props)
+        host = HostInfo(_RDS_HOST, 5432)
+
+        with patch.object(AsyncIamAuthPlugin, "_generate_token_blocking",
+                          return_value="tok"):
+            async def _cf():
+                raise Exception("net down")
+
+            with pytest.raises(AwsConnectError) as exc:
+                await plugin.connect(
+                    MagicMock(), MagicMock(), host, props, True, _cf)
+        assert str(exc.value).startswith(
+            "[IamAuthPlugin] Error occurred while opening a connection")
+
+    asyncio.run(_body())
+
+
+def test_iam_plugin_first_failure_raises_connect_exception():
+    """A non-login (fresh-credential) failure wraps as ConnectException, not
+    UnhandledException (sync iam_plugin.py:143)."""
+    async def _body():
+        props = _iam_props()
+        svc = _svc(props)
+        svc.is_network_exception = MagicMock(return_value=False)
+        svc.is_login_exception = MagicMock(return_value=False)
+        plugin = AsyncIamAuthPlugin(svc, props)
+        host = HostInfo(_RDS_HOST, 5432)
+
+        with patch.object(AsyncIamAuthPlugin, "_generate_token_blocking",
+                          return_value="tok"):
+            async def _cf():
+                raise Exception("boom")
+
+            with pytest.raises(AwsWrapperError) as exc:
+                await plugin.connect(
+                    MagicMock(), MagicMock(), host, props, True, _cf)
+        assert str(exc.value).startswith(
+            "[IamAuthPlugin] Error occurred while opening a connection")
+
+    asyncio.run(_body())
+
+
+def test_iam_plugin_retry_failure_raises_unhandled_exception():
+    """Cached token + login failure -> regenerate + retry; a second failure
+    wraps as UnhandledException (sync iam_plugin.py:160)."""
+    async def _body():
+        props = _iam_props()
+        svc = _svc(props)
+        svc.is_network_exception = MagicMock(return_value=False)
+        svc.is_login_exception = MagicMock(return_value=True)
+        plugin = AsyncIamAuthPlugin(svc, props)
+        host = HostInfo(_RDS_HOST, 5432)
+
+        # Seed the cache so the connect path sees was_cached=True.
+        with patch.object(AsyncIamAuthPlugin, "_generate_token_blocking",
+                          return_value="tok"):
+            await plugin._resolve_credentials(host, props)
+
+        with patch.object(AsyncIamAuthPlugin, "_generate_token_blocking",
+                          return_value="tok2"):
+            async def _cf():
+                raise Exception("login failed")
+
+            with pytest.raises(AwsWrapperError) as exc:
+                await plugin.connect(
+                    MagicMock(), MagicMock(), host, props, True, _cf)
+        assert str(exc.value).startswith("[IamAuthPlugin] Unhandled exception")
+
+    asyncio.run(_body())
+
+
+def test_secrets_plugin_retry_failure_raises_unhandled_exception():
+    """Cached secret + login failure -> refetch + retry; a second failure wraps
+    as UnhandledException (sync aws_secrets_manager_plugin.py:141)."""
+    async def _body():
+        props = Properties({
+            "host": "h", "port": "5432",
+            "secrets_manager_secret_id": "my-secret",
+            "secrets_manager_region": "us-east-1",
+        })
+        svc = _svc(props)
+        svc.is_network_exception = MagicMock(return_value=False)
+        svc.is_login_exception = MagicMock(return_value=True)
+        plugin = AsyncAwsSecretsManagerPlugin(svc, props)
+        host = HostInfo("h", 5432)
+
+        with patch.object(AsyncAwsSecretsManagerPlugin, "_fetch_secret_blocking",
+                          return_value={"username": "u", "password": "p"}):
+            await plugin._resolve_credentials(host, props)  # seed cache
+
+            async def _cf():
+                raise Exception("login failed")
+
+            with pytest.raises(AwsWrapperError) as exc:
+                await plugin.connect(
+                    MagicMock(), MagicMock(), host, props, True, _cf)
+        assert str(exc.value).startswith(
+            "[AwsSecretsManagerPlugin] Unhandled exception")
+
+    asyncio.run(_body())
+
+
+def test_secrets_plugin_cache_key_includes_endpoint():
+    """Two connects that differ only by SECRETS_MANAGER_ENDPOINT are distinct
+    cache entries -> two fetches (sync 3-tuple key aws_secrets_manager_plugin.py:86)."""
+    async def _body():
+        base = {
+            "host": "h", "port": "5432",
+            "secrets_manager_secret_id": "my-secret",
+            "secrets_manager_region": "us-east-1",
+        }
+        props1 = Properties({**base, "secrets_manager_endpoint": "https://ep1.example.com"})
+        props2 = Properties({**base, "secrets_manager_endpoint": "https://ep2.example.com"})
+        plugin = AsyncAwsSecretsManagerPlugin(_svc(props1), props1)
+        host = HostInfo("h", 5432)
+
+        calls = [0]
+
+        def _fetch(*args, **kwargs):
+            calls[0] += 1
+            return {"username": "u", "password": "p"}
+
+        with patch.object(AsyncAwsSecretsManagerPlugin, "_fetch_secret_blocking",
+                          side_effect=_fetch):
+            await plugin._resolve_credentials(host, props1)
+            await plugin._resolve_credentials(host, props2)
+        assert calls[0] == 2
+
+    asyncio.run(_body())
+
+
+def test_secrets_plugin_json_decode_error_raises_json_decode_key():
+    """A non-JSON SecretString (JSONDecodeError) surfaces as the JsonDecodeError
+    message key rather than being swallowed to {} (sync aws_secrets_manager_plugin.py:171-174)."""
+    async def _body():
+        from json import JSONDecodeError
+
+        props = Properties({
+            "host": "h", "port": "5432",
+            "secrets_manager_secret_id": "my-secret",
+            "secrets_manager_region": "us-east-1",
+        })
+        plugin = AsyncAwsSecretsManagerPlugin(_svc(props), props)
+        host = HostInfo("h", 5432)
+
+        def _bad(*args, **kwargs):
+            raise JSONDecodeError("Expecting value", "not-json", 0)
+
+        with patch.object(AsyncAwsSecretsManagerPlugin, "_fetch_secret_blocking",
+                          side_effect=_bad):
+            with pytest.raises(AwsWrapperError) as exc:
+                await plugin._resolve_credentials(host, props)
+        assert str(exc.value).startswith(
+            "[AwsSecretsManagerPlugin] Error occurred while retrieving credentials")
+
+    asyncio.run(_body())
+
+
+def test_iam_plugin_registers_token_cache_size_gauge():
+    """iam.token_cache.size gauge is registered with a callback reflecting the
+    live cache size (sync iam_plugin.py:63-64)."""
+    props = _iam_props()
+    gauges: dict = {}
+
+    def _create_gauge(name, callback):
+        g = MagicMock(name=f"gauge:{name}")
+        gauges[name] = (g, callback)
+        return g
+
+    fake_tf = MagicMock()
+    fake_tf.create_counter = MagicMock(return_value=MagicMock())
+    fake_tf.create_gauge = MagicMock(side_effect=_create_gauge)
+
+    svc = AsyncPluginServiceImpl(props, MagicMock(), HostInfo(_RDS_HOST, 5432))
+    svc.set_telemetry_factory(fake_tf)
+    plugin = AsyncIamAuthPlugin(svc, props)
+
+    assert "iam.token_cache.size" in gauges
+    _, callback = gauges["iam.token_cache.size"]
+    assert callback() == 0
+    plugin._token_cache["k"] = ("t", 1.0)
+    assert callback() == 1

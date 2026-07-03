@@ -40,13 +40,13 @@ _FAKE_CREDS = {
 
 def _svc(props: Properties) -> AsyncPluginServiceImpl:
     return AsyncPluginServiceImpl(
-        props, MagicMock(), HostInfo("rds.example", 5432)
+        props, MagicMock(), HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432)
     )
 
 
 def _federated_props(**overrides: str) -> Properties:
     base = {
-        "host": "rds.example", "port": "5432",
+        "host": "instance-1.abc123.us-east-1.rds.amazonaws.com", "port": "5432",
         "db_user": "app_user",
         "idp_endpoint": "adfs.example.com",
         "idp_username": "alice",
@@ -54,7 +54,7 @@ def _federated_props(**overrides: str) -> Properties:
         "iam_role_arn": "arn:aws:iam::1:role/R",
         "iam_idp_arn": "arn:aws:iam::1:saml-provider/Corp",
         "iam_region": "us-east-1",
-        "iam_host": "rds.example",
+        "iam_host": "instance-1.abc123.us-east-1.rds.amazonaws.com",
         "ssl_secure": "true",
     }
     base.update(overrides)
@@ -105,7 +105,7 @@ def test_federated_plugin_resolves_credentials_end_to_end():
             await plugin.connect(
                 target_driver_func=lambda: None,
                 driver_dialect=MagicMock(),
-                host_info=HostInfo("rds.example", 5432),
+                host_info=HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432),
                 props=props,
                 is_initial_connection=True,
                 connect_func=_cf,
@@ -123,7 +123,7 @@ def test_federated_plugin_caches_rds_token():
 
         call_count = [0]
 
-        def _gen(host, port, user, region, creds):
+        def _gen(*args):
             call_count[0] += 1
             return f"tok-{call_count[0]}"
 
@@ -145,7 +145,7 @@ def test_federated_plugin_caches_rds_token():
                 await plugin.connect(
                     target_driver_func=lambda: None,
                     driver_dialect=MagicMock(),
-                    host_info=HostInfo("rds.example", 5432),
+                    host_info=HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432),
                     props=fresh,
                     is_initial_connection=True,
                     connect_func=_cf,
@@ -169,7 +169,7 @@ def test_federated_plugin_missing_db_user_raises():
             await plugin.connect(
                 target_driver_func=lambda: None,
                 driver_dialect=MagicMock(),
-                host_info=HostInfo("rds.example", 5432),
+                host_info=HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432),
                 props=props,
                 is_initial_connection=True,
                 connect_func=_cf,
@@ -195,7 +195,7 @@ def test_federated_plugin_missing_role_arn_raises():
                 await plugin.connect(
                     target_driver_func=lambda: None,
                     driver_dialect=MagicMock(),
-                    host_info=HostInfo("rds.example", 5432),
+                    host_info=HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432),
                     props=props,
                     is_initial_connection=True,
                     connect_func=_cf,
@@ -253,7 +253,7 @@ def test_okta_plugin_inherits_rds_token_path_from_federated():
             await plugin.connect(
                 target_driver_func=lambda: None,
                 driver_dialect=MagicMock(),
-                host_info=HostInfo("rds.example", 5432),
+                host_info=HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432),
                 props=props,
                 is_initial_connection=True,
                 connect_func=_cf,
@@ -279,7 +279,7 @@ def test_okta_plugin_missing_app_id_raises_during_saml_fetch():
             await plugin.connect(
                 target_driver_func=lambda: None,
                 driver_dialect=MagicMock(),
-                host_info=HostInfo("rds.example", 5432),
+                host_info=HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432),
                 props=props,
                 is_initial_connection=True,
                 connect_func=_cf,
@@ -328,13 +328,13 @@ def test_federated_invalidate_cache_drops_rds_token():
         ):
             # First resolve populates the cache.
             await plugin._resolve_credentials(
-                HostInfo("rds.example", 5432), props)
+                HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432), props)
 
         assert len(plugin._rds_token_cache) == 1
 
         # _invalidate_cache must compute the exact same key the resolve
         # path wrote.
-        plugin._invalidate_cache(HostInfo("rds.example", 5432), props)
+        plugin._invalidate_cache(HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432), props)
         assert len(plugin._rds_token_cache) == 0
 
     asyncio.run(_body())
@@ -348,7 +348,7 @@ def test_federated_invalidate_cache_missing_db_user_is_noop():
         del props["db_user"]
         plugin = AsyncFederatedAuthPlugin(_svc(props), props)
         # No entries, no key derivable -- must be a no-op.
-        plugin._invalidate_cache(HostInfo("rds.example", 5432), props)
+        plugin._invalidate_cache(HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432), props)
 
     asyncio.run(_body())
 
@@ -476,7 +476,7 @@ def test_federated_plugin_emits_fetch_token_counter_on_fresh_token():
     fake_tf.create_counter = MagicMock(side_effect=_create_counter)
 
     svc = AsyncPluginServiceImpl(
-        props, MagicMock(), HostInfo("rds.example", 5432))
+        props, MagicMock(), HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432))
     svc.set_telemetry_factory(fake_tf)
     plugin = AsyncFederatedAuthPlugin(svc, props)
 
@@ -492,11 +492,11 @@ def test_federated_plugin_emits_fetch_token_counter_on_fresh_token():
     ):
         # First call: cache miss -> counter inc.
         asyncio.run(plugin._resolve_credentials(
-            HostInfo("rds.example", 5432), props))
+            HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432), props))
         assert fake_counters["federated.fetch_token.count"].inc.call_count == 1
         # Second call: cache hit -> counter unchanged.
         asyncio.run(plugin._resolve_credentials(
-            HostInfo("rds.example", 5432), props))
+            HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432), props))
         assert fake_counters["federated.fetch_token.count"].inc.call_count == 1
 
 
@@ -517,7 +517,7 @@ def test_okta_plugin_emits_distinct_counter_not_federated():
     fake_tf.create_counter = MagicMock(side_effect=_create_counter)
 
     svc = AsyncPluginServiceImpl(
-        props, MagicMock(), HostInfo("rds.example", 5432))
+        props, MagicMock(), HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432))
     svc.set_telemetry_factory(fake_tf)
     plugin = AsyncOktaAuthPlugin(svc, props)
 
@@ -532,10 +532,265 @@ def test_okta_plugin_emits_distinct_counter_not_federated():
             return_value="okta-iam-token",
     ):
         asyncio.run(plugin._resolve_credentials(
-            HostInfo("rds.example", 5432), props))
+            HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432), props))
 
     # Okta-specific counter created + emitted; federated counter was
     # never created on this plugin.
     assert "okta.fetch_token.count" in fake_counters
     assert fake_counters["okta.fetch_token.count"].inc.call_count == 1
     assert "federated.fetch_token.count" not in fake_counters
+
+
+# ---- ADFS form flow + IAM_TOKEN_EXPIRATION + Okta validation (Task 10) ----
+
+_RDS_HOST = "instance-1.abc123.us-east-1.rds.amazonaws.com"
+
+
+class _FakeResp:
+    """Minimal stand-in for an aiohttp ClientResponse used as an async CM."""
+
+    def __init__(self, status: int, text: str, reason: str = "OK") -> None:
+        self._status = status
+        self._text = text
+        self._reason = reason
+
+    @property
+    def status(self) -> int:
+        return self._status
+
+    @property
+    def reason(self) -> str:
+        return self._reason
+
+    async def text(self) -> str:
+        return self._text
+
+    async def json(self):
+        import json
+        return json.loads(self._text)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+
+class _FakeSession:
+    """aiohttp.ClientSession stand-in: canned GET/POST responses + a recorder."""
+
+    def __init__(self, responses: dict, recorder: list) -> None:
+        # responses: {"GET": _FakeResp, "POST": _FakeResp}
+        self._responses = responses
+        self._recorder = recorder
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    def get(self, url, **kwargs):
+        self._recorder.append(("GET", url, kwargs))
+        return self._responses["GET"]
+
+    def post(self, url, **kwargs):
+        self._recorder.append(("POST", url, kwargs))
+        return self._responses["POST"]
+
+
+def test_federated_adfs_flow_gets_form_posts_creds_scrapes_saml():
+    """ADFS flow: GET sign-in page, parse form action + inputs, inject
+    idp_username/idp_password, POST urlencoded, scrape SAMLResponse."""
+    async def _body():
+        props = _federated_props()
+        plugin = AsyncFederatedAuthPlugin(_svc(props), props)
+
+        sign_in_html = (
+            '<html><body>'
+            '<form action="/adfs/ls/post" method="post">'
+            '<input name="UserName" value=""/>'
+            '<input name="Password" value=""/>'
+            '<input name="AuthMethod" value="FormsAuthentication"/>'
+            '<input name="Kmsi" value="true"/>'
+            '</form></body></html>'
+        )
+        post_html = '<input name="SAMLResponse" value="BASE64SAML=="/>'
+        recorder: list = []
+        session = _FakeSession(
+            {"GET": _FakeResp(200, sign_in_html),
+             "POST": _FakeResp(200, post_html)},
+            recorder,
+        )
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            saml = await plugin._fetch_saml_assertion(props)
+
+        assert saml == "BASE64SAML=="
+        # GET hit the IdP sign-in page; POST went to the resolved form action.
+        get_url = [c for c in recorder if c[0] == "GET"][0][1]
+        assert get_url.startswith(
+            "https://adfs.example.com:443/adfs/ls/IdpInitiatedSignOn.aspx")
+        post_call = [c for c in recorder if c[0] == "POST"][0]
+        assert post_call[1] == "https://adfs.example.com:443/adfs/ls/post"
+        # Credentials were injected into the urlencoded form body.
+        body = post_call[2]["data"]
+        assert "UserName=alice" in body
+        assert "Password=s3cret" in body
+        assert "AuthMethod=FormsAuthentication" in body
+
+    asyncio.run(_body())
+
+
+def test_federated_adfs_flow_raises_on_non_2xx_response():
+    """A non-2xx sign-in-page response surfaces SamlUtils.RequestFailed."""
+    async def _body():
+        props = _federated_props()
+        plugin = AsyncFederatedAuthPlugin(_svc(props), props)
+        session = _FakeSession(
+            {"GET": _FakeResp(500, "boom", reason="Server Error"),
+             "POST": _FakeResp(200, "")},
+            [],
+        )
+        with patch("aiohttp.ClientSession", return_value=session):
+            with pytest.raises(AwsWrapperError):
+                await plugin._fetch_saml_assertion(props)
+
+    asyncio.run(_body())
+
+
+def test_federated_stores_token_with_iam_token_expiration_ttl():
+    """The RDS-token cache TTL comes from IAM_TOKEN_EXPIRATION (default 870),
+    not a hardcoded 900 (sync federated_plugin.py:161)."""
+    async def _body():
+        props = _federated_props(iam_token_expiration="123")
+        plugin = AsyncFederatedAuthPlugin(_svc(props), props)
+
+        captured: dict = {}
+
+        def _capture(host, port, user, region, token, ttl_sec=None):
+            captured["ttl"] = ttl_sec
+
+        plugin._store_rds_token = _capture  # type: ignore[assignment]
+
+        with patch.object(
+                AsyncFederatedAuthPlugin, "_fetch_saml_assertion",
+                new=AsyncMock(return_value=_FAKE_SAML),
+        ), patch.object(
+                AsyncFederatedAuthPlugin, "_sts_assume_role_with_saml_blocking",
+                return_value=_FAKE_CREDS,
+        ), patch.object(
+                AsyncFederatedAuthPlugin, "_generate_rds_token_blocking",
+                return_value="tok",
+        ):
+            await plugin._resolve_credentials(HostInfo(_RDS_HOST, 5432), props)
+
+        assert captured["ttl"] == 123
+
+    asyncio.run(_body())
+
+
+def test_federated_default_token_ttl_matches_iam_token_expiration_default():
+    """With IAM_TOKEN_EXPIRATION unset, the TTL is its 870s default."""
+    from aws_advanced_python_wrapper.utils.properties import WrapperProperties
+    assert WrapperProperties.IAM_TOKEN_EXPIRATION.default_value == 15 * 60 - 30
+
+
+def test_federated_network_exception_wrapped_as_aws_connect_error():
+    """A network failure at connect wraps as AwsConnectError with the
+    FederatedAuthPlugin.ConnectException message."""
+    from aws_advanced_python_wrapper.errors import AwsConnectError
+
+    async def _body():
+        props = _federated_props()
+        svc = _svc(props)
+        svc.is_network_exception = MagicMock(return_value=True)
+        plugin = AsyncFederatedAuthPlugin(svc, props)
+
+        with patch.object(
+                AsyncFederatedAuthPlugin, "_fetch_saml_assertion",
+                new=AsyncMock(return_value=_FAKE_SAML),
+        ), patch.object(
+                AsyncFederatedAuthPlugin, "_sts_assume_role_with_saml_blocking",
+                return_value=_FAKE_CREDS,
+        ), patch.object(
+                AsyncFederatedAuthPlugin, "_generate_rds_token_blocking",
+                return_value="tok",
+        ):
+            async def _cf():
+                raise Exception("net down")
+
+            with pytest.raises(AwsConnectError) as exc:
+                await plugin.connect(
+                    MagicMock(), MagicMock(), HostInfo(_RDS_HOST, 5432),
+                    props, True, _cf)
+        assert str(exc.value).startswith(
+            "[FederatedAuthPlugin] Error occurred while opening a connection")
+
+    asyncio.run(_body())
+
+
+def test_federated_invalid_host_raises():
+    """A non-RDS iam_host fails get_iam_host validation (sync parity, B4)."""
+    async def _body():
+        props = _federated_props(iam_host="not-an-rds-host.example.com")
+        plugin = AsyncFederatedAuthPlugin(_svc(props), props)
+        with pytest.raises(AwsWrapperError):
+            await plugin._resolve_credentials(HostInfo(_RDS_HOST, 5432), props)
+
+    asyncio.run(_body())
+
+
+# ---- Okta: unescape + SAML validation ----------------------------------
+
+
+def test_okta_unescapes_saml_response():
+    """Okta SAML values are HTML-unescaped (sync okta_plugin.py:242)."""
+    html = '<input name="SAMLResponse" type="hidden" value="a&amp;b&lt;c=="/>'
+    assert AsyncOktaAuthPlugin._extract_saml_assertion(html) == "a&b<c=="
+
+
+def test_okta_flow_validates_url_and_scrapes_saml():
+    """Okta flow: POST authn -> sessionToken, GET app SSO (validated https
+    URL) -> scrape SAML."""
+    async def _body():
+        props = _okta_props()
+        plugin = AsyncOktaAuthPlugin(_svc(props), props)
+
+        authn_json = '{"status": "SUCCESS", "sessionToken": "sess-123"}'
+        sso_html = (
+            '<input type="hidden" name="SAMLResponse" '
+            'value="T0tUQV9TQU1M"/>'
+        )
+        recorder: list = []
+        session = _FakeSession(
+            {"POST": _FakeResp(200, authn_json),
+             "GET": _FakeResp(200, sso_html)},
+            recorder,
+        )
+        with patch("aiohttp.ClientSession", return_value=session):
+            saml = await plugin._fetch_saml_assertion(props)
+
+        assert saml == "T0tUQV9TQU1M"
+        # SSO URL carried the one-time session token.
+        get_url = [c for c in recorder if c[0] == "GET"][0][1]
+        assert "onetimetoken=sess-123" in get_url
+        assert get_url.startswith("https://mycorp.okta.com/app/amazon_aws/")
+
+    asyncio.run(_body())
+
+
+def test_okta_flow_raises_without_session_token():
+    async def _body():
+        props = _okta_props()
+        plugin = AsyncOktaAuthPlugin(_svc(props), props)
+        session = _FakeSession(
+            {"POST": _FakeResp(200, '{"status": "MFA_REQUIRED"}'),
+             "GET": _FakeResp(200, "")},
+            [],
+        )
+        with patch("aiohttp.ClientSession", return_value=session):
+            with pytest.raises(AwsWrapperError):
+                await plugin._fetch_saml_assertion(props)
+
+    asyncio.run(_body())

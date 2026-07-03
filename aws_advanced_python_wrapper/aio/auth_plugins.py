@@ -35,7 +35,9 @@ from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional,
                     Set, Tuple)
 
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.aws_credentials_manager import \
+    AwsCredentialsManager
+from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -55,6 +57,24 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.utils.properties import Properties
 
 logger = Logger(__name__)
+
+
+def _resolve_iam_region(
+        props: Properties,
+        host: Optional[str],
+        host_info: HostInfo) -> Optional[str]:
+    """Resolve the AWS region for IAM-token generation, mirroring sync
+    ``IamAuthPlugin._connect`` (iam_plugin.py:87-93): GDB writer-cluster hosts
+    use :class:`GdbRegionUtils`, everything else :class:`RegionUtils`, and both
+    fall back to auto-discovery from the RDS hostname when ``iam_region`` is
+    unset."""
+    rds_type = RdsUtils().identify_rds_type(host)
+    region_utils: RegionUtils = (
+        GdbRegionUtils()
+        if rds_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER
+        else RegionUtils())
+    return region_utils.get_region(
+        props, WrapperProperties.IAM_REGION.name, host, host_info)
 
 
 class AsyncAuthPluginBase(AsyncPlugin):
@@ -116,22 +136,29 @@ class AsyncAuthPluginBase(AsyncPlugin):
             props: Properties,
             connect_func: Callable[..., Awaitable[Any]]) -> Any:
         """Resolve creds, inject, connect; retry once if cached creds
-        cause a login failure."""
+        cause a login failure.
+
+        Error-key mapping mirrors sync ``IamAuthPlugin._connect`` /
+        ``AwsSecretsManagerPlugin._connect``: a network exception becomes an
+        :class:`AwsConnectError` (still classified as a network exception by
+        the dialect handlers, so failover recognizes it), the first terminal
+        failure becomes ``*.ConnectException``, and the post-refetch retry
+        failure becomes ``*.UnhandledException``.
+        """
         user, password, was_cached = await self._resolve_credentials(host_info, props)
         self._inject_credentials(props, user, password)
         try:
             return await connect_func()
         except Exception as exc:
-            # Network / failover exceptions must propagate untouched so the
-            # failover plugin can act on them (parity with the sync plugins,
-            # which special-case is_network_exception before wrapping).
+            # Network / failover exceptions -> AwsConnectError (sync
+            # iam_plugin.py:138-139 / aws_secrets_manager_plugin.py:125-126).
+            # AwsConnectError is-a network exception per the dialect handlers,
+            # so the failover plugin still triggers on it.
             if self._plugin_service.is_network_exception(error=exc):
-                raise
+                raise self._wrap_network_exception(exc) from exc
             # Non-login failure, or a login failure with FRESH (non-cached)
-            # credentials, is terminal: wrap as AwsWrapperError so callers see
-            # a wrapper error rather than the raw driver exception (parity with
-            # sync IamAuthPlugin._connect:143 / AwsSecretsManagerPlugin._connect:142).
-            # e.g. a wrong username fails auth on a freshly generated token.
+            # credentials, is terminal (sync iam_plugin.py:142-143 /
+            # aws_secrets_manager_plugin.py:128-130).
             if not was_cached or not self._plugin_service.is_login_exception(error=exc):
                 raise self._wrap_connect_exception(exc) from exc
             # Cached credentials failed auth -- invalidate, refetch, retry once.
@@ -141,17 +168,34 @@ class AsyncAuthPluginBase(AsyncPlugin):
             try:
                 return await connect_func()
             except Exception as retry_exc:
-                if self._plugin_service.is_network_exception(error=retry_exc):
-                    raise
-                raise self._wrap_connect_exception(retry_exc) from retry_exc
+                # Sync wraps the post-refetch failure as UnhandledException
+                # unconditionally (no network re-check): iam_plugin.py:159-160 /
+                # aws_secrets_manager_plugin.py:138-141.
+                raise self._wrap_retry_exception(retry_exc) from retry_exc
+
+    def _wrap_network_exception(self, exc: Exception) -> AwsConnectError:
+        """Wrap a network/failover connect failure as :class:`AwsConnectError`.
+
+        Subclasses override to supply a plugin-specific message. The base
+        default preserves an already-wrapped error and otherwise wraps
+        generically.
+        """
+        if isinstance(exc, AwsConnectError):
+            return exc
+        return AwsConnectError(str(exc), exc)
 
     def _wrap_connect_exception(self, exc: Exception) -> AwsWrapperError:
-        """Wrap a terminal connect/login failure as :class:`AwsWrapperError`.
+        """Wrap the first terminal connect/login failure as
+        :class:`AwsWrapperError`. Subclasses override for a plugin-specific
+        message (parity with the sync plugins' ``*.ConnectException``)."""
+        if isinstance(exc, AwsWrapperError):
+            return exc
+        return AwsWrapperError(str(exc), exc)
 
-        Subclasses override to supply a plugin-specific message (parity with
-        the sync plugins). The base default preserves an already-wrapped
-        error and otherwise wraps generically.
-        """
+    def _wrap_retry_exception(self, exc: Exception) -> AwsWrapperError:
+        """Wrap the post-refetch retry failure as :class:`AwsWrapperError`.
+        Subclasses override for the plugin-specific ``*.UnhandledException``
+        message."""
         if isinstance(exc, AwsWrapperError):
             return exc
         return AwsWrapperError(str(exc), exc)
@@ -205,9 +249,11 @@ class AsyncIamAuthPlugin(AsyncAuthPluginBase):
             props: Properties) -> None:
         super().__init__(plugin_service, props)
         self._token_cache: Dict[str, Tuple[str, float]] = {}
-        # Telemetry counter -- matches sync iam_plugin.py:62.
+        # Telemetry counter + cache-size gauge -- matches sync iam_plugin.py:62-64.
         tf = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = tf.create_counter("iam.fetch_token.count")
+        self._cache_size_gauge = tf.create_gauge(
+            "iam.token_cache.size", lambda: len(self._token_cache))
 
     def _prepare_secure_transport(
             self, driver_dialect: AsyncDriverDialect, props: Properties) -> None:
@@ -264,12 +310,7 @@ class AsyncIamAuthPlugin(AsyncAuthPluginBase):
             return None
         host = IamAuthUtils.get_iam_host(props, host_info)
         port = IamAuthUtils.get_port(props, host_info, self._default_port())
-        rds_type = RdsUtils().identify_rds_type(host)
-        region_utils = (GdbRegionUtils()
-                        if rds_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER
-                        else RegionUtils())
-        region = region_utils.get_region(
-            props, WrapperProperties.IAM_REGION.name, host, host_info)
+        region = _resolve_iam_region(props, host, host_info)
         if not region:
             return None
         return IamAuthUtils.get_cache_key(user, host, port, region)
@@ -280,24 +321,17 @@ class AsyncIamAuthPlugin(AsyncAuthPluginBase):
             props: Properties) -> Tuple[Optional[str], Optional[str], bool]:
         user = WrapperProperties.USER.get(props)
         if not user:
-            raise AwsWrapperError(
-                "IAM auth requires a 'user' connection property"
-            )
+            raise AwsWrapperError(Messages.get_formatted(
+                "IamAuthPlugin.IsNoneOrEmpty", WrapperProperties.USER.name))
 
         host = IamAuthUtils.get_iam_host(props, host_info)
         port = IamAuthUtils.get_port(props, host_info, self._default_port())
 
-        rds_type = RdsUtils().identify_rds_type(host)
-        region_utils = (GdbRegionUtils()
-                        if rds_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER
-                        else RegionUtils())
-        region = region_utils.get_region(
-            props, WrapperProperties.IAM_REGION.name, host, host_info)
+        region = _resolve_iam_region(props, host, host_info)
         if not region:
+            logger.debug("RdsUtils.UnsupportedHostname", host)
             raise AwsWrapperError(
-                f"Could not resolve AWS region from host '{host}'. "
-                "Set IAM_REGION explicitly."
-            )
+                Messages.get_formatted("RdsUtils.UnsupportedHostname", host))
 
         cache_key = IamAuthUtils.get_cache_key(user, host, port, region)
 
@@ -315,7 +349,7 @@ class AsyncIamAuthPlugin(AsyncAuthPluginBase):
         if self._fetch_token_counter is not None:
             self._fetch_token_counter.inc()
         token = await asyncio.to_thread(
-            self._generate_token_blocking, host, int(port), user, region
+            self._generate_token_blocking, host_info, props, user, host, int(port), region
         )
         self._token_cache[cache_key] = (token, now + ttl_sec)
         return user, token, False
@@ -334,6 +368,13 @@ class AsyncIamAuthPlugin(AsyncAuthPluginBase):
         if cache_key is not None:
             self._token_cache.pop(cache_key, None)
 
+    def _wrap_network_exception(self, exc: Exception) -> AwsConnectError:
+        # Parity with sync IamAuthPlugin._connect:139.
+        if isinstance(exc, AwsConnectError):
+            return exc
+        return AwsConnectError(
+            Messages.get_formatted("IamAuthPlugin.ConnectException", exc))
+
     def _wrap_connect_exception(self, exc: Exception) -> AwsWrapperError:
         # Parity with sync IamAuthPlugin._connect:143.
         if isinstance(exc, AwsWrapperError):
@@ -341,23 +382,33 @@ class AsyncIamAuthPlugin(AsyncAuthPluginBase):
         return AwsWrapperError(
             Messages.get_formatted("IamAuthPlugin.ConnectException", exc), exc)
 
-    @staticmethod
+    def _wrap_retry_exception(self, exc: Exception) -> AwsWrapperError:
+        # Parity with sync IamAuthPlugin._connect:160.
+        if isinstance(exc, AwsWrapperError):
+            return exc
+        return AwsWrapperError(
+            Messages.get_formatted("IamAuthPlugin.UnhandledException", exc), exc)
+
     def _generate_token_blocking(
+            self,
+            host_info: HostInfo,
+            props: Properties,
+            user: str,
             host: str,
             port: int,
-            user: str,
             region: Optional[str]) -> str:
-        """Synchronous boto3 call to generate an RDS IAM auth token."""
-        import boto3
-        kwargs: dict = {}
-        if region:
-            kwargs["region_name"] = region
-        client = boto3.client("rds", **kwargs)
-        return client.generate_db_auth_token(
-            DBHostname=host,
-            Port=port,
-            DBUsername=user,
-        )
+        """Generate an RDS IAM auth token on a worker thread.
+
+        Routes through :class:`AwsCredentialsManager` + :meth:`IamAuthUtils.
+        generate_authentication_token` (rather than raw ``boto3.client``) so
+        ``aws_profile`` / custom credential providers apply and sessions are
+        reused -- parity with sync iam_plugin.py:121-128."""
+        session = AwsCredentialsManager.get_session(host_info, props, region)
+        # generate_authentication_token is typed for the sync PluginService but
+        # only calls get_telemetry_factory(), which AsyncPluginService also has.
+        return IamAuthUtils.generate_authentication_token(
+            self._plugin_service,  # type: ignore[arg-type]
+            user, host, port, region, session)
 
 
 class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
@@ -391,8 +442,11 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
             plugin_service: AsyncPluginService,
             props: Properties) -> None:
         super().__init__(plugin_service, props)
+        # Cache key is a 3-tuple ``(secret_id, region, endpoint)`` -- parity with
+        # sync aws_secrets_manager_plugin.py:86 (endpoint distinguishes a VPC
+        # endpoint / test double from the default service endpoint).
         self._secret_cache: Dict[
-            Tuple[str, Optional[str]],
+            Tuple[str, Optional[str], Optional[str]],
             Tuple[Optional[str], Optional[str], float]] = {}
         # Telemetry counter -- matches sync aws_secrets_manager_plugin.py:89.
         tf = self._plugin_service.get_telemetry_factory()
@@ -403,27 +457,9 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
             self,
             host_info: HostInfo,
             props: Properties) -> Tuple[Optional[str], Optional[str], bool]:
-        secret_id = WrapperProperties.SECRETS_MANAGER_SECRET_ID.get(props)
-        if not secret_id:
-            raise AwsWrapperError(
-                "AWS Secrets Manager plugin requires 'secrets_manager_secret_id'"
-            )
-        # Use raw props.get to bypass the WrapperProperty default of
-        # "us-east-1" -- the sync plugin relies on RegionUtils.get_region
-        # which also reads the raw property, so ARN extraction only kicks
-        # in when the user didn't explicitly set a region.
-        region = props.get(WrapperProperties.SECRETS_MANAGER_REGION.name)
-        if not region:
-            region = self._extract_region_from_arn(secret_id)
-        if not region:
-            raise AwsWrapperError(
-                "AWS Secrets Manager plugin requires "
-                f"'{WrapperProperties.SECRETS_MANAGER_REGION.name}' "
-                "(or provide an ARN as secret_id)."
-            )
-        endpoint = WrapperProperties.SECRETS_MANAGER_ENDPOINT.get(props)
+        cache_key = self._secret_key_for(props)
+        secret_id, region, endpoint = cache_key
 
-        cache_key = (secret_id, region)
         now = asyncio.get_event_loop().time()
         cached = self._secret_cache.get(cache_key)
         if cached is not None:
@@ -433,20 +469,27 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
 
         if self._fetch_secret_counter is not None:
             self._fetch_secret_counter.inc()
-        # Wrap raw botocore fetch errors in AwsWrapperError, mirroring the sync
-        # plugin's _update_secret (aws_secrets_manager_plugin.py:167-181). A bad
+        # Wrap raw botocore/parse errors in AwsWrapperError, mirroring the sync
+        # plugin's _update_secret (aws_secrets_manager_plugin.py:167-182). A bad
         # secret id raises ClientError (ResourceNotFoundException); a bad region
-        # raises EndpointConnectionError. Callers (and the negative-path tests)
-        # expect AwsWrapperError, not the raw botocore exception.
+        # raises EndpointConnectionError; a non-JSON SecretString raises
+        # JSONDecodeError. Callers (and the negative-path tests) expect
+        # AwsWrapperError, not the raw exception.
+        from json import JSONDecodeError
+
         from botocore.exceptions import ClientError, EndpointConnectionError
         try:
             secret = await asyncio.to_thread(
-                self._fetch_secret_blocking, secret_id, region, endpoint
+                self._fetch_secret_blocking, host_info, props, secret_id, region, endpoint
             )
         except (ClientError, AttributeError) as e:
             raise AwsWrapperError(
                 Messages.get_formatted(
                     "AwsSecretsManagerPlugin.FailedToFetchDbCredentials", e), e) from e
+        except JSONDecodeError as e:
+            raise AwsWrapperError(
+                Messages.get_formatted(
+                    "AwsSecretsManagerPlugin.JsonDecodeError", e), e) from e
         except EndpointConnectionError as e:
             raise AwsWrapperError(
                 Messages.get_formatted(
@@ -474,49 +517,89 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
         self._secret_cache[cache_key] = (user, password, now + ttl_sec)
         return user, password, False
 
+    def _secret_key_for(
+            self, props: Properties) -> Tuple[str, Optional[str], Optional[str]]:
+        """Return the ``(secret_id, region, endpoint)`` cache key, raising
+        ``MissingRequiredConfigParameter`` when a required value is absent.
+
+        Mirrors sync ``AwsSecretsManagerPlugin.__init__`` + ``_get_rds_region``
+        (aws_secrets_manager_plugin.py:76-86, 223-238): region comes from the
+        explicit property first, then the secret ARN."""
+        secret_id = WrapperProperties.SECRETS_MANAGER_SECRET_ID.get(props)
+        if not secret_id:
+            raise AwsWrapperError(Messages.get_formatted(
+                "AwsSecretsManagerPlugin.MissingRequiredConfigParameter",
+                WrapperProperties.SECRETS_MANAGER_SECRET_ID.name))
+        # Raw props.get (not the WrapperProperty default) so ARN extraction only
+        # kicks in when the user did not explicitly set a region.
+        region = props.get(WrapperProperties.SECRETS_MANAGER_REGION.name)
+        if not region:
+            region = self._extract_region_from_arn(secret_id)
+        if not region:
+            raise AwsWrapperError(Messages.get_formatted(
+                "AwsSecretsManagerPlugin.MissingRequiredConfigParameter",
+                WrapperProperties.SECRETS_MANAGER_REGION.name))
+        endpoint = WrapperProperties.SECRETS_MANAGER_ENDPOINT.get(props)
+        return (secret_id, region, endpoint)
+
     def _invalidate_cache(
             self,
             host_info: HostInfo,
             props: Properties) -> None:
-        """Drop the cached secret for this (secret_id, region) so a
+        """Drop the cached secret for this (secret_id, region, endpoint) so a
         subsequent ``_resolve_credentials`` call refetches it."""
-        secret_id = WrapperProperties.SECRETS_MANAGER_SECRET_ID.get(props)
-        if not secret_id:
-            return
-        region = props.get(WrapperProperties.SECRETS_MANAGER_REGION.name)
-        if not region:
-            region = self._extract_region_from_arn(secret_id)
-        self._secret_cache.pop((secret_id, region), None)
+        try:
+            self._secret_cache.pop(self._secret_key_for(props), None)
+        except AwsWrapperError:
+            # No valid key derivable (missing secret_id/region) -- nothing to drop.
+            pass
+
+    def _wrap_network_exception(self, exc: Exception) -> AwsConnectError:
+        # Parity with sync AwsSecretsManagerPlugin._connect:126.
+        if isinstance(exc, AwsConnectError):
+            return exc
+        return AwsConnectError(
+            Messages.get_formatted("AwsSecretsManagerPlugin.ConnectException", exc))
 
     def _wrap_connect_exception(self, exc: Exception) -> AwsWrapperError:
-        # Parity with sync AwsSecretsManagerPlugin._connect:142.
+        # Parity with sync AwsSecretsManagerPlugin._connect:129-130.
         if isinstance(exc, AwsWrapperError):
             return exc
         return AwsWrapperError(
-            Messages.get_formatted("AwsSecretsManagerPlugin.FailedLogin", exc), exc)
+            Messages.get_formatted("AwsSecretsManagerPlugin.ConnectException", exc), exc)
+
+    def _wrap_retry_exception(self, exc: Exception) -> AwsWrapperError:
+        # Parity with sync AwsSecretsManagerPlugin._connect:138-141.
+        if isinstance(exc, AwsWrapperError):
+            return exc
+        return AwsWrapperError(
+            Messages.get_formatted("AwsSecretsManagerPlugin.UnhandledException", exc), exc)
 
     @staticmethod
     def _extract_region_from_arn(secret_id: str) -> Optional[str]:
         match = AsyncAwsSecretsManagerPlugin._ARN_REGION_RE.match(secret_id)
         return match.group("region") if match else None
 
-    @staticmethod
     def _fetch_secret_blocking(
+            self,
+            host_info: HostInfo,
+            props: Properties,
             secret_id: str,
             region: Optional[str],
             endpoint: Optional[str] = None) -> dict:
-        import boto3
-        kwargs: dict = {}
-        if region:
-            kwargs["region_name"] = region
-        if endpoint:
-            kwargs["endpoint_url"] = endpoint
-        client = boto3.client("secretsmanager", **kwargs)
+        """Fetch + parse the secret on a worker thread.
+
+        Routes through :class:`AwsCredentialsManager` so ``aws_profile`` /
+        custom credential providers apply and the boto3 client is reused --
+        parity with sync ``_fetch_latest_credentials``
+        (aws_secrets_manager_plugin.py:200-207). A non-JSON ``SecretString``
+        raises :class:`json.JSONDecodeError`, which the caller maps to the
+        ``JsonDecodeError`` message key (parity with sync:171-174)."""
+        session = AwsCredentialsManager.get_session(host_info, props, region)
+        client = AwsCredentialsManager.get_client(
+            "secretsmanager", session, host_info.host, region, endpoint)
         resp = client.get_secret_value(SecretId=secret_id)
         secret_str = resp.get("SecretString")
         if not secret_str:
             return {}
-        try:
-            return json.loads(secret_str)
-        except json.JSONDecodeError:
-            return {}
+        return json.loads(secret_str)
