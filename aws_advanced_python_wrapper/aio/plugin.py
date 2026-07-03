@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
     from aws_advanced_python_wrapper.utils.notifications import (
-        ConnectionEvent, HostEvent)
+        ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
     from aws_advanced_python_wrapper.utils.properties import Properties
 
 
@@ -78,12 +78,16 @@ class AsyncPlugin(ABC):
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]) -> None:
         return
 
-    def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> None:
+    def notify_connection_changed(
+            self, changes: Set[ConnectionEvent]) -> Optional[OldConnectionSuggestedAction]:
         """Notified when the current connection OBJECT changes -- e.g. failover
         or read/write-splitting swaps the underlying connection. Default no-op;
         plugins that hold per-connection state (the EFM monitor) override this
-        to reset/re-point it."""
-        return
+        to reset/re-point it. May return an :class:`OldConnectionSuggestedAction`
+        vote on whether the plugin service should dispose or preserve the OLD
+        connection (``None`` counts as NO_OPINION), mirroring sync
+        ``Plugin.notify_connection_changed``."""
+        return None
 
     def accepts_strategy(self, role: HostRole, strategy: str) -> bool:
         """Default: this plugin does not support any strategy."""

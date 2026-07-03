@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from aws_advanced_python_wrapper.aio.plugin_manager import AsyncPluginManager
 from aws_advanced_python_wrapper.aio.plugin_service import \
     AsyncPluginServiceImpl
 from aws_advanced_python_wrapper.aio.read_write_splitting_plugin import \
@@ -78,6 +79,11 @@ def _build(topology: Optional[tuple] = None):
     plugin._writer_host_info = HostInfo(
         host="writer.example", port=5432, role=HostRole.WRITER
     )
+    # Wire a real manager holding the plugin so set_current_connection's
+    # old-connection disposal consults the plugin's PRESERVE vote during
+    # RWS swaps -- the production chain (service -> manager -> plugin).
+    svc.plugin_manager = AsyncPluginManager(
+        plugin_service=svc, props=props, plugins=[plugin])
     return plugin, svc, hlp, driver_dialect, writer_conn
 
 

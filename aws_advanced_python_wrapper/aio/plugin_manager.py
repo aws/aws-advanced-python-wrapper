@@ -24,12 +24,15 @@ once real plugins are in place).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Optional, Set
+from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, List,
+                    Optional, Set)
 
 from aws_advanced_python_wrapper.aio.default_plugin import AsyncDefaultPlugin
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.notifications import \
+    OldConnectionSuggestedAction
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
@@ -38,7 +41,8 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.plugin_service import \
         AsyncPluginService
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-    from aws_advanced_python_wrapper.utils.notifications import ConnectionEvent
+    from aws_advanced_python_wrapper.utils.notifications import (
+        ConnectionEvent, HostEvent)
     from aws_advanced_python_wrapper.utils.properties import Properties
 
 
@@ -198,21 +202,50 @@ class AsyncPluginManager:
                     return host
         return None
 
-    def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> None:
+    def notify_connection_changed(
+            self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         """Notify every plugin that the current connection object changed.
 
-        Mirrors sync ``PluginManager.notify_connection_changed``. The
-        host-monitoring (EFM) plugin resets its per-connection failure state in
-        this hook; without the call, after failover swaps the connection the
-        monitor keeps the OLD (dead) host's UNAVAILABLE flag set and re-raises
-        "Host ... is unavailable" on the next query, even though the new
-        connection is healthy (test_fail_from_reader_to_writer). Each plugin's
-        hook is best-effort -- a raising hook must not abort the switch.
+        Mirrors sync ``PluginManager.notify_connection_changed``, including the
+        aggregated :class:`OldConnectionSuggestedAction` return: PRESERVE wins
+        over DISPOSE wins over NO_OPINION, so a plugin that still owns the old
+        connection (e.g. RWS mid-switch caching its reader/writer) can stop the
+        service from closing it. The host-monitoring (EFM) plugin resets its
+        per-connection failure state in this hook; without the call, after
+        failover swaps the connection the monitor keeps the OLD (dead) host's
+        UNAVAILABLE flag set and re-raises "Host ... is unavailable" on the
+        next query, even though the new connection is healthy
+        (test_fail_from_reader_to_writer). Each plugin's hook is best-effort --
+        a raising hook must not abort the switch (treated as NO_OPINION).
+        """
+        suggestions: Set[OldConnectionSuggestedAction] = set()
+        for plugin in self._plugins:
+            try:
+                suggestion = plugin.notify_connection_changed(changes)
+            except Exception:  # noqa: BLE001 - a notify hook must not break the switch
+                continue
+            if isinstance(suggestion, OldConnectionSuggestedAction):
+                suggestions.add(suggestion)
+
+        if OldConnectionSuggestedAction.PRESERVE in suggestions:
+            return OldConnectionSuggestedAction.PRESERVE
+        if OldConnectionSuggestedAction.DISPOSE in suggestions:
+            return OldConnectionSuggestedAction.DISPOSE
+        return OldConnectionSuggestedAction.NO_OPINION
+
+    def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]) -> None:
+        """Notify every plugin that the host list changed.
+
+        Mirrors sync ``PluginManager.notify_host_list_changed``: plugins react
+        to topology diffs (EFM stops monitors for deleted hosts, stale-DNS
+        re-checks the cluster address, RWS re-caches by role). Dispatched
+        best-effort to all plugins (the async plugin base provides a no-op
+        default), matching ``notify_connection_changed`` above.
         """
         for plugin in self._plugins:
             try:
-                plugin.notify_connection_changed(changes)
-            except Exception:  # noqa: BLE001 - a notify hook must not break the switch
+                plugin.notify_host_list_changed(changes)
+            except Exception:  # noqa: BLE001 - a notify hook must not break the refresh
                 pass
 
     # ------------------------------------------------------------------

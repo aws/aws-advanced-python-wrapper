@@ -33,6 +33,8 @@ from aws_advanced_python_wrapper.errors import ReadWriteSplittingError
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.notifications import \
+    OldConnectionSuggestedAction
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 logger = Logger(__name__)
@@ -81,6 +83,10 @@ class AsyncReadWriteSplittingPlugin(
         self._writer_host_info: Optional[HostInfo] = None
         self._reader_conn: Optional[Any] = None
         self._reader_host_info: Optional[HostInfo] = None
+        # True while an RWS-initiated switch is in flight; makes
+        # notify_connection_changed return PRESERVE so the plugin service
+        # doesn't close the old connection we still cache (sync parity).
+        self._in_read_write_split = False
 
         # Telemetry counters -- one per successful reader/writer swap.
         # NullTelemetryFactory returns a no-op object; real factories may
@@ -96,7 +102,7 @@ class AsyncReadWriteSplittingPlugin(
         return set(self._SUBSCRIBED)
 
     def notify_connection_changed(
-            self, changes: Set[ConnectionEvent]) -> None:
+            self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         """Re-cache the current connection under its role whenever the
         connection OBJECT changes (failover or an RWS swap).
 
@@ -113,13 +119,21 @@ class AsyncReadWriteSplittingPlugin(
         current_conn = self._plugin_service.current_connection
         current_host = self._plugin_service.current_host_info
         if current_conn is None or current_host is None:
-            return
+            return OldConnectionSuggestedAction.NO_OPINION
         if current_host.role == HostRole.WRITER:
             self._writer_conn = current_conn
             self._writer_host_info = current_host
         elif current_host.role == HostRole.READER:
             self._reader_conn = current_conn
             self._reader_host_info = current_host
+
+        # While an RWS-initiated switch is in flight, the "old" connection is
+        # one of our cached reader/writer connections -- tell the service to
+        # PRESERVE it instead of closing it (sync parity:
+        # read_write_splitting_plugin.notify_connection_changed).
+        if self._in_read_write_split:
+            return OldConnectionSuggestedAction.PRESERVE
+        return OldConnectionSuggestedAction.NO_OPINION
 
     async def connect(
             self,
@@ -335,6 +349,16 @@ class AsyncReadWriteSplittingPlugin(
                 and self._reader_conn is current
                 and not await driver_dialect.is_closed(current)):
             return
+        self._in_read_write_split = True
+        try:
+            await self._switch_to_reader_impl(driver_dialect, current)
+        finally:
+            self._in_read_write_split = False
+
+    async def _switch_to_reader_impl(
+            self,
+            driver_dialect: AsyncDriverDialect,
+            current: Any) -> None:
 
         # Cache the writer we came from so we can bounce back quickly.
         if self._writer_conn is None:
@@ -434,6 +458,16 @@ class AsyncReadWriteSplittingPlugin(
         ) from last_error
 
     async def _switch_to_writer(
+            self,
+            driver_dialect: AsyncDriverDialect,
+            current: Any) -> None:
+        self._in_read_write_split = True
+        try:
+            await self._switch_to_writer_impl(driver_dialect, current)
+        finally:
+            self._in_read_write_split = False
+
+    async def _switch_to_writer_impl(
             self,
             driver_dialect: AsyncDriverDialect,
             current: Any) -> None:

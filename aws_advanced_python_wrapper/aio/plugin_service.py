@@ -22,6 +22,7 @@ service, status storage) lands in later SPs that need it.
 
 from __future__ import annotations
 
+import asyncio
 from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, FrozenSet,
                     List, Optional, Protocol, Set, Tuple)
 
@@ -32,8 +33,12 @@ from aws_advanced_python_wrapper.aio.session_state import (
     AsyncSessionStateService, AsyncSessionStateServiceImpl)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
+from aws_advanced_python_wrapper.host_availability import HostAvailability
+from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.messages import Messages
-from aws_advanced_python_wrapper.utils.notifications import ConnectionEvent
+from aws_advanced_python_wrapper.utils.notifications import (
+    ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
+from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.storage.cache_map import CacheMap
 
 if TYPE_CHECKING:
@@ -47,8 +52,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
         AllowedAndBlockedHosts
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
-    from aws_advanced_python_wrapper.host_availability import HostAvailability
-    from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.utils.properties import Properties
     from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
         TelemetryFactory
@@ -607,7 +611,10 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             raise AwsWrapperError(
                 Messages.get("AsyncPluginService.HostListProviderNotSet"))
         conn = connection if connection is not None else self._current_connection
-        self._all_hosts = await self._host_list_provider.refresh(conn)
+        updated = tuple(await self._host_list_provider.refresh(conn))
+        if updated != self._all_hosts:
+            self._update_host_availability(updated)
+            self._update_hosts(updated)
 
     async def force_refresh_host_list(
             self,
@@ -616,7 +623,70 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             raise AwsWrapperError(
                 Messages.get("AsyncPluginService.HostListProviderNotSet"))
         conn = connection if connection is not None else self._current_connection
-        self._all_hosts = await self._host_list_provider.force_refresh(conn)
+        updated = tuple(await self._host_list_provider.force_refresh(conn))
+        if updated != self._all_hosts:
+            self._update_host_availability(updated)
+            self._update_hosts(updated)
+
+    def _update_host_availability(self, hosts: Tuple[HostInfo, ...]) -> None:
+        # Re-hydrate cached availability onto freshly-built HostInfo objects
+        # (topology queries return AVAILABLE-by-default hosts). Mirrors sync
+        # PluginServiceImpl._update_host_availability.
+        for host in hosts:
+            availability = AsyncPluginServiceImpl._host_availability_expiring_cache.get(host.url)
+            if availability:
+                host.set_availability(availability)
+
+    def _update_hosts(self, new_hosts: Tuple[HostInfo, ...]) -> None:
+        # Diff old vs new topology into per-host HostEvent sets and notify
+        # plugins through the manager. Mirrors sync
+        # PluginServiceImpl._update_hosts.
+        old_hosts_dict = {x.url: x for x in self._all_hosts}
+        new_hosts_dict = {x.url: x for x in new_hosts}
+
+        changes: Dict[str, Set[HostEvent]] = {}
+
+        for host in self._all_hosts:
+            corresponding_new_host = new_hosts_dict.get(host.url)
+            if corresponding_new_host is None:
+                changes[host.url] = {HostEvent.HOST_DELETED}
+            else:
+                host_changes = self._compare(host, corresponding_new_host)
+                if len(host_changes) > 0:
+                    changes[host.url] = host_changes
+
+        for key in new_hosts_dict:
+            if key not in old_hosts_dict:
+                changes[key] = {HostEvent.HOST_ADDED}
+
+        if len(changes) > 0:
+            self._all_hosts = tuple(new_hosts)
+            if self._plugin_manager is not None:
+                self._plugin_manager.notify_host_list_changed(changes)
+
+    @staticmethod
+    def _compare(host_a: HostInfo, host_b: HostInfo) -> Set[HostEvent]:
+        # Mirrors sync PluginServiceImpl._compare.
+        changes: Set[HostEvent] = set()
+        if host_a.host != host_b.host or host_a.port != host_b.port:
+            changes.add(HostEvent.URL_CHANGED)
+
+        if host_a.role != host_b.role:
+            if host_b.role == HostRole.WRITER:
+                changes.add(HostEvent.CONVERTED_TO_WRITER)
+            elif host_b.role == HostRole.READER:
+                changes.add(HostEvent.CONVERTED_TO_READER)
+
+        if host_a.get_availability() != host_b.get_availability():
+            if host_b.get_availability() == HostAvailability.AVAILABLE:
+                changes.add(HostEvent.WENT_UP)
+            elif host_b.get_availability() == HostAvailability.UNAVAILABLE:
+                changes.add(HostEvent.WENT_DOWN)
+
+        if len(changes) > 0:
+            changes.add(HostEvent.HOST_CHANGED)
+
+        return changes
 
     async def release_resources(self) -> None:
         """Best-effort shutdown. Idempotent. Does not raise.
@@ -783,6 +853,73 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             connection: Any,
             host_info: HostInfo) -> None:
         prev = self._current_connection
+
+        if prev is None:
+            # Initial connection: no old-connection lifecycle to manage.
+            self._current_connection = connection
+            self._current_host_info = host_info
+            if self._connection_wrapper is not None:
+                self._connection_wrapper._target_conn = connection
+            self._session_state_service.reset()
+            if self._plugin_manager is not None:
+                self._plugin_manager.notify_connection_changed(
+                    {ConnectionEvent.INITIAL_CONNECTION})
+            return
+
+        if connection is None or prev is connection:
+            self._current_connection = connection
+            self._current_host_info = host_info
+            if self._connection_wrapper is not None:
+                self._connection_wrapper._target_conn = connection
+            return
+
+        # Connection switch: mirror sync PluginServiceImpl.set_current_connection
+        # (plugin_service.py:396-444) -- session-state bracket, tracked-state
+        # apply, ROLLBACK_ON_SWITCH for an in-transaction old connection, and
+        # old-connection disposal unless a plugin votes PRESERVE.
+        was_in_transaction = self._is_in_transaction
+        self._session_state_service.begin()
+        try:
+            await self._apply_switch_session_state(prev, connection, host_info)
+            await self.update_in_transaction(False)
+
+            if was_in_transaction and WrapperProperties.ROLLBACK_ON_SWITCH.get_bool(self._props):
+                try:
+                    rollback_result = prev.rollback()
+                    if asyncio.iscoroutine(rollback_result):
+                        await rollback_result
+                except Exception:  # noqa: BLE001 - best-effort rollback, sync parity
+                    pass
+
+            suggestion = OldConnectionSuggestedAction.NO_OPINION
+            if self._plugin_manager is not None:
+                suggestion = self._plugin_manager.notify_connection_changed(
+                    {ConnectionEvent.CONNECTION_OBJECT_CHANGED})
+
+            try:
+                old_closed = await self._driver_dialect.is_closed(prev)
+            except Exception:  # noqa: BLE001 - treat unknown as open, sync closes best-effort
+                old_closed = False
+
+            if suggestion != OldConnectionSuggestedAction.PRESERVE and not old_closed:
+                try:
+                    await self._session_state_service.apply_pristine_session_state(prev)
+                except Exception:  # noqa: BLE001 - sync parity: ignore
+                    pass
+                try:
+                    close_result = prev.close()
+                    if asyncio.iscoroutine(close_result):
+                        await close_result
+                except Exception:  # noqa: BLE001 - sync parity: ignore
+                    pass
+        finally:
+            self._session_state_service.complete()
+
+    async def _apply_switch_session_state(
+            self,
+            prev: Any,
+            connection: Any,
+            host_info: HostInfo) -> None:
         self._current_connection = connection
         self._current_host_info = host_info
         # Keep the owning wrapper's cached target connection in sync so its
@@ -817,23 +954,6 @@ class AsyncPluginServiceImpl(AsyncPluginService):
                     prev, connection)
             except Exception:  # noqa: BLE001 - best-effort transfer
                 pass
-
-        # Notify plugins that the current connection object changed so
-        # per-connection plugin state is reset/re-pointed at the new
-        # connection. Mirrors sync plugin_service.set_current_connection
-        # (plugin_service.py:400 / :424). Critically, the host-monitoring (EFM)
-        # plugin clears its UNAVAILABLE flag and cancels the monitor bound to
-        # the OLD host here -- without this, after a failover swap the EFM
-        # monitor keeps reporting the old (dead) host unavailable and re-raises
-        # "Host ... is unavailable" on the next query even though the new writer
-        # connection is healthy (test_fail_from_reader_to_writer).
-        if self._plugin_manager is not None:
-            if prev is None:
-                self._plugin_manager.notify_connection_changed(
-                    {ConnectionEvent.INITIAL_CONNECTION})
-            elif prev is not connection:
-                self._plugin_manager.notify_connection_changed(
-                    {ConnectionEvent.CONNECTION_OBJECT_CHANGED})
 
 
 __all__ = ["AsyncPluginService", "AsyncPluginServiceImpl"]
