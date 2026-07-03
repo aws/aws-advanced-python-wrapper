@@ -96,7 +96,10 @@ def test_driver_dialect_capabilities():
     assert d.supports_connect_timeout() is True
     assert d.supports_socket_timeout() is False
     assert d.supports_tcp_keepalive() is False
-    assert d.supports_abort_connection() is False
+    # close() severs the socket, which unblocks an in-flight read on a single
+    # event loop -- enough for EFM v2 abort (unlike sync MySQL). See
+    # AsyncAiomysqlDriverDialect.abort_connection.
+    assert d.supports_abort_connection() is True
 
 
 def test_driver_dialect_connect_coerces_port_to_int():

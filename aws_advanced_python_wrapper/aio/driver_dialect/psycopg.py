@@ -21,16 +21,20 @@ itself (F3-B master spec invariant 8a).
 
 from __future__ import annotations
 
+import socket
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from aws_advanced_python_wrapper.aio.driver_dialect.base import \
     AsyncDriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils.log import Logger
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.utils.properties import Properties
+
+logger = Logger(__name__)
 
 
 class AsyncPsycopgDriverDialect(AsyncDriverDialect):
@@ -59,9 +63,9 @@ class AsyncPsycopgDriverDialect(AsyncDriverDialect):
         return True
 
     def supports_abort_connection(self) -> bool:
-        # psycopg.AsyncConnection doesn't expose pthread_cancel-style abort;
-        # closing the connection from another task is the closest analog.
-        return False
+        # abort_connection shuts the underlying socket down (SHUT_RDWR), which
+        # the EFM v2 monitor requires to interrupt an in-flight query.
+        return True
 
     def is_dialect(self, connect_func: Callable) -> bool:
         """Match if ``connect_func`` is psycopg's async connect."""
@@ -127,7 +131,50 @@ class AsyncPsycopgDriverDialect(AsyncDriverDialect):
         return bool(conn.closed)
 
     async def abort_connection(self, conn: Any) -> None:
-        await conn.close()
+        # Called from the EFM v2 monitor TASK to interrupt an in-flight query
+        # when the host becomes unreachable, so the awaiting task's suspended
+        # socket read wakes promptly.
+        #
+        # Do NOT use close(): psycopg close() is PQfinish, which frees the libpq
+        # struct and tears down SSL. It also cannot deliver a CancelRequest to a
+        # blackholed host, so it can't interrupt the very network-failure case
+        # EFM exists for.
+        #
+        # Shutting the underlying socket down (SHUT_RDWR) -- the async mirror of
+        # sync PgDriverDialect.abort_connection and of JDBC Connection.abort() --
+        # makes this event loop's selector see the fd become readable/errored, so
+        # the suspended read wakes immediately (even on a dead host) with an
+        # OSError/OperationalError the failover plugin classifies as a connection
+        # loss. We detach (not close) the fd so the connection still owns it and
+        # runs its own PQfinish later. Single event loop, so there is no
+        # cross-thread libpq/SSL_free race for sync's separate-thread abort to
+        # avoid -- but shutdown is still required to unblock a blackholed read.
+        #
+        # When the raw socket is NOT reachable (a pool proxy / non-psycopg shape
+        # with no integer fileno), fall back to close(): on a single event loop
+        # there is no cross-thread PQfinish race to fear, so close() is a safe
+        # last-resort sever.
+        try:
+            if bool(conn.closed):
+                return
+            fd = conn.fileno()
+        except Exception:  # noqa: BLE001 - unusable connection: nothing to abort
+            return
+        if not isinstance(fd, int) or fd < 0:
+            await conn.close()
+            return
+        try:
+            sock = socket.socket(fileno=fd)
+        except OSError as e:
+            logger.debug("PgDriverDialect.AbortConnectionShutdownFailed", e)
+            return
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError as e:
+            logger.debug("PgDriverDialect.AbortConnectionShutdownFailed", e)
+        finally:
+            # Release the fd WITHOUT closing it; the connection still owns it.
+            sock.detach()
 
     async def is_in_transaction(self, conn: Any) -> bool:
         # psycopg.AsyncConnection.info.transaction_status. IDLE (0) means no

@@ -74,7 +74,9 @@ class AsyncAiomysqlDriverDialect(AsyncDriverDialect):
         return False
 
     def supports_abort_connection(self) -> bool:
-        return False  # no async abort primitive; close is closest
+        # abort_connection severs the socket via the sync close(); on a single
+        # event loop that unblocks an in-flight read, which is what EFM v2 needs.
+        return True
 
     def is_dialect(self, connect_func: Callable) -> bool:
         """Match if ``connect_func`` is aiomysql's connect."""
@@ -174,8 +176,19 @@ class AsyncAiomysqlDriverDialect(AsyncDriverDialect):
         return not getattr(conn, "open", False)
 
     async def abort_connection(self, conn: Any) -> None:
-        # aiomysql has no abort primitive. Closing the socket is the
-        # closest analog -- matches sync MySQL driver dialect.
+        # Called from the EFM v2 monitor TASK to interrupt an in-flight query.
+        # aiomysql has no reachable raw socket to shut down the way psycopg does
+        # (its transport is buried in the writer), so close() is the abort here.
+        #
+        # Why close() suffices for asyncio (unlike sync MySQL, whose EFM cannot
+        # abort at all): aiomysql's close() is synchronous and closes the
+        # transport immediately, severing the socket. On a SINGLE event loop the
+        # monitor and the awaiting query share one loop, so there is NO
+        # cross-thread use-after-free race for sync's separate-thread abort to
+        # guard against -- the concern that forces sync MySQL to leave EFM abort
+        # unsupported. The severed transport surfaces a connection error on the
+        # suspended read, which the failover plugin classifies as a connection
+        # loss.
         conn.close()
 
     async def is_in_transaction(self, conn: Any) -> bool:
