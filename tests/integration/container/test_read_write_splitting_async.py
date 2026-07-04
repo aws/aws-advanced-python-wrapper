@@ -1011,6 +1011,16 @@ class TestReadWriteSplittingAsync:
                 assert initial_driver_conn is not new_driver_conn
                 await conn.close()
 
+                # The demoted writer is rebooting right after the triggered
+                # failover; connecting mid-reboot yields 'FATAL: the database
+                # system is starting up'. Wait for it to come back as a
+                # reader -- env-timing stabilization only, assertions
+                # unchanged. Sync twin intentionally untouched pending
+                # upstream (AWS) review of the same race.
+                await asyncio.to_thread(
+                    rds_utils.wait_until_instance_has_desired_status,
+                    initial_writer_id, 5, "available")
+
                 # New connection to the original writer (now a reader)
                 conn2 = await connect_async(
                     test_driver=test_driver,
@@ -1214,6 +1224,19 @@ class TestReadWriteSplittingAsync:
 
             wrong_user_right_password_props = conn_utils.get_connect_params().copy()
             WrapperProperties.USER.set(wrong_user_right_password_props, "wrong_user")
+
+            # The preceding pooled failover tests demote/reboot the instance
+            # this test connects to seconds before it starts; a connection
+            # opened mid-reboot is accepted and then killed at first use
+            # ('the connection is closed' at cursor() / SSL EOF on the first
+            # DDL). Wait for the instance to finish rebooting -- env-timing
+            # stabilization only, no assertion is changed. The sync twin is
+            # intentionally left untouched pending upstream (AWS) review of
+            # the same race.
+            await asyncio.to_thread(
+                rds_utils.wait_until_instance_has_desired_status,
+                test_environment.get_instances()[0].get_instance_id(),
+                5, "available")
 
             try:
                 conn = await connect_async(
