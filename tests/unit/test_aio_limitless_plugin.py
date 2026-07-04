@@ -499,3 +499,28 @@ def test_plugin_connect_supported_dialect_after_refresh(host_info, props, mock_c
     assert result is mock_conn
     router_service.start_monitoring.assert_called_once_with(host_info, props)
     router_service.establish_connection.assert_awaited_once()
+
+
+def test_establish_connection_login_error_short_circuits_retry(
+        mock_conn, mock_query_helper, host_info, props, mock_plugin_service, connection_plugin,
+        limitless_router1, limitless_routers):
+    """A login-classified connect failure raises immediately instead of
+    burning the router retry budget (matches sync after the parity-review
+    fix to _is_login_exception, which previously discarded the verdict)."""
+    AsyncLimitlessRouterCache.put(CLUSTER_ID, limitless_routers)
+    mock_plugin_service.get_host_info_by_strategy.return_value = limitless_router1
+    login_error = Exception("password authentication failed")
+    mock_plugin_service.connect = AsyncMock(side_effect=login_error)
+    mock_plugin_service.is_login_exception = MagicMock(return_value=True)
+    connect_func = AsyncMock(side_effect=Exception())
+    service = AsyncLimitlessRouterService(mock_plugin_service, mock_query_helper)
+    context = _context(host_info, props, connect_func, connection_plugin, mock_plugin_service)
+
+    async def _body():
+        with pytest.raises(Exception) as exc:
+            await service.establish_connection(context)
+        assert exc.value is login_error
+
+    asyncio.run(_body())
+    # No least-loaded retry happened: one selection, one connect attempt.
+    assert mock_plugin_service.connect.await_count == 1

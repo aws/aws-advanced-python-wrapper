@@ -491,13 +491,9 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
             props: Properties,
             is_initial_connection: bool,
             connect_func: Callable[..., Awaitable[Any]]) -> Optional[Any]:
-        # NOTE: sync references message key
-        # "SuspendConnectRouting.WaitConnectUntilCorrespondingHostFound", which is
-        # absent from the messages bundle; using it with a format arg raises. Log a
-        # plain string (falls back cleanly) until the key is added upstream.
         logger.debug(
-            f"[SuspendUntilCorrespondingHostFoundConnectRouting] Waiting until the corresponding host "
-            f"for '{host_info.host}' is found.")
+            "SuspendConnectRouting.WaitConnectUntilCorrespondingHostFound",
+            host_info.host)
         plugin_service = plugin.plugin_service
 
         telemetry_factory = plugin_service.get_telemetry_factory()

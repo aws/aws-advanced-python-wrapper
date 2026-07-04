@@ -37,9 +37,10 @@ Monitor teardown hooks into
 :func:`aws_advanced_python_wrapper.aio.cleanup.register_shutdown_hook`, so
 ``release_resources_async()`` drains the standing tasks.
 
-Sync quirks faithfully preserved (see the async-phase2 port notes):
-  * ``_is_login_exception`` discards its result (sync limitless_plugin.py:524),
-    so login failures are not short-circuited out of the retry loop.
+Login failures short-circuit out of the router retry loop (raised
+immediately), matching sync after the parity-review fix to
+``_is_login_exception`` (it previously discarded the classification verdict
+on both sides).
 """
 
 from __future__ import annotations
@@ -596,11 +597,11 @@ class AsyncLimitlessRouterService:
                 raise AwsWrapperError(Messages.get("LimitlessRouterService.FetchedEmptyRouterList"))
 
     def _is_login_exception(self, error: Optional[Exception] = None) -> bool:
-        # Sync limitless_plugin.py:524-525 calls is_login_exception here but
-        # discards the return value, so login failures fall through into the
-        # retry loop rather than short-circuiting. Preserved for parity.
-        self._plugin_service.is_login_exception(error)
-        return False
+        # Login failures short-circuit out of the retry loop (raised by the
+        # callers) instead of burning the router retry budget. Matches sync
+        # after the parity-review fix (previously both sides discarded this
+        # verdict).
+        return self._plugin_service.is_login_exception(error)
 
     def _get_limitless_routers(self, cluster_id: str) -> List[HostInfo]:
         return AsyncLimitlessRouterCache.get(cluster_id)
