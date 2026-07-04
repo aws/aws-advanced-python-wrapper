@@ -370,6 +370,49 @@ def test_plugin_invalidates_on_failover_error():
     conn_to_old.close.assert_called()
 
 
+def test_failover_invalidation_completes_before_exception_propagates():
+    """Integration regression (Aurora multi-5, test_writer_failover_in_idle
+    _connections_async 2/10 flake): writer-change invalidation used to be a
+    fire-and-forget asyncio task, which dies un-awaited if the event loop
+    closes before it runs -- idle connections to the demoted writer stayed
+    open. It must complete INLINE, before the FailoverError reaches the
+    caller (sync parity in guarantee: sync's daemon invalidation Thread
+    always outlives the failover call)."""
+    plugin, svc, driver_dialect, tracker = _build()
+    old_writer = HostInfo(host="old-w", port=5432, role=HostRole.WRITER)
+    new_writer = HostInfo(host="new-w", port=5432, role=HostRole.WRITER)
+    idle_conns = [_plain_conn(f"idle-{i}") for i in range(3)]
+
+    svc._all_hosts = (old_writer,)
+    for c in idle_conns:
+        tracker.track(old_writer, c)
+
+    async def _refresh(*args, **kwargs):
+        svc._all_hosts = (new_writer,)
+
+    svc.refresh_host_list = AsyncMock(side_effect=_refresh)
+
+    async def _run():
+        async def _noop():
+            return None
+
+        await plugin.execute(MagicMock(), "Cursor.execute", _noop)
+
+        async def _raising():
+            raise FailoverSuccessError("failover")
+
+        with pytest.raises(FailoverSuccessError):
+            await plugin.execute(MagicMock(), "Cursor.execute", _raising)
+        # NO cooperative yield (no sleep/await) after the exception: every
+        # tracked connection must ALREADY be closed, and nothing may be left
+        # riding on a pending task that a closing loop would cancel.
+        for c in idle_conns:
+            c.close.assert_called()
+        assert not plugin._pending_invalidations
+
+    asyncio.run(_run())
+
+
 def test_plugin_subscribed_methods_includes_connect_and_execute():
     plugin, *_ = _build()
     subs = plugin.subscribed_methods

@@ -25,8 +25,13 @@ writer so pooled consumers don't reuse a stale demoted-writer socket.
 Simpler than the sync implementation:
 
 * ``WeakSet`` auto-GC -- no prune daemon thread.
-* :func:`asyncio.create_task` for fire-and-forget invalidation -- no
-  background ``Thread``.
+* Writer-change invalidation is awaited INLINE in the execute/failover
+  path (sync offloads to a daemon ``Thread``, which outlives the failover
+  call; an asyncio task dies un-awaited when the loop closes, so inline
+  await is the async equivalent of sync's completion guarantee).
+  :func:`asyncio.create_task` remains only for the sync-signature
+  ``notify_host_list_changed`` path, drained on
+  ``release_resources_async``.
 
 Unlike earlier iterations of this module, the tracked-connections
 dict lives on the class (mirroring sync's ``ClassVar[Dict[str,
@@ -50,6 +55,7 @@ from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.errors import FailoverError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.notifications import HostEvent
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
@@ -59,6 +65,8 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.plugin_service import \
         AsyncPluginService
     from aws_advanced_python_wrapper.utils.properties import Properties
+
+logger = Logger(__name__)
 
 
 class AsyncOpenedConnectionTracker:
@@ -154,6 +162,8 @@ class AsyncOpenedConnectionTracker:
         """
         # Gather the full connection set from every alias; close each
         # connection exactly once, then purge the alias entries.
+        logger.debug(
+            "OpenedConnectionTracker.InvalidatingConnections", host_info.url)
         seen_conns: Set[int] = set()
         to_close: list = []
         keys = self._all_keys(host_info)
@@ -188,8 +198,14 @@ class AsyncOpenedConnectionTracker:
                 result = close()
                 if asyncio.iscoroutine(result):
                     await result
-            except Exception:  # noqa: BLE001 - close is best-effort
-                pass
+            except Exception as e:  # noqa: BLE001 - close is best-effort
+                # The connection is expected to be broken (its host was just
+                # demoted/rebooted), so a failed close is unsurprising -- but
+                # log it: a conn whose close failed may still report
+                # is_closed=False to its owner.
+                logger.debug(
+                    f"[AsyncOpenedConnectionTracker] best-effort close of a "
+                    f"tracked connection to '{host_info.url}' failed: {e}")
 
         for key in keys:
             try:
@@ -201,6 +217,16 @@ class AsyncOpenedConnectionTracker:
         """Test-only accessor using the canonical key derivation."""
         key = self._canonical_key(host_info)
         return AsyncOpenedConnectionTracker._tracked.get(key, WeakSet())
+
+    def log_opened_connections(self) -> None:
+        """Debug-log the registry contents (sync parity:
+        ``OpenedConnectionTracker.log_opened_connections``)."""
+        msg_parts = []
+        for key, conn_set in AsyncOpenedConnectionTracker._tracked.items():
+            conn = "".join(f"\n\t\t{item}" for item in list(conn_set))
+            msg_parts.append(f"\t[{key} : {conn}]")
+        logger.debug(
+            "OpenedConnectionTracker.OpenedConnectionsTracked", "".join(msg_parts))
 
 
 class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
@@ -307,7 +333,7 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
                     or rds.identify_rds_type(host_info.host).is_rds_cluster):
                 return
             await self._plugin_service.refresh_host_list(conn)
-            self._update_writer_from_topology()
+            await self._invalidate_writer_change()
         except Exception:  # noqa: BLE001 - writer pinning is best-effort
             pass
 
@@ -370,7 +396,7 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
                     await self._plugin_service.refresh_host_list()
                 except Exception:  # noqa: BLE001 - refresh best-effort
                     pass
-            self._update_writer_from_topology()
+            await self._invalidate_writer_change()
         try:
             return await execute_func()
         except Exception as exc:
@@ -387,23 +413,40 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
                     await self._plugin_service.refresh_host_list()
                 except Exception:  # noqa: BLE001 - refresh best-effort
                     pass
-                self._update_writer_from_topology()
+                await self._invalidate_writer_change()
             raise
 
-    def _update_writer_from_topology(self) -> None:
+    def _update_writer_from_topology(self) -> Optional[HostInfo]:
+        """Re-derive the current writer from topology. Returns the OLD writer
+        when a writer *change* was detected (caller must invalidate its
+        tracked connections), else ``None``."""
         writer = self._current_writer_from_hosts()
         if writer is None:
-            return
+            return None
         if self._current_writer is None:
             self._current_writer = writer
-            return
+            return None
         if self._same_host(self._current_writer, writer):
-            return
+            return None
         old_writer = self._current_writer
         self._current_writer = writer
         if self._writer_changes_counter is not None:
             self._writer_changes_counter.inc()
-        self._spawn_invalidation(old_writer)
+        return old_writer
+
+    async def _invalidate_writer_change(self) -> None:
+        """Detect a writer change and invalidate the demoted writer's tracked
+        connections INLINE (sync parity: aurora_connection_tracker_plugin.py
+        :356-357 -- sync offloads the closes to a daemon Thread that outlives
+        the failover call; an asyncio task has no such lifetime guarantee, it
+        dies un-awaited when the event loop closes, leaving idle connections
+        to the demoted writer open. Awaiting here is the async equivalent of
+        sync's guarantee that invalidation always completes)."""
+        old_writer = self._update_writer_from_topology()
+        if old_writer is None:
+            return
+        await self._tracker.invalidate_all(old_writer)
+        self._tracker.log_opened_connections()
 
     def _current_writer_from_hosts(self) -> Optional[HostInfo]:
         for h in self._plugin_service.all_hosts:
@@ -416,6 +459,12 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         return a.host == b.host and a.port == b.port
 
     def _spawn_invalidation(self, old_writer: HostInfo) -> None:
+        """Fire-and-forget invalidation, ONLY for the sync-signature
+        :meth:`notify_host_list_changed` path (cannot await there). The
+        execute/failover path awaits :meth:`_invalidate_writer_change`
+        inline instead -- a spawned task dies un-awaited if the event loop
+        closes before it runs. Pending tasks from this path are drained by
+        :meth:`_shutdown` on ``release_resources_async``."""
         task = asyncio.create_task(self._tracker.invalidate_all(old_writer))
         self._pending_invalidations.add(task)
         task.add_done_callback(self._pending_invalidations.discard)
