@@ -460,3 +460,48 @@ def test_initial_connect_with_reader_hint_verifies_role():
         assert svc.initial_connection_host_info is host_info
 
     asyncio.run(_body())
+
+
+def test_notify_preserves_cached_endpoint_connections():
+    """Integration regression (connect_to_writer__switch_read_only_async[srw],
+    Aurora multi-5, 3 consecutive runs): srw had no notify_connection_changed,
+    so set_current_connection's default old-connection handling CLOSED the
+    cached reader on every switch back to the writer -- the next
+    set_read_only(True) then opened a fresh read-endpoint connection and, on
+    multi-reader clusters, landed on a DIFFERENT reader instead of reusing the
+    cached one. The hook must vote PRESERVE exactly when the outgoing current
+    connection is one of the plugin's cached endpoint connections (sync
+    parity: AbstractReadWriteSplittingPlugin returns PRESERVE mid-split)."""
+    from aws_advanced_python_wrapper.utils.notifications import (
+        ConnectionEvent, OldConnectionSuggestedAction)
+
+    svc, dd = _build_plugin_service()
+    props = _base_props()
+    plugin = AsyncSimpleReadWriteSplittingPlugin(svc, props)
+
+    reader_conn = MagicMock(name="cached_reader")
+    writer_conn = MagicMock(name="cached_writer")
+    foreign_conn = MagicMock(name="foreign")
+    plugin._reader_conn = reader_conn
+    plugin._writer_conn = writer_conn
+    changes = {ConnectionEvent.CONNECTION_OBJECT_CHANGED}
+
+    # Outgoing connection is our cached reader (switching back to writer).
+    svc.current_connection = reader_conn
+    assert plugin.notify_connection_changed(changes) == \
+        OldConnectionSuggestedAction.PRESERVE
+
+    # Outgoing connection is our cached writer (switching to reader).
+    svc.current_connection = writer_conn
+    assert plugin.notify_connection_changed(changes) == \
+        OldConnectionSuggestedAction.PRESERVE
+
+    # Outgoing connection is NOT ours (e.g. failover replacing a dead conn).
+    svc.current_connection = foreign_conn
+    assert plugin.notify_connection_changed(changes) == \
+        OldConnectionSuggestedAction.NO_OPINION
+
+    # No outgoing connection at all.
+    svc.current_connection = None
+    assert plugin.notify_connection_changed(changes) == \
+        OldConnectionSuggestedAction.NO_OPINION

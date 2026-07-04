@@ -43,6 +43,8 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.notifications import (
+    ConnectionEvent, OldConnectionSuggestedAction)
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
@@ -130,6 +132,30 @@ class AsyncSimpleReadWriteSplittingPlugin(
     def subscribed_methods(self) -> Set[str]:
         return set(self._SUBSCRIBED)
 
+    def notify_connection_changed(
+            self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
+        """PRESERVE our cached endpoint connections across our own switches.
+
+        Integration regression (test_connect_to_writer__switch_read_only_async
+        [srw], Aurora multi-5, 3 consecutive runs): without this hook,
+        set_current_connection's default old-connection handling CLOSED the
+        cached reader whenever the plugin switched back to the writer, so the
+        next set_read_only(True) opened a brand-new read-endpoint connection
+        and (on clusters with several readers) landed on a different reader
+        instead of reusing the cached one. Sync parity:
+        AbstractReadWriteSplittingPlugin.notify_connection_changed returns
+        PRESERVE mid-split (read_write_splitting_plugin.py:99-107); the srw
+        equivalent is "the outgoing connection is one of OUR cached endpoint
+        connections" -- anything else (e.g. failover replacing a dead
+        connection) stays NO_OPINION. The service calls this hook BEFORE
+        rebinding, so current_connection is still the outgoing one.
+        """
+        prev = self._plugin_service.current_connection
+        if prev is not None and (prev is self._reader_conn
+                                 or prev is self._writer_conn):
+            return OldConnectionSuggestedAction.PRESERVE
+        return OldConnectionSuggestedAction.NO_OPINION
+
     async def connect(
             self,
             target_driver_func: Callable,
@@ -176,8 +202,9 @@ class AsyncSimpleReadWriteSplittingPlugin(
         # which round-robins to a DIFFERENT reader on a multi-reader cluster and
         # breaks "stay on the same reader"
         # (test_connect_to_reader_cluster__switch_read_only_async, multi-5).
-        # The regular RWS plugin gets this via notify_connection_changed; srw has
-        # no such hook, so seed here -- but only because the role is confirmed.
+        # The regular RWS plugin gets this via notify_connection_changed; srw's
+        # own notify hook only votes PRESERVE (no re-caching), so seed here --
+        # but only because the role is confirmed.
         if expected == HostRole.READER:
             self._reader_conn = verified
         elif expected == HostRole.WRITER:
