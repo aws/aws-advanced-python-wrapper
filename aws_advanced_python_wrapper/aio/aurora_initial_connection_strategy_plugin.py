@@ -117,7 +117,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             is_initial_connection: bool,
             target_driver_func: Callable) -> Optional[Any]:
         timeout_ms, interval_ms = self._retry_bounds(props)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + (timeout_ms / 1000.0)
 
         while loop.time() < deadline:
@@ -173,7 +173,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             is_initial_connection: bool,
             target_driver_func: Callable) -> Optional[Any]:
         timeout_ms, interval_ms = self._retry_bounds(props)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + (timeout_ms / 1000.0)
 
         while loop.time() < deadline:

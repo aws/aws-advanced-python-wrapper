@@ -161,7 +161,7 @@ class AsyncGdbFailoverPlugin(AsyncFailoverPlugin):
         telemetry_factory = self._plugin_service.get_telemetry_factory()
         context = telemetry_factory.open_telemetry_context(
             "failover", TelemetryTraceLevel.NESTED)
-        deadline = asyncio.get_event_loop().time() + self._failover_timeout_sec
+        deadline = asyncio.get_running_loop().time() + self._failover_timeout_sec
         try:
             logger.info("GdbFailoverPlugin.StartFailover")
 
@@ -220,7 +220,7 @@ class AsyncGdbFailoverPlugin(AsyncFailoverPlugin):
         discovered. Throttled per pass (bounded by the remaining budget) so the
         probe loop can't hammer topology discovery.
         """
-        while asyncio.get_event_loop().time() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             try:
                 await self._within_deadline(
                     self._plugin_service.force_refresh_host_list(), deadline)
@@ -231,7 +231,7 @@ class AsyncGdbFailoverPlugin(AsyncFailoverPlugin):
                  if host.role == HostRole.WRITER), None)
             if writer is not None:
                 return writer
-            remaining = deadline - asyncio.get_event_loop().time()
+            remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
                 break
             await asyncio.sleep(min(self._WRITER_DISCOVERY_DELAY_SEC, remaining))

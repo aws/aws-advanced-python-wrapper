@@ -94,7 +94,7 @@ class _AsyncPool:
         if self._disposing:
             raise AwsWrapperError(
                 Messages.get_formatted("AsyncPooledConnectionProvider.PoolDisposed", "<pool>"))
-        await asyncio.wait_for(self._semaphore.acquire(), timeout=self._timeout_seconds)
+        await self._acquire_permit()
         try:
             try:
                 conn = self._idle.get_nowait()
@@ -105,6 +105,35 @@ class _AsyncPool:
         except BaseException:
             self._semaphore.release()
             raise
+
+    async def _acquire_permit(self) -> None:
+        """Acquire a pool permit, bounded by ``self._timeout_seconds``, without
+        leaking the permit on timeout.
+
+        ``asyncio.wait_for(semaphore.acquire(), t)`` can leak on Python 3.10:
+        the permit may be granted in the same event-loop tick the waiter is
+        cancelled, and ``Semaphore.acquire`` doesn't roll it back -- permanently
+        shrinking effective pool capacity (fixed in 3.11's wait_for rewrite;
+        3.10 is a supported version). Use ``asyncio.wait`` (which does NOT
+        cancel on timeout), then cancel explicitly and release the permit if
+        the acquire completed anyway.
+        """
+        acquire_task = asyncio.ensure_future(self._semaphore.acquire())
+        done, _ = await asyncio.wait(
+            {acquire_task}, timeout=self._timeout_seconds)
+        if acquire_task in done:
+            # Surfaces acquire() errors, if any (result is normally True).
+            acquire_task.result()
+            return
+        acquire_task.cancel()
+        acquired = False
+        try:
+            acquired = bool(await acquire_task)
+        except asyncio.CancelledError:
+            acquired = False
+        if acquired:
+            self._semaphore.release()
+        raise asyncio.TimeoutError()
 
     async def release(self, conn: Any, invalidated: bool = False) -> None:
         try:

@@ -56,7 +56,8 @@ import weakref
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, List,
                     Optional, Set, Tuple)
 
-from aws_advanced_python_wrapper.aio.cleanup import register_shutdown_hook
+from aws_advanced_python_wrapper.aio.cleanup import (cancel_task_threadsafe,
+                                                     register_shutdown_hook)
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
@@ -330,7 +331,7 @@ class AsyncHostMonitorV2:
         self._stopped = True
         self._stop_event.set()
         if self._task is not None and not self._task.done():
-            self._task.cancel()
+            cancel_task_threadsafe(self._task, self._loop)
 
     async def aclose(self) -> None:
         """Await the monitor task's full teardown."""

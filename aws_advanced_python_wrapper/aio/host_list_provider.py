@@ -247,7 +247,7 @@ class AsyncAuroraHostListProvider:
         """
         if connection is not None:
             self._last_conn = connection
-        now_ns = asyncio.get_event_loop().time() * 1_000_000_000
+        now_ns = asyncio.get_running_loop().time() * 1_000_000_000
         if (self._topology_cache is not None
                 and now_ns - self._last_refresh_ns < self._refresh_ns):
             return self._topology_cache
@@ -283,7 +283,7 @@ class AsyncAuroraHostListProvider:
             if topology:
                 self._topology_cache = topology
                 self._last_refresh_ns = int(
-                    asyncio.get_event_loop().time() * 1_000_000_000
+                    asyncio.get_running_loop().time() * 1_000_000_000
                 )
             return topology or (self._topology_cache or ())
 
@@ -298,7 +298,7 @@ class AsyncAuroraHostListProvider:
             return
         self._topology_cache = topology
         self._last_refresh_ns = int(
-            asyncio.get_event_loop().time() * 1_000_000_000)
+            asyncio.get_running_loop().time() * 1_000_000_000)
 
     async def force_monitoring_refresh(
             self,
@@ -383,7 +383,7 @@ class AsyncAuroraHostListProvider:
         if topology:
             self._topology_cache = topology
             self._last_refresh_ns = int(
-                asyncio.get_event_loop().time() * 1_000_000_000
+                asyncio.get_running_loop().time() * 1_000_000_000
             )
         return topology or (self._topology_cache or ())
 

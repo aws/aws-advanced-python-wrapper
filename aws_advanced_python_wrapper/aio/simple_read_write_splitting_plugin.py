@@ -289,7 +289,7 @@ class AsyncSimpleReadWriteSplittingPlugin(
             connect_func: Optional[Callable[..., Awaitable[Any]]] = None
     ) -> Optional[Any]:
         """Open a connection, probe its role, retry until timeout."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + self._retry_timeout_sec
         # Ensure at least one attempt even if timeout is 0/negative.
         first_pass = True

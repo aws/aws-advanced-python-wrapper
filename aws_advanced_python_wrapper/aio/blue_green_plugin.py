@@ -53,7 +53,8 @@ from time import perf_counter_ns
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Dict,
                     List, Optional, Set, Tuple)
 
-from aws_advanced_python_wrapper.aio.cleanup import register_shutdown_hook
+from aws_advanced_python_wrapper.aio.cleanup import (cancel_task_threadsafe,
+                                                     register_shutdown_hook)
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.database_dialect import BlueGreenDialect
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
@@ -299,7 +300,7 @@ class BaseRouting:
             bg_status: Optional[BlueGreenStatus],
             plugin_service: AsyncPluginService,
             bg_id: str) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         end_time_sec = loop.time() + (delay_ms / 1_000)
         min_delay_sec = min(delay_ms, BaseRouting._MIN_SLEEP_MS) / 1_000
 
@@ -449,7 +450,7 @@ class SuspendConnectRouting(BaseRouting, ConnectRouting):
 
         bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         start_time_sec = loop.time()
         end_time_sec = start_time_sec + timeout_ms / 1_000
 
@@ -504,7 +505,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
         corresponding_pair = None if bg_status is None else bg_status.corresponding_hosts.get(host_info.host)
 
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         start_time_sec = loop.time()
         end_time_sec = start_time_sec + timeout_ms / 1_000
 
@@ -581,7 +582,7 @@ class SuspendExecuteRouting(BaseRouting, ExecuteRouting):
 
         bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         start_time_sec = loop.time()
         end_time_sec = start_time_sec + timeout_ms / 1_000
 
@@ -879,6 +880,9 @@ class AsyncBlueGreenStatusMonitor:
     def start(self) -> None:
         if not self._has_started:
             self._has_started = True
+            # Owner loop for thread-safe cancellation from other loops/threads
+            # (module-level monitor registry).
+            self._loop = asyncio.get_running_loop()
             self._task = asyncio.create_task(self._run())
 
     async def _run(self) -> None:
@@ -976,7 +980,7 @@ class AsyncBlueGreenStatusMonitor:
 
     async def _get_ip_address(self, host: str) -> ValueContainer[str]:
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             ip = await loop.run_in_executor(None, socket.gethostbyname, host)
             return ValueContainer.of(ip)
         except (socket.gaierror, OSError):
@@ -1133,7 +1137,7 @@ class AsyncBlueGreenStatusMonitor:
         return await self._plugin_service.driver_dialect.is_closed(conn)
 
     async def _delay(self, delay_ms: int) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         end_ns = loop.time() + delay_ms / 1_000
         initial_interval_rate = self.interval_rate
         initial_panic_mode_val = self._panic_mode
@@ -1234,11 +1238,19 @@ class AsyncBlueGreenStatusMonitor:
         self.stop = True
         task = self._task
         if task is not None and not task.done():
-            task.cancel()
+            owner_loop = getattr(self, "_loop", None)
+            cancel_task_threadsafe(task, owner_loop)
             try:
-                await task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if owner_loop is None or running is owner_loop:
+                # Awaiting a foreign-loop task is invalid; drain only when the
+                # task belongs to the current loop.
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
         self._task = None
         await self._close_connection()
 

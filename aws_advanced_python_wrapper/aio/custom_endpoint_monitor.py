@@ -206,7 +206,7 @@ class AsyncCustomEndpointMonitor:
         worker thread does the blocking wait. Safe to call multiple times --
         once set the event stays set for the monitor's lifetime.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None, self._info_ready_event.wait, timeout_sec)
 
@@ -216,7 +216,7 @@ class AsyncCustomEndpointMonitor:
         self._thread = None
         if thread is not None and thread.is_alive():
             # Join off the event loop so a slow in-flight fetch can't block it.
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, thread.join, 5.0)
 
 

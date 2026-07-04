@@ -375,7 +375,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
         # called from _failover at ``failover_v2_plugin.py:201``.
         await self._invalidate_current_connection()
 
-        deadline = asyncio.get_event_loop().time() + self._failover_timeout_sec
+        deadline = asyncio.get_running_loop().time() + self._failover_timeout_sec
         last_error: Optional[BaseException] = None
 
         # STRICT_WRITER discovery is monitor-first (sync parity:
@@ -389,7 +389,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
         topology: Topology = ()
         if self._mode == FailoverMode.STRICT_WRITER:
             try:
-                remaining = max(0.0, deadline - asyncio.get_event_loop().time())
+                remaining = max(0.0, deadline - asyncio.get_running_loop().time())
                 refreshed = await self._within_deadline(
                     self._plugin_service.force_monitoring_refresh_host_list(
                         True, remaining),
@@ -437,7 +437,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
         raises ``asyncio.TimeoutError``, which the loops treat like any other
         failed attempt and fall through to ``FailoverFailedError``.
         """
-        remaining = deadline - asyncio.get_event_loop().time()
+        remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             close = getattr(coro, "close", None)
             if callable(close):
@@ -482,9 +482,9 @@ class AsyncFailoverPlugin(AsyncPlugin):
         strategy = (WrapperProperties.FAILOVER_READER_HOST_SELECTOR_STRATEGY
                     .get(self._props) or "random")
 
-        while asyncio.get_event_loop().time() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             remaining = list(reader_candidates)
-            while remaining and asyncio.get_event_loop().time() < deadline:
+            while remaining and asyncio.get_running_loop().time() < deadline:
                 try:
                     candidate = self._plugin_service.get_host_info_by_strategy(
                         HostRole.READER, strategy, remaining)
@@ -540,7 +540,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
             # unless we already verified it is still the writer (sync
             # failover_v2:292-308).
             if (original_writer is None
-                    or asyncio.get_event_loop().time() >= deadline
+                    or asyncio.get_running_loop().time() >= deadline
                     or (self._mode == FailoverMode.STRICT_READER
                         and is_original_writer_still_writer)):
                 await asyncio.sleep(1.0)

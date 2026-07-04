@@ -21,7 +21,7 @@ subset), verifying the host's role with a data-plane probe before accepting it.
 
 Async adaptations of the sync logic:
 
-* ``time.time()`` / ``time.sleep`` -> ``asyncio.get_event_loop().time()`` /
+* ``time.time()`` / ``time.sleep`` -> ``asyncio.get_running_loop().time()`` /
   ``await asyncio.sleep``.
 * ``plugin_service.connect`` -> ``await plugin_service.force_connect`` -- the
   reconnect must re-run the plugin pipeline (so auth plugins re-apply, e.g. the
@@ -117,7 +117,7 @@ class AsyncRetryUtil:
         deadline.
         """
         last_error: Optional[BaseException] = None
-        while asyncio.get_event_loop().time() < timeout_end_time:
+        while asyncio.get_running_loop().time() < timeout_end_time:
             # Enforce the allow/block list (custom endpoints): the new writer
             # must be an allowed host, mirroring sync RetryUtil's
             # allowed_writer_hosts filtering (utils/retry_util.py:59-70).
@@ -256,7 +256,7 @@ class AsyncRetryUtil:
 
         candidate_conn: Optional[Any] = None
         try:
-            while asyncio.get_event_loop().time() < retry_end_time:
+            while asyncio.get_running_loop().time() < retry_end_time:
                 # Re-probe live topology each pass via FORCE refresh, not a plain
                 # ``refresh_host_list``. Plain refresh returns the cached
                 # pre-failover topology for up to ``topology_refresh_ms``
@@ -280,7 +280,7 @@ class AsyncRetryUtil:
                     await self._short_delay()
                     continue
 
-                while remaining_hosts and asyncio.get_event_loop().time() < retry_end_time:
+                while remaining_hosts and asyncio.get_running_loop().time() < retry_end_time:
                     candidate_host = None
                     # When a specific role must be verified (writer failover), ask the
                     # selector for exactly that role. Otherwise -- the GDB *_OR_WRITER
@@ -359,7 +359,7 @@ class AsyncRetryUtil:
         on expiry the raised ``TimeoutError`` is treated like any other failed
         candidate attempt by the caller's ``except`` clause.
         """
-        remaining = deadline - asyncio.get_event_loop().time()
+        remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             close = getattr(coro, "close", None)
             if callable(close):

@@ -29,12 +29,37 @@ plus a hook for SP-ers to register their per-instance shutdown coroutines
 from __future__ import annotations
 
 import asyncio
-from typing import Awaitable, Callable, List
+from typing import Awaitable, Callable, List, Optional
 
 from aws_advanced_python_wrapper.cleanup import \
     release_resources as _sync_release_resources
 
 _registered_shutdown_hooks: List[Callable[[], Awaitable[None]]] = []
+
+
+def cancel_task_threadsafe(
+        task: asyncio.Task,
+        owner_loop: Optional[asyncio.AbstractEventLoop]) -> None:
+    """Cancel ``task`` safely even when the caller runs on a DIFFERENT event
+    loop/thread than the one that owns the task.
+
+    ``Task.cancel()`` is not thread-safe: module-level monitor registries can
+    hand a monitor created on loop A to a caller running on loop B (e.g.
+    thread-per-loop web servers), and a direct ``cancel()`` from B corrupts
+    loop A's state. Route through ``call_soon_threadsafe`` in that case.
+    """
+    try:
+        running: Optional[asyncio.AbstractEventLoop] = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if owner_loop is not None and running is not owner_loop:
+        try:
+            owner_loop.call_soon_threadsafe(task.cancel)
+        except RuntimeError:
+            # Owner loop already closed -- the task can never run again.
+            pass
+        return
+    task.cancel()
 
 
 def register_shutdown_hook(hook: Callable[[], Awaitable[None]]) -> None:

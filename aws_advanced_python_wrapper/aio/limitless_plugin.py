@@ -53,7 +53,8 @@ from threading import Lock
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Dict,
                     List, Optional, Set, Tuple)
 
-from aws_advanced_python_wrapper.aio.cleanup import register_shutdown_hook
+from aws_advanced_python_wrapper.aio.cleanup import (cancel_task_threadsafe,
+                                                     register_shutdown_hook)
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.database_dialect import AuroraLimitlessDialect
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
@@ -322,6 +323,9 @@ class AsyncLimitlessRouterMonitor:
         if self.is_running():
             return
         self._stop_event.clear()
+        # Owner loop for thread-safe cancellation from other loops/threads
+        # (module-level monitor registry).
+        self._loop = asyncio.get_running_loop()
         self._task = asyncio.create_task(self._run())
 
     async def _run(self) -> None:
@@ -392,11 +396,19 @@ class AsyncLimitlessRouterMonitor:
         self._stop_event.set()
         task = self._task
         if task is not None and not task.done():
-            task.cancel()
+            owner_loop = getattr(self, "_loop", None)
+            cancel_task_threadsafe(task, owner_loop)
             try:
-                await task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if owner_loop is None or running is owner_loop:
+                # Awaiting a foreign-loop task is invalid; drain only when the
+                # task belongs to the current loop.
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
         self._task = None
         await self._close_probe()
         logger.debug("LimitlessRouterMonitor.Stopped", self._host_info.host)
