@@ -153,12 +153,15 @@ class AsyncDefaultPlugin(AsyncPlugin):
             **kwargs: Any) -> Any:
         # Per-operation socket-timeout bound (sync parity: DriverDialect.execute
         # wraps network-bound methods with SOCKET_TIMEOUT_SEC and aborts the
-        # connection on expiry, driver_dialect.py:126-153). As the terminal
-        # plugin this covers every dispatched DBAPI method. On timeout the
-        # connection socket is severed (abort_connection) so the wedged
-        # operation cannot poison a later reuse, then QueryTimeoutError is
-        # raised exactly like sync.
+        # connection on expiry, driver_dialect.py:126-153). Like sync, the bound
+        # applies only to the dialect's network_bound_methods -- a slow local
+        # method must not be spuriously aborted with QueryTimeoutError. On
+        # timeout the connection socket is severed (abort_connection) so the
+        # wedged operation cannot poison a later reuse, then QueryTimeoutError
+        # is raised exactly like sync.
         timeout_sec = self._socket_timeout_sec()
+        if timeout_sec is not None and not self._is_network_bound(method_name):
+            timeout_sec = None
         if timeout_sec is not None and timeout_sec > 0:
             try:
                 result = await asyncio.wait_for(execute_func(), timeout_sec)
@@ -191,6 +194,19 @@ class AsyncDefaultPlugin(AsyncPlugin):
         except Exception:  # noqa: BLE001 - unset/malformed -> no bound
             return None
         return timeout if timeout > 0 else None
+
+    def _is_network_bound(self, method_name: str) -> bool:
+        # Sync-parity gate (driver_dialect.py:134): the socket-timeout bound
+        # applies when the dialect declares ALL methods network-bound or lists
+        # this method explicitly. Fail open (bounded) when no dialect is wired.
+        if self._plugin_service is None:
+            return True
+        try:
+            network_bound = self._plugin_service.driver_dialect.network_bound_methods
+        except Exception:  # noqa: BLE001 - no dialect yet -> keep the bound
+            return True
+        return (DbApiMethod.ALL.method_name in network_bound
+                or method_name in network_bound)
 
     async def _abort_current_connection(self) -> None:
         if self._plugin_service is None:

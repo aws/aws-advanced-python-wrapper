@@ -43,10 +43,21 @@ class AsyncPsycopgDriverDialect(AsyncDriverDialect):
 
     _dialect_code: str = DriverDialectCodes.PSYCOPG
     _driver_name: str = "psycopg-async"
+    # Mirrors sync PgDriverDialect._network_bound_methods (pg_driver_dialect.py)
+    # plus two async-dispatch additions: CONNECT (async connects flow through the
+    # plugin pipeline) and CURSOR_EXECUTEMANY (network-bound like execute).
     _network_bound_methods = {
         DbApiMethod.CONNECTION_COMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT_SETTER.method_name,
+        DbApiMethod.CONNECTION_IS_READ_ONLY.method_name,
+        DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
         DbApiMethod.CONNECTION_ROLLBACK.method_name,
+        DbApiMethod.CONNECTION_CLOSE.method_name,
+        DbApiMethod.CONNECTION_CURSOR.method_name,
         DbApiMethod.CONNECT.method_name,
+        DbApiMethod.CURSOR_CLOSE.method_name,
+        DbApiMethod.CURSOR_CALLPROC.method_name,
         DbApiMethod.CURSOR_EXECUTE.method_name,
         DbApiMethod.CURSOR_EXECUTEMANY.method_name,
         DbApiMethod.CURSOR_FETCHONE.method_name,

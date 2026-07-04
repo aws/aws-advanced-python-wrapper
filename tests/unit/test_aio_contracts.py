@@ -333,6 +333,7 @@ def test_default_plugin_execute_times_out_and_aborts():
         # proxies do); stop MagicMock from fabricating one.
         del raw_conn.driver_connection
         svc.current_connection = raw_conn
+        svc.driver_dialect.network_bound_methods = {"Cursor.execute"}
         svc.driver_dialect.abort_connection = AsyncMock()
         plugin = AsyncDefaultPlugin(svc)
 
@@ -345,6 +346,39 @@ def test_default_plugin_execute_times_out_and_aborts():
         except QueryTimeoutError:
             pass
         svc.driver_dialect.abort_connection.assert_awaited_once_with(raw_conn)
+
+    asyncio.run(_body())
+
+
+def test_default_plugin_socket_timeout_skips_non_network_methods():
+    """Sync parity (driver_dialect.py:134): the socket-timeout bound applies
+    only to the dialect's network_bound_methods. A slow LOCAL method must not
+    be aborted with QueryTimeoutError."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from aws_advanced_python_wrapper.aio.default_plugin import \
+        AsyncDefaultPlugin
+    from aws_advanced_python_wrapper.utils.properties import Properties
+
+    async def _body() -> None:
+        svc = MagicMock()
+        svc.props = Properties({"socket_timeout": "0.05"})
+        svc.current_connection = MagicMock()
+        svc.update_in_transaction = AsyncMock()
+        # Dialect declares only Cursor.execute as network-bound.
+        svc.driver_dialect.network_bound_methods = {"Cursor.execute"}
+        svc.driver_dialect.abort_connection = AsyncMock()
+        plugin = AsyncDefaultPlugin(svc)
+
+        async def _slow_local() -> str:
+            await asyncio.sleep(0.2)  # longer than socket_timeout
+            return "ok"
+
+        # Not network-bound -> no wait_for bound, completes normally.
+        assert await plugin.execute(
+            object(), "Connection.get_backend_pid", _slow_local) == "ok"
+        svc.driver_dialect.abort_connection.assert_not_awaited()
 
     asyncio.run(_body())
 

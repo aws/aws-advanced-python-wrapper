@@ -53,10 +53,21 @@ class AsyncAiomysqlDriverDialect(AsyncDriverDialect):
 
     _dialect_code: str = DriverDialectCodes.MYSQL_CONNECTOR_PYTHON  # reuse MySQL code
     _driver_name: str = "aiomysql"
+    # Mirrors sync MySQLDriverDialect._network_bound_methods
+    # (mysql_driver_dialect.py) plus two async-dispatch additions: CONNECT
+    # (async connects flow through the plugin pipeline) and CURSOR_EXECUTEMANY
+    # (network-bound like execute). Like sync MySQL, CONNECTION_CLOSE is not
+    # network-bound here.
     _network_bound_methods = {
         DbApiMethod.CONNECT.method_name,
         DbApiMethod.CONNECTION_COMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT.method_name,
+        DbApiMethod.CONNECTION_AUTOCOMMIT_SETTER.method_name,
+        DbApiMethod.CONNECTION_IS_READ_ONLY.method_name,
+        DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
         DbApiMethod.CONNECTION_ROLLBACK.method_name,
+        DbApiMethod.CONNECTION_CURSOR.method_name,
+        DbApiMethod.CURSOR_CLOSE.method_name,
         DbApiMethod.CURSOR_EXECUTE.method_name,
         DbApiMethod.CURSOR_EXECUTEMANY.method_name,
         DbApiMethod.CURSOR_FETCHONE.method_name,
