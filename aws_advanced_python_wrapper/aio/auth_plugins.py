@@ -31,15 +31,19 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional,
-                    Set, Tuple)
+from datetime import datetime, timedelta
+from types import SimpleNamespace
+from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Optional, Set,
+                    Tuple)
 
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
+from aws_advanced_python_wrapper.aws_secrets_manager_plugin import Secret
 from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
-from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils
+from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
@@ -241,19 +245,27 @@ class AsyncIamAuthPlugin(AsyncAuthPluginBase):
     """
 
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60  # 15 minutes
-    _TOKEN_REGEN_GRACE_SEC = 60
 
     def __init__(
             self,
             plugin_service: AsyncPluginService,
             props: Properties) -> None:
         super().__init__(plugin_service, props)
-        self._token_cache: Dict[str, Tuple[str, float]] = {}
+        # Process-wide token cache shared with sync IamAuthPlugin
+        # (iam_plugin.py:58-59). Plugin instances are rebuilt on every
+        # connect(), so an instance-level cache would regenerate the token
+        # for each new connection; the shared StorageService (same TokenInfo
+        # type + IamAuthUtils.get_cache_key keys as sync) survives across
+        # connections and across sync/async wrappers in the same process.
+        self._storage_service = services_container.get_storage_service()
+        self._storage_service.register(
+            TokenInfo, item_expiration_time=timedelta(minutes=15))
         # Telemetry counter + cache-size gauge -- matches sync iam_plugin.py:62-64.
         tf = self._plugin_service.get_telemetry_factory()
         self._fetch_token_counter = tf.create_counter("iam.fetch_token.count")
         self._cache_size_gauge = tf.create_gauge(
-            "iam.token_cache.size", lambda: len(self._token_cache))
+            "iam.token_cache.size",
+            lambda: self._storage_service.size(TokenInfo))
 
     def _prepare_secure_transport(
             self, driver_dialect: AsyncDriverDialect, props: Properties) -> None:
@@ -339,19 +351,20 @@ class AsyncIamAuthPlugin(AsyncAuthPluginBase):
         if not ttl_sec:
             ttl_sec = self._DEFAULT_TOKEN_EXPIRATION_SEC
 
-        now = asyncio.get_event_loop().time()
-        cached = self._token_cache.get(cache_key)
-        if cached is not None:
-            token, expires_at = cached
-            if now < expires_at - self._TOKEN_REGEN_GRACE_SEC:
-                return user, token, True
+        # Sync-parity lookup (iam_plugin.py:60-64): wall-clock TokenInfo
+        # expiry, no regeneration grace window.
+        token_info = self._storage_service.get(TokenInfo, cache_key)
+        if token_info is not None and not token_info.is_expired():
+            return user, token_info.token, True
 
         if self._fetch_token_counter is not None:
             self._fetch_token_counter.inc()
+        token_expiry = datetime.now() + timedelta(seconds=ttl_sec)
         token = await asyncio.to_thread(
             self._generate_token_blocking, host_info, props, user, host, int(port), region
         )
-        self._token_cache[cache_key] = (token, now + ttl_sec)
+        self._storage_service.put(
+            TokenInfo, cache_key, TokenInfo(token, token_expiry))
         return user, token, False
 
     def _invalidate_cache(
@@ -366,7 +379,7 @@ class AsyncIamAuthPlugin(AsyncAuthPluginBase):
         """
         cache_key = self._cache_key_for(host_info, props)
         if cache_key is not None:
-            self._token_cache.pop(cache_key, None)
+            self._storage_service.remove(TokenInfo, cache_key)
 
     def _wrap_network_exception(self, exc: Exception) -> AwsConnectError:
         # Parity with sync IamAuthPlugin._connect:139.
@@ -431,8 +444,6 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
       provides the region when ``SECRETS_MANAGER_REGION`` is absent.
     """
 
-    _DEFAULT_TTL_SEC = 365 * 24 * 3600  # 1 year (matches sync fallback)
-
     # Extract region from ARN: arn:aws:secretsmanager:<region>:<account>:secret:<name>
     _ARN_REGION_RE = re.compile(
         r"^arn:aws:secretsmanager:(?P<region>[a-z0-9-]+):")
@@ -442,12 +453,14 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
             plugin_service: AsyncPluginService,
             props: Properties) -> None:
         super().__init__(plugin_service, props)
-        # Cache key is a 3-tuple ``(secret_id, region, endpoint)`` -- parity with
-        # sync aws_secrets_manager_plugin.py:86 (endpoint distinguishes a VPC
-        # endpoint / test double from the default service endpoint).
-        self._secret_cache: Dict[
-            Tuple[str, Optional[str], Optional[str]],
-            Tuple[Optional[str], Optional[str], float]] = {}
+        # Process-wide secret cache shared with sync AwsSecretsManagerPlugin
+        # (aws_secrets_manager_plugin.py:73-74): same Secret type key and the
+        # same 3-tuple ``(secret_id, region, endpoint)`` cache key. Plugin
+        # instances are rebuilt on every connect(), so an instance-level cache
+        # would call get_secret_value on each new connection.
+        self._storage_service = services_container.get_storage_service()
+        self._storage_service.register(
+            Secret, item_expiration_time=timedelta(minutes=30))
         # Telemetry counter -- matches sync aws_secrets_manager_plugin.py:89.
         tf = self._plugin_service.get_telemetry_factory()
         self._fetch_secret_counter = tf.create_counter(
@@ -460,12 +473,15 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
         cache_key = self._secret_key_for(props)
         secret_id, region, endpoint = cache_key
 
-        now = asyncio.get_event_loop().time()
-        cached = self._secret_cache.get(cache_key)
-        if cached is not None:
-            user, password, expires_at = cached
-            if now < expires_at:
-                return user, password, True
+        # Sync-parity lookup (aws_secrets_manager_plugin.py:158-159): the
+        # shared StorageService owns expiration (30-min registration, or the
+        # SECRETS_MANAGER_EXPIRATION override applied at put time).
+        cached_secret = self._storage_service.get(Secret, cache_key)
+        if cached_secret is not None:
+            user_key, password_key = self._credential_keys(props)
+            return (getattr(cached_secret.value, user_key, None),
+                    getattr(cached_secret.value, password_key, None),
+                    True)
 
         if self._fetch_secret_counter is not None:
             self._fetch_secret_counter.inc()
@@ -498,6 +514,25 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
             raise AwsWrapperError(
                 Messages.get_formatted(
                     "AwsSecretsManagerPlugin.EndpointOverrideMisconfigured", endpoint), e) from e
+        user_key, password_key = self._credential_keys(props)
+        user = secret.get(user_key)
+        password = secret.get(password_key)
+
+        # Store the FULL secret as sync does (Secret(SimpleNamespace), 30-min
+        # registered expiry); honor the async SECRETS_MANAGER_EXPIRATION
+        # override via put's per-item expiration when explicitly set.
+        ttl_sec = WrapperProperties.SECRETS_MANAGER_EXPIRATION.get_int(props)
+        if ttl_sec is not None and ttl_sec >= 0:
+            self._storage_service.put(
+                Secret, cache_key, Secret(SimpleNamespace(**secret)),
+                item_expiration_ns=int(ttl_sec * 1_000_000_000))
+        else:
+            self._storage_service.put(
+                Secret, cache_key, Secret(SimpleNamespace(**secret)))
+        return user, password, False
+
+    @staticmethod
+    def _credential_keys(props: Properties) -> Tuple[str, str]:
         # Allow custom field names via *_KEY properties (e.g. Terraform secrets
         # with non-default schemas).
         user_key = (
@@ -508,14 +543,7 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
             WrapperProperties.SECRETS_MANAGER_SECRET_PASSWORD_KEY.get(props)
             or "password"
         )
-        user = secret.get(user_key)
-        password = secret.get(password_key)
-
-        ttl_sec = WrapperProperties.SECRETS_MANAGER_EXPIRATION.get_int(props)
-        if ttl_sec is None or ttl_sec < 0:
-            ttl_sec = self._DEFAULT_TTL_SEC
-        self._secret_cache[cache_key] = (user, password, now + ttl_sec)
-        return user, password, False
+        return user_key, password_key
 
     def _secret_key_for(
             self, props: Properties) -> Tuple[str, Optional[str], Optional[str]]:
@@ -549,7 +577,7 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
         """Drop the cached secret for this (secret_id, region, endpoint) so a
         subsequent ``_resolve_credentials`` call refetches it."""
         try:
-            self._secret_cache.pop(self._secret_key_for(props), None)
+            self._storage_service.remove(Secret, self._secret_key_for(props))
         except AwsWrapperError:
             # No valid key derivable (missing secret_id/region) -- nothing to drop.
             pass

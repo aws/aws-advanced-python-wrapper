@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import re
 import ssl as _ssl
+from datetime import datetime, timedelta
 from html import unescape
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional, Tuple
 from urllib.parse import urlencode, urljoin
@@ -41,7 +42,8 @@ from aws_advanced_python_wrapper.aio.auth_plugins import (AsyncAuthPluginBase,
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
 from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
-from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils
+from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils, TokenInfo
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
@@ -58,23 +60,31 @@ class _RdsTokenMixin:
     """Shared helper: STS (with SAML) -> temporary creds -> RDS IAM token."""
 
     _DEFAULT_TOKEN_EXPIRATION_SEC = 15 * 60 - 30  # matches IAM_TOKEN_EXPIRATION default
-    _TOKEN_REGEN_GRACE_SEC = 60
 
     def __init__(self) -> None:
-        self._rds_token_cache: dict = {}
+        # Process-wide token cache shared with sync FederatedAuthPlugin /
+        # OktaAuthPlugin (federated_plugin.py:65-66, okta_plugin.py:61-62):
+        # same TokenInfo type and IamAuthUtils.get_cache_key keys. Plugin
+        # instances are rebuilt on every connect(), so an instance-level cache
+        # would redo the full SAML round-trip + STS AssumeRoleWithSAML for
+        # each new connection.
+        self._storage_service = services_container.get_storage_service()
+        self._storage_service.register(
+            TokenInfo, item_expiration_time=timedelta(minutes=30))
 
     @staticmethod
     def _rds_token_cache_key(
             host: str,
             port: int,
             user: str,
-            region: Optional[str]) -> Tuple[str, int, str, Optional[str]]:
-        """Shape of the key used in ``_rds_token_cache``.
+            region: Optional[str]) -> str:
+        """Cache key for the RDS token -- sync-parity string form
+        (IamAuthUtils.get_cache_key), shared with the sync plugins' entries.
 
         Extracted so ``_resolve_credentials`` and ``_invalidate_cache``
         (plus any future code that touches the cache) stay aligned.
         """
-        return (host, port, user, region)
+        return IamAuthUtils.get_cache_key(user, host, port, region)
 
     async def _sts_assume_role_with_saml(
             self,
@@ -148,14 +158,12 @@ class _RdsTokenMixin:
             port: int,
             user: str,
             region: Optional[str]) -> Optional[str]:
-        cached = self._rds_token_cache.get(
-            self._rds_token_cache_key(host, port, user, region))
-        if cached is None:
-            return None
-        token, expires_at = cached
-        now = asyncio.get_event_loop().time()
-        if now < expires_at - self._TOKEN_REGEN_GRACE_SEC:
-            return token
+        # Sync-parity lookup (federated_plugin.py:114-118): wall-clock
+        # TokenInfo expiry, no regeneration grace window.
+        token_info = self._storage_service.get(
+            TokenInfo, self._rds_token_cache_key(host, port, user, region))
+        if token_info is not None and not token_info.is_expired():
+            return token_info.token
         return None
 
     def _store_rds_token(
@@ -168,10 +176,11 @@ class _RdsTokenMixin:
             ttl_sec: Optional[int] = None) -> None:
         if not ttl_sec:
             ttl_sec = self._DEFAULT_TOKEN_EXPIRATION_SEC
-        expires_at = asyncio.get_event_loop().time() + ttl_sec
-        self._rds_token_cache[
-            self._rds_token_cache_key(host, port, user, region)
-        ] = (token, expires_at)
+        token_expiry = datetime.now() + timedelta(seconds=ttl_sec)
+        self._storage_service.put(
+            TokenInfo,
+            self._rds_token_cache_key(host, port, user, region),
+            TokenInfo(token, token_expiry))
 
 
 class AsyncFederatedAuthPlugin(AsyncAuthPluginBase, _RdsTokenMixin):
@@ -212,7 +221,8 @@ class AsyncFederatedAuthPlugin(AsyncAuthPluginBase, _RdsTokenMixin):
         self._fetch_token_counter = tf.create_counter(
             self._FETCH_TOKEN_COUNTER_NAME)
         self._cache_size_gauge = tf.create_gauge(
-            self._cache_size_gauge_name(), lambda: len(self._rds_token_cache))
+            self._cache_size_gauge_name(),
+            lambda: self._storage_service.size(TokenInfo))
 
     @classmethod
     def _cache_size_gauge_name(cls) -> str:
@@ -299,8 +309,9 @@ class AsyncFederatedAuthPlugin(AsyncAuthPluginBase, _RdsTokenMixin):
             return
         port = IamAuthUtils.get_port(props, host_info, self._default_port())
         region = _resolve_iam_region(props, host, host_info)
-        self._rds_token_cache.pop(
-            self._rds_token_cache_key(host, int(port), db_user, region), None)
+        self._storage_service.remove(
+            TokenInfo,
+            self._rds_token_cache_key(host, int(port), db_user, region))
 
     # ---- error-key mapping (parity with sync FederatedAuthPlugin) --------
 

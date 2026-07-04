@@ -28,7 +28,26 @@ from aws_advanced_python_wrapper.aio.plugin_service import \
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.iam_utils import TokenInfo
 from aws_advanced_python_wrapper.utils.properties import Properties
+
+
+@pytest.fixture(autouse=True)
+def _clear_shared_token_cache():
+    # RDS tokens now live in the process-wide StorageService (sync parity) --
+    # clear them around each test so tests stay hermetic.
+    storage = services_container.get_storage_service()
+    try:
+        storage.clear(TokenInfo)
+    except Exception:  # noqa: BLE001 - type not registered yet
+        pass
+    yield
+    try:
+        storage.clear(TokenInfo)
+    except Exception:  # noqa: BLE001
+        pass
+
 
 _FAKE_SAML = "PHNhbWw6UmVzcG9uc2Ugeg=="  # noqa
 _FAKE_CREDS = {
@@ -330,12 +349,13 @@ def test_federated_invalidate_cache_drops_rds_token():
             await plugin._resolve_credentials(
                 HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432), props)
 
-        assert len(plugin._rds_token_cache) == 1
+        storage = services_container.get_storage_service()
+        assert storage.size(TokenInfo) == 1
 
         # _invalidate_cache must compute the exact same key the resolve
         # path wrote.
         plugin._invalidate_cache(HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432), props)
-        assert len(plugin._rds_token_cache) == 0
+        assert storage.size(TokenInfo) == 0
 
     asyncio.run(_body())
 

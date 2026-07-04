@@ -27,14 +27,35 @@ from aws_advanced_python_wrapper.aio.plugin_service import \
     AsyncPluginServiceImpl
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
+from aws_advanced_python_wrapper.aws_secrets_manager_plugin import Secret
 from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.iam_utils import TokenInfo
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 def _svc(props: Properties) -> AsyncPluginServiceImpl:
     return AsyncPluginServiceImpl(props, MagicMock(), HostInfo(host="h", port=5432))
+
+
+@pytest.fixture(autouse=True)
+def _clear_shared_auth_caches():
+    # Auth credentials now live in the process-wide StorageService (sync
+    # parity) -- clear them around each test so tests stay hermetic.
+    storage = services_container.get_storage_service()
+    for item_type in (TokenInfo, Secret):
+        try:
+            storage.clear(item_type)
+        except Exception:  # noqa: BLE001 - type not registered yet
+            pass
+    yield
+    for item_type in (TokenInfo, Secret):
+        try:
+            storage.clear(item_type)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ---- IAM plugin --------------------------------------------------------
@@ -616,9 +637,10 @@ def test_iam_plugin_invalidate_cache_drops_entry():
     with patch.object(AsyncIamAuthPlugin, "_generate_token_blocking",
                       return_value="t"):
         asyncio.run(plugin._resolve_credentials(host, props))
-    assert plugin._token_cache  # populated
+    storage = services_container.get_storage_service()
+    assert storage.size(TokenInfo) == 1  # populated (shared sync-parity store)
     plugin._invalidate_cache(host, props)
-    assert not plugin._token_cache  # dropped
+    assert storage.size(TokenInfo) == 0  # dropped
 
 
 def test_iam_plugin_resolve_credentials_returns_was_cached_flag():
@@ -771,9 +793,10 @@ def test_secrets_plugin_invalidate_cache_drops_entry():
     with patch.object(AsyncAwsSecretsManagerPlugin, "_fetch_secret_blocking",
                       return_value={"username": "u", "password": "p"}):
         asyncio.run(plugin._resolve_credentials(host, props))
-    assert plugin._secret_cache
+    storage = services_container.get_storage_service()
+    assert storage.size(Secret) == 1  # populated (shared sync-parity store)
     plugin._invalidate_cache(host, props)
-    assert not plugin._secret_cache
+    assert storage.size(Secret) == 0  # dropped
 
 
 def test_secrets_plugin_resolve_credentials_returns_was_cached_flag():
@@ -1069,5 +1092,8 @@ def test_iam_plugin_registers_token_cache_size_gauge():
     assert "iam.token_cache.size" in gauges
     _, callback = gauges["iam.token_cache.size"]
     assert callback() == 0
-    plugin._token_cache["k"] = ("t", 1.0)
+    from datetime import datetime, timedelta
+    plugin._storage_service.put(
+        TokenInfo, "k",
+        TokenInfo("t", datetime.now() + timedelta(minutes=5)))
     assert callback() == 1
