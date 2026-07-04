@@ -205,6 +205,7 @@ def test_connect_pins_writer_so_failover_invalidates_idle_conns():
     async def _refresh_to_w1(*a, **k):
         svc._all_hosts = (writer1,)
     svc.refresh_host_list = AsyncMock(side_effect=_refresh_to_w1)
+    svc.force_refresh_host_list = AsyncMock(side_effect=_refresh_to_w1)
 
     active_conn = _plain_conn("active")
     idle_conn = _plain_conn("idle")
@@ -228,6 +229,7 @@ def test_connect_pins_writer_so_failover_invalidates_idle_conns():
         async def _refresh_to_w2(*a, **k):
             svc._all_hosts = (writer2,)
         svc.refresh_host_list = AsyncMock(side_effect=_refresh_to_w2)
+        svc.force_refresh_host_list = AsyncMock(side_effect=_refresh_to_w2)
 
         async def _raising():
             raise FailoverSuccessError("failover")
@@ -243,6 +245,7 @@ def test_connect_does_not_pin_writer_for_non_rds_host():
     """Non-RDS connections pay no connect-time topology round-trip."""
     plugin, svc, driver_dialect, tracker = _build()
     svc.refresh_host_list = AsyncMock()
+    svc.force_refresh_host_list = AsyncMock()
     conn = MagicMock(name="conn")
 
     async def _connect_func():
@@ -350,6 +353,7 @@ def test_plugin_invalidates_on_failover_error():
         svc._all_hosts = (new_writer,)
 
     svc.refresh_host_list = AsyncMock(side_effect=_refresh)
+    svc.force_refresh_host_list = AsyncMock(side_effect=_refresh)
 
     async def _run():
         async def _noop():
@@ -391,6 +395,7 @@ def test_failover_invalidation_completes_before_exception_propagates():
         svc._all_hosts = (new_writer,)
 
     svc.refresh_host_list = AsyncMock(side_effect=_refresh)
+    svc.force_refresh_host_list = AsyncMock(side_effect=_refresh)
 
     async def _run():
         async def _noop():
@@ -642,6 +647,7 @@ def test_failover_error_opens_settling_window_and_keeps_refreshing():
     writer = HostInfo(host="w", port=5432, role=HostRole.WRITER)
     svc._all_hosts = (writer,)
     svc.refresh_host_list = AsyncMock()
+    svc.force_refresh_host_list = AsyncMock()
 
     async def _run():
         async def _raising():
@@ -650,18 +656,21 @@ def test_failover_error_opens_settling_window_and_keeps_refreshing():
         with pytest.raises(FailoverSuccessError):
             await plugin.execute(MagicMock(), "Cursor.execute", _raising)
 
-        # Window opened + immediate refresh performed by the handler.
+        # Window opened + the handler's immediate refresh is a FORCE refresh
+        # through the post-failover connection (a plain refresh can serve the
+        # monitor's pre-failover cache and miss the writer change entirely).
         assert AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns > 0
-        after_failover = svc.refresh_host_list.await_count
-        assert after_failover == 1
+        assert svc.force_refresh_host_list.await_count == 1
+        assert svc.refresh_host_list.await_count == 0
 
-        # Every execute inside the window refreshes again.
+        # Every execute inside the window refreshes again (plain refresh --
+        # sync parity for the settling window).
         async def _noop():
             return None
 
         await plugin.execute(MagicMock(), "Cursor.execute", _noop)
         await plugin.execute(MagicMock(), "Cursor.execute", _noop)
-        assert svc.refresh_host_list.await_count == after_failover + 2
+        assert svc.refresh_host_list.await_count == 2
         # Window still open (3 min is far longer than this test).
         assert AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns > 0
 
@@ -677,6 +686,7 @@ def test_settling_window_expires_and_stops_refreshing():
     writer = HostInfo(host="w", port=5432, role=HostRole.WRITER)
     svc._all_hosts = (writer,)
     svc.refresh_host_list = AsyncMock()
+    svc.force_refresh_host_list = AsyncMock()
 
     # Simulate an already-elapsed window.
     AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns = \
@@ -700,6 +710,7 @@ def test_settling_window_skips_connection_close():
 
     plugin, svc, driver_dialect, tracker = _build()
     svc.refresh_host_list = AsyncMock()
+    svc.force_refresh_host_list = AsyncMock()
 
     # Open window.
     AsyncAuroraConnectionTrackerPlugin._host_list_refresh_end_time_ns = \
@@ -738,6 +749,7 @@ def test_settling_window_refresh_detects_late_writer_change():
             else svc._all_hosts
 
     svc.refresh_host_list = AsyncMock(side_effect=_refresh)
+    svc.force_refresh_host_list = AsyncMock(side_effect=_refresh)
 
     async def _run():
         async def _noop():

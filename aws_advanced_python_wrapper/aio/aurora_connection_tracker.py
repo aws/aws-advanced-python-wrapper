@@ -410,7 +410,17 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
                         perf_counter_ns()
                         + cls._TOPOLOGY_CHANGES_EXPECTED_TIME_NS)
                 try:
-                    await self._plugin_service.refresh_host_list()
+                    # FORCE refresh, through the post-failover current
+                    # connection (the just-verified new writer): a plain
+                    # refresh() can serve the monitor's cache from before the
+                    # monitor observed the failover, so the writer change goes
+                    # undetected. Sync tolerates that staleness because its
+                    # daemon-thread/notify paths retry detection after the
+                    # failover call returns; in asyncio everything dies with
+                    # the loop, so this handler is the ONE deterministic shot
+                    # at detecting the change (observed: 1/10 idle-connection
+                    # params missed invalidation entirely on a stale refresh).
+                    await self._plugin_service.force_refresh_host_list()
                 except Exception:  # noqa: BLE001 - refresh best-effort
                     pass
                 await self._invalidate_writer_change()
