@@ -418,6 +418,85 @@ def test_failover_invalidation_completes_before_exception_propagates():
     asyncio.run(_run())
 
 
+def test_failover_invalidates_departed_host_when_topology_stays_stale():
+    """Integration regression (Aurora multi-5, fresh cluster, fix branch):
+    detection missed AGAIN even with a force refresh -- right after promotion
+    aurora_replica_status can still report the OLD writer, so ANY
+    topology-based comparison can miss the change. The failover plugin itself
+    moved the connection though: the tracker must invalidate the departed
+    host by comparing current_host_info before the failing execute vs after
+    the failover, with no topology cooperation at all."""
+    plugin, svc, driver_dialect, tracker = _build()
+    old_writer = HostInfo(host="old-w", port=5432, role=HostRole.WRITER)
+    new_writer = HostInfo(host="new-w", port=5432, role=HostRole.WRITER)
+    idle_conns = [_plain_conn(f"idle-{i}") for i in range(3)]
+
+    # Topology is FROZEN on the old writer for the whole test (server-side
+    # replica_status lag): refresh calls succeed but change nothing.
+    svc._all_hosts = (old_writer,)
+    svc.refresh_host_list = AsyncMock()
+    svc.force_refresh_host_list = AsyncMock()
+    svc._current_host_info = old_writer
+    for c in idle_conns:
+        tracker.track(old_writer, c)
+
+    async def _run():
+        async def _noop():
+            return None
+
+        await plugin.execute(MagicMock(), "Cursor.execute", _noop)
+        assert plugin._current_writer == old_writer  # pinned via topology
+
+        async def _raising():
+            # The failover plugin reconnects (current host moves) and raises.
+            svc._current_host_info = new_writer
+            raise FailoverSuccessError("failover")
+
+        with pytest.raises(FailoverSuccessError):
+            await plugin.execute(MagicMock(), "Cursor.execute", _raising)
+        # Despite topology still claiming old-w is the writer, the departed
+        # host's connections are closed before the exception reaches the app.
+        for c in idle_conns:
+            c.close.assert_called()
+        # Re-pinned to where the connection actually is, so a later flip
+        # back to old-w is detected as a transition.
+        assert plugin._current_writer == new_writer
+
+    asyncio.run(_run())
+
+
+def test_departed_host_invalidation_skips_non_writer_departures():
+    """Reader-mode failover moving off a READER must not nuke that host's
+    connections via the departed-host path (the pinned writer is elsewhere)."""
+    plugin, svc, driver_dialect, tracker = _build()
+    writer = HostInfo(host="w", port=5432, role=HostRole.WRITER)
+    reader_a = HostInfo(host="r-a", port=5432, role=HostRole.READER)
+    reader_b = HostInfo(host="r-b", port=5432, role=HostRole.READER)
+    reader_conn = _plain_conn("reader-conn")
+
+    svc._all_hosts = (writer, reader_a, reader_b)
+    svc.refresh_host_list = AsyncMock()
+    svc.force_refresh_host_list = AsyncMock()
+    svc._current_host_info = reader_a
+    tracker.track(reader_a, reader_conn)
+
+    async def _run():
+        async def _noop():
+            return None
+
+        await plugin.execute(MagicMock(), "Cursor.execute", _noop)
+
+        async def _raising():
+            svc._current_host_info = reader_b
+            raise FailoverSuccessError("failover")
+
+        with pytest.raises(FailoverSuccessError):
+            await plugin.execute(MagicMock(), "Cursor.execute", _raising)
+        reader_conn.close.assert_not_called()
+
+    asyncio.run(_run())
+
+
 def test_plugin_subscribed_methods_includes_connect_and_execute():
     plugin, *_ = _build()
     subs = plugin.subscribed_methods

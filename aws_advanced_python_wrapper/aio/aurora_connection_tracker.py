@@ -397,6 +397,7 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
                 except Exception:  # noqa: BLE001 - refresh best-effort
                     pass
             await self._invalidate_writer_change()
+        pre_failover_host = self._plugin_service.current_host_info
         try:
             return await execute_func()
         except Exception as exc:
@@ -421,9 +422,23 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
                     # at detecting the change (observed: 1/10 idle-connection
                     # params missed invalidation entirely on a stale refresh).
                     await self._plugin_service.force_refresh_host_list()
-                except Exception:  # noqa: BLE001 - refresh best-effort
-                    pass
+                except Exception as e:  # noqa: BLE001 - refresh best-effort
+                    logger.debug(
+                        f"[AsyncAuroraConnectionTrackerPlugin] post-failover "
+                        f"topology refresh failed (best-effort): {e}")
                 await self._invalidate_writer_change()
+                # Topology-independent detection: right after promotion even a
+                # direct topology query can still report the OLD writer
+                # (aurora_replica_status lags the promotion by seconds), so the
+                # topology comparison above can miss the change -- observed on
+                # Aurora as idle connections surviving failover. But the
+                # failover plugin itself just MOVED this connection: comparing
+                # the connection's host before the failing execute vs after
+                # the failover is deterministic. Invalidate the departed host
+                # when the connection provably moved off it. Sync doesn't need
+                # this: its daemon-thread/notify paths re-detect the change
+                # after replica_status catches up; async's last chance is now.
+                await self._invalidate_departed_host(pre_failover_host)
             raise
 
     def _update_writer_from_topology(self) -> Optional[HostInfo]:
@@ -443,6 +458,32 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         if self._writer_changes_counter is not None:
             self._writer_changes_counter.inc()
         return old_writer
+
+    async def _invalidate_departed_host(
+            self, pre_failover_host: Optional[HostInfo]) -> None:
+        """Invalidate connections to the host this connection provably moved
+        OFF during failover (topology-independent; see the failover handler).
+
+        Guarded: only fires when the connection actually changed hosts, and
+        only when the departed host is the pinned writer (or no writer was
+        pinned -- a failed pin must not disable invalidation entirely). When
+        the topology comparison already invalidated the same host, the
+        registry entries are gone and this is a no-op.
+        """
+        if pre_failover_host is None:
+            return
+        post = self._plugin_service.current_host_info
+        if post is None or self._same_host(pre_failover_host, post):
+            return
+        if (self._current_writer is not None
+                and not self._same_host(pre_failover_host, self._current_writer)):
+            return
+        # The connection moved off pre_failover_host via failover: that host
+        # was demoted or died. Re-pin to where we are now so a later flip
+        # back is detected as a transition.
+        self._current_writer = post
+        await self._tracker.invalidate_all(pre_failover_host)
+        self._tracker.log_opened_connections()
 
     async def _invalidate_writer_change(self) -> None:
         """Detect a writer change and invalidate the demoted writer's tracked
