@@ -28,11 +28,15 @@ from typing import TYPE_CHECKING, Any, Optional
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
 from aws_advanced_python_wrapper.hostinfo import HostRole
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
         AsyncDriverDialect
+
+
+logger = Logger(__name__)
 
 
 class AsyncDialectUtils:
@@ -94,8 +98,10 @@ class AsyncDialectUtils:
                 timeout=timeout_sec,
             )
         except asyncio.TimeoutError:
+            logger.debug("AsyncDialectUtils.GetInstanceIdTimeout", timeout_sec)
             return None
-        except Exception:  # noqa: BLE001 - identification is best-effort
+        except Exception as e:  # noqa: BLE001 - identification is best-effort
+            logger.debug("AsyncDialectUtils.GetInstanceIdError", e)
             return None
         finally:
             await AsyncDialectUtils._restore_idle(conn, was_in_txn)
