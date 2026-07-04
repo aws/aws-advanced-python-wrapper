@@ -166,28 +166,34 @@ class AsyncRetryUtil:
                     await asyncio.sleep(self._WRITER_VERIFY_RETRY_DELAY_SEC)
                     continue
 
-            # The topology-labeled writer was unreachable (or absent). Connect to
-            # a live reader from the topology and refresh topology THROUGH it -- a
-            # reader can observe the promoted writer, whereas a refresh through the
-            # dead current_connection loops on stale data until the deadline.
-            # Mirrors sync WriterFailoverHandler Task B (connect_to_reader ->
-            # refresh_topology_and_connect_to_new_writer).
+            # The topology-labeled writer was unreachable (or absent).
+            # Primary discovery is the topology MONITOR: failover armed its
+            # panic fan-out via force_monitoring_refresh_host_list before this
+            # loop, and monitor publications land in the provider cache --
+            # force_refresh(None) is a cache read (sync parity: RetryUtil reads
+            # the monitor-maintained cache each pass and NEVER queries through
+            # the dead current connection).
+            await asyncio.sleep(self._WRITER_REFRESH_DELAY_SEC)
+            refreshed_from_cache: Tuple[HostInfo, ...] = ()
+            try:
+                refreshed_from_cache = tuple(await self._bounded(
+                    host_list_provider.force_refresh(None), timeout_end_time))
+            except Exception as e:  # noqa: BLE001
+                last_error = e
+            if refreshed_from_cache and refreshed_from_cache != tuple(topology):
+                topology = refreshed_from_cache
+                continue
+            # Cache unchanged (monitor hasn't found the writer yet, or no
+            # monitor exists for this provider): connect to a live reader from
+            # the topology and refresh THROUGH it -- a reader can observe the
+            # promoted writer. Mirrors sync WriterFailoverHandler Task B
+            # (connect_to_reader -> refresh_topology_and_connect_to_new_writer)
+            # and doubles as the fallback for monitor-less providers.
             refreshed = await self._refresh_topology_via_reader(
                 plugin_service, host_list_provider, connect_func, topology,
                 timeout_end_time)
             if refreshed:
                 topology = refreshed
-                await asyncio.sleep(self._WRITER_VERIFY_RETRY_DELAY_SEC)
-                continue
-            # No reader reachable either; last-ditch refresh through the current
-            # connection (may be dead -- bounded so it can't hang past the deadline).
-            await asyncio.sleep(self._WRITER_REFRESH_DELAY_SEC)
-            try:
-                topology = await self._bounded(
-                    host_list_provider.force_refresh(plugin_service.current_connection),
-                    timeout_end_time)
-            except Exception as e:  # noqa: BLE001
-                last_error = e
 
         raise TimeoutError(Messages.get("RetryUtil.Timeout")) from last_error
 

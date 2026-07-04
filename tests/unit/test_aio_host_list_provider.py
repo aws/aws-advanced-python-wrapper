@@ -890,29 +890,42 @@ def test_topology_monitor_probe_winner_sets_verified_writer():
     asyncio.run(_run())
 
 
-def test_topology_monitor_claim_verified_writer_is_one_shot():
-    """claim_verified_writer returns the winner once, then clears state."""
+def test_topology_monitor_harvests_verified_writer_as_monitoring_conn():
+    """The panic-found verified-writer connection is promoted to the monitor's
+    own monitoring connection (sync parity: the monitor loop harvest at
+    cluster_topology_monitor.py:262-284 -- the monitor KEEPS the connection;
+    failover consumes only the published topology)."""
     from aws_advanced_python_wrapper.hostinfo import HostInfo
 
-    winner_conn = MagicMock()
-    winner_host = HostInfo(host="w", port=5432, role=HostRole.WRITER)
+    async def _run():
+        winner_conn = MagicMock()
+        winner_host = HostInfo(host="w", port=5432, role=HostRole.WRITER)
 
-    monitor = AsyncClusterTopologyMonitor(
-        provider=MagicMock(),
-        connection_getter=lambda: None,
-        refresh_interval_sec=30.0,
-    )
-    monitor._is_verified_writer_connection = True
-    monitor._verified_writer_conn = winner_conn
-    monitor._verified_writer_host_info = winner_host
+        monitor = AsyncClusterTopologyMonitor(
+            provider=MagicMock(),
+            connection_getter=lambda: None,
+            refresh_interval_sec=30.0,
+            connection_factory=AsyncMock(return_value=MagicMock()),
+        )
+        monitor._is_verified_writer_connection = True
+        monitor._verified_writer_conn = winner_conn
+        monitor._verified_writer_host_info = winner_host
+        monitor._writer_found_event.set()
 
-    first = monitor.claim_verified_writer()
-    assert first == (winner_conn, winner_host)
-    assert monitor._is_verified_writer_connection is False
-    assert monitor._verified_writer_conn is None
+        await monitor._harvest_verified_writer()
 
-    second = monitor.claim_verified_writer()
-    assert second is None
+        assert monitor._owned_conn is winner_conn
+        assert monitor._is_verified_writer_connection is True
+        assert monitor._verified_writer_conn is None
+        assert not monitor._writer_found_event.is_set()
+
+        # Dropping the (harvested) monitoring connection un-verifies the
+        # writer so panic mode can re-arm.
+        await monitor._drop_owned_connection()
+        assert monitor._owned_conn is None
+        assert monitor._is_verified_writer_connection is False
+
+    asyncio.run(_run())
 
 
 def test_topology_monitor_probe_dedup():
@@ -1189,3 +1202,84 @@ def test_monitor_closes_stashed_verified_writer_on_stop():
     stashed.close.assert_awaited_once()
     assert monitor._verified_writer_conn is None
     assert monitor._is_verified_writer_connection is False
+
+
+def test_topology_monitor_winner_probe_publishes_topology():
+    """The winning writer probe fetches topology THROUGH the verified-writer
+    connection and publishes it: monitor state + provider cache + wake event
+    (sync parity: HostMonitor._fetch_topology_and_update_cache, :561)."""
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
+
+    new_writer = HostInfo(host="w-new", port=5432, role=HostRole.WRITER)
+    reader = HostInfo(host="r1", port=5432, role=HostRole.READER)
+
+    async def _probe(host_info):
+        if host_info.host == "w-new":
+            return MagicMock(name="winner_conn"), HostRole.WRITER
+        return MagicMock(name=f"conn-{host_info.host}"), HostRole.READER
+
+    provider = MagicMock()
+    provider.force_refresh = AsyncMock(return_value=(new_writer, reader))
+    provider.adopt_topology = MagicMock()
+
+    monitor = AsyncClusterTopologyMonitor(
+        provider=provider,
+        connection_getter=lambda: None,
+        refresh_interval_sec=30.0,
+        probe_host=_probe,
+    )
+    monitor._last_topology = (new_writer, reader)
+
+    async def _run():
+        await monitor._probe_and_report(new_writer)
+        assert monitor._last_topology == (new_writer, reader)
+        provider.adopt_topology.assert_called_once_with((new_writer, reader))
+        assert monitor._topology_updated.is_set()
+        assert monitor._is_verified_writer_connection is True
+        await monitor.stop()
+
+    asyncio.run(_run())
+
+
+def test_force_monitoring_refresh_verify_writer_panics_and_returns_topology():
+    """force_monitoring_refresh(True, t): drops the monitoring connection
+    (forcing panic), wakes the loop, and blocks until a probe publishes the
+    fresh topology (sync parity: force_refresh(True, t) +
+    _wait_till_topology_gets_updated, cluster_topology_monitor.py:136-178)."""
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
+
+    new_writer = HostInfo(host="w-new", port=5432, role=HostRole.WRITER)
+    reader = HostInfo(host="r1", port=5432, role=HostRole.READER)
+
+    async def _probe(host_info):
+        if host_info.host == "w-new":
+            return MagicMock(name="winner_conn"), HostRole.WRITER
+        raise OSError("unreachable")
+
+    async def _factory():
+        # Dead cluster endpoint: the dedicated monitoring connection cannot
+        # be reopened, so the loop falls through to panic mode.
+        raise OSError("cluster endpoint unreachable")
+
+    provider = MagicMock()
+    provider.force_refresh = AsyncMock(return_value=(new_writer, reader))
+    provider.adopt_topology = MagicMock()
+
+    monitor = AsyncClusterTopologyMonitor(
+        provider=provider,
+        connection_getter=lambda: None,
+        refresh_interval_sec=30.0,  # long: proves the tick-request wakeup works
+        probe_host=_probe,
+        connection_factory=_factory,
+    )
+    # Stale pre-failover topology seeds the panic probe targets.
+    monitor._last_topology = (new_writer, reader)
+
+    async def _run():
+        monitor.start()
+        topology = await monitor.force_monitoring_refresh(True, timeout_sec=5.0)
+        assert topology == (new_writer, reader)
+        provider.adopt_topology.assert_called_with((new_writer, reader))
+        await monitor.stop()
+
+    asyncio.run(_run())

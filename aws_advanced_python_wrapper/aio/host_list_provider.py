@@ -287,6 +287,38 @@ class AsyncAuroraHostListProvider:
                 )
             return topology or (self._topology_cache or ())
 
+    def adopt_topology(self, topology: Topology) -> None:
+        """Adopt a monitor-published NON-EMPTY topology into the cache.
+
+        Called by ``AsyncClusterTopologyMonitor._publish_topology`` when a
+        background tick or a panic probe discovers fresh topology -- the async
+        analogue of sync's monitor publishing to the shared storage-service
+        cache (_update_topology_cache, cluster_topology_monitor.py:491-495)."""
+        if not topology:
+            return
+        self._topology_cache = topology
+        self._last_refresh_ns = int(
+            asyncio.get_event_loop().time() * 1_000_000_000)
+
+    async def force_monitoring_refresh(
+            self,
+            should_verify_writer: bool,
+            timeout_sec: float) -> Topology:
+        """Blocking monitor-driven refresh -- sync parity with
+        :meth:`RdsHostListProvider.force_monitoring_refresh` (:278-281):
+        delegates discovery to the topology monitor (panic-mode probe fan-out
+        on monitor-owned connections when ``should_verify_writer``) instead of
+        querying through a caller connection. Falls back to
+        :meth:`force_refresh` when no monitor can be built (static dialects).
+        """
+        monitor = self._get_or_create_monitor()
+        if monitor is None:
+            return await self.force_refresh(self._last_conn)
+        topology = await monitor.force_monitoring_refresh(
+            should_verify_writer, timeout_sec)
+        # _publish_topology already adopted non-empty results into the cache.
+        return topology or ()
+
     def _get_or_create_monitor(self) -> Optional[Any]:
         """Lazy-construct the per-provider topology monitor.
 

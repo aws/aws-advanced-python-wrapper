@@ -716,3 +716,58 @@ def test_default_plugin_strategy_raises_when_filter_empties_topology():
     plugin = AsyncDefaultPlugin(svc)
     with pytest.raises(AwsWrapperError):
         plugin.get_host_info_by_strategy(HostRole.READER, "random")
+
+
+# ---- force_monitoring_refresh_host_list (sync v2 parity) -----------------
+
+
+def test_force_monitoring_refresh_host_list_adopts_monitor_topology():
+    """Monitor-driven refresh adopts the published topology into all_hosts and
+    returns True (sync PluginService.force_monitoring_refresh_host_list)."""
+    async def _body() -> None:
+        svc = _make_service()
+        writer = HostInfo(host="w-new", port=5432, role=HostRole.WRITER)
+        reader = HostInfo(host="r1", port=5432, role=HostRole.READER)
+        provider = MagicMock()
+        provider.force_monitoring_refresh = AsyncMock(
+            return_value=(writer, reader))
+        svc.host_list_provider = provider
+
+        ok = await svc.force_monitoring_refresh_host_list(True, 5.0)
+        assert ok is True
+        provider.force_monitoring_refresh.assert_awaited_once_with(True, 5.0)
+        assert svc.all_hosts == (writer, reader)
+
+    asyncio.run(_body())
+
+
+def test_force_monitoring_refresh_host_list_returns_false_on_timeout():
+    """An empty monitor result (deadline expired with no publication) reports
+    False so failover can react -- mirrors sync failover_v2_plugin.py:333-335."""
+    async def _body() -> None:
+        svc = _make_service()
+        provider = MagicMock()
+        provider.force_monitoring_refresh = AsyncMock(return_value=())
+        svc.host_list_provider = provider
+
+        ok = await svc.force_monitoring_refresh_host_list(True, 0.1)
+        assert ok is False
+
+    asyncio.run(_body())
+
+
+def test_force_monitoring_refresh_host_list_falls_back_without_monitor():
+    """Providers without force_monitoring_refresh (static dialects / test
+    doubles) fall back to a plain forced refresh."""
+    async def _body() -> None:
+        svc = _make_service()
+        writer = HostInfo(host="w", port=5432, role=HostRole.WRITER)
+        provider = MagicMock(spec=["refresh", "force_refresh"])
+        provider.force_refresh = AsyncMock(return_value=(writer,))
+        svc.host_list_provider = provider
+
+        ok = await svc.force_monitoring_refresh_host_list(True, 5.0)
+        assert ok is True
+        assert svc.all_hosts == (writer,)
+
+    asyncio.run(_body())

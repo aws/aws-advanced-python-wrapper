@@ -118,6 +118,13 @@ class AsyncClusterTopologyMonitor:
         self._high_refresh_until_ns: int = 0
         self._ignore_requests_until_ns: int = 0
         self._last_topology: Topology = ()
+        # Set every time a non-empty topology is adopted; awaited by
+        # force_monitoring_refresh (sync parity: _request_to_update_topology /
+        # _wait_till_topology_gets_updated, cluster_topology_monitor.py:157-178).
+        self._topology_updated: asyncio.Event = asyncio.Event()
+        # Wakes the run loop immediately (skip the tick sleep) when a
+        # blocking refresh is requested.
+        self._request_tick: asyncio.Event = asyncio.Event()
 
         # Panic mode state
         self._is_verified_writer_connection: bool = False
@@ -144,23 +151,37 @@ class AsyncClusterTopologyMonitor:
         """True when panic-mode probe tasks are currently running."""
         return bool(self._probe_tasks)
 
-    def claim_verified_writer(self) -> Optional[Tuple[Any, HostInfo]]:
-        """Transfer ownership of the verified writer conn to the caller.
+    async def force_monitoring_refresh(
+            self,
+            should_verify_writer: bool,
+            timeout_sec: float) -> Topology:
+        """Blocking, monitor-driven refresh -- sync parity with
+        ``ClusterTopologyMonitorImpl.force_refresh`` (:136-178).
 
-        One-shot: subsequent calls return ``None`` until panic mode finds
-        another writer.
+        With ``should_verify_writer`` the monitoring connection is dropped and
+        the verified-writer flag cleared, deliberately forcing the monitor into
+        panic mode (per-host probe fan-out on monitor-owned connections) so the
+        NEW writer is discovered -- exactly how sync v2 failover finds the
+        promoted writer. Then awaits, deadline-bounded, until a probe or tick
+        publishes a fresh topology.
+
+        Returns the updated topology, or ``()`` when nothing was published
+        within ``timeout_sec`` (callers treat empty as failure, mirroring sync
+        failover_v2_plugin.py:333-335).
         """
-        if not self._is_verified_writer_connection:
-            return None
-        conn = self._verified_writer_conn
-        host_info = self._verified_writer_host_info
-        self._verified_writer_conn = None
-        self._verified_writer_host_info = None
-        self._is_verified_writer_connection = False
-        self._writer_found_event.clear()
-        if conn is None or host_info is None:
-            return None
-        return (conn, host_info)
+        if not self.is_running():
+            self.start()
+        if should_verify_writer:
+            # Sync :145-147: clear the monitoring connection + verified flag so
+            # _get_monitoring_connection/_should_panic re-discover the writer.
+            await self._drop_owned_connection()
+        self._topology_updated.clear()
+        self._request_tick.set()
+        try:
+            await asyncio.wait_for(self._topology_updated.wait(), timeout_sec)
+        except asyncio.TimeoutError:
+            return ()
+        return self._last_topology
 
     def start(self) -> None:
         """Spawn the background refresh task. No-op if already running."""
@@ -194,6 +215,10 @@ class AsyncClusterTopologyMonitor:
         if self._owned_conn is not None:
             await self._close_best_effort(self._owned_conn)
             self._owned_conn = None
+        # The monitoring connection (possibly the harvested verified-writer
+        # conn) is gone -- the writer is no longer verified, so panic mode may
+        # re-arm (sync :145-147 clears both together).
+        self._is_verified_writer_connection = False
 
     async def _run(self) -> None:
         try:
@@ -227,8 +252,7 @@ class AsyncClusterTopologyMonitor:
                         # on _last_topology being non-empty). Mirrors sync
                         # RdsHostListProvider._get_topology ("use live only if
                         # len > 0").
-                        self._last_topology = topology
-                        self._check_for_writer_change(topology)
+                        self._publish_topology(topology)
                     else:
                         # Empty/failed refresh: drop the (likely dead) connection
                         # so the next tick reopens to a live host; KEEP the cached
@@ -237,14 +261,17 @@ class AsyncClusterTopologyMonitor:
                 elif self._should_panic():
                     self._spawn_panic_probes()
 
+                # Harvest a panic-found writer: promote its connection to the
+                # monitoring connection and keep monitoring through it -- sync
+                # parity with the monitor loop's harvest (:262-284), where the
+                # monitor KEEPS the verified-writer connection (failover opens
+                # its own fresh connection off the published topology).
+                if self._writer_found_event.is_set():
+                    await self._harvest_verified_writer()
+
                 # Pick tick interval based on whether we're in high-freq mode.
                 interval = self._current_tick_interval()
-                try:
-                    await asyncio.wait_for(
-                        self._stop_event.wait(), timeout=interval
-                    )
-                except asyncio.TimeoutError:
-                    continue
+                await self._wait_for_tick(interval)
         except asyncio.CancelledError:
             return
         finally:
@@ -261,10 +288,10 @@ class AsyncClusterTopologyMonitor:
             # leak it past task shutdown.
             await self._drop_owned_connection()
             # A panic-mode probe may have stashed a verified-writer connection
-            # for the failover caller to claim_verified_writer(). If the monitor
-            # is stopped (release_resources_async / shutdown hook) before the
-            # caller claims it, that connection would leak -- a winning probe
-            # task is already done(), so the cancellation above doesn't touch it.
+            # that the run loop has not harvested yet. If the monitor is
+            # stopped (release_resources_async / shutdown hook) before the
+            # harvest, that connection would leak -- a winning probe task is
+            # already done(), so the cancellation above doesn't touch it.
             # Close it explicitly to honor the no-leak / release_resources_async
             # invariant (for aiomysql it otherwise strands a socket + session).
             if self._verified_writer_conn is not None:
@@ -273,6 +300,72 @@ class AsyncClusterTopologyMonitor:
                 self._verified_writer_host_info = None
                 self._is_verified_writer_connection = False
                 self._writer_found_event.clear()
+
+    def _publish_topology(self, topology: Topology) -> None:
+        """Adopt a NON-EMPTY topology: update the monitor state, push it into
+        the provider cache, and wake any blocked force_monitoring_refresh
+        callers. Sync parity: HostMonitor/_reader_thread publications land in
+        the shared storage-service cache and unblock
+        _wait_till_topology_gets_updated (:491-495, :157-178)."""
+        if not topology:
+            return
+        self._last_topology = topology
+        self._check_for_writer_change(topology)
+        adopt = getattr(self._provider, "adopt_topology", None)
+        if adopt is not None:
+            try:
+                adopt(topology)
+            except Exception:  # noqa: BLE001 - cache publication is best-effort
+                pass
+        self._topology_updated.set()
+
+    async def _wait_for_tick(self, interval: float) -> None:
+        """Sleep until the next tick, waking early on stop() or on a
+        force_monitoring_refresh tick request."""
+        stop_waiter = asyncio.ensure_future(self._stop_event.wait())
+        tick_waiter = asyncio.ensure_future(self._request_tick.wait())
+        try:
+            await asyncio.wait(
+                {stop_waiter, tick_waiter},
+                timeout=interval,
+                return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for waiter in (stop_waiter, tick_waiter):
+                if not waiter.done():
+                    waiter.cancel()
+            await asyncio.gather(
+                stop_waiter, tick_waiter, return_exceptions=True)
+            self._request_tick.clear()
+
+    async def _harvest_verified_writer(self) -> None:
+        """Promote the panic-found verified-writer connection to the monitor's
+        own monitoring connection and retire the remaining probes -- sync
+        parity with the monitor loop harvest (:262-284). The monitor KEEPS the
+        connection; failover consumes only the published topology."""
+        conn = self._verified_writer_conn
+        self._verified_writer_conn = None
+        self._writer_found_event.clear()
+        # Retire losing probes.
+        pending = [t for t in self._probe_tasks.values() if not t.done()]
+        for t in pending:
+            t.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        self._probe_tasks.clear()
+        self._submitted_host_aliases.clear()
+        if conn is None:
+            return
+        if self._connection_factory is None:
+            # Legacy/getter mode: the loop queries the shared app connection,
+            # not _owned_conn -- nothing to promote; close the probe conn.
+            await self._close_best_effort(conn)
+            return
+        if self._owned_conn is not None:
+            await self._close_best_effort(self._owned_conn)
+        self._owned_conn = conn
+        # _drop_owned_connection cleared the flag when panic was armed;
+        # re-assert it now that the monitoring conn IS the verified writer.
+        self._is_verified_writer_connection = True
 
     def _should_panic(self) -> bool:
         """Enter panic mode iff ``probe_host`` is wired, we have a known
@@ -352,8 +445,37 @@ class AsyncClusterTopologyMonitor:
             self._verified_writer_conn = conn
             self._verified_writer_host_info = host_info
             self._is_verified_writer_connection = True
+            # Publish the topology THROUGH the verified-writer connection so
+            # failover (blocked in force_monitoring_refresh) sees the new
+            # writer -- sync parity with HostMonitor's winner path
+            # (_fetch_topology_and_update_cache, cluster_topology_monitor.py:561).
+            try:
+                topology = await self._fetch_via_provider(conn)
+            except Exception:  # noqa: BLE001 - publication is best-effort
+                topology = ()
+            self._publish_topology(topology)
             self._writer_found_event.set()
             return
+
+        # Reader connection: before closing it, let it publish a topology that
+        # shows a NEW writer -- a reader can observe the promotion before the
+        # writer itself is reachable. Sync parity with
+        # _reader_thread_fetch_topology -> _update_topology_cache (:589-612),
+        # which publishes on writer change.
+        if (conn is not None
+                and role == HostRole.READER
+                and not self._writer_found_event.is_set()):
+            try:
+                topology = await self._fetch_via_provider(conn)
+            except Exception:  # noqa: BLE001 - publication is best-effort
+                topology = ()
+            if topology:
+                new_writer = next(
+                    (f"{h.host}:{h.port}" for h in topology
+                     if h.role == HostRole.WRITER), None)
+                if (new_writer is not None
+                        and new_writer != self._last_known_writer):
+                    self._publish_topology(topology)
 
         # Lost the race OR role is reader: close the conn.
         if conn is not None:
@@ -452,9 +574,8 @@ class AsyncClusterTopologyMonitor:
         # through a dead/failed-over connection returns nothing); keep the last
         # good topology so failover/panic can use it. Mirrors sync
         # RdsHostListProvider._get_topology ("use live only if len > 0").
-        if topology:
-            self._last_topology = topology
-            self._check_for_writer_change(topology)
+        # _publish_topology also wakes any blocked force_monitoring_refresh.
+        self._publish_topology(topology)
         return topology
 
     async def _fetch_via_provider(self, conn: Any) -> Topology:

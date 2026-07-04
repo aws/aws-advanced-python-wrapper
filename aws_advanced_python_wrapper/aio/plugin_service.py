@@ -176,6 +176,18 @@ class AsyncPluginService(Protocol):
             connection: Optional[Any] = None) -> None:
         ...
 
+    async def force_monitoring_refresh_host_list(
+            self,
+            should_verify_writer: bool,
+            timeout_sec: float) -> bool:
+        """Blocking, monitor-driven topology refresh (sync parity with
+        ``PluginService.force_monitoring_refresh_host_list``): the topology
+        monitor discovers hosts on ITS OWN connections (panic fan-out when
+        ``should_verify_writer``), never through the caller's -- possibly
+        dead -- connection. Returns True when a fresh topology was adopted
+        within ``timeout_sec``."""
+        ...
+
     async def release_resources(self) -> None:
         """Best-effort shutdown. Idempotent. Does not raise."""
         ...
@@ -710,6 +722,28 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         if updated and updated != self._all_hosts:
             self._update_host_availability(updated)
             self._update_hosts(updated)
+
+    async def force_monitoring_refresh_host_list(
+            self,
+            should_verify_writer: bool,
+            timeout_sec: float) -> bool:
+        if self._host_list_provider is None:
+            raise AwsWrapperError(
+                Messages.get("AsyncPluginService.HostListProviderNotSet"))
+        fmr = getattr(self._host_list_provider, "force_monitoring_refresh", None)
+        if fmr is None or not asyncio.iscoroutinefunction(fmr):
+            # Provider without monitor support (static dialects / test
+            # doubles): fall back to a plain forced refresh and report
+            # whether we hold any topology.
+            await self.force_refresh_host_list()
+            return bool(self._all_hosts)
+        updated = tuple(await fmr(should_verify_writer, timeout_sec))
+        if updated and updated != self._all_hosts:
+            self._update_host_availability(updated)
+            self._update_hosts(updated)
+        # Sync parity: report whether the monitor confirmed a topology within
+        # the deadline (failover treats False as failure).
+        return bool(updated)
 
     def _update_host_availability(self, hosts: Tuple[HostInfo, ...]) -> None:
         # Re-hydrate cached availability onto freshly-built HostInfo objects

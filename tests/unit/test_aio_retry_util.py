@@ -334,9 +334,17 @@ def test_get_writer_connection_finds_new_writer_via_reader_when_old_writer_dead(
         }
 
         svc, hlp = _writer_svc(role=HostRole.WRITER)
-        # A refresh THROUGH the live reader surfaces the promoted writer; a
-        # refresh through the dead current connection would not.
-        hlp.force_refresh = AsyncMock(return_value=(new, reader))
+        # A refresh THROUGH the live reader surfaces the promoted writer; the
+        # cache read (force_refresh(None)) stays STALE -- forcing the loop
+        # through the reader-refresh fallback path (monitor-less providers).
+        stale = (old, reader)
+
+        async def _force_refresh(conn=None):
+            if conn is conns["reader-1"]:
+                return (new, reader)
+            return stale
+
+        hlp.force_refresh = AsyncMock(side_effect=_force_refresh)
 
         async def _connect(host):
             if host.host == "old-writer":

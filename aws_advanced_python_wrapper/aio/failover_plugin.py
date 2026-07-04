@@ -378,14 +378,36 @@ class AsyncFailoverPlugin(AsyncPlugin):
         deadline = asyncio.get_event_loop().time() + self._failover_timeout_sec
         last_error: Optional[BaseException] = None
 
-        try:
-            topology = await self._within_deadline(
-                self._host_list_provider.force_refresh(
-                    self._plugin_service.current_connection),
-                deadline)
-        except Exception as e:  # noqa: BLE001 - refresh failure is recoverable
-            topology = ()
-            last_error = e
+        # STRICT_WRITER discovery is monitor-first (sync parity:
+        # failover_v2_plugin.py:333 blocks on
+        # force_monitoring_refresh_host_list(True, timeout) BEFORE the retry
+        # loop -- the monitor's panic fan-out finds the promoted writer on
+        # monitor-owned connections; sync never queries topology through the
+        # app's dead connection). Unlike sync's hard raise on failure, we fall
+        # through to the fallback chain below so monitor-less providers
+        # (static dialects, test doubles) still fail over.
+        topology: Topology = ()
+        if self._mode == FailoverMode.STRICT_WRITER:
+            try:
+                remaining = max(0.0, deadline - asyncio.get_event_loop().time())
+                refreshed = await self._within_deadline(
+                    self._plugin_service.force_monitoring_refresh_host_list(
+                        True, remaining),
+                    deadline)
+                if refreshed:
+                    topology = self._plugin_service.all_hosts
+            except Exception as e:  # noqa: BLE001 - fall through to fallbacks
+                last_error = e
+
+        if not topology:
+            try:
+                topology = await self._within_deadline(
+                    self._host_list_provider.force_refresh(
+                        self._plugin_service.current_connection),
+                    deadline)
+            except Exception as e:  # noqa: BLE001 - refresh failure is recoverable
+                topology = ()
+                last_error = e
 
         # When the live refresh returns nothing (it ran through the now-dead
         # connection), fall back to the cached full topology so the failover
