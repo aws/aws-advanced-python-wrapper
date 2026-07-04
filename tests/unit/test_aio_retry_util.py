@@ -313,3 +313,46 @@ def test_get_writer_connection_marks_failed_host_unavailable():
             dead.as_aliases(), HostAvailability.UNAVAILABLE)
 
     asyncio.run(_body())
+
+
+def test_get_writer_connection_finds_new_writer_via_reader_when_old_writer_dead():
+    # Regression (async failover writer-discovery): after a failover the cached
+    # topology still labels the DEAD old writer as WRITER and the survivor as
+    # READER, and the old writer is UNREACHABLE. The bare loop refreshed through
+    # the dead current connection -- which can never observe the promoted writer
+    # -- and looped to the deadline (29 connects to the dead host, 0 to the live
+    # reader). Now, when the writer-labeled host can't be connected, we connect
+    # to a surviving reader and force_refresh THROUGH it, surfacing the real new
+    # writer (sync WriterFailoverHandler Task B parity).
+    async def _body():
+        old = HostInfo(host="old-writer", port=5432, role=HostRole.WRITER)
+        reader = HostInfo(host="reader-1", port=5432, role=HostRole.READER)
+        new = HostInfo(host="new-writer", port=5432, role=HostRole.WRITER)
+        conns = {
+            "reader-1": MagicMock(name="reader_conn"),
+            "new-writer": MagicMock(name="new_conn"),
+        }
+
+        svc, hlp = _writer_svc(role=HostRole.WRITER)
+        # A refresh THROUGH the live reader surfaces the promoted writer; a
+        # refresh through the dead current connection would not.
+        hlp.force_refresh = AsyncMock(return_value=(new, reader))
+
+        async def _connect(host):
+            if host.host == "old-writer":
+                raise OSError("refused")  # dead old writer -- unreachable
+            return conns[host.host]
+
+        util = AsyncRetryUtil()
+        util._WRITER_VERIFY_RETRY_DELAY_SEC = 0.0
+        util._WRITER_REFRESH_DELAY_SEC = 0.0
+        result = await util.get_writer_connection(
+            svc, hlp, _connect, (old, reader), _deadline())
+        assert result.host_info.host == "new-writer"
+        assert result.connection is conns["new-writer"]
+        # Dead old writer marked unavailable; the reader probe connection dropped.
+        svc.set_availability.assert_any_call(
+            old.as_aliases(), HostAvailability.UNAVAILABLE)
+        svc.driver_dialect.abort_connection.assert_awaited()
+
+    asyncio.run(_body())

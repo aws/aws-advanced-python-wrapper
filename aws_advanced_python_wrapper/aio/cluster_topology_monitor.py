@@ -200,13 +200,12 @@ class AsyncClusterTopologyMonitor:
             while not self._stop_event.is_set():
                 conn = await self._get_monitoring_connection()
                 if conn is not None:
+                    topology = None
                     try:
                         # Use the provider's direct-DB path to avoid
                         # recursion; the public force_refresh now
                         # routes through this monitor (N.1b).
                         topology = await self._fetch_via_provider(conn)
-                        self._last_topology = topology
-                        self._check_for_writer_change(topology)
                     except Exception as ex:
                         # Monitor failures shouldn't crash the task; the cached
                         # topology remains usable. A failure may mean the owned
@@ -219,6 +218,21 @@ class AsyncClusterTopologyMonitor:
                         logger.debug(
                             "ClusterTopologyMonitor.ErrorFetchingTopology",
                             self._provider.get_cluster_id(), ex)
+                        await self._drop_owned_connection()
+                    if topology:
+                        # Adopt only a NON-EMPTY result. A query through a dead /
+                        # failed-over monitoring host returns empty; overwriting
+                        # _last_topology with empty would erase the surviving
+                        # hosts failover needs AND disable panic mode (which gates
+                        # on _last_topology being non-empty). Mirrors sync
+                        # RdsHostListProvider._get_topology ("use live only if
+                        # len > 0").
+                        self._last_topology = topology
+                        self._check_for_writer_change(topology)
+                    else:
+                        # Empty/failed refresh: drop the (likely dead) connection
+                        # so the next tick reopens to a live host; KEEP the cached
+                        # topology so recovery/panic can still use it.
                         await self._drop_owned_connection()
                 elif self._should_panic():
                     self._spawn_panic_probes()
@@ -434,8 +448,13 @@ class AsyncClusterTopologyMonitor:
             raise TimeoutError(Messages.get_formatted(
                 "ClusterTopologyMonitor.TopologyNotUpdated",
                 self._provider.get_cluster_id(), timeout_sec * 1000)) from e
-        self._last_topology = topology
-        self._check_for_writer_change(topology)
+        # Never overwrite the cached topology with an empty result (a refresh
+        # through a dead/failed-over connection returns nothing); keep the last
+        # good topology so failover/panic can use it. Mirrors sync
+        # RdsHostListProvider._get_topology ("use live only if len > 0").
+        if topology:
+            self._last_topology = topology
+            self._check_for_writer_change(topology)
         return topology
 
     async def _fetch_via_provider(self, conn: Any) -> Topology:

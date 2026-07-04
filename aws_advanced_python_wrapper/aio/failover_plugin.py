@@ -389,8 +389,14 @@ class AsyncFailoverPlugin(AsyncPlugin):
             topology = ()
             last_error = e
 
-        # Fall back to the host the user originally connected to if the
-        # topology provider returned nothing (e.g. monitor broken).
+        # When the live refresh returns nothing (it ran through the now-dead
+        # connection), fall back to the cached full topology so the failover
+        # handlers can reach a surviving reader and converge on the new writer.
+        # Mirrors sync, whose failover operates on ``plugin_service.all_hosts``
+        # (failover_plugin.py:323) rather than a single host.
+        if not topology:
+            topology = self._plugin_service.all_hosts
+        # Last resort: the single host the user originally connected to.
         if not topology and self._plugin_service.initial_connection_host_info is not None:
             topology = (self._plugin_service.initial_connection_host_info,)
 

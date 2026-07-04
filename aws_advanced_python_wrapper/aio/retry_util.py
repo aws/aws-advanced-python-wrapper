@@ -166,6 +166,21 @@ class AsyncRetryUtil:
                     await asyncio.sleep(self._WRITER_VERIFY_RETRY_DELAY_SEC)
                     continue
 
+            # The topology-labeled writer was unreachable (or absent). Connect to
+            # a live reader from the topology and refresh topology THROUGH it -- a
+            # reader can observe the promoted writer, whereas a refresh through the
+            # dead current_connection loops on stale data until the deadline.
+            # Mirrors sync WriterFailoverHandler Task B (connect_to_reader ->
+            # refresh_topology_and_connect_to_new_writer).
+            refreshed = await self._refresh_topology_via_reader(
+                plugin_service, host_list_provider, connect_func, topology,
+                timeout_end_time)
+            if refreshed:
+                topology = refreshed
+                await asyncio.sleep(self._WRITER_VERIFY_RETRY_DELAY_SEC)
+                continue
+            # No reader reachable either; last-ditch refresh through the current
+            # connection (may be dead -- bounded so it can't hang past the deadline).
             await asyncio.sleep(self._WRITER_REFRESH_DELAY_SEC)
             try:
                 topology = await self._bounded(
@@ -175,6 +190,51 @@ class AsyncRetryUtil:
                 last_error = e
 
         raise TimeoutError(Messages.get("RetryUtil.Timeout")) from last_error
+
+    async def _refresh_topology_via_reader(
+            self,
+            plugin_service: AsyncPluginService,
+            host_list_provider: AsyncHostListProvider,
+            connect_func: Callable[[HostInfo], Awaitable[Any]],
+            topology: Tuple[HostInfo, ...],
+            timeout_end_time: float) -> Optional[Tuple[HostInfo, ...]]:
+        """Connect to a live reader in ``topology`` and force_refresh THROUGH it.
+
+        After a writer failover the cached topology still labels the demoted old
+        writer as WRITER and the surviving node as READER; the old writer is
+        often unreachable. A refresh through the dead current connection can
+        never observe the promoted writer, so we connect to a reader -- which
+        can -- and refresh through it. Mirrors sync ``WriterFailoverHandler``
+        Task B (``connect_to_reader`` -> ``refresh_topology_and_connect_to_new_writer``).
+
+        Returns the refreshed (non-empty) topology, or ``None`` if no reader was
+        reachable or the refresh yielded nothing. Each reader connection is
+        dropped (socket aborted) before returning.
+        """
+        for reader in (h for h in topology if h.role == HostRole.READER):
+            try:
+                reader_conn = await self._bounded(
+                    connect_func(reader), timeout_end_time)
+            except Exception:  # noqa: BLE001 - try the next reader
+                plugin_service.set_availability(
+                    reader.as_aliases(), HostAvailability.UNAVAILABLE)
+                continue
+            plugin_service.set_availability(
+                reader.as_aliases(), HostAvailability.AVAILABLE)
+            try:
+                refreshed = await self._bounded(
+                    host_list_provider.force_refresh(reader_conn), timeout_end_time)
+            except Exception:  # noqa: BLE001 - try the next reader
+                refreshed = None
+            finally:
+                try:
+                    await plugin_service.driver_dialect.abort_connection(
+                        getattr(reader_conn, "driver_connection", reader_conn))
+                except Exception:  # noqa: BLE001
+                    pass
+            if refreshed:
+                return refreshed
+        return None
 
     async def get_allowed_connection(
             self,

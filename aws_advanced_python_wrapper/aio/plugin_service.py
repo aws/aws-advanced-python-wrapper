@@ -689,7 +689,12 @@ class AsyncPluginServiceImpl(AsyncPluginService):
                 Messages.get("AsyncPluginService.HostListProviderNotSet"))
         conn = connection if connection is not None else self._current_connection
         updated = tuple(await self._host_list_provider.refresh(conn))
-        if updated != self._all_hosts:
+        # Never adopt an empty host list: a topology query through a
+        # just-failed-over (dead) connection returns nothing, and clobbering
+        # the cache would strand failover with no surviving hosts to try.
+        # Mirrors sync RdsHostListProvider._get_topology ("use live only if
+        # len > 0"); the last good topology stays available for failover.
+        if updated and updated != self._all_hosts:
             self._update_host_availability(updated)
             self._update_hosts(updated)
 
@@ -701,7 +706,8 @@ class AsyncPluginServiceImpl(AsyncPluginService):
                 Messages.get("AsyncPluginService.HostListProviderNotSet"))
         conn = connection if connection is not None else self._current_connection
         updated = tuple(await self._host_list_provider.force_refresh(conn))
-        if updated != self._all_hosts:
+        # Same non-empty guard as refresh_host_list above.
+        if updated and updated != self._all_hosts:
             self._update_host_availability(updated)
             self._update_hosts(updated)
 
