@@ -34,6 +34,11 @@ a chain you haven't used before.
 | Aurora PG — failover only                                       | `failover_v2,host_monitoring_v2`                       | `failover_v2,host_monitoring_v2`                         |
 | Aurora MySQL (sync) — failover only                             | `failover_v2`                                          | —                                                        |
 
+> **Note (async federated/Okta auth):** the async `federated_auth` and `okta` plugins perform their
+> IdP HTTP round-trips with [`aiohttp`](https://docs.aiohttp.org/), which is not a runtime dependency
+> of this package — install it alongside your async driver (`pip install aiohttp`) when using either
+> plugin in an asyncio application. The sync plugins use `requests` and are unaffected.
+
 ## Related docs
 
 - [UsingTheReadWriteSplittingPlugin.md](./using-plugins/UsingTheReadWriteSplittingPlugin.md)

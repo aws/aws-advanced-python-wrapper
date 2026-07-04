@@ -30,6 +30,7 @@ so ``aws_profile`` / custom credential providers apply -- parity with sync
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import ssl as _ssl
 from datetime import datetime, timedelta
@@ -550,8 +551,11 @@ class AsyncOktaAuthPlugin(AsyncFederatedAuthPlugin):
             ) as resp:
                 status, reason = resp.status, resp.reason
                 authn_text = await resp.text()
-                authn = await resp.json()
+            # Validate the HTTP status BEFORE parsing JSON: a non-2xx error
+            # body is often not JSON, and resp.json() would raise a
+            # ContentTypeError that masks the intended RequestFailed message.
             self._validate_response_status(status, reason, authn_text)
+            authn = json.loads(authn_text)
             session_token = authn.get("sessionToken")
             if not session_token:
                 raise AwsWrapperError(
