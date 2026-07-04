@@ -279,6 +279,23 @@ def test_topology_multiple_writers_without_timestamps_keeps_one():
     assert len(writers) == 1
 
 
+def test_topology_rows_carry_host_id_and_instance_alias():
+    """Integration regression (EFM cluster-RO, both Aurora envs):
+    _rows_to_topology dropped host_id, so plugin_service.identify_connection
+    (which matches `h.host_id == instance_id`) could NEVER resolve a
+    cluster-endpoint connection -- EFM's _get_monitoring_host_info raised
+    UnableToIdentifyConnection on every cluster-RO connect. Sync parity:
+    create_host (host_list_provider.py:548-556) sets host_id AND adds the
+    bare instance id as an alias; the async MultiAz/GlobalAurora providers
+    already did both."""
+    rows = [("w-1", True), ("r-1", False)]
+    prov = _aurora()
+    topo = prov._rows_to_topology(rows)
+    assert {h.host_id for h in topo} == {"w-1", "r-1"}
+    for h in topo:
+        assert h.host_id in h.as_aliases()
+
+
 def test_topology_query_programming_error_raises_invalid_query():
     async def _body() -> None:
         prov = _aurora()

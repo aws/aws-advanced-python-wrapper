@@ -467,12 +467,21 @@ class AsyncAuroraHostListProvider:
             # writer rows during a failover window.
             last_update = row[4] if len(row) > 4 and isinstance(row[4], datetime) else None
             host = self._host_from_server_id(server_id)
-            host_map[host] = HostInfo(
+            host_info = HostInfo(
                 host=host,
                 port=port,
                 role=HostRole.WRITER if is_writer else HostRole.READER,
                 last_update_time=last_update,
+                # Sync parity (create_host, host_list_provider.py:548-556):
+                # host_id is how identify_connection correlates a live
+                # connection back to its topology row. Without it, EVERY
+                # cluster-endpoint identification fails (EFM's
+                # _get_monitoring_host_info raises UnableToIdentifyConnection).
+                # The MultiAz and GlobalAurora async providers already set it.
+                host_id=str(server_id),
             )
+            host_info.add_alias(str(server_id))
+            host_map[host] = host_info
 
         readers = [h for h in host_map.values() if h.role != HostRole.WRITER]
         writers = [h for h in host_map.values() if h.role == HostRole.WRITER]
