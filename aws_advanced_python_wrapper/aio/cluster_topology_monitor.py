@@ -43,6 +43,7 @@ Mirrors sync ``cluster_topology_monitor.py:230-320``.
 from __future__ import annotations
 
 import asyncio
+import copy
 import time
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional,
                     Set, Tuple)
@@ -301,6 +302,62 @@ class AsyncClusterTopologyMonitor:
                 self._is_verified_writer_connection = False
                 self._writer_found_event.clear()
 
+    def _role_corrected(self, topology: Topology) -> Topology:
+        """Overlay the probe-verified writer onto a fetched topology.
+
+        Right after a promotion, aurora_replica_status (the topology query)
+        can still name the OLD writer for several seconds -- but a panic-mode
+        winner was verified via a live is_reader probe (sync's own
+        verification standard). While the post-panic settling window is open,
+        trust the verified writer over the fetched roles: its row becomes
+        WRITER, any other row claiming WRITER is demoted, and a missing row
+        for it is appended. Without this, failover can complete (via the
+        candidate-probing fallback) while the published topology still names
+        the demoted writer -- so no CONVERTED_TO_* notifications fire and
+        topology consumers (connection tracker, RWS) act on stale roles.
+        Sync doesn't need the overlay because its failover only succeeds
+        through the cache, blocking until the content converges.
+        """
+        if (not topology
+                or not self._is_verified_writer_connection
+                or self._verified_writer_host_info is None
+                or time.time_ns() >= self._high_refresh_until_ns):
+            return topology
+        verified = self._verified_writer_host_info
+        corrected = []
+        found = False
+        changed = False
+        for h in topology:
+            is_verified_row = (h.host == verified.host
+                               and h.port == verified.port)
+            if is_verified_row:
+                found = True
+            want_role = (HostRole.WRITER if is_verified_row
+                         else (HostRole.READER if h.role == HostRole.WRITER
+                               else h.role))
+            if h.role != want_role:
+                fixed = copy.copy(h)
+                fixed.role = want_role
+                for alias in h.as_aliases():
+                    fixed.add_alias(alias)
+                corrected.append(fixed)
+                changed = True
+            else:
+                corrected.append(h)
+        if not found:
+            writer_row = copy.copy(verified)
+            writer_row.role = HostRole.WRITER
+            for alias in verified.as_aliases():
+                writer_row.add_alias(alias)
+            corrected.append(writer_row)
+            changed = True
+        if changed:
+            logger.debug(
+                f"[AsyncClusterTopologyMonitor] fetched topology disagrees "
+                f"with the probe-verified writer '{verified.host}'; "
+                f"publishing a role-corrected view (replica_status lag)")
+        return tuple(corrected)
+
     def _publish_topology(self, topology: Topology) -> None:
         """Adopt a NON-EMPTY topology: update the monitor state, push it into
         the provider cache, and wake any blocked force_monitoring_refresh
@@ -309,6 +366,7 @@ class AsyncClusterTopologyMonitor:
         _wait_till_topology_gets_updated (:491-495, :157-178)."""
         if not topology:
             return
+        topology = self._role_corrected(topology)
         self._last_topology = topology
         self._check_for_writer_change(topology)
         adopt = getattr(self._provider, "adopt_topology", None)
@@ -445,6 +503,13 @@ class AsyncClusterTopologyMonitor:
             self._verified_writer_conn = conn
             self._verified_writer_host_info = host_info
             self._is_verified_writer_connection = True
+            # Open the post-panic settling window NOW (sync arms it at
+            # WriterPickedUpFromHostMonitors, :272-274) so this publication
+            # and the next ~30s of ticks go through _role_corrected --
+            # replica_status can lag the promotion we just verified live.
+            self._high_refresh_until_ns = (
+                time.time_ns()
+                + int(self.HIGH_REFRESH_PERIOD_SEC * 1_000_000_000))
             # Publish the topology THROUGH the verified-writer connection so
             # failover (blocked in force_monitoring_refresh) sees the new
             # writer -- sync parity with HostMonitor's winner path

@@ -1266,6 +1266,83 @@ def test_topology_monitor_winner_probe_publishes_topology():
     asyncio.run(_run())
 
 
+def test_winner_probe_publishes_role_corrected_topology_on_stale_fetch():
+    """Integration regression (Aurora multi-5): right after promotion,
+    aurora_replica_status can still name the OLD writer, so the winner
+    probe's fetched topology contradicted the writer it had just verified
+    live -- the stale roles were published, no CONVERTED_TO_* notifications
+    fired, and topology consumers (tracker, RWS) acted on the demoted
+    writer. The winner's publication must overlay the verified writer:
+    its row WRITER, the stale writer row demoted to READER."""
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
+
+    old_writer_stale = HostInfo(host="w-old", port=5432, role=HostRole.WRITER)
+    new_writer_stale = HostInfo(host="w-new", port=5432, role=HostRole.READER)
+    new_writer_probe = HostInfo(host="w-new", port=5432, role=HostRole.WRITER)
+
+    async def _probe(host_info):
+        return MagicMock(name="winner_conn"), HostRole.WRITER
+
+    provider = MagicMock()
+    # replica_status lag: the fetch through the NEW writer still claims the
+    # OLD writer is the writer and the new one is a reader.
+    provider.force_refresh = AsyncMock(
+        return_value=(old_writer_stale, new_writer_stale))
+    provider.adopt_topology = MagicMock()
+
+    monitor = AsyncClusterTopologyMonitor(
+        provider=provider,
+        connection_getter=lambda: None,
+        refresh_interval_sec=30.0,
+        probe_host=_probe,
+    )
+    monitor._last_topology = (old_writer_stale, new_writer_stale)
+
+    async def _run():
+        await monitor._probe_and_report(new_writer_probe)
+        published = monitor._last_topology
+        roles = {h.host: h.role for h in published}
+        assert roles["w-new"] == HostRole.WRITER
+        assert roles["w-old"] == HostRole.READER
+        provider.adopt_topology.assert_called_once_with(published)
+        assert {h.host for h in published} == {"w-old", "w-new"}
+        await monitor.stop()
+
+    asyncio.run(_run())
+
+
+def test_role_correction_expires_with_settling_window():
+    """After the post-panic settling window closes, publications are raw
+    again -- a genuinely newer failover must not be masked forever."""
+    import time as _time
+
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
+
+    verified = HostInfo(host="w-verified", port=5432, role=HostRole.WRITER)
+    other_writer = HostInfo(host="w-other", port=5432, role=HostRole.WRITER)
+
+    provider = MagicMock()
+    monitor = AsyncClusterTopologyMonitor(
+        provider=provider,
+        connection_getter=lambda: None,
+        refresh_interval_sec=30.0,
+    )
+    monitor._is_verified_writer_connection = True
+    monitor._verified_writer_host_info = verified
+
+    # Window open: overlay applies (missing verified row is appended).
+    monitor._high_refresh_until_ns = _time.time_ns() + 10_000_000_000
+    corrected = monitor._role_corrected((other_writer,))
+    roles = {h.host: h.role for h in corrected}
+    assert roles["w-other"] == HostRole.READER
+    assert roles["w-verified"] == HostRole.WRITER
+
+    # Window expired: raw topology passes through.
+    monitor._high_refresh_until_ns = 0
+    raw = monitor._role_corrected((other_writer,))
+    assert raw == (other_writer,)
+
+
 def test_force_monitoring_refresh_verify_writer_panics_and_returns_topology():
     """force_monitoring_refresh(True, t): drops the monitoring connection
     (forcing panic), wakes the loop, and blocks until a probe publishes the
