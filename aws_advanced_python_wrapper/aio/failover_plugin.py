@@ -489,7 +489,15 @@ class AsyncFailoverPlugin(AsyncPlugin):
                 # topology labeled this host a reader, but right after failover
                 # the label can be stale -- in STRICT_READER we must not hand
                 # back a promoted writer. Bind the VERIFIED role.
-                role = await self._probe_role(new_conn, HostRole.READER)
+                role = await self._probe_role(new_conn)
+                if role is None:
+                    # Probe failed: drop the candidate for this pass (sync
+                    # failover_v2:288-289; the close is additive -- sync leaves
+                    # the conn to GC, closing is strictly safer).
+                    if candidate in remaining:
+                        remaining.remove(candidate)
+                    await self._close_quietly(new_conn)
+                    continue
                 if role == HostRole.READER or self._mode != FailoverMode.STRICT_READER:
                     verified = HostInfo(candidate.host, candidate.port, role)
                     self._plugin_service.set_availability(
@@ -526,8 +534,12 @@ class AsyncFailoverPlugin(AsyncPlugin):
                     original_writer.as_aliases(), HostAvailability.UNAVAILABLE)
                 last_error = e
             else:
-                role = await self._probe_role(new_conn, HostRole.WRITER)
-                if role == HostRole.READER or self._mode != FailoverMode.STRICT_READER:
+                role = await self._probe_role(new_conn)
+                if role is None:
+                    # Probe failed: neither accept nor mark still-writer --
+                    # sync failover_v2:307-308 (`except: pass`) just moves on.
+                    await self._close_quietly(new_conn)
+                elif role == HostRole.READER or self._mode != FailoverMode.STRICT_READER:
                     verified = HostInfo(
                         original_writer.host, original_writer.port, role)
                     self._plugin_service.set_availability(
@@ -537,9 +549,10 @@ class AsyncFailoverPlugin(AsyncPlugin):
                     if self._failover_reader_completed is not None:
                         self._failover_reader_completed.inc()
                     return
-                await self._close_quietly(new_conn)
-                if role == HostRole.WRITER:
-                    is_original_writer_still_writer = True
+                else:
+                    await self._close_quietly(new_conn)
+                    if role == HostRole.WRITER:
+                        is_original_writer_still_writer = True
 
             await asyncio.sleep(1.0)
 
@@ -549,18 +562,16 @@ class AsyncFailoverPlugin(AsyncPlugin):
             Messages.get("FailoverPlugin.UnableToConnectToReader")
         ) from last_error
 
-    async def _probe_role(self, conn: Any, assumed: HostRole) -> HostRole:
-        """Best-effort data-plane role probe; falls back to the topology's
-        assumed role when the probe itself fails (a broken probe should not
-        reject an otherwise healthy connection outside STRICT_READER --
-        matching sync, where a role-probe error drops the candidate via the
-        surrounding except; here we keep the failure non-fatal and let the
-        caller's mode logic decide)."""
+    async def _probe_role(self, conn: Any) -> Optional[HostRole]:
+        """Data-plane role probe. Returns ``None`` when the probe fails --
+        sync parity (failover_v2_plugin.py:277/288 and :298/307): a role-probe
+        error DROPS the candidate for this pass rather than accepting it under
+        an assumed role."""
         try:
             role = await self._plugin_service.get_host_role(conn)
-        except Exception:  # noqa: BLE001 - probe is advisory
-            return assumed
-        return role if isinstance(role, HostRole) else assumed
+        except Exception:  # noqa: BLE001 - probe failure -> drop candidate
+            return None
+        return role if isinstance(role, HostRole) else None
 
     @staticmethod
     async def _close_quietly(conn: Any) -> None:

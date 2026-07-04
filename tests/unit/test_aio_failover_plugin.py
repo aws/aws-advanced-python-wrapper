@@ -578,6 +578,9 @@ def test_reader_failover_uses_configured_strategy():
 
     plugin = AsyncFailoverPlugin(plugin_service=svc, host_list_provider=hlp, props=props)
     svc.get_host_info_by_strategy = MagicMock(return_value=reader)
+    # Role probe must succeed as READER (a failed probe now DROPS the
+    # candidate, sync failover_v2:288-289).
+    svc.get_host_role = AsyncMock(return_value=HostRole.READER)  # type: ignore[method-assign]
     plugin._open_connection = AsyncMock(return_value=MagicMock())
 
     asyncio.run(plugin._do_failover(driver_dialect=dd))
@@ -614,6 +617,9 @@ def test_reader_failover_cycles_through_candidates():
 
     # Strategy picks r1 first, then r2
     svc.get_host_info_by_strategy = MagicMock(side_effect=[r1, r2])
+    # Role probe must succeed as READER (a failed probe now DROPS the
+    # candidate, sync failover_v2:288-289).
+    svc.get_host_role = AsyncMock(return_value=HostRole.READER)  # type: ignore[method-assign]
 
     attempts = []
 
@@ -655,6 +661,9 @@ def test_reader_failover_falls_back_to_original_writer_in_reader_or_writer_mode(
     plugin = AsyncFailoverPlugin(plugin_service=svc, host_list_provider=hlp, props=props)
     # Strategy returns r1 first, then None (signals "no more readers")
     svc.get_host_info_by_strategy = MagicMock(side_effect=[r1, None])
+    # The original-writer probe must succeed (a failed probe now moves on
+    # without accepting, sync failover_v2:307-308). READER = demoted writer.
+    svc.get_host_role = AsyncMock(return_value=HostRole.READER)  # type: ignore[method-assign]
 
     attempts = []
 
