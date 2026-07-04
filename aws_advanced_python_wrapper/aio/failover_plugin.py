@@ -84,13 +84,11 @@ class AsyncFailoverPlugin(AsyncPlugin):
         self._enabled = WrapperProperties.ENABLE_FAILOVER.get_bool(props)
         # API parity with sync ``failover_v2_plugin.py``: accept the v2-style
         # ``enable_connect_failover`` toggle alongside the v1-style
-        # ``enable_failover``. Sync v2 uses this to gate connect-time failover
-        # behavior (see failover_v2_plugin.py:140-150). Async failover
-        # currently only triggers on the execute path, not the connect path,
-        # so this flag is recognized but only takes effect once async grows
-        # connect-time failover. The flag must be true (the default) AND
-        # ``enable_failover`` must be true for any failover (connect or
-        # execute) to occur, matching sync v2's gating.
+        # ``enable_failover``. Gates connect-time failover
+        # (``_connect_with_failover``), matching sync v2's gating
+        # (failover_v2_plugin.py:140-150): the flag (default False) AND
+        # ``enable_failover`` must both be true for connect-time failover to
+        # run. Execute-path failover is gated by ``enable_failover`` alone.
         self._enable_connect_failover = (
             WrapperProperties.ENABLE_CONNECT_FAILOVER.get_bool(props))
         # When set, async failover emits a top-level copy of the per-failover
