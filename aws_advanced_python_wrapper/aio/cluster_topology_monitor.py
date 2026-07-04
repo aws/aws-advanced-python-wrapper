@@ -626,12 +626,15 @@ def build_probe_host(
         Properties as PropertiesRuntime
 
     async def _probe(host_info: HostInfo) -> Tuple[Any, HostRole]:
-        # Open through the plugin pipeline so auth plugins re-apply.
+        # force_connect: plugin pipeline runs (auth plugins re-apply) but the
+        # DEFAULT provider is used, bypassing any custom/pooled provider --
+        # monitor probes must never create pooled connections (sync parity:
+        # cluster_topology_monitor.py:344 and :519 both force_connect).
         probe_props = PropertiesRuntime(dict(props))
         probe_props["host"] = host_info.host
         if host_info.is_port_specified():
             probe_props["port"] = str(host_info.port)
-        conn = await plugin_service.connect(host_info, probe_props)
+        conn = await plugin_service.force_connect(host_info, probe_props)
         role = await plugin_service.get_host_role(conn)
         return conn, role
 

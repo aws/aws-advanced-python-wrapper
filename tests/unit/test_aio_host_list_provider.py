@@ -1119,8 +1119,10 @@ def test_canceled_probe_conn_closed_on_shutdown():
 # ---- build_probe_host helper -------------------------------------------
 
 
-def test_build_probe_host_opens_via_plugin_service_connect():
-    """The helper routes through plugin_service.connect and calls get_host_role."""
+def test_build_probe_host_opens_via_plugin_service_force_connect():
+    """The helper routes through plugin_service.force_connect (default
+    provider -- probes must never create pooled connections; sync parity with
+    cluster_topology_monitor.py:344/:519) and calls get_host_role."""
     from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
         build_probe_host
     from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -1128,7 +1130,8 @@ def test_build_probe_host_opens_via_plugin_service_connect():
 
     svc = MagicMock()
     probe_conn = MagicMock(name="probe")
-    svc.connect = AsyncMock(return_value=probe_conn)
+    svc.connect = AsyncMock(return_value=MagicMock(name="effective-provider-conn"))
+    svc.force_connect = AsyncMock(return_value=probe_conn)
     svc.get_host_role = AsyncMock(return_value=_Role.WRITER)
 
     probe = build_probe_host(svc, Properties({"host": "cluster", "port": "5432"}))
@@ -1141,9 +1144,14 @@ def test_build_probe_host_opens_via_plugin_service_connect():
     assert conn is probe_conn
     assert role == _Role.WRITER
 
-    # plugin_service.connect called with the per-host props.
-    svc.connect.assert_awaited_once()
-    call_args = svc.connect.await_args
+    # Regression (integration finding): probes must NOT route through the
+    # effective connection provider -- with a pooled provider installed that
+    # created internal pools during failover and leaked stale pooled conns.
+    svc.connect.assert_not_awaited()
+
+    # plugin_service.force_connect called with the per-host props.
+    svc.force_connect.assert_awaited_once()
+    call_args = svc.force_connect.await_args
     assert call_args.args[0] is host
     # Second arg is the per-host props copy
     per_host_props = call_args.args[1]
@@ -1158,7 +1166,7 @@ def test_build_probe_host_propagates_connect_errors():
     from aws_advanced_python_wrapper.hostinfo import HostInfo
 
     svc = MagicMock()
-    svc.connect = AsyncMock(side_effect=OSError("no route to host"))
+    svc.force_connect = AsyncMock(side_effect=OSError("no route to host"))
     svc.get_host_role = AsyncMock()
 
     probe = build_probe_host(svc, Properties({"host": "h"}))
