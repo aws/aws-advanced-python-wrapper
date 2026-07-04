@@ -23,6 +23,7 @@ service, status storage) lands in later SPs that need it.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, FrozenSet,
                     List, Optional, Protocol, Set, Tuple)
 
@@ -731,7 +732,7 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             raise AwsWrapperError(
                 Messages.get("AsyncPluginService.HostListProviderNotSet"))
         fmr = getattr(self._host_list_provider, "force_monitoring_refresh", None)
-        if fmr is None or not asyncio.iscoroutinefunction(fmr):
+        if fmr is None or not inspect.iscoroutinefunction(fmr):
             # Provider without monitor support (static dialects / test
             # doubles): fall back to a plain forced refresh and report
             # whether we hold any topology.
