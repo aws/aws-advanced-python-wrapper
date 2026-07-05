@@ -334,6 +334,23 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
                 return
             await self._plugin_service.refresh_host_list(conn)
             await self._invalidate_writer_change()
+            # Topology can LAG right after a failover (aurora_replica_status
+            # still names the demoted writer for seconds), so the pin above
+            # may be STALE -- and a wrong pin defeats BOTH failover-time
+            # detection paths: the topology comparison sees "no change" and
+            # the departed-host guard refuses because the pinned writer
+            # disagrees with the host the connection departed (observed:
+            # idle-connection params starting <30s after a prior failover
+            # missed invalidation entirely). Ground truth is a live is_reader
+            # probe of THIS connection: if it says WRITER, pin the
+            # connection's own host over whatever topology claimed.
+            role = await self._plugin_service.get_host_role(conn)
+            if role == HostRole.WRITER:
+                host = self._plugin_service.current_host_info
+                if host is not None and (
+                        self._current_writer is None
+                        or not self._same_host(host, self._current_writer)):
+                    self._current_writer = host
         except Exception:  # noqa: BLE001 - writer pinning is best-effort
             pass
 

@@ -904,3 +904,62 @@ def test_writer_change_emits_writer_changes_counter():
         await asyncio.sleep(0)
 
     asyncio.run(_body())
+
+
+def test_connect_pin_prefers_live_role_probe_over_lagged_topology():
+    """Integration regression (v11 multi-2, idle params starting <30s after a
+    prior failover): _pin_current_writer pinned the writer from a LAGGED
+    topology (aurora_replica_status still named the demoted writer), and a
+    wrong pin defeats BOTH failover-time detection paths -- the topology
+    comparison sees "no change" and the departed-host guard refuses because
+    the pinned writer disagrees with the departed host. The connect-time pin
+    must trust a live is_reader probe of the connection itself: probe says
+    WRITER -> pin the connection's own host, not topology's claim."""
+    plugin, svc, driver_dialect, tracker = _build()
+    w_stale = HostInfo(
+        host="test-pg-x-1.cvqiy8w244sz.us-east-2.rds.amazonaws.com",
+        port=5432, role=HostRole.WRITER)   # lagged topology's claim
+    w_real = HostInfo(
+        host="test-pg-x-2.cvqiy8w244sz.us-east-2.rds.amazonaws.com",
+        port=5432, role=HostRole.READER)   # what topology (wrongly) says
+    w_new = HostInfo(
+        host="test-pg-x-3.cvqiy8w244sz.us-east-2.rds.amazonaws.com",
+        port=5432, role=HostRole.WRITER)
+
+    async def _lagged_refresh(*a, **k):
+        svc._all_hosts = (w_stale, w_real)
+    svc.refresh_host_list = AsyncMock(side_effect=_lagged_refresh)
+    svc.force_refresh_host_list = AsyncMock(side_effect=_lagged_refresh)
+    # Live probe of THIS connection: it IS the writer.
+    svc.get_host_role = AsyncMock(return_value=HostRole.WRITER)
+
+    active_conn = _plain_conn("active")
+    idle_conn = _plain_conn("idle")
+
+    async def _connect_func():
+        return active_conn
+
+    async def _run():
+        svc._current_host_info = HostInfo(host=w_real.host, port=5432)
+        await plugin.connect(
+            target_driver_func=MagicMock(), driver_dialect=driver_dialect,
+            host_info=HostInfo(host=w_real.host, port=5432), props=svc.props,
+            is_initial_connection=True, connect_func=_connect_func)
+        # Pin must be the connection's own host, not lagged topology's claim.
+        assert plugin._current_writer is not None
+        assert plugin._current_writer.host == w_real.host
+
+        tracker.track(HostInfo(host=w_real.host, port=5432), idle_conn)
+
+        # Failover moves the connection to w_new; topology STAYS lagged.
+        async def _raising():
+            svc._current_host_info = w_new
+            raise FailoverSuccessError("failover")
+        with pytest.raises(FailoverSuccessError):
+            await plugin.execute(MagicMock(), "Cursor.execute", _raising)
+        # Departed-host invalidation fires because the (correct) pin matches
+        # the departed host -- idle conns to the demoted writer are closed
+        # before the exception reaches the app, no topology cooperation.
+        idle_conn.close.assert_called()
+
+    asyncio.run(_run())
