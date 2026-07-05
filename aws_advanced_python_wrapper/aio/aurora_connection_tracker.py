@@ -491,10 +491,20 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         OFF during failover (topology-independent; see the failover handler).
 
         Guarded: only fires when the connection actually changed hosts, and
-        only when the departed host is the pinned writer (or no writer was
-        pinned -- a failed pin must not disable invalidation entirely). When
-        the topology comparison already invalidated the same host, the
-        registry entries are gone and this is a no-op.
+        only when the pin does NOT name a third host distinct from both ends
+        of the move. Concretely, invalidate when the pinned writer is the
+        departed host, is None (a failed pin must not disable invalidation),
+        or equals POST: on MySQL the connect-time pin can fail silently (the
+        dialect is not yet upgraded when the connect hook runs), so the
+        handler's own force-refresh registers the NEW writer as a
+        first-observation pin -- the pin then equals post while pre, the host
+        the connection provably departed, still holds the idle connections
+        (observed: MySQL idle-connection params failed 7/7 with pre=old,
+        post=new, pinned=new). Only a pin naming a third host (e.g.
+        reader-mode failover moving off a reader while the real writer is
+        pinned elsewhere) vetoes. When the topology comparison already
+        invalidated the same host, the registry entries are gone and this is
+        a no-op.
         """
         if pre_failover_host is None:
             return
@@ -502,7 +512,8 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         if post is None or self._same_host(pre_failover_host, post):
             return
         if (self._current_writer is not None
-                and not self._same_host(pre_failover_host, self._current_writer)):
+                and not self._same_host(pre_failover_host, self._current_writer)
+                and not self._same_host(post, self._current_writer)):
             return
         # The connection moved off pre_failover_host via failover: that host
         # was demoted or died. Re-pin to where we are now so a later flip

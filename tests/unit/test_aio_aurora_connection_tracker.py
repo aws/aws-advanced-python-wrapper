@@ -963,3 +963,45 @@ def test_connect_pin_prefers_live_role_probe_over_lagged_topology():
         idle_conn.close.assert_called()
 
     asyncio.run(_run())
+
+
+def test_departed_host_invalidation_fires_when_pin_is_first_observation():
+    """MySQL integration regression (idle-connection params 7/7 fail):
+    the connect-time pin fails silently on MySQL (dialect not yet upgraded
+    when the connect hook runs), so at failover time the handler's own
+    force-refresh registers the NEW writer as a first-observation pin --
+    pinned == post while pre (the departed host) still holds the idle
+    connections. The departed-host guard must only veto when the pin names a
+    THIRD host distinct from both ends of the move."""
+    plugin, svc, driver_dialect, tracker = _build()
+    old_writer = HostInfo(host="w-old", port=3306, role=HostRole.WRITER)
+    new_writer = HostInfo(host="w-new", port=3306, role=HostRole.WRITER)
+    idle_conn = _plain_conn("idle")
+
+    # Connect-time pin NEVER happened (MySQL): _current_writer is None and
+    # all_hosts is empty until the failover handler's force refresh.
+    svc._all_hosts = ()
+    svc._current_host_info = old_writer
+    tracker.track(old_writer, idle_conn)
+
+    async def _refresh(*a, **k):
+        # Handler's force refresh returns the post-failover topology: the new
+        # writer becomes a FIRST observation (pin = post, no change detected).
+        svc._all_hosts = (new_writer,)
+    svc.refresh_host_list = AsyncMock(side_effect=_refresh)
+    svc.force_refresh_host_list = AsyncMock(side_effect=_refresh)
+
+    async def _run():
+        async def _raising():
+            svc._current_host_info = new_writer
+            raise FailoverSuccessError("failover")
+        with pytest.raises(FailoverSuccessError):
+            await plugin.execute(MagicMock(), "Cursor.execute", _raising)
+        # pinned == post (first observation) must NOT veto: the idle
+        # connections on the departed host are closed before the exception
+        # reaches the app.
+        idle_conn.close.assert_called()
+        assert plugin._current_writer is not None
+        assert plugin._current_writer.host == new_writer.host
+
+    asyncio.run(_run())
