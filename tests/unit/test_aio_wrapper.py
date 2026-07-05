@@ -100,11 +100,6 @@ def _make_mock_async_conn() -> MagicMock:
     """Build a MagicMock shaped like a psycopg.AsyncConnection."""
     conn = MagicMock()
     conn.close = AsyncMock()
-    # wrapper.close() releases plugin-service resources (sync parity), whose
-    # abort_connection probes conn.fileno(); a MagicMock would fabricate a
-    # non-int fd and push abort into its close() fallback, double-closing the
-    # mock. A raising fileno makes abort a no-op, like a real conn whose
-    # socket is already gone.
     conn.fileno = MagicMock(side_effect=OSError("mock conn has no real fd"))
     conn.commit = AsyncMock()
     conn.rollback = AsyncMock()
@@ -489,7 +484,12 @@ def test_connection_commit_rollback_close_route_through_pipeline():
     assert len(close_calls) == 1
     raw_conn.commit.assert_awaited_once()
     raw_conn.rollback.assert_awaited_once()
-    raw_conn.close.assert_awaited_once()
+    # Two close awaits, matching SYNC semantics exactly: the close pipeline
+    # closes the target, then plugin_service.release_resources closes the
+    # current connection again (sync plugin_service.py:783-789). On a real
+    # driver the second close is an idempotent no-op (and is skipped via
+    # is_closed); this mock keeps closed=False, so both awaits are counted.
+    assert raw_conn.close.await_count == 2
 
 
 def test_connection_async_context_manager_closes_on_exit():
@@ -506,7 +506,8 @@ def test_connection_async_context_manager_closes_on_exit():
             assert isinstance(conn, AsyncAwsWrapperConnection)
 
     asyncio.run(_body())
-    raw_conn.close.assert_awaited_once()
+    # See test above: pipeline close + release_resources close (sync parity).
+    assert raw_conn.close.await_count == 2
 
 
 def test_connect_applies_default_plugins_when_unset():

@@ -809,18 +809,36 @@ class AsyncPluginServiceImpl(AsyncPluginService):
     async def release_resources(self) -> None:
         """Best-effort shutdown. Idempotent. Does not raise.
 
-        Aborts the current connection via ``driver_dialect.abort_connection``
-        and, if the host list provider exposes ``release_resources``, awaits
-        that too. Exceptions are swallowed so one bad cleanup step doesn't
-        block others. Plugins can register their own async shutdown via
+        CLOSES the current connection (sync parity: plugin_service.py:783-789
+        calls ``current_connection.close()``) and, if the host list provider
+        exposes ``release_resources``, awaits that too. Exceptions are
+        swallowed so one bad cleanup step doesn't block others. Plugins can
+        register their own async shutdown via
         :func:`aws_advanced_python_wrapper.aio.cleanup.register_shutdown_hook`.
+
+        Deliberately NOT ``driver_dialect.abort_connection``: abort kills the
+        raw SOCKET. With a pooled provider the current connection is a pool
+        proxy whose underlying connection was just returned ALIVE to the pool
+        by the wrapper's close pipeline -- aborting here left a corpse in the
+        pool that the next acquirer received ('the connection is closed' /
+        'SSL error: unexpected eof'; deterministic
+        test_pooled_connection__different_users failure, F6). ``close()`` is
+        the safe equivalent everywhere: idempotent no-op on an
+        already-closed raw connection, idempotent pool-release on a proxy.
         """
         conn = self._current_connection
         if conn is not None:
             try:
-                await self._driver_dialect.abort_connection(conn)
-            except Exception:  # noqa: BLE001 - intentional best-effort teardown
-                pass
+                already_closed = bool(await self._driver_dialect.is_closed(conn))
+            except Exception:  # noqa: BLE001 - unknown state: close anyway
+                already_closed = False
+            if not already_closed:
+                try:
+                    result = conn.close()
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception:  # noqa: BLE001 - intentional best-effort teardown
+                    pass
 
         hlp = self._host_list_provider
         if isinstance(hlp, AsyncCanReleaseResources):

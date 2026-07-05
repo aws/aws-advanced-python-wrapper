@@ -187,6 +187,7 @@ class _PooledAsyncConnectionProxy:
         self._raw = raw_conn
         self._pool = pool
         self._invalidated = False
+        self._released = False
 
     def invalidate(self, soft: bool = False) -> None:
         # Accept ``soft`` for parity with SQLAlchemy's
@@ -210,6 +211,14 @@ class _PooledAsyncConnectionProxy:
         return self._raw
 
     async def close(self) -> None:
+        # Idempotent, like SQLAlchemy's pool fairy close: the wrapper's close
+        # pipeline closes the target AND plugin_service.release_resources
+        # closes the current connection afterwards (sync parity) -- a second
+        # close must be a no-op, not a double pool.release (which corrupts
+        # the checked-out count, the semaphore, and the idle queue).
+        if self._released:
+            return
+        self._released = True
         await self._pool.release(self._raw, invalidated=self._invalidated)
 
     async def __aenter__(self) -> _PooledAsyncConnectionProxy:
