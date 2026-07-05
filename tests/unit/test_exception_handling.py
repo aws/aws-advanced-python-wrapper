@@ -297,3 +297,6 @@ def test_pymysql_not_connected_is_network_exception_mysql(mysql_handler):
     # Narrow match: code 0 with an unrelated message stays non-network.
     other = _PymysqlInterfaceError(0, "some other condition")
     assert mysql_handler.is_network_exception(error=other) is False
+    # aiomysql's own single-string variant (tuple repr in one arg).
+    aiomysql_shape = _PymysqlInterfaceError("(0, 'Not connected')")
+    assert mysql_handler.is_network_exception(error=aiomysql_shape) is True

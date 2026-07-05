@@ -300,14 +300,25 @@ class AsyncFailoverPlugin(AsyncPlugin):
 
     @staticmethod
     def _is_pymysql_not_connected_error(exc: BaseException) -> bool:
-        """True for pymysql/aiomysql InterfaceError(0, 'Not connected') (or a
-        ``__cause__`` ancestor with that shape)."""
+        """True for the aiomysql/pymysql 'Not connected' shapes (or a
+        ``__cause__`` ancestor with one).
+
+        Two real shapes exist: pymysql raises the tuple form
+        ``InterfaceError(0, 'Not connected')``, while aiomysql itself raises
+        the SINGLE-STRING form ``InterfaceError("(0, 'Not connected')")``
+        (aiomysql/connection.py:1123 embeds the tuple's repr in one string;
+        confirmed live via the not-classified debug line -- the tuple-only
+        match missed it)."""
         seen: set = set()
         cur: Optional[BaseException] = exc
         while cur is not None and id(cur) not in seen:
             args = getattr(cur, "args", None)
             if (args and len(args) >= 2 and args[0] == 0
                     and isinstance(args[1], str) and "Not connected" in args[1]):
+                return True
+            if (args and len(args) == 1 and isinstance(args[0], str)
+                    and args[0].lstrip().startswith("(0,")
+                    and "Not connected" in args[0]):
                 return True
             seen.add(id(cur))
             cur = cur.__cause__

@@ -97,6 +97,15 @@ class MySQLExceptionHandler(ExceptionHandler):
         if (args and len(args) >= 2 and args[0] == 0
                 and isinstance(args[1], str) and "Not connected" in args[1]):
             return True
+        # ... and aiomysql's own single-string variant of the same condition:
+        # InterfaceError("(0, 'Not connected')") -- the tuple's repr embedded
+        # in ONE string arg (aiomysql/connection.py). mysql.connector cannot
+        # produce this either: its errors always carry (errno, msg, sqlstate)
+        # 3-tuples with errno normalized to -1 when unset.
+        if (args and len(args) == 1 and isinstance(args[0], str)
+                and args[0].lstrip().startswith("(0,")
+                and "Not connected" in args[0]):
+            return True
         if hasattr(error, 'msg') and error.msg is not None and self._UNAVAILABLE_CONNECTION in error.msg:
             return True
 

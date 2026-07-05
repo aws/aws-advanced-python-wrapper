@@ -1027,3 +1027,10 @@ def test_should_failover_on_pymysql_not_connected_even_without_dialect():
     # Unrelated code-0 error: not matched.
     other = pymysql.err.InterfaceError(0, "something else")
     assert AsyncFailoverPlugin._is_pymysql_not_connected_error(other) is False
+    # The REAL aiomysql shape (aiomysql/connection.py:1123): the tuple's repr
+    # embedded in a SINGLE string arg -- confirmed live via the
+    # not-classified debug line; the tuple-only match missed it.
+    aiomysql_shape = pymysql.err.InterfaceError("(0, 'Not connected')")
+    assert AsyncFailoverPlugin._is_pymysql_not_connected_error(aiomysql_shape) is True
+    unrelated_str = pymysql.err.InterfaceError("(2013, 'Lost connection')")
+    assert AsyncFailoverPlugin._is_pymysql_not_connected_error(unrelated_str) is False
