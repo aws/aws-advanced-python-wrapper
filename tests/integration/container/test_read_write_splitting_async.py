@@ -53,7 +53,8 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from tests.integration.container.utils.async_connection_helpers import (
     assert_first_query_throws_async, cleanup_async, connect_async,
-    query_host_role_async, query_instance_id_async)
+    query_host_role_async, query_instance_id_async,
+    wait_until_endpoint_accepts_queries_async)
 from tests.integration.container.utils.conditions import (
     disable_on_engines, disable_on_features, enable_on_deployments,
     enable_on_features, enable_on_num_instances)
@@ -1012,14 +1013,16 @@ class TestReadWriteSplittingAsync:
                 await conn.close()
 
                 # The demoted writer is rebooting right after the triggered
-                # failover; connecting mid-reboot yields 'FATAL: the database
-                # system is starting up'. Wait for it to come back as a
-                # reader -- env-timing stabilization only, assertions
-                # unchanged. Sync twin intentionally untouched pending
-                # upstream (AWS) review of the same race.
-                await asyncio.to_thread(
-                    rds_utils.wait_until_instance_has_desired_status,
-                    initial_writer_id, 5, "available")
+                # failover; connections opened mid-reboot are accepted and
+                # then killed at first use. RDS instance STATUS stays
+                # 'available' through an Aurora failover restart (verified: a
+                # status-based wait returned instantly and did not protect),
+                # so probe LIVE: raw connect + SELECT 1 until the endpoint
+                # really serves queries. Env-timing stabilization only,
+                # assertions unchanged. Sync twin intentionally untouched
+                # pending upstream (AWS) review of the same race.
+                await wait_until_endpoint_accepts_queries_async(
+                    test_driver, conn_utils.get_connect_params())
 
                 # New connection to the original writer (now a reader)
                 conn2 = await connect_async(
@@ -1229,14 +1232,15 @@ class TestReadWriteSplittingAsync:
             # this test connects to seconds before it starts; a connection
             # opened mid-reboot is accepted and then killed at first use
             # ('the connection is closed' at cursor() / SSL EOF on the first
-            # DDL). Wait for the instance to finish rebooting -- env-timing
+            # DDL). RDS instance STATUS stays 'available' through an Aurora
+            # failover restart (verified: a status-based wait returned
+            # instantly and did not protect), so probe LIVE: raw connect +
+            # SELECT 1 until the endpoint really serves queries. Env-timing
             # stabilization only, no assertion is changed. The sync twin is
             # intentionally left untouched pending upstream (AWS) review of
             # the same race.
-            await asyncio.to_thread(
-                rds_utils.wait_until_instance_has_desired_status,
-                test_environment.get_instances()[0].get_instance_id(),
-                5, "available")
+            await wait_until_endpoint_accepts_queries_async(
+                test_driver, privileged_user_props)
 
             try:
                 conn = await connect_async(

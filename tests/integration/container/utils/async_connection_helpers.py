@@ -208,3 +208,55 @@ async def assert_first_query_throws_async(
     """
     with pytest.raises(exception_cls):
         await query_instance_id_async(conn, rds_utils)
+
+
+async def wait_until_endpoint_accepts_queries_async(
+        test_driver: TestDriver,
+        connect_params: Dict[str, Any],
+        timeout_sec: float = 180.0) -> None:
+    """Bounded live probe: retry a RAW driver connect + ``SELECT 1`` until the
+    endpoint actually serves queries.
+
+    RDS instance *status* is not a usable signal here: during an Aurora
+    failover the demoted writer's instance status stays ``available`` while
+    its engine restarts, and connections opened in that window are accepted
+    and then killed at first use ('the connection is closed' / SSL EOF /
+    'FATAL: the database system is starting up'). Only a successful query
+    proves the endpoint is really back. Best-effort: on timeout this returns
+    and the caller proceeds (a genuinely broken endpoint then fails the test
+    visibly).
+    """
+    import asyncio as _asyncio
+
+    params = dict(connect_params)
+    params["connect_timeout"] = 5
+    loop = _asyncio.get_running_loop()
+    deadline = loop.time() + timeout_sec
+    while loop.time() < deadline:
+        conn = None
+        try:
+            if test_driver == TestDriver.PG_ASYNC:
+                conn = await psycopg.AsyncConnection.connect(**params)
+                cur = conn.cursor()
+                await cur.execute("SELECT 1")
+                await cur.fetchone()
+                await cur.close()
+                await conn.close()
+            elif test_driver == TestDriver.MYSQL_ASYNC:
+                conn = await aiomysql.connect(**params)
+                async with conn.cursor() as cur:
+                    await cur.execute("SELECT 1")
+                    await cur.fetchone()
+                conn.close()
+            else:
+                return
+            return
+        except Exception:  # noqa: BLE001 - endpoint still restarting; retry
+            if conn is not None:
+                try:
+                    close_result = conn.close()
+                    if _asyncio.iscoroutine(close_result):
+                        await close_result
+                except Exception:  # noqa: BLE001
+                    pass
+            await _asyncio.sleep(2)
