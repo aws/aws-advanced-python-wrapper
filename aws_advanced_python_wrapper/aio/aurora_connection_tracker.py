@@ -455,6 +455,15 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
                 # when the connection provably moved off it. Sync doesn't need
                 # this: its daemon-thread/notify paths re-detect the change
                 # after replica_status catches up; async's last chance is now.
+                # Diagnostic (kept at debug): the idle-connection flake showed
+                # runs where NO invalidation fired via ANY path; this line
+                # makes the handler's decision inputs visible in test logs.
+                post_host = self._plugin_service.current_host_info
+                logger.debug(
+                    f"[AsyncAuroraConnectionTrackerPlugin] failover handler: "
+                    f"pre={pre_failover_host.url if pre_failover_host else None} "
+                    f"post={post_host.url if post_host else None} "
+                    f"pinned={self._current_writer.url if self._current_writer else None}")
                 await self._invalidate_departed_host(pre_failover_host)
             raise
 
