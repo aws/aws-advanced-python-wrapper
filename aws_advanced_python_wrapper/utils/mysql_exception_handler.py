@@ -87,6 +87,16 @@ class MySQLExceptionHandler(ExceptionHandler):
         args = getattr(error, "args", None)
         if args and isinstance(args[0], int) and args[0] in self._NETWORK_ERRORS:
             return True
+        # pymysql InterfaceError(0, 'Not connected'): aiomysql tears the
+        # connection down locally when its reader task sees EOF (observed
+        # during long Aurora failover outages), and every later operation
+        # raises this shape instead of a 2xxx client error code. It is
+        # definitionally a lost-connection condition; without this it escaped
+        # the async wrapper raw instead of triggering failover. Additive and
+        # narrowly matched, like the pymysql block above.
+        if (args and len(args) >= 2 and args[0] == 0
+                and isinstance(args[1], str) and "Not connected" in args[1]):
+            return True
         if hasattr(error, 'msg') and error.msg is not None and self._UNAVAILABLE_CONNECTION in error.msg:
             return True
 

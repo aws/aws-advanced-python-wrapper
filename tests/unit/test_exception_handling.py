@@ -280,3 +280,20 @@ def test_circular_reference_no_match_mysql(mysql_handler):
     inner_error.__cause__ = wrapper2
 
     assert mysql_handler.is_network_exception(error=wrapper2) is False
+
+
+def test_pymysql_not_connected_is_network_exception_mysql(mysql_handler):
+    """MySQL integration regression (idle-connection params on a cluster with
+    60-90s failovers): aiomysql tears the connection down locally when its
+    reader task sees EOF during the outage, and later operations raise
+    pymysql.err.InterfaceError(0, 'Not connected') -- args (0, msg), no 2xxx
+    client code. This escaped the async wrapper RAW instead of triggering
+    failover. It must classify as a network (lost-connection) exception."""
+    class _PymysqlInterfaceError(Exception):
+        pass
+
+    err = _PymysqlInterfaceError(0, "Not connected")
+    assert mysql_handler.is_network_exception(error=err) is True
+    # Narrow match: code 0 with an unrelated message stays non-network.
+    other = _PymysqlInterfaceError(0, "some other condition")
+    assert mysql_handler.is_network_exception(error=other) is False
