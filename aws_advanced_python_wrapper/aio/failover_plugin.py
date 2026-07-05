@@ -40,10 +40,13 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.failover_mode import (FailoverMode,
                                                              get_failover_mode)
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
+
+logger = Logger(__name__)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
@@ -275,8 +278,40 @@ class AsyncFailoverPlugin(AsyncPlugin):
         # failover (test_fail_from_writer_to_new_writer_*).
         if self._is_connection_lost_error(exc):
             return True
-        return (self._is_strict_writer_failover_mode()
-                and self._plugin_service.is_read_only_connection_exception(error=exc))
+        # Async-specific aiomysql shape, checked HERE as well as in the shared
+        # MySQL exception handler: pymysql InterfaceError(0, 'Not connected')
+        # is what every operation raises after aiomysql's reader task tore the
+        # connection down locally (EOF during an outage). The handler-based
+        # classification returns False whenever the service's database dialect
+        # is transiently unset (ExceptionManager: no dialect -> no handler ->
+        # False), which let this escape raw 1/10 runs even after the handler
+        # gained the shape. This check is dialect-independent.
+        if self._is_pymysql_not_connected_error(exc):
+            return True
+        should = (self._is_strict_writer_failover_mode()
+                  and self._plugin_service.is_read_only_connection_exception(error=exc))
+        if not should:
+            # Make future classification gaps diagnosable from test logs: a
+            # raw driver error propagating past failover is otherwise silent.
+            logger.debug(
+                f"[AsyncFailoverPlugin] exception not classified as "
+                f"failover-worthy; propagating raw: {exc!r}")
+        return should
+
+    @staticmethod
+    def _is_pymysql_not_connected_error(exc: BaseException) -> bool:
+        """True for pymysql/aiomysql InterfaceError(0, 'Not connected') (or a
+        ``__cause__`` ancestor with that shape)."""
+        seen: set = set()
+        cur: Optional[BaseException] = exc
+        while cur is not None and id(cur) not in seen:
+            args = getattr(cur, "args", None)
+            if (args and len(args) >= 2 and args[0] == 0
+                    and isinstance(args[1], str) and "Not connected" in args[1]):
+                return True
+            seen.add(id(cur))
+            cur = cur.__cause__
+        return False
 
     def _is_strict_writer_failover_mode(self) -> bool:
         """Whether STRICT_WRITER failover applies (gates the read-only-exception

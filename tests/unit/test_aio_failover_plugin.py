@@ -1004,3 +1004,26 @@ def test_connect_error_propagates_when_connect_failover_disabled():
                 Properties({}), True, _dial)
 
     asyncio.run(_body())
+
+
+def test_should_failover_on_pymysql_not_connected_even_without_dialect():
+    """MySQL integration residual (1/10 after the handler fix): the
+    handler-based classification returns False whenever the plugin service's
+    database dialect is transiently unset, letting aiomysql's
+    InterfaceError(0, 'Not connected') escape raw. The failover plugin must
+    recognize the shape dialect-independently (same precedent as the
+    _is_connection_os_error / 'connection is lost' escape hatches)."""
+    import pymysql
+
+    from aws_advanced_python_wrapper.aio.failover_plugin import \
+        AsyncFailoverPlugin
+
+    err = pymysql.err.InterfaceError(0, "Not connected")
+    assert AsyncFailoverPlugin._is_pymysql_not_connected_error(err) is True
+    # Wrapped one level via explicit cause: still recognized.
+    outer = RuntimeError("wrapped")
+    outer.__cause__ = err
+    assert AsyncFailoverPlugin._is_pymysql_not_connected_error(outer) is True
+    # Unrelated code-0 error: not matched.
+    other = pymysql.err.InterfaceError(0, "something else")
+    assert AsyncFailoverPlugin._is_pymysql_not_connected_error(other) is False
