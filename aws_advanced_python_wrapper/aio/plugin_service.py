@@ -348,6 +348,13 @@ class AsyncPluginService(Protocol):
         """
         ...
 
+    async def update_database_dialect(self, connection: Any) -> None:
+        """Upgrade the database dialect from the live connection (sync parity
+        with ``PluginServiceImpl.update_dialect``, invoked from the terminal
+        plugin's connect so outer plugins' post-connect logic sees the
+        corrected dialect)."""
+        ...
+
     async def identify_connection(
             self, connection: Optional[Any] = None) -> Optional[HostInfo]:
         """Return the HostInfo that ``connection`` is bound to, or None.
@@ -406,6 +413,9 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         self._props: Properties = props
         self._driver_dialect: AsyncDriverDialect = driver_dialect
         self._database_dialect: Optional[DatabaseDialect] = None
+        # True once update_database_dialect has made a definitive decision
+        # (sync parity: DatabaseDialectManager can_update going False).
+        self._database_dialect_settled: bool = False
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._plugin_manager: Optional[AsyncPluginManager] = None
         self._host_list_provider: Optional[AsyncHostListProvider] = None
@@ -632,6 +642,70 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         # drivers don't differentiate by provider today. Kept for sync
         # parity so callers can invoke unconditionally.
         return
+
+    async def update_database_dialect(self, connection: Any) -> None:
+        """Upgrade the database dialect from the live connection.
+
+        Async parity for sync ``PluginServiceImpl.update_dialect``
+        (plugin_service.py:538), invoked from the terminal plugin's connect
+        (sync default_plugin.py:82) so every OUTER plugin's post-connect logic
+        already sees the corrected dialect. The async layer previously ran
+        this upgrade only AFTER the whole connect pipeline
+        (``_upgrade_database_dialect_after_connect`` in aio/wrapper.py), which
+        left plugin connect hooks working with the pattern-guessed dialect --
+        on an Aurora MySQL *instance* endpoint that guess is
+        ``RdsMysqlDialect`` (no topology query; ``@@read_only`` role probe
+        that does not flip on Aurora failover), so hook-time topology/role
+        operations failed silently (the root asymmetry behind the
+        connection-tracker's pin and exception-classification defenses).
+
+        Only MySQL needs a live probe: the PG pattern guess is already
+        Aurora-correct for every endpoint form. Settles after a definitive
+        probe (mirrors sync ``can_update`` going False); a transient probe
+        failure leaves it unsettled so the next connect retries -- sync runs
+        update_dialect on every connect for the same reason.
+        """
+        if self._database_dialect_settled:
+            return
+        driver_dialect = self._driver_dialect
+        if getattr(driver_dialect, "_driver_name", None) != "aiomysql":
+            self._database_dialect_settled = True
+            return
+        from aws_advanced_python_wrapper.aio.host_list_provider import \
+            AsyncAuroraHostListProvider
+        from aws_advanced_python_wrapper.database_dialect import (
+            AuroraMysqlDialect, DatabaseDialectManager, DialectCode,
+            MysqlDatabaseDialect)
+
+        database_dialect = self._database_dialect
+        # A base/RDS MySQL dialect needs a live probe; a cluster-endpoint
+        # connect already resolved to AuroraMysqlDialect by pattern and skips
+        # the probe (but still needs the provider wired below).
+        if (not isinstance(database_dialect, AuroraMysqlDialect)
+                and isinstance(database_dialect, MysqlDatabaseDialect)):
+            try:
+                async with connection.cursor() as cur:
+                    await cur.execute("SHOW VARIABLES LIKE 'aurora_version'")
+                    # fetchall (not fetchone) so the result set is fully
+                    # drained -- a partially-read result leaves the shared
+                    # aiomysql connection dirty and the app's next query reads
+                    # the leftover row.
+                    is_aurora = len(await cur.fetchall()) > 0
+            except Exception:  # noqa: BLE001 - keep initial dialect; retry next connect
+                return
+            if is_aurora:
+                aurora = DatabaseDialectManager._known_dialects_by_code.get(
+                    DialectCode.AURORA_MYSQL)
+                if aurora is not None:
+                    database_dialect = aurora
+                    self._database_dialect = aurora
+
+        if (isinstance(database_dialect, AuroraMysqlDialect)
+                and isinstance(self._host_list_provider,
+                               AsyncAuroraHostListProvider)):
+            self._host_list_provider.reconfigure_topology_query(
+                database_dialect.topology_query, default_port=3306)
+        self._database_dialect_settled = True
 
     async def identify_connection(
             self, connection: Optional[Any] = None) -> Optional[HostInfo]:

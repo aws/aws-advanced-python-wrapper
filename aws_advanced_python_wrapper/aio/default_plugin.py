@@ -95,6 +95,13 @@ class AsyncDefaultPlugin(AsyncPlugin):
                 target_driver_props,
             )
         self._post_connect_bookkeeping(host_info, provider)
+        # Sync parity (default_plugin.py:82): upgrade the DATABASE dialect
+        # from the live connection INSIDE the terminal hook, so every outer
+        # plugin's post-connect logic already sees the corrected dialect
+        # (previously this ran only after the whole pipeline, leaving hooks
+        # on the pattern-guessed dialect -- the root asymmetry behind the
+        # tracker-pin and exception-classification defenses on MySQL).
+        await self._plugin_service.update_database_dialect(conn)
         return conn
 
     async def force_connect(
@@ -123,6 +130,9 @@ class AsyncDefaultPlugin(AsyncPlugin):
                 target_driver_props,
             )
         self._post_connect_bookkeeping(host_info, provider)
+        # Sync parity: sync's shared _connect path runs update_dialect for
+        # force_connect too (default_plugin.py:82).
+        await self._plugin_service.update_database_dialect(conn)
         return conn
 
     def _post_connect_bookkeeping(self, host_info: HostInfo, connection_provider: Any) -> None:
@@ -131,12 +141,10 @@ class AsyncDefaultPlugin(AsyncPlugin):
         Sync parity: ``DefaultPlugin._connect`` (default_plugin.py:80-82) marks
         every alias of the just-connected host AVAILABLE and lets the service
         re-pick the driver dialect for the provider that produced the
-        connection (a no-op on async today). Sync additionally calls
-        ``plugin_service.update_dialect(conn)`` to auto-upgrade the DATABASE
-        dialect from the live connection; the async plugin service has no
-        ``update_dialect`` yet -- the async connect path instead upgrades the
-        dialect in ``AsyncAwsWrapperConnection.connect`` via
-        ``_upgrade_database_dialect_after_connect``.
+        connection (a no-op on async today). The DATABASE-dialect upgrade
+        (sync ``plugin_service.update_dialect(conn)``) is invoked by the
+        connect/force_connect callers right after this bookkeeping, mirroring
+        sync's ordering; it is async so it cannot live in this sync helper.
         """
         if self._plugin_service is None:
             return

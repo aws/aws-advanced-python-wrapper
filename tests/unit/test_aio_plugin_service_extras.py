@@ -602,6 +602,9 @@ def _bookkeeping_service_and_provider(connect_result=None, connect_error=None):
     manager = svc.get_connection_provider_manager.return_value
     manager.get_connection_provider.return_value = provider
     manager.default_provider = provider
+    # The terminal hook now awaits the database-dialect upgrade (sync parity
+    # with default_plugin.py:82); a bare MagicMock is not awaitable.
+    svc.update_database_dialect = AsyncMock()
     return svc, provider
 
 
@@ -771,3 +774,59 @@ def test_force_monitoring_refresh_host_list_falls_back_without_monitor():
         assert svc.all_hosts == (writer,)
 
     asyncio.run(_body())
+
+
+def test_dialect_upgrade_runs_inside_terminal_hook_before_outer_post_connect():
+    """Sync-parity ordering regression (default_plugin.py:82): the database-
+    dialect upgrade must run INSIDE the terminal plugin's connect, so OUTER
+    plugins' post-connect logic (e.g. the connection tracker's writer pin, an
+    eager topology refresh) already sees the corrected dialect. Previously the
+    upgrade ran only after the whole pipeline (aio/wrapper.py), leaving hooks
+    on the pattern-guessed dialect -- the root asymmetry behind the MySQL
+    tracker-pin and exception-classification defenses."""
+    conn = MagicMock(name="conn")
+    svc, provider = _bookkeeping_service_and_provider(connect_result=conn)
+    plugin = AsyncDefaultPlugin(svc)
+    host = HostInfo("writer-1.cluster.rds", 3306)
+
+    order = []
+    svc.update_database_dialect = AsyncMock(
+        side_effect=lambda *_a, **_k: order.append("upgrade"))
+
+    async def _outer_post_connect_probe():
+        # Simulates an outer plugin: its post-connect code runs after the
+        # terminal returns. By then the upgrade must have happened.
+        result = await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=MagicMock(),
+            host_info=host,
+            props=Properties(),
+            is_initial_connection=True,
+            connect_func=AsyncMock(),
+        )
+        order.append("outer-post-connect")
+        return result
+
+    asyncio.run(_outer_post_connect_probe())
+    svc.update_database_dialect.assert_awaited_once_with(conn)
+    assert order == ["upgrade", "outer-post-connect"]
+
+
+def test_update_database_dialect_settles_and_skips_non_mysql():
+    """update_database_dialect: non-aiomysql drivers settle immediately (no
+    probe ever); a settled service never re-probes (sync can_update parity)."""
+    dd = MagicMock()
+    dd._driver_name = "psycopg"
+    svc = AsyncPluginServiceImpl(Properties(), dd)
+    conn = MagicMock(name="conn")
+
+    async def _run():
+        await svc.update_database_dialect(conn)
+        assert svc._database_dialect_settled is True
+        # No probe on the connection for non-MySQL drivers.
+        conn.cursor.assert_not_called()
+        # Second call is a fast no-op.
+        await svc.update_database_dialect(conn)
+        conn.cursor.assert_not_called()
+
+    asyncio.run(_run())

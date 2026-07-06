@@ -494,8 +494,10 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         only when the pin does NOT name a third host distinct from both ends
         of the move. Concretely, invalidate when the pinned writer is the
         departed host, is None (a failed pin must not disable invalidation),
-        or equals POST: on MySQL the connect-time pin can fail silently (the
-        dialect is not yet upgraded when the connect hook runs), so the
+        or equals POST: if the connect-time pin ever fails silently (observed
+        on MySQL before the dialect upgrade moved into the terminal connect
+        hook -- update_database_dialect, sync default_plugin.py:82 parity --
+        and still possible on any transient connect-time probe error), the
         handler's own force-refresh registers the NEW writer as a
         first-observation pin -- the pin then equals post while pre, the host
         the connection provably departed, still holds the idle connections
