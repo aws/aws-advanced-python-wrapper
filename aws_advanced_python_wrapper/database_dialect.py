@@ -14,8 +14,8 @@
 
 from __future__ import annotations
 
-from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
-                    Protocol, Tuple, runtime_checkable)
+from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, FrozenSet, List,
+                    Optional, Protocol, Sequence, Tuple, runtime_checkable)
 
 from aws_advanced_python_wrapper.driver_info import DriverInfo
 from aws_advanced_python_wrapper.host_list_provider import (
@@ -40,6 +40,8 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.accessible_regions import \
+    is_in_accessible_region
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -174,6 +176,19 @@ class DatabaseDialect(Protocol):
     @abstractmethod
     def prepare_conn_props(self, props: Properties):
         ...
+
+    def filter_available_hosts(
+        self,
+        hosts: Sequence[HostInfo],
+        accessible_regions: Optional[FrozenSet[str]],
+    ) -> List[HostInfo]:
+        """Filter hosts by accessible regions.
+
+        Non-multi-region dialects return the input unchanged. Global Aurora
+        dialects override this to exclude hosts whose region is not in the
+        accessible set.
+        """
+        return list(hosts)
 
 
 class DatabaseDialectProvider(Protocol):
@@ -626,6 +641,19 @@ class GlobalAuroraMysqlDialect(AuroraMysqlDialect, GlobalAuroraTopologyDialect):
             props,
             GlobalAuroraTopologyUtils(self, props))
 
+    def filter_available_hosts(
+        self,
+        hosts: Sequence[HostInfo],
+        accessible_regions: Optional[FrozenSet[str]],
+    ) -> List[HostInfo]:
+        if not accessible_regions:
+            return list(hosts)
+        rds_utils = RdsUtils()
+        return [
+            host for host in hosts
+            if is_in_accessible_region(host.host, accessible_regions, rds_utils)
+        ]
+
 
 class GlobalAuroraPgDialect(AuroraPgDialect, GlobalAuroraTopologyDialect):
     _GLOBAL_STATUS_TABLE_EXISTS_QUERY = "SELECT 'pg_catalog.aurora_global_db_status'::pg_catalog.regproc"
@@ -682,6 +710,19 @@ class GlobalAuroraPgDialect(AuroraPgDialect, GlobalAuroraTopologyDialect):
             plugin_service,
             props,
             GlobalAuroraTopologyUtils(self, props))
+
+    def filter_available_hosts(
+        self,
+        hosts: Sequence[HostInfo],
+        accessible_regions: Optional[FrozenSet[str]],
+    ) -> List[HostInfo]:
+        if not accessible_regions:
+            return list(hosts)
+        rds_utils = RdsUtils()
+        return [
+            host for host in hosts
+            if is_in_accessible_region(host.host, accessible_regions, rds_utils)
+        ]
 
 
 class MultiAzClusterMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):

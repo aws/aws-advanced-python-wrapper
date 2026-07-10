@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, FrozenSet, List, Optional
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.plugin_service import PluginService
@@ -26,6 +26,10 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.failover_v2_plugin import FailoverV2Plugin
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.utils.accessible_regions import \
+    is_in_accessible_region
+from aws_advanced_python_wrapper.utils.accessible_regions import \
+    parse as parse_accessible_regions
 from aws_advanced_python_wrapper.utils.gdb_failover_mode import GdbFailoverMode
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -46,6 +50,7 @@ class GdbFailoverPlugin(FailoverV2Plugin):
         super().__init__(plugin_service, props)
 
         self._home_region: Optional[str] = None
+        self._accessible_regions: Optional[FrozenSet[str]] = None
         self._active_home_failover_mode: Optional[GdbFailoverMode] = None
         self._inactive_home_failover_mode: Optional[GdbFailoverMode] = None
         self._retry_util = RetryUtil()
@@ -86,6 +91,14 @@ class GdbFailoverPlugin(FailoverV2Plugin):
 
         logger.debug("FailoverPlugin.ParameterValue", "failover_home_region", self._home_region)
 
+        self._accessible_regions = parse_accessible_regions(self._properties)
+        if self._accessible_regions is not None:
+            logger.debug("FailoverPlugin.ParameterValue", "gdb_accessible_regions", self._accessible_regions)
+            if self._home_region.casefold() not in self._accessible_regions:
+                raise AwsWrapperError(Messages.get_formatted(
+                    "GdbFailoverPlugin.HomeRegionNotInAccessibleRegions",
+                    self._home_region, self._accessible_regions))
+
         self._active_home_failover_mode = GdbFailoverMode.from_value(
             WrapperProperties.ACTIVE_HOME_FAILOVER_MODE.get(self._properties))
         self._inactive_home_failover_mode = GdbFailoverMode.from_value(
@@ -105,6 +118,12 @@ class GdbFailoverPlugin(FailoverV2Plugin):
     def _is_home_region(self, region: Optional[str]) -> bool:
         return self._home_region is not None and region is not None \
             and self._home_region.casefold() == region.casefold()
+
+    def _is_out_of_home_region(self, region: Optional[str]) -> bool:
+        return region is not None and not self._is_home_region(region)
+
+    def _is_in_accessible_region(self, host: HostInfo) -> bool:
+        return is_in_accessible_region(host.host, self._accessible_regions, self._rds_helper)
 
     def _is_strict_writer_failover_mode(self) -> bool:
         current_region = self._rds_helper.get_rds_region(self._plugin_service.current_host_info.host)
@@ -181,45 +200,59 @@ class GdbFailoverPlugin(FailoverV2Plugin):
             failover_end_time: float) -> None:
         match mode:
             case GdbFailoverMode.STRICT_WRITER:
+                if not self._is_in_accessible_region(writer_candidate):
+                    self._inc(self._failover_writer_triggered_counter)
+                    self._inc(self._failover_writer_failed_counter)
+                    writer_region = self._rds_helper.get_rds_region(writer_candidate.host)
+                    raise FailoverFailedError(Messages.get_formatted(
+                        "GdbFailoverPlugin.WriterNotInAccessibleRegion",
+                        writer_region, self._accessible_regions))
                 self._failover_to_writer(writer_candidate, failover_end_time)
             case GdbFailoverMode.STRICT_HOME_READER:
                 self._failover_to_allowed_host(
                     lambda: [host for host in self._plugin_service.hosts
                              if host.role == HostRole.READER
-                             and self._is_home_region(self._rds_helper.get_rds_region(host.host))],
+                             and self._is_home_region(self._rds_helper.get_rds_region(host.host))
+                             and self._is_in_accessible_region(host)],
                     HostRole.READER,
                     failover_end_time)
             case GdbFailoverMode.STRICT_OUT_OF_HOME_READER:
                 self._failover_to_allowed_host(
                     lambda: [host for host in self._plugin_service.hosts
                              if host.role == HostRole.READER
-                             and not self._is_home_region(self._rds_helper.get_rds_region(host.host))],
+                             and self._is_out_of_home_region(self._rds_helper.get_rds_region(host.host))
+                             and self._is_in_accessible_region(host)],
                     HostRole.READER,
                     failover_end_time)
             case GdbFailoverMode.STRICT_ANY_READER:
                 self._failover_to_allowed_host(
-                    lambda: [host for host in self._plugin_service.hosts if host.role == HostRole.READER],
+                    lambda: [host for host in self._plugin_service.hosts
+                             if host.role == HostRole.READER
+                             and self._is_in_accessible_region(host)],
                     HostRole.READER,
                     failover_end_time)
             case GdbFailoverMode.HOME_READER_OR_WRITER:
                 self._failover_to_allowed_host(
                     lambda: [host for host in self._plugin_service.hosts
-                             if host.role == HostRole.WRITER
-                             or (host.role == HostRole.READER
-                                 and self._is_home_region(self._rds_helper.get_rds_region(host.host)))],
+                             if (host.role == HostRole.WRITER
+                                 or (host.role == HostRole.READER
+                                     and self._is_home_region(self._rds_helper.get_rds_region(host.host))))
+                             and self._is_in_accessible_region(host)],
                     None,
                     failover_end_time)
             case GdbFailoverMode.OUT_OF_HOME_READER_OR_WRITER:
                 self._failover_to_allowed_host(
                     lambda: [host for host in self._plugin_service.hosts
-                             if host.role == HostRole.WRITER
-                             or (host.role == HostRole.READER
-                                 and not self._is_home_region(self._rds_helper.get_rds_region(host.host)))],
+                             if (host.role == HostRole.WRITER
+                                 or (host.role == HostRole.READER
+                                     and self._is_out_of_home_region(self._rds_helper.get_rds_region(host.host))))
+                             and self._is_in_accessible_region(host)],
                     None,
                     failover_end_time)
             case GdbFailoverMode.ANY_READER_OR_WRITER:
                 self._failover_to_allowed_host(
-                    lambda: list(self._plugin_service.hosts),
+                    lambda: [host for host in self._plugin_service.hosts
+                             if self._is_in_accessible_region(host)],
                     None,
                     failover_end_time)
             case _:
