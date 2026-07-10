@@ -505,6 +505,7 @@ class LimitlessRouterService:
             connection = context.get_connection()
             if connection is None or self._plugin_service.driver_dialect.is_closed(connection):
                 context.set_connection(context.get_connect_func()())
+                connection = context.get_connection()
 
             new_limitless_routers: List[HostInfo] = self._query_helper.query_for_limitless_routers(
                 connection, context.get_host_info().port)
@@ -521,8 +522,8 @@ class LimitlessRouterService:
         finally:
             lock.release()
 
-    def _is_login_exception(self, error: Optional[Exception] = None):
-        self._plugin_service.is_login_exception(error)
+    def _is_login_exception(self, error: Optional[Exception] = None) -> bool:
+        return self._plugin_service.is_login_exception(error)
 
     def start_monitoring(self, host_info: HostInfo,
                          props: Properties) -> None:

@@ -98,7 +98,7 @@ class SessionStateTransferHandlers:
 
     @staticmethod
     def reset_transfer_session_state_on_switch_func():
-        SessionStateTransferHandlers.reset_transfer_session_state_on_switch_callable = None
+        SessionStateTransferHandlers.transfer_session_state_on_switch_callable = None
 
 
 class SessionStateServiceImpl(SessionStateService):

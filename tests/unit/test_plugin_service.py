@@ -13,7 +13,7 @@
 #  limitations under the License.s
 
 from concurrent.futures import TimeoutError
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest  # type: ignore
 
@@ -412,3 +412,20 @@ def test_identify_connection_host_in_topology_multiaz(mocker):
     assert host_info is not None
     assert "instance-1.xyz.us-east-2.rds.amazonaws.com" == host_info.host
     assert "instance-1" == host_info.host_id
+
+
+def test_could_not_determine_current_host_raises_resolved_message():
+    """Regression (parity review): the terminal current_host_info error
+    previously raised the raw message KEY instead of the resolved text."""
+    service = PluginServiceImpl.__new__(PluginServiceImpl)
+    service._current_host_info = None
+    service._initial_connection_host_info = None
+    reader = MagicMock()
+    reader.role = "reader-not-writer-sentinel"
+    with patch.object(PluginServiceImpl, "all_hosts", (reader,)), \
+            patch.object(PluginServiceImpl, "hosts", ()):
+        with pytest.raises(AwsWrapperError) as exc_info:
+            _ = service.current_host_info
+    message = str(exc_info.value)
+    assert "The current host could not be determined." in message
+    assert "PluginServiceImpl.CouldNotDetermineCurrentHost" not in message

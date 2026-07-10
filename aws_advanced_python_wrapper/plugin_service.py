@@ -472,7 +472,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 self._current_host_info = self.hosts[0]
 
         if self._current_host_info is None:
-            raise AwsWrapperError("PluginServiceImpl.CouldNotDetermineCurrentHost")
+            raise AwsWrapperError(Messages.get("PluginServiceImpl.CouldNotDetermineCurrentHost"))
 
         logger.debug("PluginServiceImpl.SetCurrentHostInfo", self._current_host_info)
         return self._current_host_info

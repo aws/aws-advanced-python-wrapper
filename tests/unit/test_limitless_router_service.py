@@ -93,6 +93,10 @@ def mock_plugin_service(mocker, mock_driver_dialect, mock_conn, host_info, defau
     service_mock.host_list_provider = mocker.MagicMock()
     service_mock.host_list_provider.get_cluster_id.return_value = CLUSTER_ID
     service_mock.props = Properties({})
+    # The retry scenarios below use generic (non-login) errors; without this
+    # the MagicMock's truthy return would make _is_login_exception treat
+    # every error as a login failure and raise instead of retrying.
+    service_mock.is_login_exception.return_value = False
 
     type(service_mock).driver_dialect = mocker.PropertyMock(return_value=mock_driver_dialect)
     return service_mock
@@ -545,3 +549,49 @@ def test_establish_connection_retry_and_max_retries_exceeded_then_raise_exceptio
     assert str(e_info.value) == Messages.get("LimitlessRouterService.MaxRetriesExceeded")
     assert mock_plugin_service.connect.call_count == WrapperProperties.MAX_RETRIES_MS.get(props)
     assert mock_plugin_service.get_host_info_by_strategy.call_count == WrapperProperties.MAX_RETRIES_MS.get(props)
+
+
+def test_is_login_exception_returns_verdict(mocker):
+    """Regression (parity review): _is_login_exception previously discarded
+    the classification result, so login failures were never short-circuited
+    out of the retry loop."""
+    service = LimitlessRouterService.__new__(LimitlessRouterService)
+    plugin_service_mock = mocker.MagicMock()
+    service._plugin_service = plugin_service_mock
+
+    plugin_service_mock.is_login_exception.return_value = True
+    assert service._is_login_exception(Exception("auth")) is True
+    plugin_service_mock.is_login_exception.return_value = False
+    assert service._is_login_exception(Exception("net")) is False
+
+
+def test_synchronously_get_limitless_routers_queries_fresh_connection(mocker):
+    """Regression (parity review): after reconnecting a dead/None monitoring
+    connection, the router query must run on the NEW connection -- previously
+    it used the stale pre-reconnect local."""
+    service = LimitlessRouterService.__new__(LimitlessRouterService)
+    plugin_service_mock = mocker.MagicMock()
+    plugin_service_mock.driver_dialect.is_closed.return_value = True
+    service._plugin_service = plugin_service_mock
+    service._storage_service = mocker.MagicMock()
+    query_helper_mock = mocker.MagicMock()
+    query_helper_mock.query_for_limitless_routers.return_value = [
+        mocker.MagicMock(name="router_host")]
+    service._query_helper = query_helper_mock
+
+    stale_conn = mocker.MagicMock(name="stale_conn")
+    fresh_conn = mocker.MagicMock(name="fresh_conn")
+    context = mocker.MagicMock()
+    connections = {"current": stale_conn}
+    context.get_connection.side_effect = lambda: connections["current"]
+    context.set_connection.side_effect = (
+        lambda conn: connections.update(current=conn))
+    context.get_connect_func.return_value = mocker.MagicMock(
+        return_value=fresh_conn)
+    context.get_host_info.return_value = mocker.MagicMock(port=5432)
+
+    mocker.patch.object(service, "_get_limitless_routers", return_value=None)
+    service._synchronously_get_limitless_routers(context)
+
+    queried_conn = query_helper_mock.query_for_limitless_routers.call_args[0][0]
+    assert queried_conn is fresh_conn
