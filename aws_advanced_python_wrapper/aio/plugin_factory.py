@@ -211,7 +211,6 @@ class _DeveloperFactory:
 class _CustomEndpointFactory:
     def get_instance(
             self, plugin_service, props, host_list_provider=None):
-        # Active implementation post-Task 1-B (replaces SP-8 stub).
         return AsyncCustomEndpointPluginActive(plugin_service, props)
 
 
@@ -253,24 +252,6 @@ class _LimitlessFactory:
         from aws_advanced_python_wrapper.aio.limitless_plugin import \
             AsyncLimitlessPlugin
         return AsyncLimitlessPlugin(plugin_service, props)
-
-
-class _AsyncStubFactory:
-    """Factory that instantiates a pass-through stub plugin.
-
-    Each stub class is paired with a unique _AsyncStubFactory instance
-    so PLUGIN_FACTORY_WEIGHTS can rank them independently if ever
-    needed. All stub factories share the same *type*, which is what
-    :data:`PLUGIN_FACTORY_WEIGHTS` keys on, so one weight entry covers
-    every stub.
-    """
-
-    def __init__(self, stub_cls: Type[AsyncPlugin]) -> None:
-        self._stub_cls = stub_cls
-
-    def get_instance(
-            self, plugin_service, props, host_list_provider=None):
-        return self._stub_cls()
 
 
 class _BlueGreenFactory:
@@ -350,10 +331,6 @@ PLUGIN_FACTORY_WEIGHTS: Dict[Type[Any], int] = {
     _ConnectTimeFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
     _ExecuteTimeFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
     _DeveloperFactory: WEIGHT_RELATIVE_TO_PRIOR_PLUGIN,
-    # All stub factories share one type; a single entry covers every
-    # remaining Phase H.2 stub. Weight sits above every fixed weight so
-    # stubs sort last (they subscribe to nothing, so order is cosmetic).
-    _AsyncStubFactory: 2000,
 }
 
 

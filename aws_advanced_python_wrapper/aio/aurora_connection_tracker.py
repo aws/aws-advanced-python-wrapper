@@ -33,7 +33,7 @@ Simpler than the sync implementation:
   ``notify_host_list_changed`` path, drained on
   ``release_resources_async``.
 
-Unlike earlier iterations of this module, the tracked-connections
+The tracked-connections
 dict lives on the class (mirroring sync's ``ClassVar[Dict[str,
 WeakSet]]`` at ``aurora_connection_tracker_plugin.py:47``) so that
 multiple pooled plugin instances share one registry and a single
@@ -280,11 +280,6 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
             "aurora_connection_tracker.writer_changes.count")
 
         register_shutdown_hook(self._shutdown)
-
-    @property
-    def last_known_writer_host(self) -> Optional[str]:
-        """Backwards-compat accessor (was present on the SP-8 stub)."""
-        return self._current_writer.host if self._current_writer else None
 
     @property
     def subscribed_methods(self) -> Set[str]:

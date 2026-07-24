@@ -18,19 +18,19 @@ Background :class:`asyncio.Task` that periodically awakens, calls
 :meth:`AsyncAuroraHostListProvider.force_refresh`, and sleeps. Replaces
 the sync :class:`ClusterTopologyMonitor`'s thread-based loop.
 
-3.0.0 keeps the monitor minimal: one task per provider instance, fixed
-interval, no suggestions feedback loop (sync EFM uses that; async EFM
-in SP-5 may add its own). Cancellation is clean -- ``stop()`` cancels
+The monitor is deliberately minimal: one task per provider instance, fixed
+interval, no suggestions feedback loop (sync EFM uses that; the async EFM
+plugin runs its own monitors). Cancellation is clean -- ``stop()`` cancels
 the task and awaits its exit.
 
-Phase G.1 adds a high-frequency refresh window after a writer change
-is detected: once a new writer is observed, the monitor temporarily
+A high-frequency refresh window follows a detected writer change:
+once a new writer is observed, the monitor temporarily
 shortens its tick interval to ``high_refresh_rate_sec`` (default 1s)
 for ``HIGH_REFRESH_PERIOD_SEC`` (default 30s) before reverting to the
 normal cadence. Mirrors the sync implementation at
 ``cluster_topology_monitor.py:86, :121, :192-210, :273-282``.
 
-Phase G.4 adds parallel-probe panic mode: when ``connection_getter``
+Parallel-probe panic mode: when ``connection_getter``
 returns ``None`` (no monitoring connection -- e.g., post-failover) and
 a ``probe_host`` callable was injected at construction, the monitor
 spawns one :class:`asyncio.Task` per host in ``_last_topology``. Each

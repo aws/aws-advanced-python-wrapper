@@ -71,9 +71,9 @@ class AsyncPluginManager:
         # Cache the telemetry factory once (mirrors sync PluginManager.__init__)
         # so per-call dispatch adds only guard checks when telemetry is off.
         self._telemetry_factory: TelemetryFactory = plugin_service.get_telemetry_factory()
-        # Explicit list of plugins is what SP-1 accepts. SP-4+ will add a
-        # factory-registry-based constructor overload so `plugins="failover,host_monitoring_v2"`
-        # in connection props can build the list.
+        # The manager takes an explicit plugin list; building that list from
+        # the `plugins` connection property happens in plugin_factory on the
+        # wrapper connect path.
         user_plugins: List[AsyncPlugin] = list(plugins) if plugins else []
         self._plugins: List[AsyncPlugin] = [
             *user_plugins,

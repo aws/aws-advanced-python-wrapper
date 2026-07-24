@@ -14,7 +14,7 @@
 
 """``AsyncPlugin`` / ``AsyncConnectionProvider`` abstract base classes.
 
-Per SP-0 decision D3, async plugins do NOT inherit from sync ``Plugin``.
+Async plugins deliberately do NOT inherit from sync ``Plugin``.
 Parallel class hierarchies avoid mixing ``def`` and ``async def`` methods
 on one class.
 """

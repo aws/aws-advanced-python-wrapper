@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""F3-B SP-8: remaining small async plugins.
+"""Remaining small async plugins.
 
 Async counterparts for the sync "minor plugins":
 
@@ -37,8 +37,8 @@ import time
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, List,
                     Optional, Set)
 
-# Re-export: moved to its own module in Phase D.1. Keeping the import path stable
-# so downstream users and the plugin factory don't care where the class lives.
+# Re-export: the plugin lives in its own module; the import path is kept
+# stable so downstream users and the plugin factory don't care where.
 from aws_advanced_python_wrapper.aio.aurora_connection_tracker import \
     AsyncAuroraConnectionTrackerPlugin  # noqa: F401
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin

@@ -15,8 +15,8 @@
 """PEP 249-style async DBAPI module bound to psycopg v3.
 
 Async counterpart of :mod:`aws_advanced_python_wrapper.psycopg`. Enables
-SQLAlchemy's ``create_async_engine`` creator-pattern today (SP-2) and the
-URL-based dialect path in SP-9::
+SQLAlchemy's ``create_async_engine`` via the creator pattern (shown below)
+or the URL-based dialect path::
 
     from sqlalchemy.ext.asyncio import create_async_engine
     from aws_advanced_python_wrapper.aio.psycopg import connect

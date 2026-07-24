@@ -12,17 +12,14 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""Async custom endpoint monitor (Task 1-B).
+"""Async custom endpoint monitor.
 
 Periodically resolves Aurora custom endpoints to their member instance
-IDs via the AWS RDS DescribeDBClusterEndpoints API. The real
-:class:`AsyncCustomEndpointPlugin` reads the cached member list to
-filter the topology used by failover / RWS so the wrapper respects the
-custom endpoint's instance membership.
-
-3.0.0 shipped :class:`AsyncCustomEndpointPlugin` as a subscribe-to-nothing
-stub. Task 1-B replaces the stub with a plugin that starts the monitor
-on connect and stops it on :func:`release_resources_async`.
+IDs via the AWS RDS DescribeDBClusterEndpoints API.
+:class:`AsyncCustomEndpointPlugin` starts the monitor on connect, reads
+the cached member list to filter the topology used by failover / RWS so
+the wrapper respects the custom endpoint's instance membership, and stops
+the monitor on :func:`release_resources_async`.
 """
 
 from __future__ import annotations
@@ -221,7 +218,7 @@ class AsyncCustomEndpointMonitor:
 
 
 class AsyncCustomEndpointPlugin(AsyncPlugin):
-    """Async custom endpoint plugin (Task 1-B -- replaces SP-8 stub).
+    """Async custom endpoint plugin.
 
     On initial connect, spawns an :class:`AsyncCustomEndpointMonitor` to
     keep the member instance list fresh. On cleanup (via

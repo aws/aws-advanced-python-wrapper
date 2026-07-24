@@ -22,13 +22,11 @@ Structure:
   - ``aio.pooled_connection_provider`` -- ``AsyncPooledConnectionProvider``
     (per-host, per-user async pool with sliding expiration)
 
-Typical usage (once SP-2 lands the implementation)::
+Typical usage::
 
     from aws_advanced_python_wrapper.aio import AsyncAwsWrapperConnection
 
     conn = await AsyncAwsWrapperConnection.connect(...)
-
-See the F3-B master spec for the overall design.
 """
 
 from aws_advanced_python_wrapper.aio.cleanup import (register_shutdown_hook,

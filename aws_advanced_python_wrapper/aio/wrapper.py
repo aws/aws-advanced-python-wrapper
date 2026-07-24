@@ -139,12 +139,12 @@ def _build_host_list_provider(
 def _resolve_database_dialect(
         driver_dialect: AsyncDriverDialect,
         props: Properties) -> DatabaseDialect:
-    """Minimal DatabaseDialect resolution for Phase A.
+    """Resolve the initial ``DatabaseDialect`` guess.
 
     Honors the ``wrapper_dialect`` prop if set; otherwise falls back to the
     driver-dialect's default database dialect via :class:`DatabaseDialectManager`.
-    Full auto-upgrade (Aurora-vs-stock detection via DB query) lands in a
-    later phase.
+    The plugin service later upgrades the dialect from the live connection
+    (``update_database_dialect``), mirroring sync.
     """
     manager = DatabaseDialectManager(props)
     return manager.get_dialect(driver_dialect.dialect_code, props)
@@ -842,7 +842,7 @@ class AsyncAwsWrapperConnection:
         # AsyncPluginManager is built -- the manager caches the service's
         # factory in its __init__.
         plugin_service.set_telemetry_factory(telemetry_factory)
-        # Phase A wiring: populate plugin service slots so plugins that
+        # Populate plugin service slots BEFORE the pipeline runs so plugins that
         # reach for them in their own ``connect`` hook (e.g., failover
         # checking ``is_network_exception``) have them available.
         plugin_service.database_dialect = database_dialect

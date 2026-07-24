@@ -14,10 +14,9 @@
 
 """``AsyncPluginService`` -- async counterpart of :class:`PluginService`.
 
-SP-1 ships the shell: the Protocol that plugins depend on + a minimal
-``AsyncPluginServiceImpl`` good enough to wire toy plugins in unit tests.
-Rich behavior (dialect detection, host list management, session-state
-service, status storage) lands in later SPs that need it.
+The Protocol that plugins depend on, plus the concrete
+``AsyncPluginServiceImpl`` (connection/host state, dialect detection and
+upgrade, host list management, session-state service, status storage).
 """
 
 from __future__ import annotations
@@ -389,17 +388,11 @@ class AsyncPluginService(Protocol):
 
 
 class AsyncPluginServiceImpl(AsyncPluginService):
-    """Minimal concrete ``AsyncPluginService`` for SP-1.
+    """Concrete ``AsyncPluginService``.
 
-    Holds the connection, host info, driver dialect, and properties. Does NOT
-    yet manage:
-      * host list refresh (SP-3)
-      * dialect auto-upgrade (later SP)
-      * session state service (later SP)
-      * telemetry context (later SP)
-
-    Those land as dedicated sub-projects. The shell is enough for toy plugins
-    and for SP-2's ``AsyncAwsWrapperConnection`` to drive initial connect.
+    Holds the connection, host info, dialects, and properties, and manages
+    host list refresh, database-dialect upgrade, the session-state service,
+    availability/status storage, and telemetry wiring.
     """
 
     _host_availability_expiring_cache: ClassVar[CacheMap[str, HostAvailability]] = CacheMap()
@@ -1032,12 +1025,10 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             raise AwsWrapperError(
                 "AsyncPluginService.connect requires a plugin_manager; "
                 "it is populated by AsyncAwsWrapperConnection.connect.")
-        # The plugin manager needs a target driver func. We need to reach
-        # it from the same place AsyncAwsWrapperConnection does -- the
-        # driver dialect's connect signature differs per driver, so we
-        # require the target_func to have been stashed somewhere accessible.
-        # For Phase I: require the caller to have recorded a target_func
-        # on the plugin service via set_target_driver_func.
+        # The plugin manager needs a target driver func, and the driver
+        # dialect's connect signature differs per driver -- so we require the
+        # caller to have recorded one on the plugin service via
+        # set_target_driver_func (AsyncAwsWrapperConnection.connect does).
         if self._target_driver_func is None:
             raise AwsWrapperError(
                 "AsyncPluginService.connect requires target_driver_func "

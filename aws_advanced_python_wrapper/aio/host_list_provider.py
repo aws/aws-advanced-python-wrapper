@@ -15,7 +15,7 @@
 """Async host list providers.
 
 :class:`AsyncHostListProvider` is the async counterpart of
-:class:`HostListProvider`. SP-3 ships the Protocol plus two concrete
+:class:`HostListProvider`. The module ships the Protocol plus four concrete
 implementations:
 
 * :class:`AsyncStaticHostListProvider` -- returns a fixed list built from
@@ -24,6 +24,10 @@ implementations:
 * :class:`AsyncAuroraHostListProvider` -- queries the Aurora
   ``aurora_replica_status`` view over the current async connection and
   caches the result.
+* :class:`AsyncMultiAzHostListProvider` -- RDS Multi-AZ DB cluster variant
+  (different topology query/parsing).
+* :class:`AsyncGlobalAuroraHostListProvider` -- Aurora Global Database
+  variant, aware of cross-region topology.
 
 A background refresh loop (:class:`AsyncClusterTopologyMonitor`) lives in
 :mod:`aws_advanced_python_wrapper.aio.cluster_topology_monitor` and drives
@@ -126,8 +130,8 @@ class AsyncAuroraHostListProvider:
     session_id = 'MASTER_SESSION_ID' AS is_writer, ... FROM
     aurora_replica_status``) and returns a tuple of :class:`HostInfo`
     objects. The exact SQL and parsing live on the shared sync
-    :class:`TopologyAwareDatabaseDialect` classes (SP-3 reuses them rather
-    than duplicating).
+    :class:`TopologyAwareDatabaseDialect` classes (reused rather than
+    duplicated).
 
     Refresh flow (N.1b, matches sync RdsHostListProvider -> ClusterTopologyMonitor):
 
