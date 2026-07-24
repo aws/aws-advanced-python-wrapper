@@ -1887,7 +1887,7 @@ class AsyncBlueGreenStatusProvider:
     def _update_status_cache(self) -> None:
         if self._summary_status is None:
             return
-        self._plugin_service.set_status(BlueGreenStatus, self._bg_id, self._summary_status)
+        self._plugin_service.set_status(BlueGreenStatus, self._summary_status, self._bg_id)
         phase = self._summary_status.phase
         self._store_event_phase_time(phase.name, phase)
 

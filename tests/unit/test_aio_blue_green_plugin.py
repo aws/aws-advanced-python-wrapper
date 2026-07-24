@@ -336,7 +336,7 @@ def test_bg_plugin_dispatches_through_set_status():
             None, BlueGreenRole.SOURCE)],
         role_by_host={"source.example.com": BlueGreenRole.SOURCE},
     )
-    svc.set_status(BlueGreenStatus, "my-bg", status)
+    svc.set_status(BlueGreenStatus, status, "my-bg")
 
     async def _cf():
         return MagicMock()

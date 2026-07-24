@@ -399,7 +399,7 @@ def test_set_and_get_status_round_trip():
         pass
 
     obj = _Fake()
-    svc.set_status(_Fake, "k", obj)
+    svc.set_status(_Fake, obj, "k")
     assert svc.get_status(_Fake, "k") is obj
 
 
@@ -421,7 +421,7 @@ def test_get_status_returns_none_on_type_mismatch():
     class _B:
         pass
 
-    svc.set_status(_A, "k", _A())
+    svc.set_status(_A, _A(), "k")
     # Looking up under _B should return None, not raise
     assert svc.get_status(_B, "k") is None
 
@@ -432,7 +432,7 @@ def test_remove_status_drops_entry():
     class _Fake:
         pass
 
-    svc.set_status(_Fake, "k", _Fake())
+    svc.set_status(_Fake, _Fake(), "k")
     svc.remove_status(_Fake, "k")
     assert svc.get_status(_Fake, "k") is None
 

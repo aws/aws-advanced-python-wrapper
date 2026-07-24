@@ -32,7 +32,8 @@ from aws_advanced_python_wrapper.aio.plugin import AsyncCanReleaseResources
 from aws_advanced_python_wrapper.aio.session_state import (
     AsyncSessionStateService, AsyncSessionStateServiceImpl)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.exception_handling import ExceptionManager
+from aws_advanced_python_wrapper.exception_handling import (
+    ExceptionHandler, ExceptionManager)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -61,7 +62,7 @@ if TYPE_CHECKING:
         TelemetryFactory
 
 
-class AsyncPluginService(Protocol):
+class AsyncPluginService(ExceptionHandler, Protocol):
     """State + driver coordination for the async plugin pipeline.
 
     Pure getters stay sync. Anything that may talk to the database is async
@@ -93,24 +94,6 @@ class AsyncPluginService(Protocol):
 
     @database_dialect.setter
     def database_dialect(self, value: Optional[DatabaseDialect]) -> None:
-        ...
-
-    def is_network_exception(
-            self,
-            error: Optional[Exception] = None,
-            sql_state: Optional[str] = None) -> bool:
-        ...
-
-    def is_login_exception(
-            self,
-            error: Optional[Exception] = None,
-            sql_state: Optional[str] = None) -> bool:
-        ...
-
-    def is_read_only_connection_exception(
-            self,
-            error: Optional[Exception] = None,
-            sql_state: Optional[str] = None) -> bool:
         ...
 
     def set_availability(
@@ -251,8 +234,8 @@ class AsyncPluginService(Protocol):
     def set_status(
             self,
             clazz: type,
-            key: str,
-            status: Any) -> None:
+            status: Any,
+            key: str) -> None:
         """Publish ``status`` under (clazz, key). Plugins use this for
         shared state within the connection's lifetime (e.g. BlueGreen
         status, custom endpoint member cache)."""
@@ -457,6 +440,8 @@ class AsyncPluginServiceImpl(AsyncPluginService):
 
         self._current_host_info = self._initial_connection_host_info
         if self._current_host_info is not None:
+            logger.debug(
+                "PluginServiceImpl.SetCurrentHostInfo", self._current_host_info)
             return self._current_host_info
 
         all_hosts = self._all_hosts
@@ -479,6 +464,9 @@ class AsyncPluginServiceImpl(AsyncPluginService):
 
         # Sync raises CouldNotDetermineCurrentHost when still unresolved; async
         # returns None (same not-yet-known tolerance as the empty-list case).
+        if self._current_host_info is not None:
+            logger.debug(
+                "PluginServiceImpl.SetCurrentHostInfo", self._current_host_info)
         return self._current_host_info
 
     @property
@@ -1090,7 +1078,7 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         this so they connect with the RIGHT driver instead of hardcoding one."""
         return self._target_driver_func
 
-    def set_status(self, clazz, key, status):
+    def set_status(self, clazz, status, key):
         self._status_store[(clazz, key)] = status
 
     def get_status(self, clazz, key):
