@@ -30,6 +30,19 @@ pip install aws-advanced-python-wrapper
 pip install mysql-connector-python
 ```
 
+To use the wrapper's asyncio API (`aws_advanced_python_wrapper.aio`), install the async driver for your engine. PostgreSQL async uses the same Psycopg package as sync; MySQL async is driven by [aiomysql](https://github.com/aio-libs/aiomysql):
+
+```shell
+pip install aws-advanced-python-wrapper
+pip install psycopg    # PostgreSQL (sync and async)
+pip install aiomysql   # MySQL async
+```
+
+Some features pull in additional packages when used with the asyncio API:
+
+- The async Federated Authentication and Okta Authentication plugins use [aiohttp](https://docs.aiohttp.org/) for their HTTP flows: `pip install aiohttp`.
+- Async SQLAlchemy (`create_async_engine`) requires SQLAlchemy's asyncio support, which includes `greenlet`: `pip install "sqlalchemy[asyncio]"`.
+
 ## Using the AWS Advanced Python Wrapper
 
 To start using the wrapper with Psycopg, you need to pass Psycopg's connect function to the `AwsWrapperConnection#connect` method as shown in the following example:

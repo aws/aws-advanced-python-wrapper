@@ -169,6 +169,9 @@ Read/write splitting is **not** supported with SQLAlchemy: the plugins switch in
 
 ## Async usage
 
+> [!NOTE]\
+> Async engines require SQLAlchemy's asyncio support (`pip install "sqlalchemy[asyncio]"`, which includes `greenlet`), plus the async driver: Psycopg for PostgreSQL, [aiomysql](https://github.com/aio-libs/aiomysql) for MySQL.
+
 The wrapper exposes a native async path. `create_async_engine` works with the URL-based dialect:
 
 ```python
