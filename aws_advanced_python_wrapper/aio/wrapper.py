@@ -932,6 +932,16 @@ class AsyncAwsWrapperConnection:
         plugin_service.plugin_manager = plugin_manager
         plugin_service.set_target_driver_func(target_func)
 
+        # Run the init_host_provider pipeline (sync parity: wrapper.py:62 --
+        # after the default provider is selected, before the initial
+        # connect). Subscribed plugins capture the host-list-provider
+        # service (implemented by the plugin service) and can validate or
+        # replace the provider chosen by _build_host_list_provider above.
+        # The dialect->provider mapping lives in that helper rather than on
+        # the dialect because the shared sync dialects' provider suppliers
+        # return SYNC providers.
+        plugin_manager.init_host_provider(props, plugin_service)
+
         target_conn = await plugin_manager.connect(
             target_driver_func=target_func,
             driver_dialect=driver_dialect,

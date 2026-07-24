@@ -43,6 +43,17 @@ class AsyncPlugin(ABC):
     def subscribed_methods(self) -> Set[str]:
         """Methods this plugin wants to intercept in the async pipeline."""
 
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: Any,
+            init_host_provider_func: Callable) -> None:
+        """Observe, validate, or replace the host list provider before the
+        initial connect (sync parity: plugin.py:129-134). Synchronous -- the
+        hook does no I/O in any implementation. Default: continue the chain.
+        """
+        return init_host_provider_func()
+
     async def connect(
             self,
             target_driver_func: Callable,

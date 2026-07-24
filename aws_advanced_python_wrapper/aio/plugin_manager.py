@@ -44,6 +44,8 @@ from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
         AsyncDriverDialect
+    from aws_advanced_python_wrapper.aio.host_list_provider import \
+        AsyncHostListProviderService
     from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
     from aws_advanced_python_wrapper.aio.plugin_service import \
         AsyncPluginService
@@ -241,6 +243,44 @@ class AsyncPluginManager:
                 if host is not None:
                     return host
         return None
+
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: AsyncHostListProviderService) -> None:
+        """Run the init_host_provider pipeline (sync parity:
+        PluginManager.init_host_provider, plugin_service.py:1195-1205).
+
+        Subscribed plugins capture the host-list-provider service and may
+        validate or replace the pre-selected provider (e.g., stale_dns
+        rejects a static one). The hook does no I/O in any implementation,
+        so the pipeline stays synchronous.
+        """
+        context = self._telemetry_factory.open_telemetry_context(
+            DbApiMethod.INIT_HOST_PROVIDER.method_name,
+            TelemetryTraceLevel.NESTED)
+        try:
+            subscribed = self._subscribed_plugins(
+                DbApiMethod.INIT_HOST_PROVIDER, None)
+
+            def _terminal() -> None:
+                return None
+
+            chain: Callable[[], None] = _terminal
+            for plugin in reversed(subscribed):
+                next_in_chain = chain
+
+                def _step(
+                        _plugin: AsyncPlugin = plugin,
+                        _next: Callable[[], None] = next_in_chain) -> None:
+                    _plugin.init_host_provider(
+                        props, host_list_provider_service, _next)
+
+                chain = _step
+            chain()
+        finally:
+            if context is not None:
+                context.close_context()
 
     def notify_connection_changed(
             self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:

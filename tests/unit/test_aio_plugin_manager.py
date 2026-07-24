@@ -123,6 +123,11 @@ class RecorderPlugin(AsyncPlugin):
     def subscribed_methods(self) -> Set[str]:
         return {DbApiMethod.ALL.method_name}
 
+    def init_host_provider(self, props, host_list_provider_service,
+                           init_host_provider_func):
+        self.log.append(f"{self.name}:init_host_provider")
+        return init_host_provider_func()
+
     async def connect(
             self,
             target_driver_func: Callable,
@@ -635,3 +640,38 @@ def test_telemetry_wrapping_does_not_change_dispatch_order():
         "B:execute:exit:Cursor.execute",
         "A:execute:exit:Cursor.execute",
     ]
+
+
+# ---- init_host_provider pipeline (review feedback on #1257) -------------
+
+
+def test_init_host_provider_walks_subscribed_plugins_in_order():
+    log: List[str] = []
+    svc = _mk_service()
+    a = RecorderPlugin("A", log)
+    b = RecorderPlugin("B", log)
+    mgr = AsyncPluginManager(svc, _props(), plugins=[a, b])
+
+    mgr.init_host_provider(_props(), svc)
+
+    # A wraps B; the terminal AsyncDefaultPlugin ends the chain (sync
+    # parity: default_plugin.py:150-158 does not call the next func).
+    assert log == ["A:init_host_provider", "B:init_host_provider"]
+
+
+def test_init_host_provider_skips_unsubscribed_plugins():
+    log: List[str] = []
+    svc = _mk_service()
+
+    class ConnectOnlyPlugin(RecorderPlugin):
+        @property
+        def subscribed_methods(self) -> Set[str]:
+            return {DbApiMethod.CONNECT.method_name}
+
+    a = ConnectOnlyPlugin("A", log)
+    b = RecorderPlugin("B", log)
+    mgr = AsyncPluginManager(svc, _props(), plugins=[a, b])
+
+    mgr.init_host_provider(_props(), svc)
+
+    assert log == ["B:init_host_provider"]

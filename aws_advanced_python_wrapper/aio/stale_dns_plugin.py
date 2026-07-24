@@ -71,6 +71,7 @@ class AsyncStaleDnsPlugin(AsyncPlugin):
     # (same set as AsyncAuroraConnectionTrackerPlugin) instead of sync's
     # ``plugin_service.network_bound_methods``.
     _SUBSCRIBED: Set[str] = {
+        DbApiMethod.INIT_HOST_PROVIDER.method_name,
         DbApiMethod.CONNECT.method_name,
         DbApiMethod.NOTIFY_HOST_LIST_CHANGED.method_name,
         DbApiMethod.CURSOR_EXECUTE.method_name,
@@ -91,6 +92,21 @@ class AsyncStaleDnsPlugin(AsyncPlugin):
     @property
     def subscribed_methods(self) -> Set[str]:
         return set(self._SUBSCRIBED)
+
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: Any,
+            init_host_provider_func: Callable) -> None:
+        # Sync parity (stale_dns_plugin.py:191-202): capture the service,
+        # continue the chain, then reject a static provider -- stale-DNS
+        # detection needs live topology. Sync raises a bare Exception here;
+        # async raises AwsWrapperError (still an Exception for callers).
+        self._host_list_provider_service = host_list_provider_service
+        init_host_provider_func()
+        if host_list_provider_service.is_static_host_list_provider():
+            raise AwsWrapperError(
+                Messages.get_formatted("StaleDnsPlugin.RequireDynamicProvider"))
 
     async def connect(
             self,

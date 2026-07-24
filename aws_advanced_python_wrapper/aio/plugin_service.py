@@ -709,6 +709,12 @@ class AsyncPluginServiceImpl(AsyncPluginService):
     def host_list_provider(self, value: AsyncHostListProvider) -> None:
         self._host_list_provider = value
 
+    def is_static_host_list_provider(self) -> bool:
+        from aws_advanced_python_wrapper.aio.host_list_provider import \
+            AsyncStaticHostListProvider
+        return isinstance(
+            self._host_list_provider, AsyncStaticHostListProvider)
+
     @property
     def all_hosts(self) -> Tuple[HostInfo, ...]:
         return self._all_hosts

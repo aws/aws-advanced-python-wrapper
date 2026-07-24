@@ -301,6 +301,38 @@ def test_cursor_arraysize_is_buffered_until_materialization():
     assert target_cur.arraysize == 500  # applied to the driver cursor
 
 
+def test_connect_runs_init_host_provider_pipeline():
+    # Review feedback on #1257 (wrapper.py:71): plugins get the sync-parity
+    # init_host_provider hook -- they capture the host-list-provider service
+    # (the plugin service) and can validate/replace the selected provider
+    # before the initial connect.
+    captured = {}
+
+    class ProbePlugin(RecorderPlugin):
+        @property
+        def subscribed_methods(self) -> Any:
+            return {DbApiMethod.INIT_HOST_PROVIDER.method_name}
+
+        def init_host_provider(self, props, host_list_provider_service,
+                               init_host_provider_func):
+            captured["service"] = host_list_provider_service
+            captured["provider"] = host_list_provider_service.host_list_provider
+            return init_host_provider_func()
+
+    raw_conn = _make_mock_async_conn()
+
+    async def _body() -> AsyncAwsWrapperConnection:
+        return await AsyncAwsWrapperConnection.connect(
+            target=_build_mock_psycopg_connect(raw_conn),
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins=[ProbePlugin([])],
+        )
+
+    wrapper = asyncio.run(_body())
+    assert captured["service"] is wrapper._plugin_service
+    assert captured["provider"] is not None
+
+
 def _connected_wrapper(raw_conn: Any) -> AsyncAwsWrapperConnection:
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(

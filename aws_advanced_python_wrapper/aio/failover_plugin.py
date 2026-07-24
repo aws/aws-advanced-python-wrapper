@@ -62,6 +62,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
     """Async counterpart of :class:`FailoverPlugin`."""
 
     _SUBSCRIBED: Set[str] = {
+        DbApiMethod.INIT_HOST_PROVIDER.method_name,
         DbApiMethod.CONNECT.method_name,
         DbApiMethod.FORCE_CONNECT.method_name,
         DbApiMethod.CURSOR_EXECUTE.method_name,
@@ -134,6 +135,16 @@ class AsyncFailoverPlugin(AsyncPlugin):
     @property
     def subscribed_methods(self) -> Set[str]:
         return set(self._SUBSCRIBED)
+
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: Any,
+            init_host_provider_func: Callable) -> None:
+        # Sync parity (failover_v2_plugin.py:119-125): capture the service
+        # and continue the chain.
+        self._host_list_provider_service = host_list_provider_service
+        init_host_provider_func()
 
     async def connect(
             self,

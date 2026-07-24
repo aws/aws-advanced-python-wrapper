@@ -62,7 +62,10 @@ logger = Logger(__name__)
 class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
     """Async counterpart of :class:`AuroraInitialConnectionStrategyPlugin`."""
 
-    _SUBSCRIBED: Set[str] = {DbApiMethod.CONNECT.method_name}
+    _SUBSCRIBED: Set[str] = {
+        DbApiMethod.INIT_HOST_PROVIDER.method_name,
+        DbApiMethod.CONNECT.method_name,
+    }
 
     _DEFAULT_RETRY_TIMEOUT_MS = 30000
     _DEFAULT_RETRY_INTERVAL_MS = 1000
@@ -74,6 +77,16 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
     @property
     def subscribed_methods(self) -> Set[str]:
         return set(self._SUBSCRIBED)
+
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: Any,
+            init_host_provider_func: Callable) -> None:
+        # Sync parity (aurora_initial_connection_strategy_plugin.py:231-233):
+        # capture the service and continue the chain.
+        self._host_list_provider_service = host_list_provider_service
+        init_host_provider_func()
 
     async def connect(
             self,

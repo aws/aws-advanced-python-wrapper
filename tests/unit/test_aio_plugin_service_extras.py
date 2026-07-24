@@ -888,3 +888,16 @@ def test_update_database_dialect_settles_and_skips_non_mysql():
         conn.cursor.assert_not_called()
 
     asyncio.run(_run())
+
+
+def test_is_static_host_list_provider_reflects_provider_type():
+    from aws_advanced_python_wrapper.aio.host_list_provider import \
+        AsyncStaticHostListProvider
+
+    svc = _make_service()
+    assert svc.is_static_host_list_provider() is False  # none installed yet
+    svc.host_list_provider = AsyncStaticHostListProvider(
+        Properties({"host": "h", "port": "5432"}))
+    assert svc.is_static_host_list_provider() is True
+    svc.host_list_provider = MagicMock()  # any dynamic provider
+    assert svc.is_static_host_list_provider() is False

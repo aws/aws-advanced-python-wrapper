@@ -52,6 +52,7 @@ logger = Logger(__name__)
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
         AsyncDriverDialect
+    from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
     from aws_advanced_python_wrapper.utils.properties import Properties
 
 
@@ -93,6 +94,51 @@ class AsyncHostListProvider(Protocol):
 
     async def stop(self) -> None:
         """Release any background tasks this provider owns."""
+        ...
+
+
+@runtime_checkable
+class AsyncHostListProviderService(Protocol):
+    """Async counterpart of :class:`HostListProviderService`
+    (host_list_provider.py:107): the surface the ``init_host_provider``
+    pipeline hands to plugins so they can observe, validate, or replace
+    the selected host list provider before the initial connect.
+    ``AsyncPluginServiceImpl`` implements it.
+    """
+
+    @property
+    def current_connection(self) -> Optional[Any]:
+        ...
+
+    @property
+    def current_host_info(self) -> Optional[HostInfo]:
+        ...
+
+    @property
+    def database_dialect(self) -> Optional[DatabaseDialect]:
+        ...
+
+    @property
+    def driver_dialect(self) -> AsyncDriverDialect:
+        ...
+
+    @property
+    def host_list_provider(self) -> Optional[AsyncHostListProvider]:
+        ...
+
+    @host_list_provider.setter
+    def host_list_provider(self, value: AsyncHostListProvider) -> None:
+        ...
+
+    @property
+    def initial_connection_host_info(self) -> Optional[HostInfo]:
+        ...
+
+    @initial_connection_host_info.setter
+    def initial_connection_host_info(self, value: HostInfo) -> None:
+        ...
+
+    def is_static_host_list_provider(self) -> bool:
         ...
 
 

@@ -58,6 +58,7 @@ class AsyncReadWriteSplittingPlugin(
     """Async counterpart of :class:`ReadWriteSplittingPlugin`."""
 
     _SUBSCRIBED: Set[str] = {
+        DbApiMethod.INIT_HOST_PROVIDER.method_name,
         DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
         # Execute pipeline -- subscribed so a FailoverError raised while a
         # command runs evicts stale pooled reader/writer connections
@@ -102,6 +103,16 @@ class AsyncReadWriteSplittingPlugin(
     @property
     def subscribed_methods(self) -> Set[str]:
         return set(self._SUBSCRIBED)
+
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: Any,
+            init_host_provider_func: Callable) -> None:
+        # Sync parity (read_write_splitting_plugin.py:90-97): capture the
+        # service and continue the chain.
+        self._host_list_provider_service = host_list_provider_service
+        init_host_provider_func()
 
     def notify_connection_changed(
             self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:

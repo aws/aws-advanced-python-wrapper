@@ -425,3 +425,28 @@ def test_static_host_list_provider_raises_on_connect():
 
     with pytest.raises(AwsWrapperError):
         asyncio.run(_run())
+
+
+# ---- init_host_provider (review feedback on #1257; sync stale_dns:191-202)
+
+
+def test_init_host_provider_rejects_static_provider():
+    plugin = AsyncStaleDnsPlugin(MagicMock())
+    service = MagicMock()
+    service.is_static_host_list_provider.return_value = True
+    chained = MagicMock()
+
+    with pytest.raises(AwsWrapperError):
+        plugin.init_host_provider(Properties(), service, chained)
+    chained.assert_called_once()  # chain ran before the validation
+
+
+def test_init_host_provider_accepts_dynamic_provider():
+    plugin = AsyncStaleDnsPlugin(MagicMock())
+    service = MagicMock()
+    service.is_static_host_list_provider.return_value = False
+    chained = MagicMock()
+
+    plugin.init_host_provider(Properties(), service, chained)
+    chained.assert_called_once()
+    assert plugin._host_list_provider_service is service

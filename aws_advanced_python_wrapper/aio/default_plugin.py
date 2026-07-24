@@ -61,6 +61,16 @@ class AsyncDefaultPlugin(AsyncPlugin):
     def subscribed_methods(self) -> Set[str]:
         return {DbApiMethod.ALL.method_name}
 
+    def init_host_provider(
+            self,
+            props: Properties,
+            host_list_provider_service: Any,
+            init_host_provider_func: Callable) -> None:
+        # Terminal plugin: nothing to do, and the chain ends here (sync
+        # parity: default_plugin.py:150-158 -- init_host_provider_func is
+        # deliberately not called).
+        pass
+
     async def connect(
             self,
             target_driver_func: Callable,
