@@ -30,7 +30,8 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.iam_utils import TokenInfo
-from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 @pytest.fixture(autouse=True)
@@ -814,3 +815,44 @@ def test_okta_flow_raises_without_session_token():
                 await plugin._fetch_saml_assertion(props)
 
     asyncio.run(_body())
+
+
+# ---- plugin-code selection (review feedback on #1257: sync parity) ------
+
+
+class _FactoryMockService:
+    def get_telemetry_factory(self):
+        from aws_advanced_python_wrapper.utils.telemetry.null_telemetry import \
+            NullTelemetryFactory
+        return NullTelemetryFactory()
+    database_dialect = None
+
+
+def test_federated_auth_code_binds_adfs_and_validates_idp_name():
+    from aws_advanced_python_wrapper.aio.plugin_factory import \
+        _FederatedAuthFactory
+    factory = _FederatedAuthFactory()
+
+    plugin = factory.get_instance(_FactoryMockService(), Properties())
+    assert isinstance(plugin, AsyncFederatedAuthPlugin)
+    assert not isinstance(plugin, AsyncOktaAuthPlugin)
+
+    plugin = factory.get_instance(
+        _FactoryMockService(),
+        Properties({WrapperProperties.IDP_NAME.name: "adfs"}))
+    assert isinstance(plugin, AsyncFederatedAuthPlugin)
+
+    # Sync parity (federated_plugin.py:189-192): the federated_auth code
+    # does NOT dispatch on IDP_NAME -- anything but adfs/empty raises.
+    with pytest.raises(AwsWrapperError):
+        factory.get_instance(
+            _FactoryMockService(),
+            Properties({WrapperProperties.IDP_NAME.name: "okta"}))
+
+
+def test_okta_code_binds_okta_regardless_of_idp_name():
+    from aws_advanced_python_wrapper.aio.plugin_factory import _OktaAuthFactory
+
+    plugin = _OktaAuthFactory().get_instance(
+        _FactoryMockService(), Properties())
+    assert isinstance(plugin, AsyncOktaAuthPlugin)
