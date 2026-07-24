@@ -69,31 +69,30 @@ class AsyncDefaultPlugin(AsyncPlugin):
             props: Properties,
             is_initial_connection: bool,
             connect_func: Callable[..., Awaitable[Any]]) -> Any:
-        # No plugin_service wired (legacy SP-1 callers) -- fall back to
-        # driver-dialect direct connect. Production pipelines always pass
-        # a service, so this branch only affects toy tests.
+        # Production pipelines always wire a service; a missing one means
+        # broken wiring -- fail fast instead of silently bypassing the
+        # provider manager.
         if self._plugin_service is None:
-            return await driver_dialect.connect(host_info, props, target_driver_func)
+            raise AwsWrapperError(
+                Messages.get("AsyncDefaultPlugin.NoPluginService"))
 
         target_driver_props = copy.copy(props)
         provider_manager = self._plugin_service.get_connection_provider_manager()
         provider = provider_manager.get_connection_provider(
             host_info, target_driver_props)
         database_dialect = self._plugin_service.database_dialect
-        # database_dialect can be None in toy tests that skip dialect
-        # resolution; the default provider only touches it via
-        # ``prepare_conn_props`` so we guard before calling.
+        # The wrapper seeds an initial dialect guess before the pipeline
+        # runs; None here means broken wiring -- fail fast.
         if database_dialect is None:
-            conn = await driver_dialect.connect(
-                host_info, target_driver_props, target_driver_func)
-        else:
-            conn = await provider.connect(
-                target_driver_func,
-                driver_dialect,
-                database_dialect,
-                host_info,
-                target_driver_props,
-            )
+            raise AwsWrapperError(
+                Messages.get("AsyncDefaultPlugin.NoDatabaseDialect"))
+        conn = await provider.connect(
+            target_driver_func,
+            driver_dialect,
+            database_dialect,
+            host_info,
+            target_driver_props,
+        )
         self._post_connect_bookkeeping(host_info, provider)
         # Sync parity (default_plugin.py:82): upgrade the DATABASE dialect
         # from the live connection INSIDE the terminal hook, so every outer
@@ -114,21 +113,21 @@ class AsyncDefaultPlugin(AsyncPlugin):
             force_connect_func: Callable[..., Awaitable[Any]]) -> Any:
         # force_connect always uses the default provider (mirrors sync).
         if self._plugin_service is None:
-            return await driver_dialect.connect(host_info, props, target_driver_func)
+            raise AwsWrapperError(
+                Messages.get("AsyncDefaultPlugin.NoPluginService"))
         target_driver_props = copy.copy(props)
         provider = self._plugin_service.get_connection_provider_manager().default_provider
         database_dialect = self._plugin_service.database_dialect
         if database_dialect is None:
-            conn = await driver_dialect.connect(
-                host_info, target_driver_props, target_driver_func)
-        else:
-            conn = await provider.connect(
-                target_driver_func,
-                driver_dialect,
-                database_dialect,
-                host_info,
-                target_driver_props,
-            )
+            raise AwsWrapperError(
+                Messages.get("AsyncDefaultPlugin.NoDatabaseDialect"))
+        conn = await provider.connect(
+            target_driver_func,
+            driver_dialect,
+            database_dialect,
+            host_info,
+            target_driver_props,
+        )
         self._post_connect_bookkeeping(host_info, provider)
         # Sync parity: sync's shared _connect path runs update_dialect for
         # force_connect too (default_plugin.py:82).

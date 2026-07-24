@@ -652,6 +652,64 @@ def test_default_plugin_force_connect_marks_host_available():
     svc.update_driver_dialect.assert_called_once_with(provider)
 
 
+def test_default_plugin_connect_raises_without_plugin_service():
+    """Review feedback on #1257: a missing service means broken wiring --
+    the terminal hook must fail fast, not silently bypass the provider
+    manager via a direct driver-dialect connect."""
+    plugin = AsyncDefaultPlugin()
+
+    async def _body():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=MagicMock(),
+            host_info=HostInfo("writer-1.cluster.rds", 5432),
+            props=Properties(),
+            is_initial_connection=True,
+            connect_func=AsyncMock(),
+        )
+
+    with pytest.raises(AwsWrapperError, match="no AsyncPluginService"):
+        asyncio.run(_body())
+
+
+def test_default_plugin_connect_raises_without_database_dialect():
+    """The wrapper seeds an initial dialect guess before the pipeline runs;
+    None here means broken wiring and must raise, not fall back."""
+    svc, _provider = _bookkeeping_service_and_provider()
+    svc.database_dialect = None
+    plugin = AsyncDefaultPlugin(svc)
+
+    async def _body():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=MagicMock(),
+            host_info=HostInfo("writer-1.cluster.rds", 5432),
+            props=Properties(),
+            is_initial_connection=True,
+            connect_func=AsyncMock(),
+        )
+
+    with pytest.raises(AwsWrapperError, match="database dialect"):
+        asyncio.run(_body())
+
+
+def test_default_plugin_force_connect_raises_without_plugin_service():
+    plugin = AsyncDefaultPlugin()
+
+    async def _body():
+        return await plugin.force_connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=MagicMock(),
+            host_info=HostInfo("writer-1.cluster.rds", 5432),
+            props=Properties(),
+            is_initial_connection=False,
+            force_connect_func=AsyncMock(),
+        )
+
+    with pytest.raises(AwsWrapperError, match="no AsyncPluginService"):
+        asyncio.run(_body())
+
+
 def test_default_plugin_connect_failure_skips_bookkeeping():
     svc, _provider = _bookkeeping_service_and_provider(
         connect_error=RuntimeError("connect blew up"))

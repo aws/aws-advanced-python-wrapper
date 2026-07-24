@@ -32,8 +32,8 @@ from aws_advanced_python_wrapper.aio.plugin import AsyncCanReleaseResources
 from aws_advanced_python_wrapper.aio.session_state import (
     AsyncSessionStateService, AsyncSessionStateServiceImpl)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.exception_handling import (
-    ExceptionHandler, ExceptionManager)
+from aws_advanced_python_wrapper.exception_handling import (ExceptionHandler,
+                                                            ExceptionManager)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger

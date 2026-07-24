@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -35,6 +36,7 @@ from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.aio.plugin_manager import AsyncPluginManager
 from aws_advanced_python_wrapper.aio.plugin_service import \
     AsyncPluginServiceImpl
+from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.notifications import ConnectionEvent
@@ -66,6 +68,17 @@ class FakeAsyncDriverDialect(AsyncDriverDialect):
             connect_func: Callable[..., Awaitable[Any]]) -> _FakeAsyncConnection:
         self.connect_count += 1
         return _FakeAsyncConnection(host_info.host)
+
+    async def execute_connect(
+            self,
+            target_func: Callable[..., Awaitable[Any]],
+            prepared: Properties,
+            props: Properties) -> Any:
+        # The default provider funnels connects through here; fabricate a
+        # connection (and count it) exactly like ``connect`` above so the
+        # pipeline tests observe one connect regardless of path.
+        self.connect_count += 1
+        return _FakeAsyncConnection(prepared.get("host", "unknown"))
 
     async def is_closed(self, conn: Any) -> bool:
         return False
@@ -194,7 +207,11 @@ def _props() -> Properties:
 
 
 def _mk_service() -> AsyncPluginServiceImpl:
-    return AsyncPluginServiceImpl(_props(), FakeAsyncDriverDialect(), _host_info())
+    svc = AsyncPluginServiceImpl(_props(), FakeAsyncDriverDialect(), _host_info())
+    # Production wiring seeds an initial dialect guess before the pipeline
+    # runs (aio/wrapper.py); the terminal plugin now fails fast without one.
+    svc.database_dialect = MagicMock(spec=DatabaseDialect)
+    return svc
 
 
 # ---- Tests --------------------------------------------------------------
