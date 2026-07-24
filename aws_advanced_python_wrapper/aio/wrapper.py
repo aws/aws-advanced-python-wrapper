@@ -400,16 +400,20 @@ class AsyncAwsWrapperConnection:
     def __init__(
             self,
             plugin_service: AsyncPluginServiceImpl,
-            plugin_manager: AsyncPluginManager,
-            target_conn: Any) -> None:
+            plugin_manager: AsyncPluginManager) -> None:
         self._plugin_service = plugin_service
         self._plugin_manager = plugin_manager
-        self._target_conn = target_conn
 
     @property
     def target_connection(self) -> Any:
-        """The underlying driver async connection."""
-        return self._target_conn
+        """The live underlying driver connection.
+
+        Sync parity (wrapper.py:83-85): reads
+        ``plugin_service.current_connection`` on every access, so
+        plugin-driven connection switches (failover, RWS reader/writer
+        swaps) are always visible. Nothing is cached on the wrapper.
+        """
+        return self._plugin_service.current_connection
 
     @property
     def autocommit(self) -> bool:
@@ -432,7 +436,7 @@ class AsyncAwsWrapperConnection:
         ``CONNECTION_AUTOCOMMIT`` through the plugins). Use the coroutine
         :meth:`get_autocommit` for the plugin-routed read.
         """
-        target = self._target_conn
+        target = self.target_connection
         ac = getattr(target, "autocommit", False)
         # aiomysql exposes ``autocommit`` as a setter *method* and reads via
         # ``get_autocommit()``; psycopg exposes ``autocommit`` as a sync bool
@@ -463,7 +467,7 @@ class AsyncAwsWrapperConnection:
                     f"[AsyncAwsWrapperConnection] failed to record pristine "
                     f"autocommit in session state; it may not be restored on a "
                     f"connection switch: {ex}")
-        await self._plugin_service.driver_dialect.set_autocommit(self._target_conn, value)
+        await self._plugin_service.driver_dialect.set_autocommit(self.target_connection, value)
         if ss is not None:
             try:
                 ss.set_autocommit(value)
@@ -485,7 +489,7 @@ class AsyncAwsWrapperConnection:
         async def _call() -> bool:
             conn = self._plugin_service.current_connection
             if conn is None:
-                conn = self._target_conn
+                conn = self.target_connection
             return await self._plugin_service.driver_dialect.get_autocommit(conn)
 
         return await self._plugin_manager.execute(
@@ -501,7 +505,7 @@ class AsyncAwsWrapperConnection:
         whatever the target exposes, or ``None`` if the driver doesn't
         surface it.
         """
-        return getattr(self._target_conn, "isolation_level", None)
+        return getattr(self.target_connection, "isolation_level", None)
 
     async def set_isolation_level(self, level: Any) -> None:
         """Set isolation level on the underlying driver connection.
@@ -510,7 +514,7 @@ class AsyncAwsWrapperConnection:
         Delegates to the raw connection's ``set_isolation_level`` if
         present (awaiting if async), else assigns the attribute.
         """
-        target = self._target_conn
+        target = self.target_connection
         setter = getattr(target, "set_isolation_level", None)
         if setter is not None:
             result = setter(level)
@@ -536,7 +540,7 @@ class AsyncAwsWrapperConnection:
         pool-invalidation paths after a DBAPI exception is classified.
         Mirrors the sync wrapper's ``closed`` passthrough.
         """
-        return bool(getattr(self._target_conn, "closed", False))
+        return bool(getattr(self.target_connection, "closed", False))
 
     @property
     def is_closed(self) -> bool:
@@ -551,7 +555,7 @@ class AsyncAwsWrapperConnection:
         ``__getattr__`` forwards ``is_closed`` to the raw driver connection,
         which has no such attribute -> AttributeError.
         """
-        target = self._target_conn
+        target = self.target_connection
         if hasattr(target, "closed"):
             return bool(target.closed)
         # Both psycopg's AsyncConnection and aiomysql 0.3.2's Connection expose
@@ -563,19 +567,19 @@ class AsyncAwsWrapperConnection:
 
     @property
     def prepare_threshold(self) -> Any:
-        return self._target_conn.prepare_threshold
+        return self.target_connection.prepare_threshold
 
     @prepare_threshold.setter
     def prepare_threshold(self, value: Any) -> None:
-        self._target_conn.prepare_threshold = value
+        self.target_connection.prepare_threshold = value
 
     @property
     def prepared_max(self) -> Any:
-        return self._target_conn.prepared_max
+        return self.target_connection.prepared_max
 
     @prepared_max.setter
     def prepared_max(self, value: Any) -> None:
-        self._target_conn.prepared_max = value
+        self.target_connection.prepared_max = value
 
     @property
     def read_only(self) -> bool:
@@ -594,9 +598,9 @@ class AsyncAwsWrapperConnection:
         ``CONNECTION_IS_READ_ONLY`` through the plugins). Use the coroutine
         :meth:`get_read_only` for the plugin-routed read.
         """
-        val = getattr(self._target_conn, "read_only", None)
+        val = getattr(self.target_connection, "read_only", None)
         if val is None:
-            val = getattr(self._target_conn, "_aws_read_only", False)
+            val = getattr(self.target_connection, "_aws_read_only", False)
         return bool(val)
 
     async def get_read_only(self) -> bool:
@@ -613,7 +617,7 @@ class AsyncAwsWrapperConnection:
         async def _call() -> bool:
             conn = self._plugin_service.current_connection
             if conn is None:
-                conn = self._target_conn
+                conn = self.target_connection
             is_read_only = await self._plugin_service.driver_dialect.is_read_only(conn)
             await self._plugin_service.session_state_service.setup_pristine_readonly(
                 is_read_only)
@@ -630,7 +634,7 @@ class AsyncAwsWrapperConnection:
         which sends ``CONNECTION_SET_READ_ONLY`` through
         ``plugin_manager.execute``. This is what lets the read/write-splitting
         plugin intercept the call and swap reader/writer connections -- a bare
-        ``await self._target_conn.set_read_only(...)`` bypasses every plugin,
+        ``await self.target_connection.set_read_only(...)`` bypasses every plugin,
         so RWS never switches and ``conn.read_only`` toggles have no routing
         effect.
         """
@@ -942,17 +946,7 @@ class AsyncAwsWrapperConnection:
             pass
 
         await plugin_service.set_current_connection(target_conn, host_info)
-        wrapper = AsyncAwsWrapperConnection(plugin_service, plugin_manager, target_conn)
-        # Register so that plugin-driven connection switches (failover / RWS
-        # reader-writer swaps) rebind the wrapper's ``_target_conn``. Without
-        # this the wrapper stays pinned to the original connection: after a
-        # switch, cursor() / commit() still hit the old (often now-closed)
-        # connection -- "the connection is closed", RWS never redirects, etc.
-        # The sync wrapper sidesteps this because its ``target_connection`` is
-        # a live property over ``current_connection``; the async wrapper caches
-        # the conn for speed, so it must be kept in sync explicitly.
-        plugin_service.set_connection_wrapper(wrapper)
-        return wrapper
+        return AsyncAwsWrapperConnection(plugin_service, plugin_manager)
 
     def cursor(self, *args: Any, **kwargs: Any) -> AsyncAwsWrapperCursor:
         """Return a new :class:`AsyncAwsWrapperCursor`.
@@ -960,7 +954,7 @@ class AsyncAwsWrapperConnection:
         Matches :meth:`psycopg.AsyncConnection.cursor` semantics: sync call
         that returns an async cursor. Query execution on the cursor is async.
         """
-        target_cursor = self._target_conn.cursor(*args, **kwargs)
+        target_cursor = self.target_connection.cursor(*args, **kwargs)
         return AsyncAwsWrapperCursor(self, target_cursor)
 
     async def close(self) -> None:
@@ -969,7 +963,7 @@ class AsyncAwsWrapperConnection:
             # Connection.close() is a sync call that closes the socket and
             # returns None. Probe the return value and await only when the
             # driver made close async, so one wrapper works for both.
-            result = self._target_conn.close()
+            result = self.target_connection.close()
             if asyncio.iscoroutine(result):
                 return await result
             return result
@@ -997,7 +991,7 @@ class AsyncAwsWrapperConnection:
         target is a pool fairy, so the pool evicts the entry; falls back
         to ``close()`` for raw driver connections.
         """
-        inv = getattr(self._target_conn, "invalidate", None)
+        inv = getattr(self.target_connection, "invalidate", None)
         if callable(inv):
             try:
                 result = inv()
@@ -1010,7 +1004,7 @@ class AsyncAwsWrapperConnection:
 
     async def commit(self) -> None:
         async def _call() -> Any:
-            return await self._target_conn.commit()
+            return await self.target_connection.commit()
 
         await self._plugin_manager.execute(
             self, DbApiMethod.CONNECTION_COMMIT, _call,
@@ -1018,7 +1012,7 @@ class AsyncAwsWrapperConnection:
 
     async def rollback(self) -> None:
         async def _call() -> Any:
-            return await self._target_conn.rollback()
+            return await self.target_connection.rollback()
 
         await self._plugin_manager.execute(
             self, DbApiMethod.CONNECTION_ROLLBACK, _call,
@@ -1034,7 +1028,7 @@ class AsyncAwsWrapperConnection:
 
     async def tpc_begin(self, xid: Any) -> None:
         async def _call() -> Any:
-            result = self._target_conn.tpc_begin(xid)
+            result = self.target_connection.tpc_begin(xid)
             if asyncio.iscoroutine(result):
                 return await result
             return result
@@ -1045,7 +1039,7 @@ class AsyncAwsWrapperConnection:
 
     async def tpc_prepare(self) -> None:
         async def _call() -> Any:
-            result = self._target_conn.tpc_prepare()
+            result = self.target_connection.tpc_prepare()
             if asyncio.iscoroutine(result):
                 return await result
             return result
@@ -1056,7 +1050,7 @@ class AsyncAwsWrapperConnection:
 
     async def tpc_commit(self, xid: Any = None) -> None:
         async def _call() -> Any:
-            result = self._target_conn.tpc_commit(xid)
+            result = self.target_connection.tpc_commit(xid)
             if asyncio.iscoroutine(result):
                 return await result
             return result
@@ -1067,7 +1061,7 @@ class AsyncAwsWrapperConnection:
 
     async def tpc_rollback(self, xid: Any = None) -> None:
         async def _call() -> Any:
-            result = self._target_conn.tpc_rollback(xid)
+            result = self.target_connection.tpc_rollback(xid)
             if asyncio.iscoroutine(result):
                 return await result
             return result
@@ -1078,7 +1072,7 @@ class AsyncAwsWrapperConnection:
 
     async def tpc_recover(self) -> Any:
         async def _call() -> Any:
-            result = self._target_conn.tpc_recover()
+            result = self.target_connection.tpc_recover()
             if asyncio.iscoroutine(result):
                 return await result
             return result
@@ -1102,13 +1096,17 @@ class AsyncAwsWrapperConnection:
 
         Lets SA's PG dialect and application code reach driver-specific
         state (``info``, ``pgconn``, ``adapters``, etc.) without special
-        casing. The connection field is hit only when the attribute is
-        NOT defined on the wrapper itself. Single-underscore driver attributes
-        are forwarded too (SQLAlchemy's psycopg async adapter reaches for them);
-        only dunders are kept on the wrapper (pickle/copy internals), and
-        ``_target_conn`` is guarded by name so a miss before __init__ sets it
-        raises cleanly instead of recursing through this method.
+        casing. The connection is hit only when the attribute is NOT
+        defined on the wrapper itself. Single-underscore driver attributes
+        are forwarded too (SQLAlchemy's psycopg async adapter reaches for
+        them); only dunders are kept on the wrapper (pickle/copy internals),
+        and ``_plugin_service`` is guarded by name so a miss before
+        __init__ sets it raises cleanly instead of recursing through this
+        method (``target_connection`` dereferences it).
         """
-        if name == "_target_conn" or name.startswith("__"):
+        # ``target_connection`` joins the guard (superset of sync's): if the
+        # property raises AttributeError pre-__init__, Python retries the
+        # lookup through __getattr__, which would otherwise recurse.
+        if name in ("_plugin_service", "target_connection") or name.startswith("__"):
             raise AttributeError(name)
-        return getattr(self._target_conn, name)
+        return getattr(self.target_connection, name)

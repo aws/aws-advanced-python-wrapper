@@ -364,11 +364,6 @@ class AsyncPluginService(ExceptionHandler, Protocol):
         """
         ...
 
-    def set_connection_wrapper(self, wrapper: Any) -> None:
-        """Register the owning AsyncAwsWrapperConnection so connection
-        switches can rebind its cached target connection."""
-        ...
-
 
 class AsyncPluginServiceImpl(AsyncPluginService):
     """Concrete ``AsyncPluginService``.
@@ -399,9 +394,6 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         self._initial_connection_host_info: Optional[HostInfo] = None
         self._current_host_info: Optional[HostInfo] = host_info
         self._current_connection: Optional[Any] = None
-        # Back-reference to the owning AsyncAwsWrapperConnection so connection
-        # switches (failover / RWS) can rebind its cached ``_target_conn``.
-        self._connection_wrapper: Optional[Any] = None
         self._telemetry_factory: Optional[TelemetryFactory] = None
         self._target_driver_func: Optional[Callable] = None
         self._status_store: Dict[Tuple[type, str], Any] = {}
@@ -583,15 +575,6 @@ class AsyncPluginServiceImpl(AsyncPluginService):
     @property
     def session_state_service(self) -> AsyncSessionStateService:
         return self._session_state_service
-
-    def set_connection_wrapper(self, wrapper: Any) -> None:
-        """Register the owning AsyncAwsWrapperConnection.
-
-        Lets ``set_current_connection`` rebind the wrapper's cached
-        ``_target_conn`` on plugin-driven connection switches so the wrapper
-        follows failover / read-write-splitting swaps.
-        """
-        self._connection_wrapper = wrapper
 
     @property
     def allowed_and_blocked_hosts(self) -> Optional[AllowedAndBlockedHosts]:
@@ -1111,8 +1094,6 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             # Initial connection: no old-connection lifecycle to manage.
             self._current_connection = connection
             self._current_host_info = host_info
-            if self._connection_wrapper is not None:
-                self._connection_wrapper._target_conn = connection
             self._session_state_service.reset()
             if self._plugin_manager is not None:
                 self._plugin_manager.notify_connection_changed(
@@ -1122,8 +1103,6 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         if connection is None or prev is connection:
             self._current_connection = connection
             self._current_host_info = host_info
-            if self._connection_wrapper is not None:
-                self._connection_wrapper._target_conn = connection
             return
 
         # Connection switch: mirror sync PluginServiceImpl.set_current_connection
@@ -1175,11 +1154,6 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             host_info: HostInfo) -> None:
         self._current_connection = connection
         self._current_host_info = host_info
-        # Keep the owning wrapper's cached target connection in sync so its
-        # cursor() / commit() / etc. follow the switch (see
-        # AsyncAwsWrapperConnection.connect's set_connection_wrapper call).
-        if self._connection_wrapper is not None:
-            self._connection_wrapper._target_conn = connection
         if prev is not None and prev is not connection:
             # Apply tracked session state to the new connection, then a
             # best-effort dialect-level transfer as a supplement.

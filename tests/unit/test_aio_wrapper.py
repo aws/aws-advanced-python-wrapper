@@ -925,11 +925,12 @@ def test_connection_isolation_level_roundtrip():
 def test_async_connection_getattr_delegates_driver_attrs_including_underscore():
     # Public AND single-underscore driver attrs are delegated to the underlying
     # connection (SQLAlchemy's psycopg async adapter reaches for underscore
-    # members). Only dunders stay on the wrapper, and the _target_conn name is
+    # members). Only dunders stay on the wrapper, and _plugin_service is
     # guarded so a miss before __init__ sets it raises instead of recursing.
     wrapper = AsyncAwsWrapperConnection.__new__(AsyncAwsWrapperConnection)
     target = MagicMock()
-    wrapper._target_conn = target
+    wrapper._plugin_service = MagicMock()
+    wrapper._plugin_service.current_connection = target
 
     assert wrapper.pgconn is target.pgconn
     # single-underscore driver attr delegates (regression: was wrongly blocked)
@@ -937,10 +938,10 @@ def test_async_connection_getattr_delegates_driver_attrs_including_underscore():
     # dunder stays on the wrapper, not delegated
     with pytest.raises(AttributeError):
         _ = wrapper.__totally_made_up_dunder__
-    # the internal target name is guarded against recursion when unset
+    # delegation before __init__ wires the service raises instead of recursing
     fresh = AsyncAwsWrapperConnection.__new__(AsyncAwsWrapperConnection)
     with pytest.raises(AttributeError):
-        _ = fresh._target_conn
+        _ = fresh.pgconn
 
 
 def test_async_cursor_getattr_delegates_driver_attrs_including_underscore():

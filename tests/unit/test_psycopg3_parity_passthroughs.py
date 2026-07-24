@@ -74,7 +74,7 @@ def _async_wrapper(target: MagicMock) -> AsyncAwsWrapperConnection:
     wrapper = AsyncAwsWrapperConnection.__new__(AsyncAwsWrapperConnection)
     wrapper._plugin_service = MagicMock()
     wrapper._plugin_manager = MagicMock()
-    wrapper._target_conn = target
+    wrapper._plugin_service.current_connection = target
     return wrapper
 
 

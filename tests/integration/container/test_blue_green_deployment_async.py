@@ -122,7 +122,7 @@ def _is_conn_closed_async(conn: Any) -> bool:
     checks work on the wrapper object.
     """
     if isinstance(conn, AsyncAwsWrapperConnection):
-        target = conn._target_conn
+        target = conn.target_connection
     else:
         target = conn
 

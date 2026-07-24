@@ -155,7 +155,7 @@ class AsyncPluginManager:
         """The raw driver connection a cursor/connection target is bound to.
 
         Cursor: the raw cursor's ``connection`` (the conn it was created on).
-        Connection wrapper: its current ``_target_conn``. Both are unwrapped
+        Connection wrapper: its live ``target_connection``. Both are unwrapped
         to the underlying driver connection for a like-for-like comparison.
 
         Uses ``isinstance`` rather than ``getattr`` probing: the connection
@@ -169,7 +169,7 @@ class AsyncPluginManager:
         if isinstance(target, AsyncAwsWrapperCursor):
             return self._unwrap_conn(getattr(target._target_cursor, "connection", None))
         if isinstance(target, AsyncAwsWrapperConnection):
-            return self._unwrap_conn(target._target_conn)
+            return self._unwrap_conn(target.target_connection)
         return None
 
     async def execute(
