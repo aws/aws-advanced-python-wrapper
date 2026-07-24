@@ -234,11 +234,71 @@ def test_cursor_execute_routes_through_plugin_pipeline():
     assert log == [
         "connect:enter",
         "connect:exit",
+        # Lazy driver-cursor creation runs through the pipeline (sync
+        # parity: Connection.cursor is a pipelined method) on first use.
+        "execute:Connection.cursor",
         "execute:Cursor.execute",
         "execute:Cursor.fetchone",
         "execute:Cursor.fetchall",
         "execute:Cursor.close",
     ]
+
+
+def test_cursor_creation_is_lazy_and_pipelined():
+    # Review feedback on #1257 (wrapper.py:964): cursor() must not touch the
+    # driver. The driver cursor materializes through the plugin pipeline
+    # (Connection.cursor) on first use, so a dead connection surfaces where
+    # failover can act instead of escaping raw at cursor().
+    log: List[str] = []
+    plugin = RecorderPlugin(log)
+    raw_conn = _make_mock_async_conn()
+    target_cur = _make_mock_async_cursor()
+    target_cur.connection = raw_conn
+    raw_conn.cursor = MagicMock(return_value=target_cur)
+
+    async def _body() -> None:
+        wrapper = await AsyncAwsWrapperConnection.connect(
+            target=_build_mock_psycopg_connect(raw_conn),
+            conninfo="host=h user=u password=p dbname=d port=5432",
+            plugins=[plugin],
+        )
+        calls_after_connect = raw_conn.cursor.call_count
+        cur = wrapper.cursor("positional", name="server-side")
+        assert raw_conn.cursor.call_count == calls_after_connect  # lazy
+        await cur.execute("SELECT 1")
+        # Creation happened inside the pipeline, with the original args.
+        assert raw_conn.cursor.call_count == calls_after_connect + 1
+        assert raw_conn.cursor.call_args == (("positional",), {"name": "server-side"})
+
+    asyncio.run(_body())
+    assert "execute:Connection.cursor" in log
+
+
+def test_cursor_close_before_first_use_never_touches_the_driver():
+    raw_conn = _make_mock_async_conn()
+    wrapper = _connected_wrapper(raw_conn)
+    calls_after_connect = raw_conn.cursor.call_count
+
+    async def _body() -> None:
+        cur = wrapper.cursor()
+        await cur.close()
+
+    asyncio.run(_body())
+    assert raw_conn.cursor.call_count == calls_after_connect
+
+
+def test_cursor_arraysize_is_buffered_until_materialization():
+    raw_conn = _make_mock_async_conn()
+    target_cur = _make_mock_async_cursor()
+    target_cur.connection = raw_conn
+    raw_conn.cursor = MagicMock(return_value=target_cur)
+    wrapper = _connected_wrapper(raw_conn)
+
+    cur = wrapper.cursor()
+    cur.arraysize = 500
+    assert cur.arraysize == 500  # buffered read-back before materialization
+    asyncio.run(cur._resolve_target_cursor())
+    assert target_cur.arraysize == 500  # applied to the driver cursor
 
 
 def _connected_wrapper(raw_conn: Any) -> AsyncAwsWrapperConnection:
@@ -383,7 +443,11 @@ def test_execute_on_old_cursor_after_switch_raises():
 
     raw_conn = _make_mock_async_conn()
     wrapper = _connected_wrapper(raw_conn)
-    cur = wrapper.cursor()  # bound to raw_conn
+    cur = wrapper.cursor()
+    # Bind the driver cursor to raw_conn NOW: creation is lazy, so an
+    # unused cursor would otherwise materialize on the post-switch
+    # connection instead of holding a stale one.
+    asyncio.run(cur._resolve_target_cursor())
 
     new_conn = _make_mock_async_conn()
     svc = wrapper._plugin_service
@@ -432,11 +496,11 @@ def test_autocommit_getter_aiomysql_uses_get_autocommit():
 
 
 def test_wrapper_target_follows_connection_switch():
-    # Core failover / RWS fix: when the plugin service switches the current
-    # connection, the owning wrapper's cached target connection must follow,
-    # so subsequent cursor() / commit() hit the NEW connection -- not the old,
-    # often-closed one. Without the registration + rebind, RWS never redirects
-    # and failover retries hit "the connection is closed".
+    # Core failover / RWS behavior: when the plugin service switches the
+    # current connection, the wrapper's target_connection (a live property
+    # over plugin_service.current_connection, sync parity) follows, so
+    # subsequent cursor() / commit() hit the NEW connection -- not the old,
+    # often-closed one.
     from aws_advanced_python_wrapper.hostinfo import HostInfo
 
     raw_conn = _make_mock_async_conn()
@@ -455,8 +519,10 @@ def test_wrapper_target_follows_connection_switch():
     asyncio.run(_switch())
 
     assert wrapper.target_connection is new_conn
-    # New cursors bind to the switched connection.
-    wrapper.cursor()
+    # New cursors bind to the switched connection (on first use -- creation
+    # is lazy and pipelined).
+    fresh = wrapper.cursor()
+    asyncio.run(fresh._resolve_target_cursor())
     new_conn.cursor.assert_called()
 
 
@@ -605,7 +671,13 @@ def test_cursor_getattr_forwards_to_target_cursor():
             target=_build_mock_psycopg_connect(raw_conn),
             conninfo="host=h user=u password=p dbname=d port=5432",
         )
-        return wrapper.cursor()
+        cur = wrapper.cursor()
+        # Before first use the driver cursor does not exist yet: the
+        # wrapper reports fresh-cursor values.
+        assert cur.description is None
+        assert cur.rowcount == -1
+        await cur._resolve_target_cursor()
+        return cur
 
     cur = asyncio.run(_body())
     # The mock async cursor has a description attribute on the target.
@@ -748,6 +820,9 @@ def _make_wrapper_and_cursor() -> tuple:
 
     wrapper = asyncio.run(_body())
     cur = wrapper.cursor()
+    # Materialize: the driver cursor is created lazily through the pipeline
+    # on first use; these passthrough tests assert delegation to it.
+    asyncio.run(cur._resolve_target_cursor())
     return wrapper, cur, target_cur
 
 

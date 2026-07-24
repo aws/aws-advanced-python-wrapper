@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import (TYPE_CHECKING, Any, Callable, List, Optional, Sequence,
-                    Type, Union)
+from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional,
+                    Sequence, Tuple, Type, Union)
 
 from aws_advanced_python_wrapper.aio.plugin_manager import AsyncPluginManager
 from aws_advanced_python_wrapper.aio.plugin_service import \
@@ -160,9 +160,14 @@ class AsyncAwsWrapperCursor:
     def __init__(
             self,
             conn: AsyncAwsWrapperConnection,
-            target_cursor: Any) -> None:
+            target_cursor: Any = None,
+            cursor_args: Tuple[Any, ...] = (),
+            cursor_kwargs: Optional[Dict[str, Any]] = None) -> None:
         self._conn = conn
         self._target_cursor = target_cursor
+        self._cursor_args = cursor_args
+        self._cursor_kwargs = cursor_kwargs or {}
+        self._pending_arraysize: Optional[int] = None
 
     @property
     def connection(self) -> AsyncAwsWrapperConnection:
@@ -174,37 +179,66 @@ class AsyncAwsWrapperCursor:
 
     @property
     def description(self) -> Any:
+        # Pre-materialization values mirror a fresh driver cursor.
+        if self._target_cursor is None:
+            return None
         return self._target_cursor.description
 
     @property
     def rowcount(self) -> int:
+        if self._target_cursor is None:
+            return -1
         return self._target_cursor.rowcount
 
     @property
     def arraysize(self) -> int:
+        if self._target_cursor is None:
+            return 1 if self._pending_arraysize is None else self._pending_arraysize
         return self._target_cursor.arraysize
 
     @arraysize.setter
     def arraysize(self, value: int) -> None:
+        if self._target_cursor is None:
+            # Buffer until the driver cursor materializes.
+            self._pending_arraysize = value
+            return
         self._target_cursor.arraysize = value
 
     @property
     def lastrowid(self) -> Any:
+        if self._target_cursor is None:
+            return None
         return self._target_cursor.lastrowid
 
     async def _resolve_target_cursor(self) -> Any:
         """Resolve and cache the underlying driver cursor.
 
-        psycopg's ``AsyncConnection.cursor()`` returns a ready cursor
-        synchronously, so ``AsyncAwsWrapperConnection.cursor()`` -- a sync
-        factory matching psycopg semantics -- can wrap it directly. aiomysql's
-        ``Connection.cursor()`` instead returns a ``_ContextManager`` that must
-        be awaited to yield the real cursor. Await-and-cache on first use so a
-        single sync ``cursor()`` factory works for both drivers. Idempotent:
-        once resolved, ``_target_cursor`` exposes ``execute`` and is left
-        untouched.
+        The driver cursor is created HERE, on the first async operation,
+        routed through the plugin pipeline under
+        ``DbApiMethod.CONNECTION_CURSOR`` (sync parity: wrapper.py:226-230
+        routes cursor creation the same way; sync can do it inside
+        ``cursor()`` because its pipeline is synchronous). psycopg's
+        ``AsyncConnection.cursor()`` returns a ready cursor synchronously;
+        aiomysql's returns an awaitable ``_ContextManager`` -- both shapes
+        are handled. Idempotent: once resolved, ``_target_cursor`` exposes
+        ``execute`` and is left untouched.
         """
         tc = self._target_cursor
+        if tc is None:
+            async def _create() -> Any:
+                created = self._conn.target_connection.cursor(
+                    *self._cursor_args, **self._cursor_kwargs)
+                if not hasattr(created, "execute") and inspect.isawaitable(created):
+                    created = await created
+                return created
+
+            created = await self._conn._plugin_manager.execute(
+                self._conn, DbApiMethod.CONNECTION_CURSOR, _create,
+                *self._cursor_args, **self._cursor_kwargs)
+            if self._pending_arraysize is not None:
+                created.arraysize = self._pending_arraysize
+            self._target_cursor = created
+            return created
         if not hasattr(tc, "execute") and inspect.isawaitable(tc):
             self._target_cursor = await tc
         return self._target_cursor
@@ -291,6 +325,9 @@ class AsyncAwsWrapperCursor:
         return row
 
     async def close(self) -> None:
+        if self._target_cursor is None:
+            # Never materialized: no driver cursor exists to close.
+            return
         await self._resolve_target_cursor()
 
         async def _call() -> Any:
@@ -356,13 +393,17 @@ class AsyncAwsWrapperCursor:
 
     def setinputsizes(self, sizes: Any) -> None:
         """PEP 249 input-size hint. Pass-through to target cursor (sync,
-        no network I/O worth intercepting)."""
-        self._target_cursor.setinputsizes(sizes)
+        no network I/O worth intercepting); a no-op before the driver
+        cursor materializes, matching psycopg which ignores the hint."""
+        if self._target_cursor is not None:
+            self._target_cursor.setinputsizes(sizes)
 
     def setoutputsize(self, size: int, column: Optional[int] = None) -> None:
         """PEP 249 output-size hint. Pass-through to target cursor (sync,
-        no network I/O worth intercepting)."""
-        self._target_cursor.setoutputsize(size, column)
+        no network I/O worth intercepting); a no-op before the driver
+        cursor materializes, matching psycopg which ignores the hint."""
+        if self._target_cursor is not None:
+            self._target_cursor.setoutputsize(size, column)
 
     async def __aenter__(self) -> AsyncAwsWrapperCursor:
         await self._resolve_target_cursor()
@@ -389,7 +430,13 @@ class AsyncAwsWrapperCursor:
         """
         if name == "_target_cursor" or name.startswith("__"):
             raise AttributeError(name)
-        return getattr(self._target_cursor, name)
+        target = self._target_cursor
+        if target is None:
+            raise AttributeError(
+                f"'{name}' is unavailable before the cursor's first operation "
+                f"(the driver cursor is created lazily through the plugin "
+                f"pipeline)")
+        return getattr(target, name)
 
 
 class AsyncAwsWrapperConnection:
@@ -951,11 +998,18 @@ class AsyncAwsWrapperConnection:
     def cursor(self, *args: Any, **kwargs: Any) -> AsyncAwsWrapperCursor:
         """Return a new :class:`AsyncAwsWrapperCursor`.
 
-        Matches :meth:`psycopg.AsyncConnection.cursor` semantics: sync call
-        that returns an async cursor. Query execution on the cursor is async.
+        Matches :meth:`psycopg.AsyncConnection.cursor` semantics: a sync
+        call that returns an async cursor. The DRIVER cursor is created
+        lazily, inside the first pipelined operation, so creation runs
+        through the plugin pipeline like sync's Connection.cursor
+        (wrapper.py:226-230, DbApiMethod.CONNECTION_CURSOR). A sync method
+        cannot await the async pipeline, so async defers instead of
+        wrapping eagerly -- a closed/dead connection then surfaces inside
+        the pipeline where failover can act, instead of escaping raw at
+        cursor() (psycopg raises 'the connection is closed' on cursor
+        creation).
         """
-        target_cursor = self.target_connection.cursor(*args, **kwargs)
-        return AsyncAwsWrapperCursor(self, target_cursor)
+        return AsyncAwsWrapperCursor(self, None, args, kwargs)
 
     async def close(self) -> None:
         async def _call() -> Any:
