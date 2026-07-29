@@ -42,6 +42,10 @@ public class TestEnvironmentConfiguration {
       Boolean.parseBoolean(System.getProperty("exclude-pg-engine", "false"));
   public boolean excludePgDriver =
       Boolean.parseBoolean(System.getProperty("exclude-pg-driver", "false"));
+  public boolean excludeSyncDrivers =
+      Boolean.parseBoolean(System.getProperty("exclude-sync-drivers", "false"));
+  public boolean excludeAsyncDrivers =
+      Boolean.parseBoolean(System.getProperty("exclude-async-drivers", "false"));
   public boolean excludeFailover =
       Boolean.parseBoolean(System.getProperty("exclude-failover", "false"));
   public boolean excludeIam =
@@ -69,6 +73,8 @@ public class TestEnvironmentConfiguration {
   public boolean testBlueGreenOnly =
       Boolean.parseBoolean(System.getProperty("test-bg-only", "false"));
 
+  public boolean excludePython310 =
+      Boolean.parseBoolean(System.getProperty("exclude-python-3-10", "false"));
   public boolean excludePython311 =
       Boolean.parseBoolean(System.getProperty("exclude-python-3-11", "false"));
   public boolean excludePython312 =

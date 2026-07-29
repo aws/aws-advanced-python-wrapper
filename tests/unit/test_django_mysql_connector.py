@@ -14,7 +14,7 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest  # type: ignore
+import pytest
 
 
 class TestDatabaseWrapper:
@@ -44,7 +44,7 @@ class TestDatabaseWrapper:
     @patch('aws_advanced_python_wrapper.django.backends.mysql_connector.base.mysql.connector.Connect')
     def test_get_new_connection_adds_converter_and_creates_wrapper(self, mock_connector, mock_wrapper_connect, database_wrapper):
         """Test that get_new_connection adds converter_class and creates AwsWrapperConnection"""
-        import mysql.connector.django.base as base  # type: ignore
+        import mysql.connector.django.base as base
         mock_converter = base.DjangoMySQLConverter
 
         mock_conn = MagicMock()

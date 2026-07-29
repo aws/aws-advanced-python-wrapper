@@ -1,6 +1,8 @@
 # Failover Plugin v2
 The AWS Advanced Python Wrapper uses the Failover Plugin v2 to provide minimal downtime in the event of a DB instance failure. The plugin is the next version (v2) of the [Failover Plugin](./UsingTheFailoverPlugin.md) and unless explicitly stated otherwise, most of the information and suggestions for the Failover Plugin are applicable to the Failover Plugin v2.
 
+> **Note**: pair this plugin with `read_write_splitting` when you need R/W splitting — the v1 `failover` plugin doesn't start the cluster topology monitor on initial connect, which makes `read_only = True` silently fall back to the writer. See [PluginChainCompatibility.md](../PluginChainCompatibility.md) for the full compatibility matrix and [FailoverConfigurationGuide.md](../FailoverConfigurationGuide.md#retry-behavior-at-the-sqlalchemy--django-pool-boundary) for the retry-budget knobs at the SA / Django pool boundary.
+
 ## Differences between the Failover Plugin and the Failover Plugin v2
 
 The Failover Plugin performs a failover process for each DB connection. Each failover process is triggered independently and is unrelated to failover processes in other connections. While such independence between failover processes has some benefits, it also leads to additional resources like extra threads. If dozens of DB connections are failing over at the same time, it may cause significant load on a client environment.
@@ -42,6 +44,15 @@ With the `failover_v2` plugin:
 - The  `MonitoringRdsHostListProvider` tries to connect to every cluster host in parallel.
 - The `MonitoringRdsHostListProvider` uses an "Am I a writer?" approach to avoid reliance on stale topology.
 - The `MonitoringRdsHostListProvider` continues topology monitoring at an increased rate to ensure all cluster hosts appear in the topology.
+
+> [!NOTE]
+> **Async wrapper.** The async wrapper (`aws_advanced_python_wrapper.aio`) ships a single failover plugin that implements `failover_v2`-style semantics (centralized monitoring component, parallel topology probe, "Am I a writer?" detection). It is registered under both `failover` and `failover_v2` codes; the `failover` alias is retained for backward compatibility with existing connection strings. The original sync `failover` (v1) plugin is not ported to async.
+>
+> Surface differences when porting a sync-v2 config to async:
+> - **`enable_failover`** *(boolean, default `True`)* — general failover toggle; honored by async. Disables both connect-time and execute-time failover when `False`.
+> - **`enable_connect_failover`** *(boolean, default `True`)* — accepted by the async plugin for API parity with sync v2, but async failover currently only triggers on the execute path. When async grows connect-time failover, this flag will gate that path.
+> - **`telemetry_failover_additional_top_trace`** *(boolean, default `False`)* — honored by both sync v2 and async. When `True`, the per-failover span is also emitted at `FORCE_TOP_LEVEL` so backends that sample only top-level spans (e.g. X-Ray, OTLP-with-head-sampling) still capture failover events.
+> - **`init_host_provider` plugin hook** — sync v2 uses this to install `MonitoringRdsHostListProvider`. Async injects the `AsyncHostListProvider` at plugin construction, so no analogous hook is exposed.
 
 ## Using the Failover Plugin v2
 The Failover Plugin, not the Failover Plugin v2, will be enabled by default if the [`wrapperPlugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) value is not specified. If you would like to override the default plugins, you can explicitly include the failover plugin v2 in your list of plugins by adding the plugin code `failover_v2` to the [`wrapperPlugins`](../UsingThePythonWrapper.md#aws-advanced-Python-wrapper-parameters) value, or by adding it to the current [driver profile](../UsingThePythonWrapper.md#connection-plugin-manager-parameters). After you load the plugin, the failover v2 feature will be enabled. 

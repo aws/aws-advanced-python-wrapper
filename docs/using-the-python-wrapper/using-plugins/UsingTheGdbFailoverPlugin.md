@@ -1,6 +1,11 @@
 # Global Database (GDB) Failover Plugin
 The AWS Advanced Python Wrapper uses the GDB Failover Plugin to provide minimal downtime in the event of a DB instance failure for [Amazon Aurora Global Databases](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-global-database.html). The plugin is based on the [Failover Plugin v2](./UsingTheFailover2Plugin.md) and unless explicitly stated otherwise, most of the information and suggestions for the [Failover Plugin](./UsingTheFailoverPlugin.md) and [Failover Plugin v2](./UsingTheFailover2Plugin.md) are applicable to the GDB Failover Plugin.
 
+> [!NOTE]
+> **Async wrapper.** The async wrapper (`aws_advanced_python_wrapper.aio`) ships the GDB Failover Plugin under the `gdb_failover` plugin code. It extends the async failover plugin — which implements `failover_v2`-style semantics (see that plugin's [async note](./UsingTheFailover2Plugin.md)) — with the same home-region awareness described below: the `failover_home_region`, `active_home_failover_mode`, and `inactive_home_failover_mode` parameters and every [failover mode](#failover-modes) behave identically in async.
+>
+> The shared async surface differences from the [Failover Plugin v2](./UsingTheFailover2Plugin.md) async note apply here too — most notably, `enable_connect_failover` is accepted for API parity but async failover currently triggers only on the execute path (not the connect path).
+
 ## Differences between the GDB Failover Plugin and the Failover Plugin v2
 
 The GDB Failover Plugin introduces the notion of a *home region* and extends the configuration parameters to allow setting different failover logic for **in-home** and **out-of-home** cases.

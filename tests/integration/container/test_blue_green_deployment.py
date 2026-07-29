@@ -16,8 +16,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Tuple
 
-import mysql.connector  # type: ignore
-import psycopg  # type: ignore
+import mysql.connector
+import psycopg
 
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
@@ -34,8 +34,8 @@ from dataclasses import dataclass, field
 from threading import Event, Thread
 from time import perf_counter_ns, sleep
 
-import pytest  # type: ignore
-from tabulate import tabulate  # type: ignore
+import pytest
+from tabulate import tabulate  # type: ignore[import-untyped]
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
 from aws_advanced_python_wrapper.blue_green_plugin import (BlueGreenPlugin,

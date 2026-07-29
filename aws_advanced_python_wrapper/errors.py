@@ -56,7 +56,7 @@ class FailoverSuccessError(FailoverError):
     # which catches FailoverSuccessError in ``do_execute`` /
     # ``do_executemany`` and re-raises as the dialect's native
     # OperationalError. Do NOT add driver-native OperationalError classes
-    # (psycopg / mysql.connector) as bases here: Django's
+    # (psycopg / mysql.connector / aiomysql) as bases here: Django's
     # ``wrap_database_errors`` walks ``issubclass`` against the driver's
     # own error module and would swallow FailoverSuccessError before any
     # user ``except FailoverSuccessError:`` handler could see it

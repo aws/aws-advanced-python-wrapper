@@ -179,3 +179,24 @@ def test_release_resources(connection_mock, set_provider_mock):
     ConnectionProviderManager.release_resources()
 
     set_provider_mock.release_resources.assert_called_once()
+
+
+def test_driver_connection_provider_accepted_strategies_returns_mapping():
+    from types import MappingProxyType
+
+    from aws_advanced_python_wrapper.connection_provider import \
+        DriverConnectionProvider
+
+    strategies = DriverConnectionProvider.accepted_strategies()
+
+    assert isinstance(strategies, MappingProxyType)
+    # Known strategies are exposed
+    assert "random" in strategies
+    assert "round_robin" in strategies
+    assert "weighted_random" in strategies
+    assert "highest_weight" in strategies
+
+    # Mapping is read-only
+    import pytest
+    with pytest.raises(TypeError):
+        strategies["new_strategy"] = None  # type: ignore[index]

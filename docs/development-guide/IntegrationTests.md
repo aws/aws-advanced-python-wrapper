@@ -64,6 +64,27 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
 6. In the git bash terminal, navigate to the project root directory and execute a gradle integration test task, e.g.:
    `./gradlew test-pg-aurora`. Other tasks are defined in `tests/integration/host/build.gradle.kts`.
 
+## Running async integration tests
+
+The wrapper ships async counterparts to every sync integration test file. Async tests exercise `AsyncAwsWrapperConnection` (raw) and `create_async_engine` with the wrapper's dialects (`postgresql+aws_wrapper_psycopg` — shared with sync via `get_async_dialect_cls`; `mysql+aws_wrapper_aiomysql`). They are invoked via dedicated Gradle tasks, independent of the sync tasks:
+
+| Deployment | Engine | Sync task | Async task |
+|---|---|---|---|
+| Aurora | PostgreSQL | `:integration-testing:test-pg-aurora` | `:integration-testing:test-pg-aurora-async` |
+| Aurora | MySQL | `:integration-testing:test-mysql-aurora` | `:integration-testing:test-mysql-aurora-async` |
+| RDS Multi-AZ | PostgreSQL | `:integration-testing:test-pg-multi-az` | `:integration-testing:test-pg-multi-az-async` |
+| RDS Multi-AZ | MySQL | `:integration-testing:test-mysql-multi-az` | `:integration-testing:test-mysql-multi-az-async` |
+
+Gradle tasks are invoked from the repository root via the wrapper (`./gradlew :integration-testing:<task-name>`). Environment variables are identical to the sync tasks (see the env-var table above). Sync and async tasks are disjoint — a single Gradle invocation runs only one axis. To cover both, run both tasks sequentially.
+
+Async tests do not introduce any new pytest dependencies — they follow the repo's existing convention of `asyncio.run(inner())` inside sync `def test_...` functions (matching `tests/unit/test_aio_*.py`).
+
+**Aurora Serverless v2 operational notes:**
+
+1. **Security-group allowlist is not managed automatically when `REUSE_RDS_DB=true`.** The harness skips IP authorization in reuse mode. Ensure the test runner's outbound IP is already in the target cluster's security group(s) before invoking any Gradle task; the first failure mode otherwise is connection refused / network unreachable.
+2. **Cold-start latency.** Serverless v2 can take 30–60 seconds to scale from 0 ACUs on the first connection. Warm the cluster with a trivial query (`SELECT 1`) before running timing-sensitive tests so that warmup cost isn't charged against a test's 600-second timeout.
+3. **Topology-gated tests skip environmentally.** Multi-instance tests (failover, some read/write splitting assertions) need ≥2 instances to execute; they skip on single-writer topologies. Blue/Green and Global Database tests require specific engine versions / cluster configurations. Tests skipped under these conditions are environmental, not regressions — they are equivalent to the sync suite's existing behavior under the same cluster topology.
+
 ## Debugging Aurora Integration Tests - Pycharm
 
 > [!WARNING]\

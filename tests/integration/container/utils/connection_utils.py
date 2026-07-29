@@ -66,7 +66,17 @@ class ConnectionUtils:
         user = self.user if user is None else user
         password = self.password if password is None else password
         dbname = self.dbname if dbname is None else dbname
-        return DriverHelper.get_connect_params(host, port, user, password, dbname)
+        params = DriverHelper.get_connect_params(host, port, user, password, dbname)
+        # Aurora's IAM authentication is implemented as a PAM auth provider in
+        # PostgreSQL; its default pg_hba.conf contains `hostssl ... pam` and
+        # `host ... reject`, so an IAM connection over plaintext is rejected
+        # with "pg_hba.conf rejects connection ... no encryption". The setup
+        # path (addAuroraAwsIamUser) creates the IAM user fine over the admin
+        # connection, but the per-test psycopg connect call still needs ssl
+        # explicitly. Only applies to PG (mysql uses different param keys).
+        if user is not None and user == self.iam_user and "dbname" in params:
+            params["sslmode"] = "require"
+        return params
 
     @property
     def proxy_port(self) -> int:

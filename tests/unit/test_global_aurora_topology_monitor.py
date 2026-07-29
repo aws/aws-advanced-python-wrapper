@@ -14,7 +14,7 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest  # type: ignore
+import pytest
 
 from aws_advanced_python_wrapper.cluster_topology_monitor import \
     GlobalAuroraTopologyMonitor

@@ -18,7 +18,10 @@ At this point, the AWS Advanced Python Wrapper will connect to the new primary D
 
 ## Using the Failover Plugin
 
-The failover plugin will be loaded by default if the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) parameter is not specified. The failover plugin can also be explicitly loaded by adding the plugin code `failover` to the [`plugins`](../UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters) parameter. After you load the plugin, the failover feature will be enabled by default and the `enable_failover` parameter will be set to True. <br> <br> Please refer to the [failover configuration guide](../FailoverConfigurationGuide.md) for tips to keep in mind when using the failover plugin.
+As of 3.0.0, the default failover plugin is [`failover_v2`](./UsingTheFailover2Plugin.md); the original `failover` plugin described on this page is no longer loaded by default but remains available for explicit opt-in by adding the plugin code `failover` to the [`plugins`](../UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters) parameter. After you load the plugin, the failover feature will be enabled by default and the `enable_failover` parameter will be set to True. <br> <br> Please refer to the [failover configuration guide](../FailoverConfigurationGuide.md) for tips to keep in mind when using the failover plugin.
+
+> [!NOTE]
+> **Async wrapper.** The async wrapper does not ship the v1 per-connection failover plugin described on this page. On async, the `failover` plugin code resolves to a single async implementation with [`failover_v2`-style semantics](./UsingTheFailover2Plugin.md) (centralized monitoring, parallel topology probe). The `failover` code is retained on async as an alias of `failover_v2` purely for backward compatibility with existing connection strings.
 
 ### Failover Parameters
 

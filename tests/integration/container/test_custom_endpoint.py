@@ -14,11 +14,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, Set
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional, Set
 
 if TYPE_CHECKING:
     from tests.integration.container.utils.test_driver import TestDriver
 
+import socket
 from time import perf_counter_ns, sleep
 from uuid import uuid4
 
@@ -43,6 +44,8 @@ from tests.integration.container.utils.retry_helper import retry_until
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
+from tests.integration.container.utils.test_timings import \
+    CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS
 
 
 @enable_on_num_instances(min_instances=3)
@@ -50,6 +53,14 @@ from tests.integration.container.utils.test_environment_features import \
 @disable_on_features([TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY,
                       TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT,
                       TestEnvironmentFeatures.PERFORMANCE])
+# AWS RDS custom-endpoint membership operations can legitimately take 15+
+# minutes when the service is under load (observed 130+s per
+# wait_until_endpoint_has_members call). The gradle harness imposes a 600s
+# per-test pytest-timeout (ContainerHelper.java); raise the budget for this
+# class only so a slow AWS round-trip surfaces as a real test failure rather
+# than a pytest-timeout cut. 1800s = 30 min covers the worst observed case
+# (~25 min) with margin. Normal-case tests still finish in 1-3 min.
+@pytest.mark.timeout(1800)
 class TestCustomEndpoint:
     logger: ClassVar[Logger] = Logger(__name__)
     endpoint_id: ClassVar[str] = f"test-endpoint-1-{uuid4()}"
@@ -82,6 +93,14 @@ class TestCustomEndpoint:
     def props_with_failover(self, default_props):
         p = default_props.copy()
         p["plugins"] = "custom_endpoint,read_write_splitting,failover"
+        # Make the CustomEndpointMonitor poll the AWS API every 2s (default
+        # is 30_000ms). Without this, the test's ``modify_db_cluster_endpoint``
+        # races the monitor: the test's wait helper confirms AWS-side endpoint
+        # update via direct RDS-API check, but the wrapper's monitor still has
+        # its previous (stale) member set when ``conn.read_only = False`` fires,
+        # so ReadWriteSplittingPlugin's writer-discovery fails and the test
+        # raises ReadWriteSplittingError instead of switching cleanly.
+        p["custom_endpoint_info_refresh_rate_ms"] = CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS
         return p
 
     @pytest.fixture(scope='class')
@@ -140,6 +159,29 @@ class TestCustomEndpoint:
         if not available:
             pytest.fail(f"The test setup step timed out while waiting for the test custom endpoint to become available: "
                         f"'{TestCustomEndpoint.endpoint_id}'.")
+
+        # The RDS API flips the endpoint to "available" before its DNS record
+        # has propagated to the resolver this host uses. Connecting in that
+        # window fails the test setup with psycopg
+        # "[Errno -2] Name or service not known" -- observed deterministically
+        # on the multi-instance Aurora axes (these tests only run with >=3
+        # instances). Wait for the endpoint hostname to actually resolve before
+        # any test connects through it.
+        self._wait_until_endpoint_dns_resolves(TestCustomEndpoint.endpoint_info["Endpoint"])
+
+    def _wait_until_endpoint_dns_resolves(self, hostname: str):
+        end_ns = perf_counter_ns() + 5 * 60 * 1_000_000_000  # 5 minutes
+        last_error: Optional[BaseException] = None
+        while perf_counter_ns() < end_ns:
+            try:
+                socket.getaddrinfo(hostname, None)
+                return
+            except OSError as ex:  # name resolution not propagated yet
+                last_error = ex
+                sleep(3)
+        pytest.fail(
+            "The test setup step timed out while waiting for the custom "
+            f"endpoint DNS to resolve: '{hostname}' (last error: {last_error}).")
 
     def _create_endpoint(self, rds_client, instances):
         instance_ids = [instance.get_instance_id() for instance in instances]
@@ -328,13 +370,15 @@ class TestCustomEndpoint:
         with pytest.raises(ReadWriteSplittingError):
             conn.read_only = False
 
-        # The RDS API lags behind the writer election triggered during setup, so it may still report
-        # the previous writer (now the reader we are connected to). Retry until the API reflects a
-        # writer distinct from our reader, otherwise StaticMembers would contain duplicate ids.
-        assert retry_until(lambda: rds_utils.get_cluster_writer_instance_id() != original_reader_id)
-        writer_id = rds_utils.get_cluster_writer_instance_id()
-
         rds_client = client('rds', region_name=TestEnvironment.get_current().get_aurora_region())
+
+        # Capture writer_id from the control plane, but re-confirm it after
+        # the endpoint stabilization wait. The preceding test_custom_endpoint_failover
+        # triggers a failover; the AWS DescribeDBClusters API can briefly report
+        # the old writer for tens of seconds after a flip, which can place a
+        # stale instance ID into the StaticMembers set and leave the wrapper's
+        # filtered topology with no writer host.
+        writer_id = rds_utils.get_cluster_writer_instance_id()
         rds_client.modify_db_cluster_endpoint(
             DBClusterEndpointIdentifier=self.endpoint_id,
             StaticMembers=[original_reader_id, writer_id]
@@ -342,6 +386,24 @@ class TestCustomEndpoint:
 
         try:
             self.wait_until_endpoint_has_members(rds_client, {original_reader_id, writer_id}, rds_utils)
+
+            # If the cluster's writer shifted during the endpoint-stabilization
+            # wait, re-modify the endpoint to include the current writer before
+            # asking the wrapper to switch. Each iteration includes
+            # ``wait_until_endpoint_has_members`` which polls with its own
+            # internal backoff, so 3 iterations cover ~30-60s of real wall
+            # time -- not 3 tight passes.
+            for _ in range(3):
+                current_writer_id = rds_utils.get_cluster_writer_instance_id()
+                if current_writer_id == writer_id:
+                    break
+                writer_id = current_writer_id
+                rds_client.modify_db_cluster_endpoint(
+                    DBClusterEndpointIdentifier=self.endpoint_id,
+                    StaticMembers=[original_reader_id, writer_id]
+                )
+                self.wait_until_endpoint_has_members(
+                    rds_client, {original_reader_id, writer_id}, rds_utils)
 
             # We should now be able to switch to writer.
             conn.read_only = False
@@ -410,10 +472,16 @@ class TestCustomEndpoint:
         writer_id = str(rds_utils.get_cluster_writer_instance_id())
 
         reader_id_to_add = ""
-        # Get any reader id
+        # Get any reader id that is neither the AWS-truth writer nor the
+        # wrapper's currently-observed writer. After a failover, the
+        # wrapper's SQL-queried ``original_writer_id`` may briefly lag
+        # AWS's view (cluster topology refresh hasn't completed), so we
+        # must exclude both to avoid emitting a duplicate-id StaticMembers
+        # list which RDS rejects with InvalidParameterValueException.
         for instance in instances:
-            if instance.get_instance_id() != writer_id:
-                reader_id_to_add = instance.get_instance_id()
+            instance_id = instance.get_instance_id()
+            if instance_id != writer_id and instance_id != original_writer_id:
+                reader_id_to_add = instance_id
                 break
 
         rds_client = client('rds', region_name=TestEnvironment.get_current().get_aurora_region())

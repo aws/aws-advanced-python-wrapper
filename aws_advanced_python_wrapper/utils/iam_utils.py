@@ -30,7 +30,7 @@ from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.plugin_service import PluginService
-    from boto3 import Session  # type: ignore
+    from boto3 import Session
 
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)

@@ -14,7 +14,8 @@
 
 from __future__ import annotations
 
-from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Optional,
+from types import MappingProxyType
+from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Mapping, Optional,
                     Protocol, Tuple)
 
 if TYPE_CHECKING:
@@ -101,6 +102,17 @@ class DriverConnectionProvider(ConnectionProvider):
                                                      "round_robin": RoundRobinHostSelector(),
                                                      "weighted_random": WeightedRandomHostSelector(),
                                                      "highest_weight": HighestWeightHostSelector()}
+
+    @classmethod
+    def accepted_strategies(cls) -> Mapping[str, HostSelector]:
+        """Public read-only view of the HostSelector registry.
+
+        Returns an immutable view so async callers can reuse the sync
+        registry without reaching into the private ``_accepted_strategies``
+        attribute. New selectors added to the sync dict become visible
+        here automatically.
+        """
+        return MappingProxyType(cls._accepted_strategies)
 
     def accepts_host_info(self, host_info: HostInfo, props: Properties) -> bool:
         return True

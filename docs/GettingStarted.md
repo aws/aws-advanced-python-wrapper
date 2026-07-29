@@ -4,7 +4,7 @@
 
 Before using the AWS Advanced Python Wrapper, you must install:
 
-- Python 3.10 - 3.13 (inclusive).
+- Python 3.10 - 3.14 (inclusive).
 - The AWS Advanced Python Wrapper.
 - Your choice of underlying Python driver. 
   - To use the wrapper with Aurora with PostgreSQL compatibility, install [Psycopg](https://github.com/psycopg/psycopg).
@@ -29,6 +29,19 @@ To use the AWS Advanced Python Wrapper with MySQL Connector/Python for Aurora My
 pip install aws-advanced-python-wrapper
 pip install mysql-connector-python
 ```
+
+To use the wrapper's asyncio API (`aws_advanced_python_wrapper.aio`), install the async driver for your engine. PostgreSQL async uses the same Psycopg package as sync; MySQL async is driven by [aiomysql](https://github.com/aio-libs/aiomysql):
+
+```shell
+pip install aws-advanced-python-wrapper
+pip install psycopg    # PostgreSQL (sync and async)
+pip install aiomysql   # MySQL async
+```
+
+Some features pull in additional packages when used with the asyncio API:
+
+- The async Federated Authentication and Okta Authentication plugins use [aiohttp](https://docs.aiohttp.org/) for their HTTP flows: `pip install aiohttp`.
+- Async SQLAlchemy (`create_async_engine`) requires SQLAlchemy's asyncio support, which includes `greenlet`: `pip install "sqlalchemy[asyncio]"`.
 
 ## Using the AWS Advanced Python Wrapper
 

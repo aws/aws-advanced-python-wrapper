@@ -14,6 +14,7 @@
 
 from typing import Any, Callable, Dict, Optional
 
+import aiomysql
 import mysql.connector
 import psycopg
 
@@ -38,9 +39,12 @@ class DriverHelper:
             return psycopg.Connection.connect
         if d == TestDriver.MYSQL:
             return mysql.connector.connect
-        else:
-            raise UnsupportedOperationError(
-                Messages.get_formatted("Testing.FunctionNotImplementedForDriver", "get_connect_func", d.value))
+        if d == TestDriver.PG_ASYNC:
+            return psycopg.AsyncConnection.connect
+        if d == TestDriver.MYSQL_ASYNC:
+            return aiomysql.connect
+        raise UnsupportedOperationError(
+            Messages.get_formatted("Testing.FunctionNotImplementedForDriver", "get_connect_func", d.value))
 
     @staticmethod
     def get_connect_params(host, port, user, password, db, test_driver: Optional[TestDriver] = None) -> Dict[str, Any]:
@@ -56,6 +60,11 @@ class DriverHelper:
         if d == TestDriver.MYSQL:
             return {
                 "host": host, "port": int(port), "database": db, "user": user, "password": password, "use_pure": True}
-        else:
-            raise UnsupportedOperationError(
-                Messages.get_formatted("Testing.FunctionNotImplementedForDriver", "get_connection_string", d.value))
+        if d == TestDriver.PG_ASYNC:
+            # psycopg AsyncConnection.connect takes the same kwargs as sync.
+            return {"host": host, "port": port, "dbname": db, "user": user, "password": password}
+        if d == TestDriver.MYSQL_ASYNC:
+            # aiomysql uses 'db' (not 'database'); no use_pure equivalent.
+            return {"host": host, "port": int(port), "db": db, "user": user, "password": password}
+        raise UnsupportedOperationError(
+            Messages.get_formatted("Testing.FunctionNotImplementedForDriver", "get_connection_string", d.value))

@@ -39,6 +39,9 @@ from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
+from tests.integration.container.utils.test_timings import (
+    WRITER_CHANGED_PROBE_CONNECT_TIMEOUT_SEC,
+    WRITER_CHANGED_PROBE_POLL_INTERVAL_SEC)
 from .database_engine import DatabaseEngine
 from .database_engine_deployment import DatabaseEngineDeployment
 from .driver_helper import DriverHelper
@@ -216,6 +219,72 @@ class RdsTestUtility:
         raise Exception(Messages.get_formatted("RdsTestUtility.FailoverClusterFailed", cluster_id))
 
     def writer_changed(self, initial_writer_id: str, cluster_id: str, timeout: int) -> bool:
+        """Detect whether Aurora has promoted a new writer instance.
+
+        For Aurora deployments, queries the data-plane SQL catalog through the
+        cluster endpoint (which always routes to the current writer). The data
+        plane converges within seconds of a failover event, whereas the RDS API
+        ``DescribeDBClusters.IsClusterWriter`` field can lag for minutes -- long
+        enough to bust pytest-timeout budgets on multi-instance failover tests.
+        Falls back to the boto3-based polling for non-Aurora deployments where
+        ``aurora_db_instance_identifier()`` / ``@@aurora_server_id`` aren't
+        defined.
+        """
+        deployment = TestEnvironment.get_current().get_deployment()
+        engine = TestEnvironment.get_current().get_engine()
+        if (DatabaseEngineDeployment.AURORA != deployment
+                or engine not in (DatabaseEngine.PG, DatabaseEngine.MYSQL)):
+            return self._writer_changed_via_rds_api(initial_writer_id, cluster_id, timeout)
+
+        info = TestEnvironment.get_current().get_database_info()
+        cluster_endpoint = info.get_cluster_endpoint()
+        port = TestEnvironment.get_current().get_writer().get_port()
+        connect_params = DriverHelper.get_connect_params(
+            cluster_endpoint, port, info.get_username(), info.get_password(),
+            info.get_default_db_name(),
+            test_driver=TestDriver.PG if engine == DatabaseEngine.PG else TestDriver.MYSQL)
+        connect_params["connect_timeout" if engine == DatabaseEngine.PG else "connection_timeout"] = \
+            WRITER_CHANGED_PROBE_CONNECT_TIMEOUT_SEC
+        connect_func = DriverHelper.get_connect_func(
+            TestDriver.PG if engine == DatabaseEngine.PG else TestDriver.MYSQL)
+        instance_id_query = self.get_instance_id_query(engine)
+
+        # The data plane converges within seconds, but downstream test
+        # assertions can call ``get_cluster_writer_instance_id`` (RDS
+        # DescribeDBClusters) and ``is_db_instance_writer``, which read the
+        # control plane and lag the data plane by tens of seconds on
+        # multi-instance Aurora topologies. Returning as soon as the data
+        # plane flips lets those assertions race the control plane. Wait
+        # for control-plane convergence too -- within the same ``timeout``
+        # budget -- so callers see a consistent view across both planes.
+        data_plane_changed = False
+        wait_until = timeit.default_timer() + timeout
+        while timeit.default_timer() < wait_until:
+            try:
+                conn = connect_func(**connect_params)
+                try:
+                    with closing(conn.cursor()) as cursor:
+                        cursor.execute(instance_id_query)
+                        row = cursor.fetchone()
+                        if row is not None and row[0] != initial_writer_id:
+                            data_plane_changed = True
+                finally:
+                    conn.close()
+            except Exception as ex:
+                # Aurora may briefly reject connections mid-failover; keep polling.
+                self.logger.debug("writer_changed SQL probe failed: " + str(ex))
+            if data_plane_changed:
+                try:
+                    cp_writer = self.get_cluster_writer_instance_id(cluster_id)
+                    if cp_writer is not None and cp_writer != initial_writer_id:
+                        return True
+                except Exception as ex:
+                    self.logger.debug(
+                        "writer_changed control-plane probe failed: " + str(ex))
+            sleep(WRITER_CHANGED_PROBE_POLL_INTERVAL_SEC)
+        return False
+
+    def _writer_changed_via_rds_api(self, initial_writer_id: str, cluster_id: str, timeout: int) -> bool:
         wait_until = timeit.default_timer() + timeout
 
         current_writer_id = self.get_cluster_writer_instance_id(cluster_id)

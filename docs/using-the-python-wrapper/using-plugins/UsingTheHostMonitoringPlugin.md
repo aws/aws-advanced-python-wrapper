@@ -1,5 +1,7 @@
 # Host Monitoring Plugin
 
+> **Warning**: EFM (both v1 and v2) is **incompatible with sync MySQL** (`mysql-connector-python`) — that driver doesn't expose the thread-based connection abort EFM requires. Symptoms include monitor threads hanging on shutdown and "Python hangs on exit" when a host is unreachable. Use the chain without EFM for sync MySQL, or switch to the async driver (`aiomysql`) which supports EFM v2. See [PluginChainCompatibility.md](../PluginChainCompatibility.md) for the full compatibility matrix.
+
 ## Enhanced Failure Monitoring
 
 The figure that follows shows a simplified Enhanced Failure Monitoring (EFM) workflow. Enhanced Failure Monitoring is a feature available from the Host Monitoring Connection Plugin. The Host Monitoring Connection Plugin periodically checks the connected database host's health or availability. If a database host is determined to be unhealthy, the connection will be aborted. The Host Monitoring Connection Plugin uses the [Enhanced Failure Monitoring Parameters](#enhanced-failure-monitoring-parameters) and a database host's responsiveness to determine whether a host is healthy.
@@ -14,7 +16,7 @@ One use case is to pair EFM with the [Failover Connection Plugin](./UsingTheFail
 
 ### Using the Host Monitoring Connection Plugin
 
-The Host Monitoring Connection Plugin will be loaded by default if the [`plugins`](../UsingThePythonWrapper.md#connection-plugin-manager-parameters) parameter is not specified. The Host Monitoring Connection Plugin can also be explicitly loaded by adding the plugin code `host_monitoring` to the [`plugins`](../UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters) parameter. Enhanced Failure Monitoring is enabled by default when the Host Monitoring Connection Plugin is loaded, but it can be disabled by setting the `failure_detection_enabled` parameter to `False`.
+As of 3.0.0, the default host-monitoring plugin is [`host_monitoring_v2`](#host-monitoring-plugin-v2); the original `host_monitoring` plugin described on this page is no longer loaded by default but remains available for explicit opt-in by adding the plugin code `host_monitoring` to the [`plugins`](../UsingThePythonWrapper.md#aws-advanced-python-wrapper-parameters) parameter. Enhanced Failure Monitoring is enabled by default when the Host Monitoring Connection Plugin is loaded, but it can be disabled by setting the `failure_detection_enabled` parameter to `False`.
 
 This plugin only works with drivers that support aborting connections from a separate thread. At this moment, this plugin is incompatible with the MySQL Connector/Python driver because the driver does not support aborting connections from a separate thread.
 
@@ -101,3 +103,8 @@ The `host_monitoring_v2` plugin is designed to address [some of the issues](http
 - Reviewed locks for monitoring context
 - Reviewed and redesigned stopping of idle monitoring threads
 - Reviewed and simplified monitoring logic
+
+> [!NOTE]
+> **Async wrapper.** The async wrapper (`aws_advanced_python_wrapper.aio`) ships a single host-monitoring plugin that implements `host_monitoring_v2`-style semantics (watchdog-per-call, `asyncio.Task`-based probing, cooperative cancellation). It is registered under both `host_monitoring` and `host_monitoring_v2` codes; the `host_monitoring` alias is retained for backward compatibility with existing connection strings. The original sync `host_monitoring` (v1) plugin is not ported to async.
+>
+> The async plugin reads the same connection properties as `host_monitoring_v2` (`failure_detection_enabled`, `failure_detection_time_ms`, `failure_detection_interval_ms`, `failure_detection_count`). Cleanup is via `aws_advanced_python_wrapper.aio.release_resources_async()` instead of the sync `CanReleaseResources.release_resources()` hook.

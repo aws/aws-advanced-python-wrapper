@@ -192,6 +192,47 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("test_driver", allowed_drivers)
 
 
+def pytest_collection_modifyitems(config, items):
+    features = TestEnvironment.get_current().get_features()
+    skip_async_files = TestEnvironmentFeatures.SKIP_ASYNC_DRIVER_TESTS in features
+    async_file_skip = pytest.mark.skip(
+        reason="async test excluded by SKIP_ASYNC_DRIVER_TESTS env feature")
+
+    for item in items:
+        is_async_file = "_async.py" in str(item.fspath)
+
+        # (1) Legacy guard: when async drivers are disabled entirely, skip every
+        # test in a *_async.py file outright. These call connect_async /
+        # create_async_engine_for_driver, which only support PG_ASYNC /
+        # MYSQL_ASYNC; passing a sync driver raises UnsupportedOperationError.
+        # Several async test classes lack the class-level @disable_on_features
+        # guard and would otherwise leak through in aurora envs that set
+        # FAILOVER_SUPPORTED / IAM / SECRETS_MANAGER / ABORT_CONNECTION_SUPPORTED.
+        if skip_async_files and is_async_file:
+            item.add_marker(async_file_skip)
+            continue
+
+        # (2) File-kind <-> driver-kind matching. test_driver is parametrized
+        # over EVERY allowed driver (pytest_generate_tests), so when an env
+        # enables both sync and async drivers a *sync* test file is also
+        # parametrized with PG_ASYNC / MYSQL_ASYNC. Its synchronous body then
+        # calls the async connect func without awaiting -> "'coroutine' /
+        # '_ConnectionContextManager' object has no attribute 'cursor'", or the
+        # sync plugin/connection stack's dialect detection raises
+        # "target driver '...' dialect doesn't support 'transaction_status'".
+        # Symmetrically, an async (*_async.py) file must not run with a sync
+        # driver. Skip the mismatched parametrizations so every test body only
+        # ever meets a driver of the matching kind.
+        callspec = getattr(item, "callspec", None)
+        driver = callspec.params.get("test_driver") if callspec is not None else None
+        if driver is not None and driver.is_async != is_async_file:
+            kind = "async" if driver.is_async else "sync"
+            file_kind = "async" if is_async_file else "sync"
+            item.add_marker(pytest.mark.skip(
+                reason=f"{kind} driver {driver.value} not applicable to "
+                       f"{file_kind} test file"))
+
+
 def pytest_sessionstart(session):
     TestEnvironment.get_current()
 

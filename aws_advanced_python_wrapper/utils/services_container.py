@@ -51,17 +51,19 @@ class _ServicesContainer:
     @property
     def event_publisher(self) -> BatchingEventPublisher:
         self._ensure_initialized()
-        return self._event_publisher  # type: ignore
+        # _ensure_initialized() guarantees non-None but mypy can't
+        # prove it across method boundaries.
+        return self._event_publisher  # type: ignore[return-value]
 
     @property
     def storage_service(self) -> StorageService:
         self._ensure_initialized()
-        return self._storage_service  # type: ignore
+        return self._storage_service  # type: ignore[return-value]
 
     @property
     def monitor_service(self) -> MonitorService:
         self._ensure_initialized()
-        return self._monitor_service  # type: ignore
+        return self._monitor_service  # type: ignore[return-value]
 
     def get_thread_pool(self, name: str, max_workers: Optional[int] = None) -> ThreadPoolExecutor:
         pool = self._thread_pools.get(name)

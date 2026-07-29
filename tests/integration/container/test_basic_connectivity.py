@@ -52,7 +52,7 @@ class TestBasicConnectivity:
     def props(self):
         # By default, don't load the host_monitoring plugin so that the test doesn't require abort connection support
         p: Properties = Properties({
-            WrapperProperties.PLUGINS.name: "aurora_connection_tracker,failover",
+            WrapperProperties.PLUGINS.name: "aurora_connection_tracker,failover_v2",
             "connect_timeout": 3,
             "autocommit": True,
             "cluster_id": "cluster1"})

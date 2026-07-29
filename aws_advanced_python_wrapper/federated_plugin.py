@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Optional, Set
 
-import requests  # type: ignore
+import requests
 
 from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory

@@ -12,8 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import psycopg  # type: ignore
-import pytest  # type: ignore
+import psycopg
+import pytest
 
 from aws_advanced_python_wrapper.database_dialect import (
     AuroraPgDialect, MultiAzClusterPgDialect)
