@@ -985,9 +985,26 @@ class PluginManager(CanReleaseResources):
 
         return weights
 
-    def must_use_pipeline(self, method: DbApiMethod):
+    def must_use_pipeline(self, method: DbApiMethod) -> bool:
+        """Whether this method has to run through the plugin pipeline.
+
+        Mirrors JDBC ``ConnectionPluginManager.mustUsePipeline``: the pipeline is required when
+        the method always uses it, when the chain has not been built yet (nothing to decide on),
+        when a real plugin is subscribed, or when telemetry is on (so per-plugin NESTED spans are
+        still emitted).
+
+        Intentional deviation from JDBC: the trailing ``is_network_bound_method`` term. JDBC's
+        DefaultConnectionPlugin is a thin passthrough, but Python's DefaultPlugin.execute also
+        applies DriverDialect.execute's socket timeout and its interrupt-and-wait cleanup. Skipping
+        that for a network-bound method lets a later close/reuse race a still-running operation
+        (env-4 SIGSEGV), so those methods stay on the pipeline regardless of subscriptions.
+        """
         plugin_chain_info: Optional[PluginChainCallableInfo] = self._function_cache[method.id]
-        return method.always_use_pipeline or plugin_chain_info is None or plugin_chain_info.is_subscribed or self._telemetry_in_use
+        return (method.always_use_pipeline
+                or plugin_chain_info is None
+                or plugin_chain_info.is_subscribed
+                or self._telemetry_in_use
+                or self._container.plugin_service.is_network_bound_method(method.method_name))
 
     def execute(self, target: object, method: DbApiMethod, target_driver_func: Callable, *args, **kwargs) -> Any:
         plugin_service = self._container.plugin_service
@@ -1044,36 +1061,44 @@ class PluginManager(CanReleaseResources):
             pipeline_func_info = self._make_pipeline(method.method_name)
             self._function_cache[method.id] = pipeline_func_info
 
-        # Execute only if method needs to use pipeline, or a plugin is subscribed to this method
-        if method.always_use_pipeline or pipeline_func_info.is_subscribed:
+        # Execute only if the method needs to use the pipeline, or a plugin is subscribed to it.
+        if self.must_use_pipeline(method):
             return pipeline_func_info.func(plugin_func, target_driver_func, method.method_name, plugin_to_skip)
-        else:
-            return target_driver_func()
+
+        result = target_driver_func()
+
+        # DefaultPlugin.execute refreshes the cached in-transaction state after every method except
+        # close; failover and read_write_splitting read it to decide whether a transaction is open.
+        plugin_service = self._container.plugin_service
+        if method != DbApiMethod.CONNECTION_CLOSE and plugin_service.current_connection is not None:
+            plugin_service.update_in_transaction()
+
+        return result
+
+    def _subscribed_plugins(self, method_name: str) -> List[Plugin]:
+        all_methods_marker = DbApiMethod.ALL.method_name
+        return [
+            plugin for plugin in self._plugins
+            if all_methods_marker in plugin.subscribed_methods or method_name in plugin.subscribed_methods
+        ]
 
     # Builds the plugin pipeline function chain. The pipeline is built in a way that allows plugins to perform logic
     # both before and after the target driver function call.
     def _make_pipeline(self, method_name: str) -> PluginChainCallableInfo:
-        pipeline_func: Optional[Callable] = None
-        num_plugins: int = len(self._plugins)
-        is_subscribed: bool = False
+        subscribed = self._subscribed_plugins(method_name)
+        if not subscribed:
+            raise AwsWrapperError(Messages.get("PluginManager.PipelineNone"))
+
+        # DefaultPlugin subscribes to "*" and is appended to every plugin list, so counting it here would
+        # pin is_subscribed to True for every method and make the bypass in _execute_with_subscribed_plugins
+        # unreachable.
+        is_subscribed = any(not isinstance(plugin, DefaultPlugin) for plugin in subscribed)
 
         # Build the pipeline starting at the end and working backwards
-        for i in range(num_plugins - 1, -1, -1):
-            plugin: Plugin = self._plugins[i]
+        pipeline_func = self._create_base_pipeline_func(subscribed[-1])
+        for plugin in reversed(subscribed[:-1]):
+            pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
 
-            subscribed_methods: Set[str] = plugin.subscribed_methods
-            is_plugin_subscribed = DbApiMethod.ALL.method_name in subscribed_methods or method_name in subscribed_methods
-            is_subscribed |= is_plugin_subscribed
-
-            if is_plugin_subscribed:
-                if pipeline_func is None:
-                    # Defines the call to DefaultPlugin, which is the last plugin in the pipeline
-                    pipeline_func = self._create_base_pipeline_func(plugin)
-                    continue
-                pipeline_func = self._extend_pipeline_func(plugin, pipeline_func)
-
-        if pipeline_func is None:
-            raise AwsWrapperError(Messages.get("PluginManager.PipelineNone"))
         return PluginChainCallableInfo(pipeline_func, is_subscribed)
 
     def _create_base_pipeline_func(self, plugin: Plugin):
