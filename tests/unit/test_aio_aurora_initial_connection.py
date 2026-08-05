@@ -12,20 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""Unit tests for :class:`AsyncAuroraInitialConnectionStrategyPlugin`.
-
-Covers the load-bearing branches ported from sync:
-
-1. Non-RDS-cluster URL passes through with no verification.
-2. Writer cluster URL + already connected to writer -> returns original conn.
-3. Writer cluster URL + connected to reader -> retries via writer instance.
-4. Reader cluster URL + connected to reader -> returns conn.
-5. Reader cluster URL + no readers in topology -> returns writer conn
-   (simulated Aurora reader fallback).
-6. Timeout exhausted -> returns None -> falls back to plain connect_func.
-7. READER_INITIAL_HOST_SELECTOR_STRATEGY not supported -> raises AwsWrapperError.
-8. Reader probe failure on non-login exception -> marks host UNAVAILABLE.
-"""
+"""Unit tests for :class:`AsyncAuroraInitialConnectionStrategyPlugin`."""
 
 from __future__ import annotations
 
@@ -39,10 +26,14 @@ from aws_advanced_python_wrapper.aio.aurora_initial_connection_strategy_plugin i
     AsyncAuroraInitialConnectionStrategyPlugin
 from aws_advanced_python_wrapper.aio.plugin_service import \
     AsyncPluginServiceImpl
+from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import \
+    InstanceSubstitutionStrategy
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
+from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
 # ---- Helpers -----------------------------------------------------------
 
@@ -106,7 +97,7 @@ def _build(
     # over unchanged.
     svc.connect = driver_dialect.connect  # type: ignore[method-assign]
 
-    plugin = AsyncAuroraInitialConnectionStrategyPlugin(svc)
+    plugin = AsyncAuroraInitialConnectionStrategyPlugin(svc, props)
     return plugin, svc, driver_dialect
 
 
@@ -140,8 +131,9 @@ def test_non_rds_cluster_host_passes_through():
     # No verification path taken.
     driver_dialect.connect.assert_not_awaited()
     svc.get_host_role.assert_not_awaited()
-    # initial_connection_host_info untouched (plugin didn't set it).
-    assert svc.initial_connection_host_info is None
+    # A non-cluster URL needs no role verification, so the loop records the
+    # original host and returns on the first pass.
+    assert svc.initial_connection_host_info is host
 
 
 # ---- 2. Writer cluster URL + already writer -> direct writer conn ------
@@ -258,7 +250,7 @@ def test_reader_cluster_connected_to_reader_returns_conn():
 
 def test_reader_cluster_no_readers_returns_writer_fallback():
     writer = _writer_host()
-    # Topology has only a writer. _pick_reader returns None
+    # Topology has only a writer. _get_candidate_host returns None
     # (strategy_pick=None), so the plugin falls through the "topology
     # stale" branch, opens via connect_func, probes, and since no
     # readers exist it returns that connection unmodified.
@@ -286,9 +278,9 @@ def test_reader_cluster_no_readers_returns_writer_fallback():
 
     result = asyncio.run(_run())
     assert result is cluster_conn
-    # No-readers fallback sets initial_connection_host_info to the
-    # writer (via _pick_writer).
-    assert svc.initial_connection_host_info is writer
+    # The no-readers fallback records the candidate host, which on the stale
+    # path is the original connect host rather than the writer.
+    assert svc.initial_connection_host_info is host
 
 
 # ---- 6. Timeout exhausted -> falls back to plain connect_func ----------
@@ -360,7 +352,9 @@ def test_unsupported_reader_strategy_raises():
 # ---- 8. Reader non-login exception -> host marked UNAVAILABLE ----------
 
 
-def test_reader_non_login_exception_marks_unavailable():
+def test_network_exception_retries_then_falls_back():
+    """A network exception is retried until the budget expires, then the plain
+    connect_func result is returned."""
     reader = _reader_host()
     writer = _writer_host()
     plugin, svc, driver_dialect = _build(
@@ -368,10 +362,8 @@ def test_reader_non_login_exception_marks_unavailable():
         role=HostRole.READER,
         strategy_pick=reader,
     )
-    # driver_dialect.connect raises on every direct attempt -> reader
-    # candidate gets marked UNAVAILABLE each iteration until the loop
-    # exits. is_login_exception is already mocked to return False.
     driver_dialect.connect.side_effect = RuntimeError("network-down")
+    svc.is_network_exception = MagicMock(return_value=True)  # type: ignore[method-assign]
 
     host = _cluster_host_info(_READER_CLUSTER)
     fallback_conn = MagicMock(name="fallback_conn")
@@ -393,12 +385,177 @@ def test_reader_non_login_exception_marks_unavailable():
 
     # Timeout expired -> plain connect_func fallback.
     assert result is fallback_conn
-    # At least one UNAVAILABLE mark was written for the picked reader.
+    # Retried rather than giving up on the first network failure.
+    assert driver_dialect.connect.await_count > 1
+
+
+def test_availability_marked_when_verification_fails_after_connecting():
+    """set_availability is reached only when the failure happens after
+    _open_candidate_connection returned a host. When the candidate connect
+    itself throws, candidate_host is still None and the mark is skipped."""
+    reader = _reader_host()
+    plugin, svc, driver_dialect = _build(
+        all_hosts=(_writer_host(), reader),
+        role=HostRole.READER,
+        strategy_pick=reader,
+    )
+    # Candidate connect succeeds; the role probe then fails with a network error.
+    svc.connect = AsyncMock(return_value=MagicMock(name="instance_conn"))  # type: ignore[method-assign]
+    svc.get_host_role = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("probe failed"))
+    svc.is_network_exception = MagicMock(return_value=True)  # type: ignore[method-assign]
+
+    host = _cluster_host_info(_READER_CLUSTER)
+
+    async def _connect_func():
+        return MagicMock(name="fallback_conn")
+
+    async def _run():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=host,
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func,
+        )
+
+    asyncio.run(_run())
+
     assert svc.set_availability.call_count >= 1
     called_aliases = svc.set_availability.call_args_list[0][0][0]
     assert reader.host in "".join(called_aliases)
     assert svc.set_availability.call_args_list[0][0][1] == \
         HostAvailability.UNAVAILABLE
+
+
+def test_login_exception_raises_without_retrying():
+    """A login failure raises on the first attempt rather than being retried
+    to exhaustion."""
+    reader = _reader_host()
+    plugin, svc, driver_dialect = _build(
+        all_hosts=(_writer_host(), reader),
+        role=HostRole.READER,
+        strategy_pick=reader,
+    )
+    driver_dialect.connect.side_effect = RuntimeError("bad password")
+    svc.is_login_exception = MagicMock(return_value=True)  # type: ignore[method-assign]
+
+    host = _cluster_host_info(_READER_CLUSTER)
+
+    async def _connect_func():
+        return MagicMock(name="fallback_conn")
+
+    async def _run():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=host,
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func,
+        )
+
+    with pytest.raises(RuntimeError, match="bad password"):
+        asyncio.run(_run())
+
+    # Exactly one attempt -- no retry loop on a credentials failure.
+    assert driver_dialect.connect.await_count == 1
+
+
+def test_unclassified_exception_propagates():
+    """An error that is neither login, network, nor read-only surfaces rather
+    than being swallowed."""
+    reader = _reader_host()
+    plugin, svc, driver_dialect = _build(
+        all_hosts=(_writer_host(), reader),
+        role=HostRole.READER,
+        strategy_pick=reader,
+    )
+    driver_dialect.connect.side_effect = RuntimeError("something unexpected")
+
+    host = _cluster_host_info(_READER_CLUSTER)
+
+    async def _connect_func():
+        return MagicMock(name="fallback_conn")
+
+    async def _run():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=host,
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func,
+        )
+
+    with pytest.raises(RuntimeError, match="something unexpected"):
+        asyncio.run(_run())
+
+
+def test_instance_connect_skips_this_plugin():
+    """Regression: the instance connect must skip this plugin so the pipeline
+    does not re-enter it. Async has always done this; the rewrite must keep it
+    (sync still omits it at both call sites)."""
+    writer = _writer_host()
+    plugin, svc, driver_dialect = _build(
+        all_hosts=(writer,), role=HostRole.WRITER, strategy_pick=writer)
+    svc.connect = AsyncMock(return_value=MagicMock(name="instance_conn"))  # type: ignore[method-assign]
+
+    host = _cluster_host_info(_WRITER_CLUSTER)
+
+    async def _connect_func():
+        return MagicMock(name="cluster_conn")
+
+    async def _run():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=host,
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func,
+        )
+
+    asyncio.run(_run())
+
+    svc.connect.assert_awaited()
+    assert svc.connect.await_args.kwargs["plugin_to_skip"] is plugin
+
+
+def test_stale_topology_uses_is_rds_instance_not_cluster_dns():
+    """A custom-cluster host in the topology is not an instance endpoint, so
+    the plugin falls back to the initial endpoint rather than connecting
+    directly to it."""
+    custom_cluster_host = HostInfo(
+        host="my-cluster.cluster-custom-XYZ.us-east-1.rds.amazonaws.com",
+        port=5432, role=HostRole.WRITER)
+    plugin, svc, driver_dialect = _build(
+        all_hosts=(custom_cluster_host,), role=HostRole.WRITER)
+    svc.connect = AsyncMock(name="should_not_be_used")  # type: ignore[method-assign]
+    cluster_conn = MagicMock(name="cluster_conn")
+
+    host = _cluster_host_info(_WRITER_CLUSTER)
+
+    async def _connect_func():
+        return cluster_conn
+
+    async def _run():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=host,
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func,
+        )
+
+    result = asyncio.run(_run())
+
+    # The cluster endpoint connection is used; the custom-cluster topology host
+    # is never treated as an instance to connect directly to.
+    assert result is cluster_conn
+    svc.connect.assert_not_awaited()
 
 
 # ---- 9. E3: region-aware reader filtering -------------------------------
@@ -414,9 +571,8 @@ def _other_region_reader_host() -> HostInfo:
 
 
 def test_reader_candidates_restricted_to_connect_url_region():
-    """E3: sync parity (aurora_initial_connection_strategy_plugin.py:210-224)
-    -- when the connect URL encodes a region, only readers in that region
-    are offered to the selection strategy."""
+    """When the connect URL encodes a region, only readers in that region are
+    offered to the selection strategy."""
     writer = _writer_host()
     in_region_reader = _reader_host()          # us-east-1
     out_of_region_reader = _other_region_reader_host()  # eu-west-1
@@ -455,26 +611,168 @@ def test_reader_candidates_restricted_to_connect_url_region():
         assert out_of_region_reader not in candidate_list
 
 
-def test_filter_readers_by_region_no_connect_host_keeps_all():
-    plugin, svc, _ = _build()
-    readers = [_reader_host(), _other_region_reader_host()]
-    assert plugin._filter_readers_by_region(readers, None) == readers
-
-
-def test_filter_readers_by_region_keeps_all_when_no_region_in_url():
+def test_candidate_host_keeps_all_when_no_region_in_url():
     """A connect URL without a region (e.g. a bare hostname) must not
-    restrict the reader candidates."""
-    plugin, svc, _ = _build()
-    readers = [_reader_host(), _other_region_reader_host()]
-    no_region_host = HostInfo(host="some-random.example.com", port=5432)
-    assert plugin._filter_readers_by_region(readers, no_region_host) == readers
-
-
-def test_filter_readers_by_region_filters_cross_region_readers():
-    plugin, svc, _ = _build()
+    restrict the candidates -- the unfiltered selector call is used."""
     in_region = _reader_host()
     out_of_region = _other_region_reader_host()
+    plugin, svc, _ = _build(all_hosts=(in_region, out_of_region),
+                            strategy_pick=in_region)
+    no_region_host = HostInfo(host="some-random.example.com", port=5432)
+
+    plugin._get_candidate_host(
+        no_region_host,
+        RdsUtils().identify_rds_type(no_region_host.host),
+        InstanceSubstitutionStrategy.SUBSTITUTE_WITH_READER)
+
+    # No host_list argument => selector sees the full topology.
+    assert svc.get_host_info_by_strategy.call_count == 1
+    assert len(svc.get_host_info_by_strategy.call_args_list[0].args) == 2
+
+
+def test_candidate_host_filters_cross_region_readers():
+    in_region = _reader_host()
+    out_of_region = _other_region_reader_host()
+    plugin, svc, _ = _build(all_hosts=(in_region, out_of_region),
+                            strategy_pick=in_region)
     connect_host = _cluster_host_info(_READER_CLUSTER)  # us-east-1
-    filtered = plugin._filter_readers_by_region(
-        [in_region, out_of_region], connect_host)
-    assert filtered == [in_region]
+
+    plugin._get_candidate_host(
+        connect_host,
+        RdsUrlType.RDS_READER_CLUSTER,
+        InstanceSubstitutionStrategy.SUBSTITUTE_WITH_READER)
+
+    assert svc.get_host_info_by_strategy.call_count == 1
+    candidate_list = svc.get_host_info_by_strategy.call_args_list[0].args[2]
+    assert in_region in candidate_list
+    assert out_of_region not in candidate_list
+
+
+def test_candidate_host_substitute_with_writer_ignores_strategy():
+    """SUBSTITUTE_WITH_WRITER short-circuits to the topology writer without
+    consulting the host selection strategy at all."""
+    writer = _writer_host()
+    plugin, svc, _ = _build(all_hosts=(writer, _reader_host()))
+
+    result = plugin._get_candidate_host(
+        _cluster_host_info(_WRITER_CLUSTER),
+        RdsUrlType.RDS_WRITER_CLUSTER,
+        InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER)
+
+    assert result == writer
+    svc.get_host_info_by_strategy.assert_not_called()
+
+
+def test_candidate_host_substitute_with_any_raises_unsupported_strategy():
+    """SUBSTITUTE_WITH_ANY has no target role, so it raises unsupportedStrategy
+    rather than being coerced to a reader-only selection."""
+    reader = _reader_host()
+    plugin, svc, _ = _build(all_hosts=(reader,))
+
+    with pytest.raises(AwsWrapperError):
+        plugin._get_candidate_host(
+            _cluster_host_info(
+                "my-cluster.cluster-custom-XYZ.us-east-1.rds.amazonaws.com"),
+            RdsUrlType.RDS_CUSTOM_CLUSTER,
+            InstanceSubstitutionStrategy.SUBSTITUTE_WITH_ANY)
+
+    svc.get_host_info_by_strategy.assert_not_called()
+
+def test_endpoint_substitution_role_on_instance_endpoint_raises():
+    """Substitution cannot be requested for an instance endpoint."""
+    props_overrides = {"endpoint_substitution_role": "writer"}
+    plugin, _, _ = _build(all_hosts=(_writer_host(),),
+                          props_overrides=props_overrides)
+    props = Properties(props_overrides)
+
+    with pytest.raises(AwsWrapperError):
+        plugin._get_instance_substitution_strategy(
+            props, RdsUrlType.RDS_INSTANCE, True, _WRITER_INSTANCE)
+
+
+def test_invalid_verify_opened_connection_type_raises():
+    """A typo in verify_opened_connection_type must not be swallowed."""
+    plugin, _, _ = _build(
+        all_hosts=(_writer_host(),),
+        props_overrides={"verify_opened_connection_type": "bogus_value"})
+
+    with pytest.raises(AwsWrapperError):
+        plugin._get_role_to_verify(
+            RdsUrlType.RDS_WRITER_CLUSTER, True, Properties({}), _WRITER_CLUSTER)
+
+
+def test_verify_reader_on_writer_cluster_raises():
+    """Verifying 'reader' against a writer cluster endpoint is invalid."""
+    plugin, _, _ = _build(
+        all_hosts=(_writer_host(),),
+        props_overrides={"verify_opened_connection_type": "reader"})
+
+    with pytest.raises(AwsWrapperError):
+        plugin._get_role_to_verify(
+            RdsUrlType.RDS_WRITER_CLUSTER, True, Properties({}), _WRITER_CLUSTER)
+
+
+def test_global_writer_cluster_substitutes_and_verifies_writer():
+    """A global writer cluster endpoint resolves to writer substitution and
+    writer verification, rather than falling through unhandled."""
+    plugin, _, _ = _build(all_hosts=(_writer_host(),))
+    props = Properties({})
+    global_host = "my-global.global-XYZ.global.rds.amazonaws.com"
+
+    strategy = plugin._get_instance_substitution_strategy(
+        props, RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER, True, global_host)
+    role = plugin._get_role_to_verify(
+        RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER, True, props, global_host)
+
+    assert strategy is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER
+    assert role == HostRole.WRITER
+
+
+def test_inactive_cluster_writer_substitution_role_honored():
+    """When the cluster writer endpoint is in a different region than the
+    current writer (Aurora Global secondary), the inactive-writer setting
+    decides whether to substitute."""
+    # Writer lives in us-west-2; the connect URL is us-east-1.
+    out_of_region_writer = HostInfo(
+        host="my-cluster-inst-1.XYZ.us-west-2.rds.amazonaws.com",
+        port=5432, role=HostRole.WRITER)
+    plugin, _, _ = _build(all_hosts=(out_of_region_writer,))
+    props = Properties({"inactive_cluster_writer_endpoint_substitution_role": "none"})
+
+    strategy = plugin._get_instance_substitution_strategy(
+        props, RdsUrlType.RDS_WRITER_CLUSTER, True, _WRITER_CLUSTER)
+
+    assert strategy is InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE
+
+
+def test_initial_connection_host_selector_strategy_overrides_reader_variant():
+    """The non-deprecated property wins when explicitly set."""
+    plugin, _, _ = _build(props_overrides={
+        "reader_initial_connection_host_selector_strategy": "random",
+        "initial_connection_host_selector_strategy": "round_robin",
+    })
+    assert plugin._selection_strategy == "round_robin"
+
+
+def test_reader_strategy_falls_back_to_deprecated_property():
+    plugin, _, _ = _build(props_overrides={
+        "reader_initial_connection_host_selector_strategy": "least_connections",
+    })
+    assert plugin._selection_strategy == "least_connections"
+
+
+def test_retry_bounds_honor_explicit_zero():
+    """An explicit 0 for the retry bounds must be taken literally rather than
+    falling back to the default."""
+    plugin, _, _ = _build(props_overrides={
+        "open_connection_retry_timeout_ms": "0",
+        "open_connection_retry_interval_ms": "0",
+    })
+    assert plugin._open_connection_retry_timeout_ns == 0
+    assert plugin._retry_delay_ms == 0
+
+
+def test_wait_for_initial_topology_defaults_to_zero():
+    """get_int returns -1 for an absent property; the plugin normalizes it to 0."""
+    plugin, _, _ = _build()
+    assert plugin._wait_for_initial_topology_ms == 0

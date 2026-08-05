@@ -219,7 +219,7 @@ class _InitialConnectionFactory:
         # Local import keeps module load-order cheap.
         from aws_advanced_python_wrapper.aio.aurora_initial_connection_strategy_plugin import \
             AsyncAuroraInitialConnectionStrategyPlugin
-        return AsyncAuroraInitialConnectionStrategyPlugin(plugin_service)
+        return AsyncAuroraInitialConnectionStrategyPlugin(plugin_service, props)
 
 
 class _FastestResponseFactory:
