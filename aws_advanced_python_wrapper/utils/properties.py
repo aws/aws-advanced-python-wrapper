@@ -614,7 +614,7 @@ class WrapperProperties:
         "writer",
     )
 
-    VERIFY_OPENED_CONNECTION_ROLE = WrapperProperty(
+    VERIFY_OPENED_CONNECTION_TYPE = WrapperProperty(
         "verify_opened_connection_type",
         "Defines whether an opened connection should be verified to be a writer or reader, "
         "or if no role verification should be performed. Valid values are 'writer', 'reader', or 'none'.",
