@@ -1,6 +1,6 @@
 # Host Monitoring Plugin
 
-> **Warning**: EFM (both v1 and v2) is **incompatible with sync MySQL** (`mysql-connector-python`) — that driver doesn't expose the thread-based connection abort EFM requires. Symptoms include monitor threads hanging on shutdown and "Python hangs on exit" when a host is unreachable. Use the chain without EFM for sync MySQL, or switch to the async driver (`aiomysql`) which supports EFM v2. See [PluginChainCompatibility.md](../PluginChainCompatibility.md) for the full compatibility matrix.
+> **Warning**: EFM (both v1 and v2) is **incompatible with sync MySQL** (`mysql-connector-python`) — that driver doesn't expose the thread-based connection abort EFM requires. Symptoms include monitor threads hanging on shutdown and "Python hangs on exit" when a host is unreachable. Use the chain without EFM for sync MySQL, or switch to the async driver (`aiomysql`) which supports EFM v2. See [PluginChainCompatibility.md](../compatibility/PluginChainCompatibility.md) for the full compatibility matrix.
 
 ## Enhanced Failure Monitoring
 

@@ -1,7 +1,7 @@
 # Failover Plugin v2
 The AWS Advanced Python Wrapper uses the Failover Plugin v2 to provide minimal downtime in the event of a DB instance failure. The plugin is the next version (v2) of the [Failover Plugin](./UsingTheFailoverPlugin.md) and unless explicitly stated otherwise, most of the information and suggestions for the Failover Plugin are applicable to the Failover Plugin v2.
 
-> **Note**: pair this plugin with `read_write_splitting` when you need R/W splitting — the v1 `failover` plugin doesn't start the cluster topology monitor on initial connect, which makes `read_only = True` silently fall back to the writer. See [PluginChainCompatibility.md](../PluginChainCompatibility.md) for the full compatibility matrix and [FailoverConfigurationGuide.md](../FailoverConfigurationGuide.md#retry-behavior-at-the-sqlalchemy--django-pool-boundary) for the retry-budget knobs at the SA / Django pool boundary.
+> **Note**: pair this plugin with `read_write_splitting` when you need R/W splitting — the v1 `failover` plugin doesn't start the cluster topology monitor on initial connect, which makes `read_only = True` silently fall back to the writer. See [PluginChainCompatibility.md](../compatibility/PluginChainCompatibility.md) for the full compatibility matrix and [FailoverConfigurationGuide.md](../FailoverConfigurationGuide.md#retry-behavior-at-the-sqlalchemy--django-pool-boundary) for the retry-budget knobs at the SA / Django pool boundary.
 
 ## Differences between the Failover Plugin and the Failover Plugin v2
 
