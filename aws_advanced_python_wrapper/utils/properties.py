@@ -585,10 +585,47 @@ class WrapperProperties:
         False,
     )
 
+    # Deprecated. Use INITIAL_CONNECTION_HOST_SELECTOR_STRATEGY instead.
     READER_INITIAL_HOST_SELECTOR_STRATEGY = WrapperProperty(
         "reader_initial_connection_host_selector_strategy",
         "The strategy that should be used to select a new reader host while opening a new connection.",
         "random",
+    )
+
+    INITIAL_CONNECTION_HOST_SELECTOR_STRATEGY = WrapperProperty(
+        "initial_connection_host_selector_strategy",
+        "The strategy that should be used to select a host while opening a new connection.",
+        "random",
+    )
+
+    ENDPOINT_SUBSTITUTION_ROLE = WrapperProperty(
+        "endpoint_substitution_role",
+        "Defines whether or not the initial connection URL should be replaced with an instance URL from the "
+        "topology info when available, and if so, the role of the instance URL that should be selected. "
+        "Valid values are 'writer', 'reader', 'any', or 'none'.",
+        None,
+    )
+
+    INACTIVE_CLUSTER_WRITER_SUBSTITUTION_ROLE = WrapperProperty(
+        "inactive_cluster_writer_endpoint_substitution_role",
+        "Defines whether or not the inactive cluster writer endpoint in the initial connection URL should "
+        "be replaced with a writer instance URL from the topology info when available. "
+        "Valid values are 'writer' or 'none'.",
+        "writer",
+    )
+
+    VERIFY_OPENED_CONNECTION_TYPE = WrapperProperty(
+        "verify_opened_connection_type",
+        "Defines whether an opened connection should be verified to be a writer or reader, "
+        "or if no role verification should be performed. Valid values are 'writer', 'reader', or 'none'.",
+        None,
+    )
+
+    VERIFY_INACTIVE_CLUSTER_WRITER_CONNECTION_ROLE = WrapperProperty(
+        "verify_inactive_cluster_writer_endpoint_connection_type",
+        "Defines whether inactive cluster writer connection should be verified to be a writer, "
+        "or if no role verification should be performed. Valid values are 'writer' or 'none'.",
+        "writer",
     )
 
     OPEN_CONNECTION_RETRY_TIMEOUT_MS = WrapperProperty(
@@ -601,6 +638,19 @@ class WrapperProperties:
         "open_connection_retry_interval_ms",
         "Time between each retry of opening a connection.",
         1000,
+    )
+
+    WAIT_FOR_INITIAL_TOPOLOGY_MS = WrapperProperty(
+        "wait_for_initial_topology_ms",
+        "Maximum allowed time, in milliseconds, to wait for the cluster topology to be fetched before opening a new "
+        "connection. When set to a value greater than 0 and the topology is not yet available, the plugin will block "
+        "until the topology has been discovered (or this timeout is reached) instead of falling back to connecting via "
+        "the initial endpoint in the connection string. This ensures host selection strategies such as 'round_robin' "
+        "distribute concurrent and connection-pool prefill connections across instances rather than routing them all "
+        "to a single instance resolved through DNS. The wait is scoped to the cluster the connection belongs to; "
+        "connections to other clusters are not affected. When set to 0 (the default) the previous behavior is "
+        "preserved.",
+        0,
     )
 
     # Simple Read/Write Splitting
