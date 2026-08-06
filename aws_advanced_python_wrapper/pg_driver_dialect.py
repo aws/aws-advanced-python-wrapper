@@ -92,8 +92,7 @@ class PgDriverDialect(DriverDialect):
             # which defeats the EFM's purpose on exactly the network-failure case
             # it exists for.
             #
-            # Shutting the underlying socket down is the thread-safe equivalent of
-            # JDBC's Connection.abort(): it unblocks the owning thread's recv
+            # Shutting the underlying socket down unblocks the owning thread's recv
             # immediately (even on a dead host) WITHOUT freeing any struct, so
             # there is no SSL_free to race. The owning thread observes the broken
             # connection and closes it on its own thread (the only safe place for

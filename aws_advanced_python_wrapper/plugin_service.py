@@ -988,14 +988,13 @@ class PluginManager(CanReleaseResources):
     def must_use_pipeline(self, method: DbApiMethod) -> bool:
         """Whether this method has to run through the plugin pipeline.
 
-        Mirrors JDBC ``ConnectionPluginManager.mustUsePipeline``: the pipeline is required when
-        the method always uses it, when the chain has not been built yet (nothing to decide on),
-        when a real plugin is subscribed, or when telemetry is on (so per-plugin NESTED spans are
-        still emitted).
+        The pipeline is required when the method always uses it, when the chain has not been
+        built yet (nothing to decide on), when a real plugin is subscribed, or when telemetry
+        is on (so per-plugin NESTED spans are still emitted).
 
-        Intentional deviation from JDBC: the trailing ``is_network_bound_method`` term. JDBC's
-        DefaultConnectionPlugin is a thin passthrough, but Python's DefaultPlugin.execute also
-        applies DriverDialect.execute's socket timeout and its interrupt-and-wait cleanup. Skipping
+        The trailing ``is_network_bound_method`` term keeps network-bound methods on the
+        pipeline even when nothing else requires it: DefaultPlugin.execute also applies
+        DriverDialect.execute's socket timeout and its interrupt-and-wait cleanup. Skipping
         that for a network-bound method lets a later close/reuse race a still-running operation
         (env-4 SIGSEGV), so those methods stay on the pipeline regardless of subscriptions.
         """

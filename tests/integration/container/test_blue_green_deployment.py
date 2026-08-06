@@ -1027,7 +1027,7 @@ class TestBlueGreenDeployment:
                     else:
                         self.logger.debug(f"[DirectGreenIamIp{thread_prefix} @ {host_id}] Thread exception: {e}")
                         result_queue.append(TimeHolder(start_ns, perf_counter_ns(), error=str(e)))
-                        # TODO: is 'Access Denied' the error message in Python as well as JDBC?
+                        # TODO: confirm 'Access Denied' is the error message surfaced in Python.
                         if notify_on_first_error and "access denied" in str(e).lower():
                             results.green_node_changed_name_time_ns.compare_and_set(0, perf_counter_ns())
                             self.logger.debug(

@@ -1529,7 +1529,7 @@ class BlueGreenStatusProvider:
         """
         New connect requests: go to blue or green hosts; default behaviour; no routing.
         Existing connections: default behaviour; no action.
-        Execute JDBC calls: default behaviour; no action.
+        Method execution: default behaviour; no action.
         """
         return BlueGreenStatus(
             self._bg_id,
@@ -1546,7 +1546,7 @@ class BlueGreenStatusProvider:
         New connect requests to green: route to corresponding IP address.
         New connect requests with IP address: default behaviour; no routing.
         Existing connections: default behaviour; no action.
-        Execute JDBC calls: default behaviour; no action.
+        Method execution: default behaviour; no action.
         """
 
         if self._is_switchover_timer_expired():
@@ -1603,7 +1603,7 @@ class BlueGreenStatusProvider:
         New connect requests to green: suspend.
         New connect requests with IP address: suspend.
         Existing connections: default behaviour; no action.
-        Execute JDBC calls: suspend.
+        Method execution: suspend.
         """
 
         if self._is_switchover_timer_expired():
