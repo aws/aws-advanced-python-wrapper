@@ -164,8 +164,8 @@ class MySQLDriverDialect(DriverDialect):
         # operation so the owning thread's blocked recv returns promptly, WITHOUT
         # freeing the connection (the owning thread closes it -- freeing it here
         # would race a cross-thread use-after-free in the driver, the env-4 SIGSEGV).
-        # Thread-safe equivalent of JDBC's Connection.abort(). Only the pure-Python
-        # connector exposes the raw socket; best-effort no-op for the C extension.
+        # Only the pure-Python connector exposes the raw socket; best-effort no-op
+        # for the C extension.
         if not MySQLDriverDialect._is_mysql_connection(conn):
             raise UnsupportedOperationError(
                 Messages.get_formatted(

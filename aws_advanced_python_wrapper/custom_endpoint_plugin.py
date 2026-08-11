@@ -266,7 +266,7 @@ class CustomEndpointPlugin(Plugin):
         self._monitors.register_monitor_type(
             CustomEndpointMonitor,
             expiration_timeout_ns=self._idle_monitor_expiration_ms * 1_000_000,
-            inactive_timeout_ns=1 * 60 * 1_000_000_000)  # 1 minute, matches JDBC
+            inactive_timeout_ns=1 * 60 * 1_000_000_000)  # 1 minute
 
         CustomEndpointPlugin._SUBSCRIBED_METHODS.update(self._plugin_service.network_bound_methods)
 

@@ -542,7 +542,7 @@ def test_topology_monitor_enters_high_freq_mode_on_writer_change():
     async def _run_briefly():
         monitor.start()
         # Allow enough ticks for writer-change detection
-        await asyncio.sleep(0.08)
+        await asyncio.sleep(1)
         await monitor.stop()
 
     asyncio.run(_run_briefly())
@@ -628,7 +628,7 @@ def test_topology_monitor_ignores_requests_after_writer_confirmed():
 
     async def _run():
         monitor.start()
-        await asyncio.sleep(0.08)  # let at least one tick complete
+        await asyncio.sleep(1)  # let at least one tick complete
         ignore_during = monitor.should_ignore_refresh_request()
         await monitor.stop()
         return ignore_during

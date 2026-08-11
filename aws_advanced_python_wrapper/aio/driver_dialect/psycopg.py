@@ -162,8 +162,8 @@ class AsyncPsycopgDriverDialect(AsyncDriverDialect):
         # EFM exists for.
         #
         # Shutting the underlying socket down (SHUT_RDWR) -- the async mirror of
-        # sync PgDriverDialect.abort_connection and of JDBC Connection.abort() --
-        # makes this event loop's selector see the fd become readable/errored, so
+        # sync PgDriverDialect.abort_connection -- makes this event loop's
+        # selector see the fd become readable/errored, so
         # the suspended read wakes immediately (even on a dead host) with an
         # OSError/OperationalError the failover plugin classifies as a connection
         # loss. We detach (not close) the fd so the connection still owns it and

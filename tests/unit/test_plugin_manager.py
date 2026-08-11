@@ -610,3 +610,105 @@ class TestPluginRaisesError(TestPlugin):
     def notify_connection_changed(self, changes: Set[ConnectionEvent]) -> OldConnectionSuggestedAction:
         self._calls.append(type(self).__name__ + ":notify_connection_changed")
         raise AwsWrapperError()
+
+
+def test_default_plugin_excluded_from_is_subscribed(mocker, mock_telemetry_factory):
+    # DefaultPlugin subscribes to "*", but it must not mark a method as subscribed on its own --
+    # otherwise the direct-call bypass in _execute_with_subscribed_plugins is unreachable.
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = [DefaultPlugin(mocker.MagicMock(), mocker.MagicMock())]
+    manager._telemetry_factory = mock_telemetry_factory
+
+    assert not manager._make_pipeline(DbApiMethod.CURSOR_EXECUTE.method_name).is_subscribed
+    assert not manager._make_pipeline(DbApiMethod.CONNECT.method_name).is_subscribed
+
+    # A real subscribing plugin still sets the flag, and only for the methods it subscribes to.
+    manager._plugins = [TestPluginTwo([]), DefaultPlugin(mocker.MagicMock(), mocker.MagicMock())]
+    assert manager._make_pipeline(DbApiMethodTest.TEST_CALL_A.method_name).is_subscribed
+    assert not manager._make_pipeline(DbApiMethod.CURSOR_FETCHALL.method_name).is_subscribed
+
+
+def test_unsubscribed_method_bypasses_pipeline(mocker, container, mock_telemetry_factory):
+    # With only DefaultPlugin in the chain, a non-network-bound method skips the pipeline entirely
+    # but must still refresh the cached in-transaction state.
+    calls = []
+    container.plugin_service.is_network_bound_method.side_effect = \
+        lambda name: name == DbApiMethod.CURSOR_EXECUTE.method_name
+    container.plugin_service.update_in_transaction.side_effect = \
+        lambda *args: calls.append("update_in_transaction")
+    container.plugin_service.driver_dialect.execute.side_effect = \
+        lambda method_name, func, *args, **kwargs: (calls.append("dialect.execute"), func())[1]
+
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = [DefaultPlugin(container.plugin_service, mocker.MagicMock())]
+    manager._container = container
+    manager._telemetry_factory = mock_telemetry_factory
+    manager._telemetry_factory.open_telemetry_context.return_value = None
+    manager._telemetry_in_use = False
+    manager._function_cache = [None] * (DbApiMethod.ALL.id + 1)
+
+    def _execute(method):
+        return manager._execute_with_subscribed_plugins(
+            method,
+            lambda plugin, next_func: plugin.execute(mocker.MagicMock(), method.method_name, next_func),
+            lambda: (calls.append("target"), "result_value")[1])
+
+    # Not network bound -> bypass, no DriverDialect.execute, transaction state still updated.
+    assert _execute(DbApiMethod.CURSOR_LASTROWID) == "result_value"
+    assert calls == ["target", "update_in_transaction"]
+
+    # Network bound -> stays on the pipeline so the socket timeout guard is preserved.
+    calls.clear()
+    assert _execute(DbApiMethod.CURSOR_EXECUTE) == "result_value"
+    assert calls == ["dialect.execute", "target", "update_in_transaction"]
+
+    # Telemetry on -> back on the pipeline even for the otherwise-bypassable method, so the
+    # per-plugin NESTED spans are still emitted.
+    calls.clear()
+    manager._telemetry_in_use = True
+    manager._function_cache = [None] * (DbApiMethod.ALL.id + 1)
+    assert _execute(DbApiMethod.CURSOR_LASTROWID) == "result_value"
+    assert calls == ["dialect.execute", "target", "update_in_transaction"]
+
+
+def test_must_use_pipeline(mocker, container, mock_telemetry_factory):
+    # must_use_pipeline is the single authority for the bypass decision, so each term matters.
+    container.plugin_service.is_network_bound_method.side_effect = \
+        lambda name: name == DbApiMethod.CURSOR_EXECUTE.method_name
+
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
+    manager._plugins = [DefaultPlugin(container.plugin_service, mocker.MagicMock())]
+    manager._container = container
+    manager._telemetry_factory = mock_telemetry_factory
+    manager._telemetry_in_use = False
+    manager._function_cache = [None] * (DbApiMethod.ALL.id + 1)
+
+    # Chain not built yet -> nothing to decide on, so the pipeline is required.
+    assert manager.must_use_pipeline(DbApiMethod.CURSOR_LASTROWID)
+
+    # Built, unsubscribed, not network bound, telemetry off -> bypass allowed.
+    manager._function_cache[DbApiMethod.CURSOR_LASTROWID.id] = \
+        manager._make_pipeline(DbApiMethod.CURSOR_LASTROWID.method_name)
+    assert not manager.must_use_pipeline(DbApiMethod.CURSOR_LASTROWID)
+
+    # always_use_pipeline and network-bound methods are always required.
+    assert manager.must_use_pipeline(DbApiMethod.CONNECT)
+    manager._function_cache[DbApiMethod.CURSOR_EXECUTE.id] = \
+        manager._make_pipeline(DbApiMethod.CURSOR_EXECUTE.method_name)
+    assert manager.must_use_pipeline(DbApiMethod.CURSOR_EXECUTE)
+
+    # Telemetry re-enables the pipeline for the otherwise-bypassable method.
+    manager._telemetry_in_use = True
+    assert manager.must_use_pipeline(DbApiMethod.CURSOR_LASTROWID)
+
+    # A real subscribed plugin also forces the pipeline.
+    subscriber = mocker.MagicMock()
+    subscriber.subscribed_methods = {DbApiMethod.CURSOR_LASTROWID.method_name}
+    manager._plugins = [subscriber, DefaultPlugin(container.plugin_service, mocker.MagicMock())]
+    manager._telemetry_in_use = False
+    manager._function_cache[DbApiMethod.CURSOR_LASTROWID.id] = \
+        manager._make_pipeline(DbApiMethod.CURSOR_LASTROWID.method_name)
+    assert manager.must_use_pipeline(DbApiMethod.CURSOR_LASTROWID)
