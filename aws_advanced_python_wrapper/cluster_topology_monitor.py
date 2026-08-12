@@ -28,9 +28,7 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, Topology
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.accessible_regions import \
-    is_in_accessible_region
-from aws_advanced_python_wrapper.utils.accessible_regions import \
-    parse as parse_accessible_regions
+    AccessibleRegions
 from aws_advanced_python_wrapper.utils.atomic import AtomicReference
 from aws_advanced_python_wrapper.utils.decorators import \
     is_connection_abandoned
@@ -128,7 +126,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         self._host_threads_latest_topology: AtomicReference[Optional[Topology]] = AtomicReference(None)
 
         self._is_verified_writer_connection = False
-        # Retained even after _writer_host_info is cleared; node threads use it
+        # Retained even after _writer_host_info is cleared; host threads use it
         # as the baseline (last known writer) for writer-change detection.
         self._last_known_writer_host_info: AtomicReference[Optional[HostInfo]] = AtomicReference(None)
 
@@ -151,7 +149,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
             WrapperProperties.CONNECT_TIMEOUT_SEC.set(self._monitoring_properties, self.DEFAULT_CONNECT_TIMEOUT_SEC)
 
         # Handler that manages the priority of the background monitoring
-        # connection and asynchronously upgrades it to a higher-priority node.
+        # connection and asynchronously upgrades it to a higher-priority host.
         self._connection_handler: MonitoringConnectionHandler = self._create_connection_handler()
 
         self._start_monitoring()
@@ -343,8 +341,8 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                             self._submitted_hosts.clear()
                             continue
 
-                        # Item 8: a reader worker observed a writer change while
-                        # some regions are inaccessible. No node thread may be
+                        # A reader worker observed a writer change while
+                        # some regions are inaccessible. No host thread may be
                         # able to reach the new writer to verify it directly, so
                         # exit panic mode by harvesting the reader connections the
                         # workers already opened.
@@ -383,7 +381,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                                             "ClusterTopologyMonitor.ExceptionStartingHostMonitor",
                                             self._cluster_id, host_info.host, e)
 
-                        # Item 8: if node threads never verified a writer (e.g. it
+                        # If host threads never verified a writer (e.g. it
                         # lives in an inaccessible region) but the readers we did
                         # probe agree on a stable topology, harvest their
                         # connections to exit panic mode.
@@ -683,7 +681,7 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
         self._clean_up_harvested_connections()
 
     def _clean_up_harvested_connections(self) -> None:
-        """Close every item-8 harvested connection except the active monitoring
+        """Close every harvested connection except the active monitoring
         one, then empty the harvest map."""
         current_monitoring = self._monitoring_connection.get()
         with self._host_threads_map_lock:
@@ -794,7 +792,7 @@ class HostMonitor:
         self._writer_host_info = writer_host_info
         # Snapshot of whether some regions were inaccessible when this worker was
         # created. When True the worker signals a panic-mode exit on an observed
-        # writer change (item 8) and hands its connection off to the monitor's
+        # writer change and hands its connection off to the monitor's
         # harvest map on shutdown.
         self._some_regions_inaccessible = some_regions_inaccessible
         self._writer_changed = False
@@ -875,7 +873,7 @@ class HostMonitor:
                                 self._reader_thread_fetch_topology(connection)
 
                 # This worker has attempted at least one full cycle. Mark it so
-                # the main loop's stable-reader-topology check (item 8) does not
+                # the main loop's stable-reader-topology check does not
                 # conclude stability before every monitored reader has tried.
                 if self._some_regions_inaccessible:
                     self._monitor._mark_cycle_completed(self._host_info)
@@ -885,7 +883,7 @@ class HostMonitor:
         except Exception as ex:
             logger.debug("HostMonitor.Exception", self._host_info.host, ex)
         finally:
-            # Item 8: when some regions are inaccessible, hand any live
+            # When some regions are inaccessible, hand any live
             # connection off to the monitor's harvest map instead of closing it,
             # so the main loop can adopt it to exit panic mode. Ownership moves
             # to a fresh holder; `handed_off` prevents the trailing close from
@@ -916,7 +914,7 @@ class HostMonitor:
 
         self._monitor._host_threads_latest_topology.set(hosts)
         # Record this reader's observed topology so the main loop's
-        # stable-reader-topology check (item 8) can compare across readers.
+        # stable-reader-topology check can compare across readers.
         if self._some_regions_inaccessible:
             self._monitor._record_reader_topology(self._host_info, hosts)
 
@@ -932,12 +930,12 @@ class HostMonitor:
             logger.debug("HostMonitor.WriterHostChanged", self._writer_host_info.host, latest_writer_host.host)
             self._monitor._update_topology_cache(hosts)
 
-            # Item 8: signal a panic-mode exit only when some regions are
-            # inaccessible. In that case no node thread may be able to reach the
+            # Signal a panic-mode exit only when some regions are
+            # inaccessible. In that case no host thread may be able to reach the
             # new writer to confirm it via get_writer_id_if_connected(), so a
             # reader-observed writer change is the fastest way out of panic mode.
             # When all regions are accessible we defer to the standard exit path
-            # (a node thread connecting to the new writer reports it directly),
+            # (a host thread connecting to the new writer reports it directly),
             # which is more reliable since it also verifies a live writer
             # connection. CAS-from-None ensures only the first observer wins.
             if (self._some_regions_inaccessible
@@ -967,7 +965,7 @@ class GlobalAuroraTopologyMonitor(ClusterTopologyMonitorImpl):
     ):
         self._instance_templates_by_region = instance_templates_by_region
         self._global_topology_utils = topology_utils
-        self._accessible_regions: Optional[FrozenSet[str]] = parse_accessible_regions(props)
+        self._accessible_regions: Optional[FrozenSet[str]] = AccessibleRegions.parse(props)
 
         super().__init__(
             plugin_service,
@@ -1002,7 +1000,7 @@ class GlobalAuroraTopologyMonitor(ClusterTopologyMonitorImpl):
             return hosts
         return tuple(
             host for host in hosts
-            if is_in_accessible_region(host.host, self._accessible_regions, self._rds_utils)
+            if AccessibleRegions.is_in_accessible_region(host.host, self._accessible_regions, self._rds_utils)
         )
 
     def _open_any_connection_and_update_topology(self) -> Topology:

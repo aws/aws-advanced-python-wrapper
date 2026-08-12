@@ -12,11 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""Unit coverage for the item-8 (``some_regions_inaccessible``) panic-exit
+"""Unit coverage for the ``some_regions_inaccessible`` panic-exit
 machinery of ``ClusterTopologyMonitorImpl`` — the paths that let a GDB cluster
 exit panic mode when the writer lives in an inaccessible region.
 
-These tests exercise the *decision logic* in isolation with mocked node
+These tests exercise the *decision logic* in isolation with mocked host
 threads: connection harvesting (``_adopt_harvested_monitoring_connection``), the stable-reader
 fallback (``_check_for_stable_reader_topologies``), reader-observed
 writer-change detection (``HostMonitor._reader_thread_fetch_topology``), and the
@@ -224,7 +224,7 @@ class TestReaderObservedWriterChange:
         worker._reader_thread_fetch_topology(conn)
 
         # Writer change is detected, but no panic-exit signal (defer to the
-        # standard node-thread-verifies-writer path).
+        # standard host-thread-verifies-writer path).
         assert worker._writer_changed is True
         assert monitor._reader_observed_writer_host_info.get() is None
         assert not monitor._host_threads_stop.is_set()
@@ -400,7 +400,7 @@ class TestCheckForStableReaderTopologies:
 
 
 class TestClearHostThreadsState:
-    def test_clears_all_item8_state(self):
+    def test_clears_all_panic_exit_state(self):
         monitor = _bare_monitor()
         monitor._host_threads_connections = {"x": (READER_A, ThreadSafeConnectionHolder(None))}
         monitor._reader_topologies_by_id = {"x": (READER_A,)}

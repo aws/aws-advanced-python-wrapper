@@ -21,9 +21,7 @@ from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.read_write_splitting_plugin import \
     ReadWriteSplittingPlugin
 from aws_advanced_python_wrapper.utils.accessible_regions import \
-    is_in_accessible_region
-from aws_advanced_python_wrapper.utils.accessible_regions import \
-    parse as parse_accessible_regions
+    AccessibleRegions
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -112,7 +110,7 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
             self._home_region,
         )
 
-        self._accessible_regions = parse_accessible_regions(props)
+        self._accessible_regions = AccessibleRegions.parse(props)
         if self._accessible_regions is not None:
             logger.debug(
                 "GdbReadWriteSplittingPlugin.ParameterValue",
@@ -129,7 +127,8 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
 
     def _initialize_writer_connection(self) -> None:
         writer_host = self._get_writer_host_info()
-        if writer_host is not None and not self._is_in_accessible_region(writer_host):
+        if writer_host is not None and not AccessibleRegions.is_in_accessible_region(
+                writer_host.host, self._accessible_regions, self._rds_utils):
             writer_region = self._rds_utils.get_rds_region(writer_host.host)
             raise ReadWriteSplittingError(
                 Messages.get_formatted(
@@ -159,7 +158,8 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
     def _set_writer_connection(
         self, writer_conn: Connection, writer_host_info: HostInfo
     ) -> None:
-        if not self._is_in_accessible_region(writer_host_info):
+        if not AccessibleRegions.is_in_accessible_region(
+                writer_host_info.host, self._accessible_regions, self._rds_utils):
             self._close_connection(writer_conn)
             writer_region = self._rds_utils.get_rds_region(writer_host_info.host)
             raise ReadWriteSplittingError(
@@ -183,7 +183,7 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
     def _get_reader_host_candidates(self) -> List[HostInfo]:
         candidates = [
             host for host in self._plugin_service.hosts
-            if self._is_in_accessible_region(host)
+            if AccessibleRegions.is_in_accessible_region(host.host, self._accessible_regions, self._rds_utils)
         ]
 
         if not self._restrict_reader_to_home_region:
@@ -209,9 +209,6 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
             self._restrict_writer_to_home_region
             and not self._is_in_home_region(host_info)
         )
-
-    def _is_in_accessible_region(self, host_info: HostInfo) -> bool:
-        return is_in_accessible_region(host_info.host, self._accessible_regions, self._rds_utils)
 
     def _is_in_home_region(self, host_info: HostInfo) -> bool:
         if self._home_region is None:

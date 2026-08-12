@@ -25,6 +25,8 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.gdb_failover_plugin import (
     GdbFailoverPlugin, GdbFailoverPluginFactory)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.accessible_regions import \
+    AccessibleRegions
 from aws_advanced_python_wrapper.utils.gdb_failover_mode import GdbFailoverMode
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -310,12 +312,15 @@ class TestGdbFailoverAccessibleRegions:
 
     def test_is_in_accessible_region_no_restriction_allows_all(self, gdb_plugin):
         gdb_plugin._accessible_regions = None
-        assert gdb_plugin._is_in_accessible_region(WRITER_OUT) is True
+        assert AccessibleRegions.is_in_accessible_region(
+            WRITER_OUT.host, gdb_plugin._accessible_regions, gdb_plugin._rds_helper) is True
 
     def test_is_in_accessible_region_filters(self, gdb_plugin):
         gdb_plugin._accessible_regions = frozenset({HOME_REGION})
-        assert gdb_plugin._is_in_accessible_region(WRITER_HOME) is True
-        assert gdb_plugin._is_in_accessible_region(READER_OUT) is False
+        assert AccessibleRegions.is_in_accessible_region(
+            WRITER_HOME.host, gdb_plugin._accessible_regions, gdb_plugin._rds_helper) is True
+        assert AccessibleRegions.is_in_accessible_region(
+            READER_OUT.host, gdb_plugin._accessible_regions, gdb_plugin._rds_helper) is False
 
     def test_strict_writer_inaccessible_region_raises_and_counts(self, gdb_plugin):
         gdb_plugin._accessible_regions = frozenset({HOME_REGION})

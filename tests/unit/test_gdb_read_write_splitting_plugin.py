@@ -23,6 +23,8 @@ from aws_advanced_python_wrapper.errors import ReadWriteSplittingError
 from aws_advanced_python_wrapper.gdb_read_write_splitting_plugin import \
     GdbReadWriteSplittingPlugin
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.accessible_regions import \
+    AccessibleRegions
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -83,12 +85,15 @@ class TestInitSettingsAccessibleRegions:
 class TestIsInAccessibleRegion:
     def test_no_restriction_allows_all(self, gdb_rw_plugin):
         gdb_rw_plugin._accessible_regions = None
-        assert gdb_rw_plugin._is_in_accessible_region(WRITER_OUT) is True
+        assert AccessibleRegions.is_in_accessible_region(
+            WRITER_OUT.host, gdb_rw_plugin._accessible_regions, gdb_rw_plugin._rds_utils) is True
 
     def test_filters_by_region(self, gdb_rw_plugin):
         gdb_rw_plugin._accessible_regions = frozenset({HOME_REGION})
-        assert gdb_rw_plugin._is_in_accessible_region(WRITER_HOME) is True
-        assert gdb_rw_plugin._is_in_accessible_region(READER_OUT) is False
+        assert AccessibleRegions.is_in_accessible_region(
+            WRITER_HOME.host, gdb_rw_plugin._accessible_regions, gdb_rw_plugin._rds_utils) is True
+        assert AccessibleRegions.is_in_accessible_region(
+            READER_OUT.host, gdb_rw_plugin._accessible_regions, gdb_rw_plugin._rds_utils) is False
 
 
 class TestInitializeWriterConnection:

@@ -41,7 +41,7 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.accessible_regions import \
-    is_in_accessible_region
+    AccessibleRegions
 from aws_advanced_python_wrapper.utils.decorators import \
     preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -646,13 +646,7 @@ class GlobalAuroraMysqlDialect(AuroraMysqlDialect, GlobalAuroraTopologyDialect):
         hosts: Sequence[HostInfo],
         accessible_regions: Optional[FrozenSet[str]],
     ) -> List[HostInfo]:
-        if not accessible_regions:
-            return list(hosts)
-        rds_utils = RdsUtils()
-        return [
-            host for host in hosts
-            if is_in_accessible_region(host.host, accessible_regions, rds_utils)
-        ]
+        return AccessibleRegions.filter_available_hosts(hosts, accessible_regions)
 
 
 class GlobalAuroraPgDialect(AuroraPgDialect, GlobalAuroraTopologyDialect):
@@ -716,13 +710,7 @@ class GlobalAuroraPgDialect(AuroraPgDialect, GlobalAuroraTopologyDialect):
         hosts: Sequence[HostInfo],
         accessible_regions: Optional[FrozenSet[str]],
     ) -> List[HostInfo]:
-        if not accessible_regions:
-            return list(hosts)
-        rds_utils = RdsUtils()
-        return [
-            host for host in hosts
-            if is_in_accessible_region(host.host, accessible_regions, rds_utils)
-        ]
+        return AccessibleRegions.filter_available_hosts(hosts, accessible_regions)
 
 
 class MultiAzClusterMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect):

@@ -17,59 +17,60 @@ from __future__ import annotations
 from aws_advanced_python_wrapper.database_dialect import (
     GlobalAuroraMysqlDialect, GlobalAuroraPgDialect, MysqlDatabaseDialect)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.utils.accessible_regions import parse
+from aws_advanced_python_wrapper.utils.accessible_regions import \
+    AccessibleRegions
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 class TestParseAccessibleRegions:
     def test_returns_none_when_property_not_set(self):
         props = Properties()
-        assert parse(props) is None
+        assert AccessibleRegions.parse(props) is None
 
     def test_returns_none_when_empty_string(self):
         props = Properties()
         props["gdb_accessible_regions"] = ""
-        assert parse(props) is None
+        assert AccessibleRegions.parse(props) is None
 
     def test_returns_none_when_whitespace_only(self):
         props = Properties()
         props["gdb_accessible_regions"] = "   "
-        assert parse(props) is None
+        assert AccessibleRegions.parse(props) is None
 
     def test_parses_single_region(self):
         props = Properties()
         props["gdb_accessible_regions"] = "us-east-1"
-        result = parse(props)
+        result = AccessibleRegions.parse(props)
         assert result == frozenset({"us-east-1"})
 
     def test_parses_multiple_regions(self):
         props = Properties()
         props["gdb_accessible_regions"] = "us-east-1,us-west-2,eu-central-1"
-        result = parse(props)
+        result = AccessibleRegions.parse(props)
         assert result == frozenset({"us-east-1", "us-west-2", "eu-central-1"})
 
     def test_normalizes_to_lowercase(self):
         props = Properties()
         props["gdb_accessible_regions"] = "US-EAST-1,Us-West-2"
-        result = parse(props)
+        result = AccessibleRegions.parse(props)
         assert result == frozenset({"us-east-1", "us-west-2"})
 
     def test_trims_whitespace(self):
         props = Properties()
         props["gdb_accessible_regions"] = " us-east-1 , us-west-2 "
-        result = parse(props)
+        result = AccessibleRegions.parse(props)
         assert result == frozenset({"us-east-1", "us-west-2"})
 
     def test_skips_empty_entries(self):
         props = Properties()
         props["gdb_accessible_regions"] = "us-east-1,,us-west-2,"
-        result = parse(props)
+        result = AccessibleRegions.parse(props)
         assert result == frozenset({"us-east-1", "us-west-2"})
 
     def test_returns_frozenset(self):
         props = Properties()
         props["gdb_accessible_regions"] = "us-east-1"
-        result = parse(props)
+        result = AccessibleRegions.parse(props)
         assert isinstance(result, frozenset)
 
 

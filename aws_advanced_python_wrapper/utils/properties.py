@@ -721,7 +721,7 @@ class WrapperProperties:
         "gdb_accessible_regions",
         "Comma-separated list of AWS regions accessible by the application. "
         "When set, failover, topology monitoring, and read/write splitting "
-        "will only consider nodes in these regions.",
+        "will only consider hosts in these regions.",
         None,
     )
 

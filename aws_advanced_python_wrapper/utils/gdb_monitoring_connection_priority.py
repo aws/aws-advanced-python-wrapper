@@ -33,7 +33,7 @@ _DEFAULT_VALUE = "strict-writer-primary"
 
 # AWS region identifiers look like "us-east-1", "eu-west-2", "ap-southeast-1".
 # Any unrecognized token that does not match this shape is most likely a typo
-# (e.g. "strict-wrtier-primary"); mirrors the Node.js wrapper's REGION_SHAPE.
+# (e.g. "strict-writer-primary" misspelled as "strict-wrtier-primary").
 _REGION_SHAPE = re.compile(r"^[a-z]{2}-[a-z]+-\d+$")
 
 

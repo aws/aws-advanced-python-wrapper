@@ -159,7 +159,7 @@ class TestIsSatisfiedBy:
         assert p.is_satisfied_by(READER_WEST, "us-east-1", rds_utils) is True
         assert p.is_satisfied_by(READER_EAST, "us-east-1", rds_utils) is False
 
-    def test_any_node_in_region(self):
+    def test_any_host_in_region(self):
         p = Priority.from_value("us-east-1")
         assert p.is_satisfied_by(WRITER_EAST, "us-east-1", rds_utils) is True
         assert p.is_satisfied_by(READER_EAST, "us-east-1", rds_utils) is True

@@ -31,7 +31,7 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.accessible_regions import \
-    parse as parse_accessible_regions
+    AccessibleRegions
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -109,7 +109,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
         self._plugin_service: PluginService = plugin_service
         self._rds_utils = RdsUtils()
         self._host_list_provider_service: Optional[HostListProviderService] = None
-        self._accessible_regions: Optional[FrozenSet[str]] = parse_accessible_regions(props)
+        self._accessible_regions: Optional[FrozenSet[str]] = AccessibleRegions.parse(props)
 
         self._retry_delay_ms: int = WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props)
         self._open_connection_retry_timeout_ns: int = \

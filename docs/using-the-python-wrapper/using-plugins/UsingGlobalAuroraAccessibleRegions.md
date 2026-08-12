@@ -21,7 +21,7 @@ The accessible-regions filter is applied **before** all other selection logic â€
 | [GDB Failover plugin](./UsingTheGdbFailoverPlugin.md)                 | Validates the home region at init. In `strict-writer` mode, **fails loudly** (`FailoverFailedError`) if the new writer is in an inaccessible region. In all other modes, filters out inaccessible-region hosts before candidate selection. |
 | [GDB Read/Write Splitting plugin](./UsingTheGdbReadWriteSplittingPlugin.md) | Validates the home region at init. Rejects (`ReadWriteSplittingError`) a writer in an inaccessible region. Filters readers by accessible region **before** applying the home-region restriction. |
 | Aurora Initial Connection Strategy plugin                             | Excludes inaccessible-region hosts before selecting a host by strategy.                                                                       |
-| Global Aurora topology monitor                                        | Skips node-monitoring workers for hosts in inaccessible regions, and fails if the initial host is itself in an inaccessible region.          |
+| Global Aurora topology monitor                                        | Skips host-monitoring workers for hosts in inaccessible regions, and fails if the initial host is itself in an inaccessible region.          |
 
 ### Fail-loud, not silent fallback
 

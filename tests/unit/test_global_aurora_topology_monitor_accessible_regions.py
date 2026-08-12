@@ -38,7 +38,7 @@ def _bare_monitor(accessible_regions, initial_host=WRITER_HOME):
     return monitor
 
 
-class TestFilterHostsForNodeMonitoring:
+class TestFilterHostsForHostMonitoring:
     def test_no_restriction_returns_all(self):
         monitor = _bare_monitor(None)
         hosts = (WRITER_HOME, READER_HOME, READER_OUT)
