@@ -81,7 +81,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
         self._wait_for_initial_topology_ms: int = max(
             0, WrapperProperties.WAIT_FOR_INITIAL_TOPOLOGY_MS.get_int(props))
 
-        verify_role_value = WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.get(props)
+        verify_role_value = WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.get(props)
         self._verify_role_prop_value: Optional[str] = \
             verify_role_value.lower() if verify_role_value is not None else None
 
@@ -156,7 +156,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
                     if self._verify_role_prop_value == RoleVerificationSetting.READER.value:
                         logger.debug(
                             "AuroraInitialConnectionStrategyPlugin.VerifyReaderConfiguredButNoReadersExist",
-                            WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.name)
+                            WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name)
                     self._set_initial_connection_host_info(is_initial_connection, candidate_host)
                     return candidate_conn
 
@@ -185,7 +185,10 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
 
                 raise
 
-        return await connect_func()
+        raise AwsWrapperError(Messages.get_formatted(
+            "AuroraInitialConnectionStrategyPlugin.Timeout",
+            self._open_connection_retry_timeout_ns // 1_000_000,
+            WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name))
 
     async def _open_candidate_connection(
             self,
@@ -401,14 +404,14 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
                 and url_type in (RdsUrlType.RDS_WRITER_CLUSTER, RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER)):
             raise AwsWrapperError(Messages.get_formatted(
                 "AuroraInitialConnectionStrategyPlugin.InvalidSettingForEndpoint",
-                WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.name, "reader", "writer cluster or global cluster"))
+                WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name, "reader", "writer cluster or global cluster"))
 
         # A custom cluster can only be of type "reader" or "any".
         if (setting is RoleVerificationSetting.WRITER
                 and url_type in (RdsUrlType.RDS_READER_CLUSTER, RdsUrlType.RDS_CUSTOM_CLUSTER)):
             raise AwsWrapperError(Messages.get_formatted(
                 "AuroraInitialConnectionStrategyPlugin.InvalidSettingForEndpoint",
-                WrapperProperties.VERIFY_OPENED_CONNECTION_ROLE.name, "writer", "reader cluster or custom cluster"))
+                WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name, "writer", "reader cluster or custom cluster"))
 
     def _get_candidate_host(
             self,

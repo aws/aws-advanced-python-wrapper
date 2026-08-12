@@ -283,23 +283,22 @@ def test_reader_cluster_no_readers_returns_writer_fallback():
     assert svc.initial_connection_host_info is host
 
 
-# ---- 6. Timeout exhausted -> falls back to plain connect_func ----------
+# ---- 6. Timeout exhausted -> raises (parity with sync) -----------------
 
 
-def test_timeout_exhausted_falls_back_to_plain_connect_func():
+def test_timeout_exhausted_raises():
     writer = _writer_host()
     # Plugin always sees role=READER on a writer-cluster URL, so every
-    # retry fails and timeout kicks in. After the verified_writer path
-    # returns None, the plugin falls back to connect_func().
+    # retry fails and the timeout kicks in. On exhaustion the plugin raises
+    # rather than returning a connection whose role was never verified.
     plugin, svc, driver_dialect = _build(
         all_hosts=(writer,),
         role=HostRole.READER,  # never a WRITER -> loop exhausts
     )
     driver_dialect.connect.return_value = MagicMock(name="reader_direct")
-    fallback_conn = MagicMock(name="fallback_conn")
 
     async def _connect_func():
-        return fallback_conn
+        return MagicMock(name="fallback_conn")
 
     host = _cluster_host_info(_WRITER_CLUSTER)
 
@@ -313,9 +312,8 @@ def test_timeout_exhausted_falls_back_to_plain_connect_func():
             connect_func=_connect_func,
         )
 
-    result = asyncio.run(_run())
-    # Verified path exhausted -> plain connect_func call returned.
-    assert result is fallback_conn
+    with pytest.raises(AwsWrapperError):
+        asyncio.run(_run())
 
 
 # ---- 7. Unsupported strategy -> AwsWrapperError ------------------------
@@ -352,9 +350,9 @@ def test_unsupported_reader_strategy_raises():
 # ---- 8. Reader non-login exception -> host marked UNAVAILABLE ----------
 
 
-def test_network_exception_retries_then_falls_back():
-    """A network exception is retried until the budget expires, then the plain
-    connect_func result is returned."""
+def test_network_exception_retries_then_raises():
+    """A network exception is retried until the budget expires, then the
+    plugin raises on timeout (parity with sync)."""
     reader = _reader_host()
     writer = _writer_host()
     plugin, svc, driver_dialect = _build(
@@ -366,10 +364,9 @@ def test_network_exception_retries_then_falls_back():
     svc.is_network_exception = MagicMock(return_value=True)  # type: ignore[method-assign]
 
     host = _cluster_host_info(_READER_CLUSTER)
-    fallback_conn = MagicMock(name="fallback_conn")
 
     async def _connect_func():
-        return fallback_conn
+        return MagicMock(name="fallback_conn")
 
     async def _run():
         return await plugin.connect(
@@ -381,10 +378,9 @@ def test_network_exception_retries_then_falls_back():
             connect_func=_connect_func,
         )
 
-    result = asyncio.run(_run())
+    with pytest.raises(AwsWrapperError):
+        asyncio.run(_run())
 
-    # Timeout expired -> plain connect_func fallback.
-    assert result is fallback_conn
     # Retried rather than giving up on the first network failure.
     assert driver_dialect.connect.await_count > 1
 
@@ -420,7 +416,8 @@ def test_availability_marked_when_verification_fails_after_connecting():
             connect_func=_connect_func,
         )
 
-    asyncio.run(_run())
+    with pytest.raises(AwsWrapperError):
+        asyncio.run(_run())
 
     assert svc.set_availability.call_count >= 1
     called_aliases = svc.set_availability.call_args_list[0][0][0]
@@ -677,6 +674,7 @@ def test_candidate_host_substitute_with_any_raises_unsupported_strategy():
             InstanceSubstitutionStrategy.SUBSTITUTE_WITH_ANY)
 
     svc.get_host_info_by_strategy.assert_not_called()
+
 
 def test_endpoint_substitution_role_on_instance_endpoint_raises():
     """Substitution cannot be requested for an instance endpoint."""

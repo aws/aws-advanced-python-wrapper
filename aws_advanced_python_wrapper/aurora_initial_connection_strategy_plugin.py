@@ -277,7 +277,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
             "AuroraInitialConnectionStrategyPlugin.WaitingForTopology",
             self._wait_for_initial_topology_ms, original_connect_host.host)
 
-        # Deviation from JDBC: force_monitoring_refresh_host_list takes seconds, and host list
+        # Intentional deviation: force_monitoring_refresh_host_list takes seconds, and host list
         # providers without monitor support raise instead of returning their host list.
         timeout_sec = self._wait_for_initial_topology_ms / 1000
         try:
