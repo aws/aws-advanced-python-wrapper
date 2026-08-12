@@ -8,28 +8,28 @@ For Aurora Global Database configuration details, see [Aurora Global Databases](
 
 Legend: ✅ compatible &nbsp;|&nbsp; ❌ incompatible / no added value
 
-| Plugin code / Database type | Aurora Global Database <br>(MySQL and PG) | Aurora Cluster <br>(MySQL and PG) | RDS Multi-AZ DB Cluster (3 instances) <br>(MySQL and PG) |
-|---|:---:|:---:|:---:|
-| [custom_endpoint](../using-plugins/UsingTheCustomEndpointPlugin.md) | ✅ | ✅ | ✅ |
-| [host_monitoring](../using-plugins/UsingTheHostMonitoringPlugin.md) (EFM v1) | ✅ | ✅ | ✅ |
-| [host_monitoring_v2](../using-plugins/UsingTheHostMonitoringPlugin.md) (EFM v2) | ✅ | ✅ | ✅ |
-| [failover](../using-plugins/UsingTheFailoverPlugin.md) | ✅ | ✅ | ✅ |
-| [failover_v2](../using-plugins/UsingTheFailover2Plugin.md) | ✅ | ✅ | ✅ |
-| [gdb_failover](../using-plugins/UsingTheGdbFailoverPlugin.md) | ✅ | ✅ | ✅ |
-| [iam](../using-plugins/UsingTheIamAuthenticationPlugin.md) | ✅ | ✅ | ✅ |
-| [aws_secrets_manager](../using-plugins/UsingTheAwsSecretsManagerPlugin.md) | ✅ | ✅ | ✅ |
-| [federated_auth](../using-plugins/UsingTheFederatedAuthenticationPlugin.md) | ✅ | ✅ | ✅ |
-| [okta](../using-plugins/UsingTheOktaAuthenticationPlugin.md) | ✅ | ✅ | ✅ |
-| stale_dns | ✅ | ✅ | ✅ |
-| [read_write_splitting](../using-plugins/UsingTheReadWriteSplittingPlugin.md) | ✅ | ✅ | ✅ |
-| [srw](../using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) | ✅ | ✅ | ✅ |
-| [gdb_rw](../using-plugins/UsingTheGdbReadWriteSplittingPlugin.md) | ✅ | ✅ | ✅ |
-| [aurora_connection_tracker](../using-plugins/UsingTheAuroraConnectionTrackerPlugin.md) | ✅ | ✅ | ✅ |
-| connect_time | ✅ | ✅ | ✅ |
-| [fastest_response_strategy](../using-plugins/UsingTheFastestResponseStrategyPlugin.md) | ✅ | ✅ | ✅ |
-| [initial_connection](../using-plugins/UsingTheAuroraInitialConnectionStrategyPlugin.md) | ✅ | ✅ | ✅ |
-| [limitless](../using-plugins/UsingTheLimitlessPlugin.md) | ❌ | ✅ (PostgreSQL only) | ✅ |
-| [bg](../using-plugins/UsingTheBlueGreenPlugin.md) | ❌ | ✅ | ❌ |
+| Plugin code / Database type | Aurora Global Database <br>(MySQL and PG) | Aurora Cluster <br>(MySQL and PG) |         RDS Multi-AZ DB Cluster (3 instances) <br>(MySQL and PG)         |
+|---|:---:|:---:|:------------------------------------------------------------------------:|
+| [custom_endpoint](../using-plugins/UsingTheCustomEndpointPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [host_monitoring](../using-plugins/UsingTheHostMonitoringPlugin.md) (EFM v1) | ✅ | ✅ |                                    ✅                                     |
+| [host_monitoring_v2](../using-plugins/UsingTheHostMonitoringPlugin.md) (EFM v2) | ✅ | ✅ |                                    ✅                                     |
+| [failover](../using-plugins/UsingTheFailoverPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [failover_v2](../using-plugins/UsingTheFailover2Plugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [gdb_failover](../using-plugins/UsingTheGdbFailoverPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [iam](../using-plugins/UsingTheIamAuthenticationPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [aws_secrets_manager](../using-plugins/UsingTheAwsSecretsManagerPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [federated_auth](../using-plugins/UsingTheFederatedAuthenticationPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [okta](../using-plugins/UsingTheOktaAuthenticationPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| stale_dns | ✅ | ✅ |                                    ✅                                     |
+| [read_write_splitting](../using-plugins/UsingTheReadWriteSplittingPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [srw](../using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [gdb_rw](../using-plugins/UsingTheGdbReadWriteSplittingPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [aurora_connection_tracker](../using-plugins/UsingTheAuroraConnectionTrackerPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| connect_time | ✅ | ✅ |                                    ✅                                     |
+| [fastest_response_strategy](../using-plugins/UsingTheFastestResponseStrategyPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [initial_connection](../using-plugins/UsingTheAuroraInitialConnectionStrategyPlugin.md) | ✅ | ✅ |                                    ✅                                     |
+| [limitless](../using-plugins/UsingTheLimitlessPlugin.md) | ❌ | ✅ (PostgreSQL only) |                           ✅ (PostgreSQL only)                            |
+| [bg](../using-plugins/UsingTheBlueGreenPlugin.md) | ❌ | ✅ |                                    ❌                                     |
 
 <br>
 

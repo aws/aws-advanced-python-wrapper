@@ -16,8 +16,8 @@ We encourage users to verify their configurations and ensure that their configur
 
 The following plugins operate independently of connection management and are compatible with all plugins, database types, and endpoint types:
 
-| Plugin         | Description                                        |
-|----------------|----------------------------------------------------|
-| [dev](../using-plugins/UsingTheDeveloperPlugin.md) | Developer utility plugin for debugging and diagnostics. |
-| `connect_time` | Logs the time taken to establish a connection.     |
-| `execute_time` | Logs the time taken to execute any driver method.  |
+| Plugin                                             | Description                                        |
+|----------------------------------------------------|----------------------------------------------------|
+| [`dev`](../using-plugins/UsingTheDeveloperPlugin.md) | Developer utility plugin for debugging and diagnostics. |
+| `connect_time`                                     | Logs the time taken to establish a connection.     |
+| `execute_time`                                     | Logs the time taken to execute any driver method.  |

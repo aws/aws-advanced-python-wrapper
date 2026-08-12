@@ -154,19 +154,14 @@ built-in weights are:
 
 ## Async / sync availability
 
-The Python wrapper ships two execution modes — a synchronous wrapper and an asynchronous (`asyncio`) wrapper. **Every plugin code is registered in both modes**, so the plugin-vs-plugin, database-type, and endpoint matrices above apply equally to sync and async. The differences are in the *target driver* and a few behavioral gaps, not in which plugins you can name.
+Every plugin code is registered in **both** the synchronous and asynchronous (`asyncio`) wrappers, so the plugin-vs-plugin, database-type, and endpoint matrices above apply identically to both. The only differences are the target driver and a few async behavioral gaps:
 
-| Concern | Sync | Async |
+| Delta | Sync | Async |
 |---|---|---|
-| Target drivers | `psycopg` (PG), `mysql-connector-python` (MySQL) | `psycopg` async (PG), `aiomysql` (MySQL) |
-| Plugin codes available | all 22 | all 22 (identical set) |
-| `host_monitoring` / `host_monitoring_v2` on MySQL | ❌ `mysql-connector-python` (no thread-based abort — see below) | ✅ `aiomysql` |
-| `federated_auth` / `okta` IdP HTTP client | `requests` (bundled) | `aiohttp` (install separately — see note below) |
-
-**Behavioral gaps to be aware of on the async side:**
-
-- The async `gdb_failover` and `gdb_rw` plugins implement **home-region** logic but do **not** yet apply `gdb_accessible_regions` filtering, and the async topology monitor has no monitoring-connection-priority support. These are sync-only today. If you rely on accessible-regions or monitoring-connection-priority, use the sync wrapper.
-- Async plugins are otherwise functionally equivalent to their sync counterparts; differences are documented in the individual plugin pages where they exist.
+| Target driver | `psycopg` (PG), `mysql-connector-python` (MySQL) | `psycopg` async (PG), `aiomysql` (MySQL) |
+| EFM (`host_monitoring` / `host_monitoring_v2`) on MySQL | ❌ not supported ([why](#driver-specific-incompatibilities)) | ✅ supported (`aiomysql`) |
+| `federated_auth` / `okta` IdP HTTP client | `requests` (bundled) | `aiohttp` (install separately) |
+| `gdb_failover` / `gdb_rw` accessible-regions filtering + monitoring-connection-priority | ✅ supported | ❌ sync-only today |
 
 ## Driver-specific incompatibilities
 
@@ -183,12 +178,13 @@ These constraints are specific to the Python target drivers and are **not** refl
 | Use case | Sync chain | Async chain |
 |---|---|---|
 | Aurora PG — R/W splitting + failover + EFM | `read_write_splitting,failover_v2,host_monitoring_v2` | `read_write_splitting,failover_v2,host_monitoring_v2` |
-| Aurora MySQL (sync, `mysql-connector-python`) — R/W splitting + failover | `read_write_splitting,failover_v2` *(no EFM)* | — |
-| Aurora MySQL (async, `aiomysql`) — R/W splitting + failover + EFM | — | `read_write_splitting,failover_v2,host_monitoring_v2` |
+| Aurora MySQL — R/W splitting + failover | `read_write_splitting,failover_v2` ¹ | `read_write_splitting,failover_v2,host_monitoring_v2` |
 | Aurora PG — failover only | `failover_v2,host_monitoring_v2` | `failover_v2,host_monitoring_v2` |
-| Aurora MySQL (sync) — failover only | `failover_v2` | — |
+| Aurora MySQL — failover only | `failover_v2` ¹ | `failover_v2,host_monitoring_v2` |
 | Aurora Global Database — GDB failover + EFM | `gdb_failover,host_monitoring_v2` | `gdb_failover,host_monitoring_v2` |
 | Aurora Global Database — GDB R/W splitting + GDB failover | `gdb_rw,gdb_failover` | `gdb_rw,gdb_failover` |
+
+¹ Sync MySQL (`mysql-connector-python`) omits EFM — see [Async / sync availability](#async--sync-availability).
 
 > **Note (async federated/Okta auth):** the async `federated_auth` and `okta` plugins perform their
 > IdP HTTP round-trips with [`aiohttp`](https://docs.aiohttp.org/), which is not a runtime dependency
@@ -202,4 +198,4 @@ These constraints are specific to the Python target drivers and are **not** refl
 - [UsingTheFailoverPlugin.md](../using-plugins/UsingTheFailoverPlugin.md) (v1, not recommended for new code per the table above)
 - [UsingTheHostMonitoringPlugin.md](../using-plugins/UsingTheHostMonitoringPlugin.md)
 - [UsingTheIamAuthenticationPlugin.md](../using-plugins/UsingTheIamAuthenticationPlugin.md)
-- [FailoverConfigurationGuide.md](../FailoverConfigurationGuide.md) — retry-budget knobs at the SQLAlchemy / Django boundary
+- [FailoverConfigurationGuide.md](../FailoverConfigurationGuide.md)
