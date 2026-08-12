@@ -739,7 +739,7 @@ class WrapperProperties:
         "Comma-separated, region-aware priority list for the Global Database "
         "topology monitor's background connection. Values combine role, region, "
         "and primary/secondary awareness, e.g. 'strict-writer-primary', "
-        "'strict-reader-secondary', 'strict-reader-us-east-1', 'us-west-2'.",
+        "'strict-reader-secondary', 'strict-reader-us-east-1', 'us-west-2' ",
         "strict-writer-primary",
     )
 
