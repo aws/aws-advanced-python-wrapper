@@ -123,6 +123,12 @@ The `global_cluster_instance_host_patterns` parameter is **required** for Aurora
 - Different cluster identifiers for each region (e.g., `XYZ1`, `XYZ2`)
 - Example: `us-east-2:?.XYZ1.us-east-2.rds.amazonaws.com,us-west-2:?.XYZ2.us-west-2.rds.amazonaws.com`
 
+### Restricting to Accessible Regions
+If your application can only reach a subset of the regions the global cluster spans, use the `gdb_accessible_regions` property to restrict host selection to those regions. See [Restricting Aurora Global Databases to Accessible Regions](./using-plugins/UsingGlobalAuroraAccessibleRegions.md).
+
+### Monitoring Connection Priority
+To control which host role or region the topology monitor uses for its background connection, use the `monitoring_connection_priority` / `gdb_monitoring_connection_priority` properties. See [Monitoring Connection Priority](./using-plugins/UsingMonitoringConnectionPriority.md).
+
 ### Authentication Plugins Compatible with GDB
 - [IAM Authentication Plugin](./using-plugins/UsingTheIamAuthenticationPlugin.md)
 - [Federated Authentication Plugin](./using-plugins/UsingTheFederatedAuthPlugin.md)

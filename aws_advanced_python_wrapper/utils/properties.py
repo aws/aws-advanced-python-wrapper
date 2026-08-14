@@ -717,6 +717,32 @@ class WrapperProperties:
         False,
     )
 
+    GDB_ACCESSIBLE_REGIONS = WrapperProperty(
+        "gdb_accessible_regions",
+        "Comma-separated list of AWS regions accessible by the application. "
+        "When set, failover, topology monitoring, and read/write splitting "
+        "will only consider hosts in these regions.",
+        None,
+    )
+
+    MONITORING_CONNECTION_PRIORITY = WrapperProperty(
+        "monitoring_connection_priority",
+        "Comma-separated priority list for the topology monitor's background "
+        "connection. Values: 'strict-writer', 'strict-reader', "
+        "'writer-or-reader'. The monitor accepts any connection initially, "
+        "then asynchronously upgrades to a higher-priority one.",
+        "strict-writer",
+    )
+
+    GDB_MONITORING_CONNECTION_PRIORITY = WrapperProperty(
+        "gdb_monitoring_connection_priority",
+        "Comma-separated, region-aware priority list for the Global Database "
+        "topology monitor's background connection. Values combine role, region, "
+        "and primary/secondary awareness, e.g. 'strict-writer-primary', "
+        "'strict-reader-secondary', 'strict-reader-us-east-1', 'us-west-2' ",
+        "strict-writer-primary",
+    )
+
 
 class PropertiesUtils:
     _MONITORING_PROPERTY_PREFIX = "monitoring-"

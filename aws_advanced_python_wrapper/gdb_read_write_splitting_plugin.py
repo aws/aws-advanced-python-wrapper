@@ -14,12 +14,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, FrozenSet, List, Optional
 
 from aws_advanced_python_wrapper.errors import ReadWriteSplittingError
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.read_write_splitting_plugin import \
     ReadWriteSplittingPlugin
+from aws_advanced_python_wrapper.utils.accessible_regions import \
+    AccessibleRegions
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -60,6 +62,7 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
             WrapperProperties.GDB_ENABLE_GLOBAL_WRITE_FORWARDING.get_bool(props)
         )
         self._home_region: Optional[str] = None
+        self._accessible_regions: Optional[FrozenSet[str]] = None
         self._initialized: bool = False
 
     def connect(
@@ -107,8 +110,33 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
             self._home_region,
         )
 
+        self._accessible_regions = AccessibleRegions.parse(props)
+        if self._accessible_regions is not None:
+            logger.debug(
+                "GdbReadWriteSplittingPlugin.ParameterValue",
+                WrapperProperties.GDB_ACCESSIBLE_REGIONS.name,
+                self._accessible_regions,
+            )
+            if home_region.casefold() not in self._accessible_regions:
+                raise ReadWriteSplittingError(
+                    Messages.get_formatted(
+                        "GdbReadWriteSplittingPlugin.HomeRegionNotInAccessibleRegions",
+                        self._home_region, self._accessible_regions,
+                    )
+                )
+
     def _initialize_writer_connection(self) -> None:
         writer_host = self._get_writer_host_info()
+        if writer_host is not None and not AccessibleRegions.is_in_accessible_region(
+                writer_host.host, self._accessible_regions, self._rds_utils):
+            writer_region = self._rds_utils.get_rds_region(writer_host.host)
+            raise ReadWriteSplittingError(
+                Messages.get_formatted(
+                    "GdbReadWriteSplittingPlugin.WriterNotInAccessibleRegion",
+                    writer_host.host, writer_region, self._accessible_regions,
+                )
+            )
+
         if writer_host is not None and self._is_writer_outside_home_region(writer_host):
             if self._enable_global_write_forwarding:
                 logger.debug(
@@ -130,6 +158,17 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
     def _set_writer_connection(
         self, writer_conn: Connection, writer_host_info: HostInfo
     ) -> None:
+        if not AccessibleRegions.is_in_accessible_region(
+                writer_host_info.host, self._accessible_regions, self._rds_utils):
+            self._close_connection(writer_conn)
+            writer_region = self._rds_utils.get_rds_region(writer_host_info.host)
+            raise ReadWriteSplittingError(
+                Messages.get_formatted(
+                    "GdbReadWriteSplittingPlugin.WriterNotInAccessibleRegion",
+                    writer_host_info.host, writer_region, self._accessible_regions,
+                )
+            )
+
         if self._is_writer_outside_home_region(writer_host_info):
             self._close_connection(writer_conn)
             raise ReadWriteSplittingError(
@@ -142,12 +181,16 @@ class GdbReadWriteSplittingPlugin(ReadWriteSplittingPlugin):
         super()._set_writer_connection(writer_conn, writer_host_info)
 
     def _get_reader_host_candidates(self) -> List[HostInfo]:
+        candidates = [
+            host for host in self._plugin_service.hosts
+            if AccessibleRegions.is_in_accessible_region(host.host, self._accessible_regions, self._rds_utils)
+        ]
+
         if not self._restrict_reader_to_home_region:
-            return super()._get_reader_host_candidates()
+            return candidates
 
         hosts_in_region = [
-            host
-            for host in self._plugin_service.hosts
+            host for host in candidates
             if self._is_in_home_region(host)
         ]
 

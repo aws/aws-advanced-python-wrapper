@@ -16,7 +16,8 @@ from __future__ import annotations
 
 from enum import Enum
 from time import perf_counter_ns, sleep
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
+from typing import (TYPE_CHECKING, Callable, Dict, FrozenSet, List, Optional,
+                    Sequence, Set, Tuple)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -29,6 +30,8 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.utils.accessible_regions import \
+    AccessibleRegions
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -106,6 +109,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
         self._plugin_service: PluginService = plugin_service
         self._rds_utils = RdsUtils()
         self._host_list_provider_service: Optional[HostListProviderService] = None
+        self._accessible_regions: Optional[FrozenSet[str]] = AccessibleRegions.parse(props)
 
         self._retry_delay_ms: int = WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props)
         self._open_connection_retry_timeout_ns: int = \
@@ -277,7 +281,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
             "AuroraInitialConnectionStrategyPlugin.WaitingForTopology",
             self._wait_for_initial_topology_ms, original_connect_host.host)
 
-        # Intentional deviation: force_monitoring_refresh_host_list takes seconds, and host list
+        # force_monitoring_refresh_host_list takes seconds, and host list
         # providers without monitor support raise instead of returning their host list.
         timeout_sec = self._wait_for_initial_topology_ms / 1000
         try:
@@ -326,7 +330,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
             return InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER
 
         if url_type == RdsUrlType.RDS_WRITER_CLUSTER:
-            writer = self._get_writer()
+            writer = self._find_writer(self._plugin_service.all_hosts)
             if writer is None or not self._rds_utils.is_rds_instance(writer.host):
                 return InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE
 
@@ -405,7 +409,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
             return HostRole.WRITER
 
         if url_type == RdsUrlType.RDS_WRITER_CLUSTER:
-            writer = self._get_writer()
+            writer = self._find_writer(self._plugin_service.all_hosts)
             if (writer is not None and self._rds_utils.is_rds_instance(writer.host)
                     and self._rds_utils.is_same_region(writer.host, original_host)):
                 # The cluster writer endpoint belongs to the same region as the current writer; it's active.
@@ -446,7 +450,12 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
             return original_connect_host
 
         if substitution_strategy is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER:
-            return self._get_writer()
+            # Filter by accessible regions BEFORE picking the writer so a writer in
+            # an unreachable region is never selected (no-op unless
+            # gdb_accessible_regions is set on a Global Aurora dialect); the
+            # candidate host is chosen from the filtered host list here.
+            available_hosts = self._filter_by_accessible_regions(self._plugin_service.all_hosts)
+            return self._find_writer(available_hosts)
 
         # SUBSTITUTE_WITH_ANY has no specific target role, so to_target_role() returns None
         target_role = substitution_strategy.to_target_role()
@@ -457,17 +466,23 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
                 "AuroraInitialConnectionStrategyPlugin.UnsupportedStrategy", self._selection_strategy))
 
         try:
+            # Filter to accessible regions BEFORE any strategy/region selection so
+            # a candidate is never chosen from an unreachable region (no-op unless
+            # gdb_accessible_regions is set on a Global Aurora dialect).
+            available_hosts = self._filter_by_accessible_regions(self._plugin_service.hosts)
+
             aws_region = self._rds_utils.get_rds_region(original_connect_host.host) \
                 if url_type.has_region else None
             if aws_region:
                 hosts_in_region: List[HostInfo] = [
-                    host for host in self._plugin_service.hosts
+                    host for host in available_hosts
                     if (host_region := self._rds_utils.get_rds_region(host.host)) is not None
                     and aws_region.casefold() == host_region.casefold()]
                 return self._plugin_service.get_host_info_by_strategy(
                     target_role, self._selection_strategy, hosts_in_region)
 
-            return self._plugin_service.get_host_info_by_strategy(target_role, self._selection_strategy)
+            return self._plugin_service.get_host_info_by_strategy(
+                target_role, self._selection_strategy, available_hosts)
         except Exception:
             # Unable to find a candidate host.
             return None
@@ -479,8 +494,14 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
                 and host_info is not None):
             self._host_list_provider_service.initial_connection_host_info = host_info
 
-    def _get_writer(self) -> Optional[HostInfo]:
-        for host in self._plugin_service.all_hosts:
+    @staticmethod
+    def _find_writer(hosts: Sequence[HostInfo]) -> Optional[HostInfo]:
+        """Return the first WRITER in ``hosts``, or ``None``.
+
+        Does NOT filter by accessible regions — the caller decides whether to
+        pass an already-filtered list.
+        """
+        for host in hosts:
             if host.role == HostRole.WRITER:
                 return host
         return None
@@ -501,6 +522,21 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
     def _delay(self, delay_ms: int):
         sleep(delay_ms / 1000)
+
+    def _filter_by_accessible_regions(self, hosts: Sequence[HostInfo]) -> List[HostInfo]:
+        """Filter hosts down to the configured ``gdb_accessible_regions``.
+
+        Returns the list unchanged when no accessible-regions restriction is
+        set. Filtering is delegated to the dialect's ``filter_available_hosts``
+        (a no-op default; Global Aurora dialects filter by region), so this is a
+        pass-through for non-Global clusters.
+        """
+        if self._accessible_regions is None:
+            return list(hosts)
+        dialect = self._plugin_service.database_dialect
+        if dialect is None:
+            return list(hosts)
+        return dialect.filter_available_hosts(hosts, self._accessible_regions)
 
 
 class AuroraInitialConnectionStrategyPluginFactory(PluginFactory):
