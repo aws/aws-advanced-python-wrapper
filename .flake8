@@ -1,4 +1,12 @@
 [flake8]
 max-line-length = 150
 extend-select = TC, TC1
-exclude =  venv/
+exclude =
+    venv/,
+    .venv/,
+    .git/,
+    __pycache__/,
+    build/,
+    dist/,
+    .eggs/,
+    *.egg-info/

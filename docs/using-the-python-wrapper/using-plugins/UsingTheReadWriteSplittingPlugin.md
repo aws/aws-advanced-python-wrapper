@@ -2,7 +2,7 @@
 
 The Read/Write Splitting Plugin adds functionality to switch between writer and reader instances by setting the `read_only` attribute of an `AwsWrapperConnection`. When setting `read_only` to `True`, the plugin will establish a connection to a reader instance and direct subsequent queries to this instance. Future `read_only` settings will switch the underlying connection between the established writer and reader according to the `read_only` setting.
 
-> **Note**: this plugin must be paired with `failover_v2` (not the v1 `failover` plugin). Plain `failover` doesn't start the cluster topology monitor on the initial connect, leaving the host list at `{writer-only}` until a later failover signal fires; `read_only = True` then silently falls back to the writer. See [PluginChainCompatibility.md](../PluginChainCompatibility.md) for the full compatibility matrix.
+> **Note**: this plugin must be paired with `failover_v2` (not the v1 `failover` plugin). Plain `failover` doesn't start the cluster topology monitor on the initial connect, leaving the host list at `{writer-only}` until a later failover signal fires; `read_only = True` then silently falls back to the writer. See [PluginChainCompatibility.md](../compatibility/PluginChainCompatibility.md) for the full compatibility matrix.
 
 ### Loading the Read/Write Splitting Plugin
 
