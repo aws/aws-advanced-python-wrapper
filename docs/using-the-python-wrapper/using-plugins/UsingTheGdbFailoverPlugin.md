@@ -75,7 +75,7 @@ Please refer to the original [Failover Plugin](./UsingTheFailoverPlugin.md) and 
 - `active_home_failover_mode=strict-writer`
 - `inactive_home_failover_mode=strict-writer`
 - `global_cluster_instance_host_patterns=us-east-1:?.XYZ1.us-east-1.rds.amazonaws.com,us-east-2:?.XYZ2.us-east-2.rds.amazonaws.com,us-west-1:?.XYZ3.us-west-1.rds.amazonaws.com` (replace `XYZ1`, `XYZ2`, `XYZ3` with values that correspond to your database)
-- `dialect=global-aurora-mysql` (or `global-aurora-pg`)
+- `wrapper_dialect=global-aurora-mysql` (or `global-aurora-pg`)
 - `plugins=initial_connection,gdb_failover,host_monitoring_v2`
 - use the Global Database endpoint in your connection string
 
@@ -87,7 +87,7 @@ Please refer to the original [Failover Plugin](./UsingTheFailoverPlugin.md) and 
 - `active_home_failover_mode=strict-home-reader`
 - `inactive_home_failover_mode=strict-home-reader`
 - `global_cluster_instance_host_patterns=us-east-1:?.XYZ1.us-east-1.rds.amazonaws.com,us-east-2:?.XYZ2.us-east-2.rds.amazonaws.com,us-west-1:?.XYZ3.us-west-1.rds.amazonaws.com`
-- `dialect=global-aurora-mysql` (or `global-aurora-pg`)
+- `wrapper_dialect=global-aurora-mysql` (or `global-aurora-pg`)
 - `plugins=initial_connection,gdb_failover,host_monitoring_v2`
 - use the cluster reader endpoint in region `us-west-1` in your connection string
 
@@ -99,7 +99,7 @@ Please refer to the original [Failover Plugin](./UsingTheFailoverPlugin.md) and 
 - `active_home_failover_mode=strict-writer`
 - `inactive_home_failover_mode=strict-any-reader`
 - `global_cluster_instance_host_patterns=us-east-1:?.XYZ1.us-east-1.rds.amazonaws.com,us-east-2:?.XYZ2.us-east-2.rds.amazonaws.com,us-west-1:?.XYZ3.us-west-1.rds.amazonaws.com`
-- `dialect=global-aurora-mysql` (or `global-aurora-pg`)
+- `wrapper_dialect=global-aurora-mysql` (or `global-aurora-pg`)
 - `plugins=initial_connection,gdb_failover,host_monitoring_v2`
 - use the cluster writer endpoint in region `us-west-1` in your connection string
 

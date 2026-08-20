@@ -69,7 +69,7 @@ from psycopg import Connection
 with AwsWrapperConnection.connect(
         Connection.connect,
         "host=my-cluster.cluster-xyz.us-east-1.rds.amazonaws.com dbname=mydb user=admin password=pwd",
-        plugins="failover2,efm2",
+        plugins="failover_v2,host_monitoring_v2",
         monitoring_connection_priority="writer-or-reader",
         autocommit=True
 ) as awsconn:
@@ -87,7 +87,7 @@ from psycopg import Connection
 with AwsWrapperConnection.connect(
         Connection.connect,
         "host=my-global-db.global-xyz.global.rds.amazonaws.com dbname=mydb user=admin password=pwd",
-        plugins="initial_connection,gdb_failover,efm2",
+        plugins="initial_connection,gdb_failover,host_monitoring_v2",
         wrapper_dialect="global-aurora-pg",
         failover_home_region="us-west-2",
         global_cluster_instance_host_patterns="us-east-1:?.abc123.us-east-1.rds.amazonaws.com,us-west-2:?.def456.us-west-2.rds.amazonaws.com",

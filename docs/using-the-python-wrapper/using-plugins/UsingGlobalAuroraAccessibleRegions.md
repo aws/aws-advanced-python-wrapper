@@ -36,7 +36,7 @@ from psycopg import Connection
 with AwsWrapperConnection.connect(
         Connection.connect,
         "host=my-global-db.global-xyz.global.rds.amazonaws.com dbname=mydb user=admin password=pwd",
-        plugins="initial_connection,failover2,efm2",
+        plugins="initial_connection,failover_v2,host_monitoring_v2",
         wrapper_dialect="global-aurora-pg",
         cluster_id="1",
         global_cluster_instance_host_patterns="us-east-1:?.abc123.us-east-1.rds.amazonaws.com,us-west-2:?.def456.us-west-2.rds.amazonaws.com",
