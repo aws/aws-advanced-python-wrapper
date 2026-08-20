@@ -913,11 +913,19 @@ class PropertiesUtils:
 
         return f"\n{props}"
 
+    _SECRET_NAME_MARKERS = ("password", "passwd")
+
+    @staticmethod
+    def _is_secret_property(key: str) -> bool:
+        lowered = key.lower()
+        return any(marker in lowered for marker in PropertiesUtils._SECRET_NAME_MARKERS)
+
     @staticmethod
     def mask_properties(props: Properties) -> Properties:
         masked_properties = Properties(props.copy())
-        if WrapperProperties.PASSWORD.name in masked_properties:
-            masked_properties[WrapperProperties.PASSWORD.name] = "***"
+        for key in masked_properties:
+            if PropertiesUtils._is_secret_property(key):
+                masked_properties[key] = "***"
 
         return masked_properties
 

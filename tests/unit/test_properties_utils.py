@@ -83,6 +83,35 @@ def test_masked_props(expected, test_props):
     assert expected == props_copy
 
 
+@pytest.mark.parametrize("key", [
+    "password",
+    "idp_password",                      # documented as required for federated auth
+    "monitoring-password",               # forwarded to internal monitoring connections
+    "blue-green-monitoring-password",
+    "sslpassword",                       # driver-defined, never in WrapperProperties
+    "PASSWORD",                          # matching must not be case sensitive
+])
+def test_masked_props_covers_every_credential_bearing_key(key):
+    """Regression: only 'password' was masked, so every other credential-bearing
+    property was written to the log in cleartext on connect."""
+    masked = PropertiesUtils.mask_properties(Properties({"user": "postgres", key: "s3cret"}))
+    assert masked[key] == "***"
+    assert masked["user"] == "postgres"
+
+
+@pytest.mark.parametrize("key", [
+    "secrets_manager_secret_id",
+    "secrets_manager_region",
+    "secrets_manager_endpoint",
+    "iam_token_expiration",
+])
+def test_masked_props_keeps_non_secret_metadata_readable(key):
+    """These name or locate a secret but are not themselves credentials; masking
+    them would remove what is needed to diagnose a misconfigured secret."""
+    masked = PropertiesUtils.mask_properties(Properties({key: "visible-value"}))
+    assert masked[key] == "visible-value"
+
+
 @pytest.mark.parametrize("expected, test_props",
                          [pytest.param(Properties({"user": "postgres",
                                                    "test_property": 1}),
