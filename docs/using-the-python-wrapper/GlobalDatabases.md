@@ -32,6 +32,14 @@ Use the global cluster endpoint:
 
 > **Note:** Add additional plugins as needed for your use case.
 
+> **Warning:** The plugin lists above include `host_monitoring_v2`, which requires a driver that
+> supports aborting a connection from a separate thread. The MySQL Connector/Python driver does not,
+> so **omit `host_monitoring_v2` when connecting to Aurora MySQL with `mysql-connector-python`** —
+> loading it raises `Aborting connections from a separate thread is not supported for the detected
+> driver dialect` and the connection never opens. The asynchronous MySQL driver (`aiomysql`) does
+> support it. See [Host Monitoring Plugin](./using-plugins/UsingTheHostMonitoringPlugin.md) and the
+> [plugin compatibility matrix](./PluginChainCompatibility.md).
+
 ### Reader Connections
 
 **Connection String:**
@@ -52,6 +60,9 @@ Use the cluster reader endpoint:
 | `failover_mode`                          | `strict-reader` or `reader-or-writer`                                          | Depending on system requirements         |
 
 > **Note:** Add additional plugins as needed for your use case.
+
+> **Warning:** As with writer connections, omit `host_monitoring_v2` when connecting to Aurora MySQL
+> with `mysql-connector-python`. See the warning under [Writer Connections](#writer-connections).
 
 ## Example Configuration
 
@@ -101,7 +112,9 @@ from mysql.connector import Connect
 with AwsWrapperConnection.connect(
         Connect,
         "host=my-global-db.global-xyz.global.rds.amazonaws.com database=mydb user=admin password=pwd",
-        plugins="initial_connection,failover_v2,host_monitoring_v2",
+        # host_monitoring_v2 is intentionally absent: mysql-connector-python cannot abort a
+        # connection from a separate thread, so the plugin refuses to load on this driver.
+        plugins="initial_connection,failover_v2",
         wrapper_dialect="global-aurora-mysql",
         cluster_id="1",
         global_cluster_instance_host_patterns="us-east-1:?.abc123.us-east-1.rds.amazonaws.com,us-west-2:?.def456.us-west-2.rds.amazonaws.com",
