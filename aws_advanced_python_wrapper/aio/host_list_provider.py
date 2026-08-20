@@ -172,12 +172,14 @@ class AsyncStaticHostListProvider:
 class AsyncAuroraHostListProvider:
     """Aurora topology discovery over an async driver connection.
 
-    Runs an Aurora-topology query (e.g., ``SELECT server_id,
-    session_id = 'MASTER_SESSION_ID' AS is_writer, ... FROM
-    aurora_replica_status``) and returns a tuple of :class:`HostInfo`
-    objects. The exact SQL and parsing live on the shared sync
+    Runs an Aurora-topology query (e.g., ``SELECT server_id, session_id
+    OPERATOR(pg_catalog.=) 'MASTER_SESSION_ID' AS is_writer, ... FROM
+    pg_catalog.aurora_replica_status()``) and returns a tuple of
+    :class:`HostInfo` objects. The exact SQL and parsing live on the shared sync
     :class:`TopologyAwareDatabaseDialect` classes (reused rather than
-    duplicated).
+    duplicated). Note the schema qualification: every function and operator in a
+    PostgreSQL query the driver issues internally is pinned to ``pg_catalog`` so
+    the session's ``search_path`` cannot redirect it.
 
     Refresh flow (N.1b, matches sync RdsHostListProvider -> ClusterTopologyMonitor):
 
@@ -199,10 +201,13 @@ class AsyncAuroraHostListProvider:
             props: Properties,
             driver_dialect: AsyncDriverDialect,
             topology_query: str = (
-                "SELECT SERVER_ID, SESSION_ID = 'MASTER_SESSION_ID' AS IS_WRITER "
-                "FROM aurora_replica_status() "
-                "WHERE EXTRACT(EPOCH FROM (NOW() - LAST_UPDATE_TIMESTAMP)) <= 300 "
-                "OR SESSION_ID = 'MASTER_SESSION_ID' "
+                "SELECT SERVER_ID, "
+                "SESSION_ID OPERATOR(pg_catalog.=) 'MASTER_SESSION_ID' AS IS_WRITER "
+                "FROM pg_catalog.aurora_replica_status() "
+                "WHERE EXTRACT(EPOCH FROM (pg_catalog.NOW() "
+                "OPERATOR(pg_catalog.-) LAST_UPDATE_TIMESTAMP)) "
+                "OPERATOR(pg_catalog.<=) 300 "
+                "OR SESSION_ID OPERATOR(pg_catalog.=) 'MASTER_SESSION_ID' "
                 # A reader whose replica status hasn't reported yet has a NULL
                 # LAST_UPDATE_TIMESTAMP -- the freshness check above is NULL
                 # (not TRUE) for it, so without this clause every such reader is
@@ -210,7 +215,7 @@ class AsyncAuroraHostListProvider:
                 # host list is then stranded at one host and a writer outage
                 # yields FailoverFailedError (fail_from_reader_to_writer,
                 # failover_with_iam, failover_with_secrets_manager). Mirrors the
-                # sync Aurora-PG topology query (database_dialect.py:505-511).
+                # sync Aurora-PG topology query.
                 "OR LAST_UPDATE_TIMESTAMP IS NULL"
             ),
             cluster_id: Optional[str] = None,
