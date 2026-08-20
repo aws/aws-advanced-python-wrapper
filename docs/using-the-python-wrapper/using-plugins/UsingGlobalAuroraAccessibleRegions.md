@@ -2,6 +2,9 @@
 
 When using [Aurora Global Databases](../GlobalDatabases.md), an application may only be able to reach a subset of the regions the global cluster spans (for example, because of network routing, VPC peering, or security constraints). The `gdb_accessible_regions` property restricts the AWS Advanced Python Wrapper to a set of reachable AWS regions, excluding hosts in all other regions from host selection.
 
+> [!IMPORTANT]\
+> **Currently supported in the synchronous wrapper only.** 
+
 ## `gdb_accessible_regions`
 
 | Property                   | Value                                                                                                              | Default                                 |
@@ -25,7 +28,7 @@ The accessible-regions filter is applied **before** all other selection logic â€
 
 ### Fail-loud, not silent fallback
 
-Consistent with the [AWS Advanced Python Wrapper](https://github.com/aws/aws-advanced-python-wrapper), the filter is a **hard restriction**. When the writer is in an inaccessible region, the wrapper raises an error rather than silently connecting to an unreachable or unintended host. When reader filtering leaves no candidates in accessible regions, the wrapper does **not** fall back to the unfiltered host list.
+The filter is a **hard restriction**. When the writer is in an inaccessible region, the wrapper raises an error rather than silently connecting to an unreachable or unintended host. When reader filtering leaves no candidates in accessible regions, the wrapper does **not** fall back to the unfiltered host list.
 
 ## Example
 
