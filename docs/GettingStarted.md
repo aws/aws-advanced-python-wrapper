@@ -43,6 +43,30 @@ Some features pull in additional packages when used with the asyncio API:
 - The async Federated Authentication and Okta Authentication plugins use [aiohttp](https://docs.aiohttp.org/) for their HTTP flows: `pip install aiohttp`.
 - Async SQLAlchemy (`create_async_engine`) requires SQLAlchemy's asyncio support, which includes `greenlet`: `pip install "sqlalchemy[asyncio]"`.
 
+### Asyncio on Windows
+
+Python's default event loop on Windows is `ProactorEventLoop`, and Psycopg's async
+connection refuses to run on it:
+
+```
+psycopg.InterfaceError: Psycopg cannot use the 'ProactorEventLoop' to run in async mode
+```
+
+Every async PostgreSQL connection fails at connect until a selector event loop is
+selected. Do this once, before any async code runs:
+
+```python
+import asyncio
+import sys
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+```
+
+This is a requirement of the underlying driver rather than of the wrapper, and it does
+not apply on Linux or macOS, where the default loop is already a selector loop. See
+[Psycopg's asynchronous operations documentation](https://www.psycopg.org/psycopg3/docs/advanced/async.html#async).
+
 ## Using the AWS Advanced Python Wrapper
 
 To start using the wrapper with Psycopg, you need to pass Psycopg's connect function to the `AwsWrapperConnection#connect` method as shown in the following example:
