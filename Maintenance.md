@@ -11,6 +11,7 @@
 | January 14, 2026  | [Release 2.0.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/2.0.0) |
 | February 11, 2026 | [Release 2.1.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/2.1.0) |
 | June 2, 2026      | [Release 3.0.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/3.0.0) |
+| August 20, 2026   | [Release 3.1.0](https://github.com/aws/aws-advanced-python-wrapper/releases/tag/3.1.0) |
 
 `aws-advanced-python-wrapper` [follows semver](https://semver.org/#semantic-versioning-200) which means we will only
 release breaking changes in major versions. Generally speaking patches will be released to fix existing problems without
