@@ -24,7 +24,7 @@ from aws_advanced_python_wrapper.pep249 import Error
 
 params = {
     "plugins": "dev",
-    "dialect": "aurora-pg"
+    "wrapper_dialect": "aurora-pg"
 }
 exception: Error = Error("test")
 ExceptionSimulatorManager.raise_exception_on_next_connect(exception)
@@ -45,7 +45,7 @@ from aws_advanced_python_wrapper import AwsWrapperConnection
 
 params = {
     "plugins": "dev",
-    "dialect": "aurora-pg"
+    "wrapper_dialect": "aurora-pg"
 }
 exception: RuntimeError = RuntimeError("test")
 ExceptionSimulatorManager.raise_exception_on_next_method("Connection.cursor", exception)

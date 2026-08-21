@@ -22,7 +22,7 @@ a chain you haven't used before.
 |------------------------------|------------------------------------------------|-----|
 | `host_monitoring` (EFM v1)   | sync MySQL (`mysql-connector-python`)          | EFM requires a thread-based connection abort that `mysql-connector-python` doesn't expose. Symptoms: monitor threads hang on shutdown, "Python hangs on exit" when a host is unreachable. Use the chain **without EFM**, or switch to the async driver (`aiomysql`). |
 | `host_monitoring_v2` (EFM v2) | sync MySQL (`mysql-connector-python`)          | Same root cause as v1 — EFM v2 still depends on thread-based abort. |
-| `iam_authentication`         | MySQL `use_pure=True` (pure-Python connector)  | The pure-Python connector truncates passwords at 255 chars; IAM tokens are typically longer. Expect `int1store requires 0 <= i <= 255` or `struct.error: ubyte format requires 0 <= number <= 255`. See README "Known Limitations". |
+| `iam`         | MySQL `use_pure=True` (pure-Python connector)  | The pure-Python connector truncates passwords at 255 chars; IAM tokens are typically longer. Expect `int1store requires 0 <= i <= 255` or `struct.error: ubyte format requires 0 <= number <= 255`. See README "Known Limitations". |
 
 ## Recommended canonical chains
 
