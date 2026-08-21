@@ -36,9 +36,9 @@ from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import (
     HighestWeightHostSelector, HostSelector, RandomHostSelector,
     RoundRobinHostSelector, WeightedRandomHostSelector)
-from aws_advanced_python_wrapper.sql_alchemy_connection_provider import PoolKey
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.pool_key import PoolKey
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
@@ -425,7 +425,6 @@ class AsyncPooledConnectionProvider(AsyncCanReleaseResources):
 
 __all__ = [
     "AsyncPooledConnectionProvider",
-    "PoolKey",
     # Private but re-exported for tests:
     "_AsyncPool",
     "_PooledAsyncConnectionProxy",
