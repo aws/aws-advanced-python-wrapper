@@ -55,15 +55,41 @@ jobs:
           echo "$RELEASE_DETAILS" > RELEASE_DETAILS.md
       - name: 'Create a Package'
         run: poetry build
+      # The tag, the GitHub draft release, and the eventual PyPI release all keep
+      # the plain version. Only the TestPyPI upload carries an rc suffix, so a tag
+      # can be re-cut without colliding with an immutable TestPyPI filename.
+      # release.yml builds from the tag independently, so PyPI is unaffected.
+      - name: 'Build A Release Candidate For TestPyPI'
+        run: |
+          set -euo pipefail
+          # rc1 for the first candidate of a release version, then rc2, rc3, ...
+          # The counter is read back from TestPyPI so no state is carried between
+          # runs and a re-cut can never collide with an immutable filename.
+          RC_VERSION="${RELEASE_VERSION}rc$(python .github/scripts/next_rc_number.py "$RELEASE_VERSION")"
+          mv dist dist-release
+          poetry version "$RC_VERSION"
+          poetry build
+          mv dist dist-rc
+          mv dist-release dist
+          poetry version "$RELEASE_VERSION"
+          echo "Release candidate: pin testers to \`aws_advanced_python_wrapper==$RC_VERSION\`" >> $GITHUB_STEP_SUMMARY
       - name: 'Upload to TestPyPI'
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # v1.14.0
         with:
           repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist-rc
       - name: 'Create a Draft Release'
         if: always()
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
           draft: true
+          # Allow a tag to be re-cut: update the existing draft and replace its
+          # artifacts instead of failing because the release already exists.
+          allowUpdates: true
+          replacesArtifacts: true
+          # Never overwrite an already-published release: only a draft or
+          # prerelease may be updated in place.
+          updateOnlyUnreleased: true
           name: "AWS Advanced Python Wrapper - v${{ env.RELEASE_VERSION }}"
           bodyFile: RELEASE_DETAILS.md
           artifacts: ./dist/*
