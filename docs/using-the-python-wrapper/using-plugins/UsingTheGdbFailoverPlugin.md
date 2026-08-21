@@ -67,6 +67,15 @@ Please refer to the original [Failover Plugin](./UsingTheFailoverPlugin.md) and 
 
 ### Failover Configuration Examples
 
+> [!IMPORTANT]\
+> The examples below list `host_monitoring_v2` in `plugins`. **Remove it when connecting to Aurora
+> MySQL with `mysql-connector-python`** (`wrapper_dialect=global-aurora-mysql`): that driver cannot
+> abort a connection from a separate thread, which the plugin requires, so loading it fails the
+> connection with `Aborting connections from a separate thread is not supported for the detected
+> driver dialect`. The asynchronous MySQL driver (`aiomysql`) does support it. See
+> [Host Monitoring Plugin](./UsingTheHostMonitoringPlugin.md) and the
+> [plugin compatibility matrix](../PluginChainCompatibility.md).
+
 #### Configuration Example 1
 **Goal:** Provide a user application with a writer connection. The application is deployed in the `us-west-1` region and connects to a Global Database with the `us-east-1`, `us-east-2`, and `us-west-1` regions.
 
