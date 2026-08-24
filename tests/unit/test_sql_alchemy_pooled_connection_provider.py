@@ -17,8 +17,9 @@ import pytest
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
-from aws_advanced_python_wrapper.sql_alchemy_connection_provider import (
-    PoolKey, SqlAlchemyPooledConnectionProvider)
+from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
+    SqlAlchemyPooledConnectionProvider
+from aws_advanced_python_wrapper.utils.pool_key import PoolKey
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.storage.sliding_expiration_cache import \

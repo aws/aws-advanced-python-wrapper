@@ -20,12 +20,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from aws_advanced_python_wrapper.aio.pooled_connection_provider import (
-    AsyncPooledConnectionProvider, PoolKey, _AsyncPool,
-    _PooledAsyncConnectionProxy)
+    AsyncPooledConnectionProvider, _AsyncPool, _PooledAsyncConnectionProxy)
 from aws_advanced_python_wrapper.aio.storage.sliding_expiration_cache_async import \
     AsyncSlidingExpirationCache
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.pool_key import PoolKey
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 

@@ -30,6 +30,7 @@ from aws_advanced_python_wrapper.host_selector import (
     RoundRobinHostSelector, WeightedRandomHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
 from aws_advanced_python_wrapper.utils.messages import Messages
+from aws_advanced_python_wrapper.utils.pool_key import PoolKey
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
@@ -188,29 +189,3 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
                 # Swallow exception, connections may already be dead
                 pass
         SqlAlchemyPooledConnectionProvider._database_pools.clear()
-
-
-class PoolKey:
-    def __init__(self, url: str, extra_key: Optional[str] = None):
-        self._url = url
-        self._extra_key = extra_key
-
-    def __eq__(self, other):
-        if isinstance(other, type(self)):
-            return self.__members() == other.__members()
-        else:
-            return False
-
-    def __hash__(self):
-        return hash(self.__members())
-
-    def __members(self) -> Tuple[str, Optional[str]]:
-        return self._url, self._extra_key
-
-    @property
-    def url(self):
-        return self._url
-
-    @property
-    def extra_key(self):
-        return self._extra_key
