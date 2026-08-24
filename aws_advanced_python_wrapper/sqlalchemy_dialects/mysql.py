@@ -26,25 +26,16 @@ from __future__ import annotations
 from sqlalchemy.dialects.mysql.mysqlconnector import \
     MySQLDialect_mysqlconnector
 
-from aws_advanced_python_wrapper.pep249 import \
-    OperationalError as _PEP249OperationalError
 from aws_advanced_python_wrapper.sqlalchemy_dialects._exception_handling import \
-    _FailoverSuccessRewrapMixin
+    _DriverErrorNormalizeMixin
 
 
 class AwsWrapperMySQLConnectorDialect(
-        _FailoverSuccessRewrapMixin, MySQLDialect_mysqlconnector):
+        _DriverErrorNormalizeMixin, MySQLDialect_mysqlconnector):
     """SQLAlchemy dialect that uses the AWS Advanced Python Wrapper as its DBAPI."""
 
     driver = "aws_wrapper_mysqlconnector"
     supports_statement_cache = True
-
-    # See _FailoverSuccessRewrapMixin / sqlalchemy_dialects/pg.py for the
-    # full rationale. The shim's ``dialect.dbapi.OperationalError`` resolves
-    # to the wrapper's PEP-249 ``OperationalError`` via ``_dbapi.install``,
-    # so the rewrap target must be that class for SA's classifier to wrap
-    # us to ``sqlalchemy.exc.OperationalError``.
-    _failover_success_target_cls = _PEP249OperationalError
 
     @classmethod
     def import_dbapi(cls):
@@ -113,9 +104,13 @@ class AwsWrapperMySQLConnectorDialect(
         #      psycopg's upstream is_disconnect returns False for this.)
         #    - FailoverFailedError: the wrapper has no working connection;
         #      pool slot really is dead. Return True so SA invalidates.
-        # _FailoverSuccessRewrapMixin still handles the do_execute path;
-        # this method handles the cursor-creation path which runs before
-        # do_execute reaches the mixin.
+        # This is the ONLY handler for the whole FailoverError family, on both
+        # paths: cursor creation and do_execute. Nothing at the do_execute
+        # boundary substitutes the exception any more -- an earlier rewrap there
+        # made this method unreachable for FailoverSuccessError, which then fell
+        # through to upstream's e.errno probe and raised AttributeError out of
+        # SA's unguarded is_disconnect call. See
+        # sqlalchemy_dialects/_exception_handling.py.
         from aws_advanced_python_wrapper.errors import (FailoverError,
                                                         FailoverFailedError)
 

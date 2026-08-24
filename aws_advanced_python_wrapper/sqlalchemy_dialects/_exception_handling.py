@@ -14,39 +14,57 @@
 
 """Shared exception-handling helpers for the wrapper's SA dialects.
 
-SQLAlchemy classifies DBAPI exceptions in ``Connection._handle_dbapi_exception``
-by walking ``dialect.loaded_dbapi.<ErrorClass>`` and wrapping into
-``sqlalchemy.exc.<MappedClass>``. SA's classifier needs the raised exception
-to be an instance of the **driver-native** ``OperationalError`` class
-(e.g. ``psycopg.OperationalError``), not the wrapper's PEP-249
-``OperationalError``. Wrapper-internal exceptions like
-``FailoverSuccessError`` are single-inherit from ``FailoverError`` (the
-driver-native multi-inheritance was reverted in commit ``d994d02`` because
-it caused Django's ``wrap_database_errors`` to swallow the failover signal
-on MySQL), so SA's classifier lets them escape raw and any user-written
-``except sqlalchemy.exc.OperationalError:`` retry loop never fires.
+How SQLAlchemy classifies the wrapper's errors
+----------------------------------------------
+``sqlalchemy.exc.DBAPIError.instance`` walks ``orig.__class__.__mro__`` and
+matches each base **by class name** against the names exported from
+``sqlalchemy.exc``, gated on ``isinstance(orig, dialect.loaded_dbapi.Error)``.
+Our ``loaded_dbapi`` is the wrapper itself, so that gate is the wrapper's
+PEP-249 ``Error`` — and because ``FailoverError`` derives from the wrapper's
+``pep249.OperationalError``, every failover error already carries a base *named*
+``OperationalError`` in its MRO. SA therefore maps the whole family to
+``sqlalchemy.exc.OperationalError`` on its own. The class does NOT need to be
+driver-native, and nothing at the dialect boundary needs to re-raise anything
+for ``except sqlalchemy.exc.OperationalError:`` to fire.
 
-The mixin below sidesteps that by intercepting ``FailoverSuccessError`` at
-the ``do_execute`` / ``do_executemany`` boundary and re-raising it as the
-driver-native ``OperationalError`` class — which SA's classifier DOES
-reclassify reliably to ``sqlalchemy.exc.OperationalError``. The original
-wrapper exception is preserved via ``__cause__`` so callers that need the
-exact wrapper type can ``isinstance(exc.__cause__, FailoverSuccessError)``.
+The wrapper's own errors are therefore passed through ``do_execute`` UNCHANGED.
+Two things depend on that:
 
-Each concrete dialect declares its target class via
-``_failover_success_target_cls``; the mixin handles both sync and async
-``do_execute`` shapes.
+* SA puts the original exception in ``DBAPIError.orig``, so a consumer can write
+  ``isinstance(err.orig, FailoverSuccessError)`` — the documented idiom — as
+  well as ``except sqlalchemy.exc.OperationalError:``.
+* Each dialect's ``is_disconnect`` override sees the real ``FailoverError`` and
+  decides pool invalidation from it: ``FailoverFailedError`` -> invalidate,
+  ``FailoverSuccessError`` / ``TransactionResolutionUnknownError`` -> keep the
+  pooled connection, which the wrapper has already rebound to the new writer.
 
-Scope: only ``do_execute`` and ``do_executemany`` are wrapped. If
-``FailoverSuccessError`` ever surfaces from ``do_commit`` / ``do_rollback``
-/ ``do_begin_twophase`` / etc., it will escape raw — extend the mixin then.
+**Do not reintroduce a rewrap here.** An earlier version of this module caught
+``FailoverSuccessError`` and re-raised ``pep249.OperationalError``. It gained
+nothing — SA produced the same ``sqlalchemy.exc.OperationalError`` either way —
+and it cost two things:
+
+1. ``DBAPIError.orig`` became the substitute, silently breaking
+   ``isinstance(err.orig, FailoverSuccessError)``.
+2. The substitute is not a ``FailoverError``, so ``is_disconnect`` below no
+   longer recognised it and fell through to
+   ``MySQLDialect_mysqlconnector.is_disconnect``, which probes ``e.errno``. The
+   wrapper's PEP-249 errors carry no ``errno``, and SA calls ``is_disconnect``
+   at the top of ``Connection._handle_dbapi_exception`` with no enclosing
+   ``try:`` — so an ``AttributeError`` escaped and the consumer's
+   ``except DBAPIError:`` never ran at all. Confirmed on a real Aurora MySQL
+   failover: a successful failover surfaced to the application as
+   ``AttributeError: 'OperationalError' object has no attribute 'errno'``.
+
+What this module DOES do
+------------------------
+Normalize *raw driver-native* DBAPI errors (``mysql.connector.errors.*`` /
+``psycopg.*`` / ``pymysql.*``) into the wrapper's PEP-249 equivalents, for plugin
+chains that do not already re-wrap them (``iam`` / ``aws_secrets_manager`` / no
+plugins). Without that SA cannot classify them at all, so e.g. ``has_table``
+never sees MySQL's 1146 and ``create_all`` fails.
 """
 
 from __future__ import annotations
-
-from typing import ClassVar, Optional, Type
-
-from aws_advanced_python_wrapper.errors import FailoverSuccessError
 
 
 def _normalize_driver_error(e, driver_error_module):
@@ -98,26 +116,14 @@ def _normalize_driver_error(e, driver_error_module):
     return wrapped
 
 
-class _FailoverSuccessRewrapMixin:
-    """Re-raise ``FailoverSuccessError`` as the driver-native OperationalError.
+class _DriverErrorNormalizeMixin:
+    """Normalize raw driver-native DBAPI errors into the wrapper's PEP-249 types.
 
-    Concrete dialect subclasses set ``_failover_success_target_cls`` to the
-    driver's own ``OperationalError`` class (e.g. ``psycopg.OperationalError``,
-    ``mysql.connector.errors.OperationalError``, ``aiomysql.OperationalError``).
-    The mixin's ``do_execute`` wraps the parent's call: on
-    ``FailoverSuccessError``, it raises the target class with the same message,
-    chaining the original via ``__cause__``. SA's classifier reliably maps
-    driver-native ``OperationalError`` -> ``sqlalchemy.exc.OperationalError``,
-    so user retry loops (``except sqlalchemy.exc.OperationalError:``) fire.
-
-    Other ``FailoverError`` subclasses (``FailoverFailedError``,
-    ``TransactionResolutionUnknownError``) are NOT rewrapped: failed failover
-    is a hard error the user should see, and transaction-resolution-unknown
-    has its own semantics distinct from a generic OperationalError.
+    The wrapper's own errors — including the whole ``FailoverError`` family — are
+    passed through UNTOUCHED, so ``DBAPIError.orig`` stays the exception the
+    wrapper raised and each dialect's ``is_disconnect`` can classify it. See the
+    module docstring for why re-raising a substitute class here is wrong.
     """
-
-    # Subclasses MUST set this to the driver-native OperationalError class.
-    _failover_success_target_cls: ClassVar[Optional[Type[BaseException]]] = None
 
     def _driver_error_module(self):
         """Driver-native DBAPI exception namespace (module exposing PEP-249
@@ -134,11 +140,6 @@ class _FailoverSuccessRewrapMixin:
         try:
             super().do_execute(  # type: ignore[misc]
                 cursor, statement, parameters, context)
-        except FailoverSuccessError as e:
-            target = self._failover_success_target_cls
-            if target is None:
-                raise  # mis-configured dialect; surface the raw error
-            raise target(str(e)) from e
         except Exception as e:
             normalized = _normalize_driver_error(e, self._driver_error_module())
             if normalized is not None:
@@ -150,11 +151,6 @@ class _FailoverSuccessRewrapMixin:
         try:
             super().do_executemany(  # type: ignore[misc]
                 cursor, statement, parameters, context)
-        except FailoverSuccessError as e:
-            target = self._failover_success_target_cls
-            if target is None:
-                raise
-            raise target(str(e)) from e
         except Exception as e:
             normalized = _normalize_driver_error(e, self._driver_error_module())
             if normalized is not None:
@@ -162,8 +158,8 @@ class _FailoverSuccessRewrapMixin:
             raise
 
 
-class _AsyncFailoverSuccessRewrapMixin:
-    """Async counterpart of :class:`_FailoverSuccessRewrapMixin`.
+class _AsyncDriverErrorNormalizeMixin:
+    """Async counterpart of :class:`_DriverErrorNormalizeMixin`.
 
     IMPORTANT: ``do_execute`` / ``do_executemany`` MUST be SYNCHRONOUS even for
     async dialects. SQLAlchemy's execution context calls
@@ -176,13 +172,11 @@ class _AsyncFailoverSuccessRewrapMixin:
     ``dialect.initialize``'s ``SELECT version()`` (the ``sqlalchemy_creator_*``
     integration tests). So this mixin is functionally identical to the sync
     one; it exists as a distinct class only so async dialects can be wired to a
-    different ``_failover_success_target_cls`` / ``_driver_error_module``.
+    different ``_driver_error_module``.
     """
 
-    _failover_success_target_cls: ClassVar[Optional[Type[BaseException]]] = None
-
     def _driver_error_module(self):
-        """See :meth:`_FailoverSuccessRewrapMixin._driver_error_module`."""
+        """See :meth:`_DriverErrorNormalizeMixin._driver_error_module`."""
         return None
 
     def do_execute(  # type: ignore[no-untyped-def]
@@ -190,11 +184,6 @@ class _AsyncFailoverSuccessRewrapMixin:
         try:
             super().do_execute(  # type: ignore[misc]
                 cursor, statement, parameters, context)
-        except FailoverSuccessError as e:
-            target = self._failover_success_target_cls
-            if target is None:
-                raise
-            raise target(str(e)) from e
         except Exception as e:
             normalized = _normalize_driver_error(e, self._driver_error_module())
             if normalized is not None:
@@ -206,11 +195,6 @@ class _AsyncFailoverSuccessRewrapMixin:
         try:
             super().do_executemany(  # type: ignore[misc]
                 cursor, statement, parameters, context)
-        except FailoverSuccessError as e:
-            target = self._failover_success_target_cls
-            if target is None:
-                raise
-            raise target(str(e)) from e
         except Exception as e:
             normalized = _normalize_driver_error(e, self._driver_error_module())
             if normalized is not None:
@@ -218,4 +202,4 @@ class _AsyncFailoverSuccessRewrapMixin:
             raise
 
 
-__all__ = ["_FailoverSuccessRewrapMixin", "_AsyncFailoverSuccessRewrapMixin"]
+__all__ = ["_DriverErrorNormalizeMixin", "_AsyncDriverErrorNormalizeMixin"]

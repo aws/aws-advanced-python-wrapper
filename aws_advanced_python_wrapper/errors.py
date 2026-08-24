@@ -51,11 +51,13 @@ class FailoverFailedError(FailoverError):
 
 
 class FailoverSuccessError(FailoverError):
-    # SA classification is handled at the dialect boundary by
-    # ``sqlalchemy_dialects._exception_handling._FailoverSuccessRewrapMixin``,
-    # which catches FailoverSuccessError in ``do_execute`` /
-    # ``do_executemany`` and re-raises as the dialect's native
-    # OperationalError. Do NOT add driver-native OperationalError classes
+    # SA classification needs no help at the dialect boundary: ``FailoverError``
+    # derives from the wrapper's own ``pep249.OperationalError``, and SA's
+    # ``DBAPIError.instance`` matches ``orig.__class__.__mro__`` by class *name*,
+    # so this already maps to ``sqlalchemy.exc.OperationalError`` with
+    # ``DBAPIError.orig`` left as this exception.
+    #
+    # Do NOT add driver-native OperationalError classes
     # (psycopg / mysql.connector / aiomysql) as bases here: Django's
     # ``wrap_database_errors`` walks ``issubclass`` against the driver's
     # own error module and would swallow FailoverSuccessError before any

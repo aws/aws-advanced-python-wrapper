@@ -18,14 +18,13 @@ from swallowing the wrapper's failover signal -- on MySQL today and on
 PostgreSQL if/when a Django-PG backend ships in the wrapper.
 
 SA classification of FailoverSuccessError to ``sqlalchemy.exc.OperationalError``
-happens at the dialect boundary via
-``aws_advanced_python_wrapper.sqlalchemy_dialects._exception_handling
-._FailoverSuccessRewrapMixin``, which catches FailoverSuccessError in
-``do_execute`` / ``do_executemany`` and re-raises as the dialect's native
-``OperationalError``. That mechanism does NOT require the driver-native
-multi-inheritance below; if someone re-introduces it, Django (and any
-other consumer that walks ``issubclass`` against driver error modules)
-will start wrapping failover signals.
+comes from ``errors.py``, not from the dialects: ``FailoverError`` derives from
+the wrapper's ``pep249.OperationalError``, and SA's ``DBAPIError.instance``
+matches ``orig.__class__.__mro__`` by class *name*, so a base named
+``OperationalError`` is all it needs. That mechanism does NOT require the
+driver-native multi-inheritance below; if someone re-introduces it, Django (and
+any other consumer that walks ``issubclass`` against driver error modules)
+will start swallowing failover signals.
 
 Regression these tests guard against: see
 tests/integration/container/django/test_django_plugins.py::

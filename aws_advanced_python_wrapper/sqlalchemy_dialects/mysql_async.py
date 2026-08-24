@@ -44,10 +44,8 @@ from sqlalchemy.dialects.mysql.aiomysql import (AsyncAdapt_aiomysql_connection,
 from sqlalchemy.engine.characteristics import ConnectionCharacteristic
 from sqlalchemy.util.concurrency import await_only
 
-from aws_advanced_python_wrapper.pep249 import \
-    OperationalError as _PEP249OperationalError
 from aws_advanced_python_wrapper.sqlalchemy_dialects._exception_handling import \
-    _AsyncFailoverSuccessRewrapMixin
+    _AsyncDriverErrorNormalizeMixin
 
 
 def _unwrap_wrapper_conn(dbapi_conn: Any) -> Any:
@@ -130,7 +128,7 @@ class AwsWrapperAsyncAiomysqlAdaptDBAPI:
 
 
 class AwsWrapperMySQLAiomysqlAsyncDialect(
-        _AsyncFailoverSuccessRewrapMixin, MySQLDialect_aiomysql):
+        _AsyncDriverErrorNormalizeMixin, MySQLDialect_aiomysql):
     """Async SQLAlchemy dialect that uses the AWS Advanced Python Wrapper as its DBAPI."""
 
     driver = "aws_wrapper_aiomysql"
@@ -145,13 +143,6 @@ class AwsWrapperMySQLAiomysqlAsyncDialect(
         **MySQLDialect_aiomysql.connection_characteristics,
         "mysql_readonly": _MySQLReadOnlyConnectionCharacteristic(),
     })
-
-    # See _AsyncFailoverSuccessRewrapMixin / sqlalchemy_dialects/pg.py.
-    # ``dialect.dbapi.OperationalError`` resolves to the wrapper's PEP-249
-    # ``OperationalError`` via the shim's ``_dbapi.install`` — rewrap
-    # target must be that class for SA's classifier to wrap us to
-    # ``sqlalchemy.exc.OperationalError``.
-    _failover_success_target_cls = _PEP249OperationalError
 
     def set_readonly(self, dbapi_conn: Any, value: bool) -> None:
         # dbapi_conn is SA's AsyncAdapt_aiomysql_connection; the wrapper
@@ -238,7 +229,7 @@ class AwsWrapperMySQLAiomysqlAsyncDialect(
         #      which is now demoted to a reader.
         #    - FailoverFailedError → wrapper has no working connection;
         #      return True so SA invalidates and the creator retries.
-        # _AsyncFailoverSuccessRewrapMixin handles do_execute path;
+        # _AsyncDriverErrorNormalizeMixin handles the do_execute path;
         # this handles the cursor-creation path that runs earlier.
         from aws_advanced_python_wrapper.errors import (FailoverError,
                                                         FailoverFailedError)
