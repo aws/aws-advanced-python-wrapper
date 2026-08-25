@@ -25,16 +25,8 @@ exists for the narrower case of code that imported the dialect class directly �
 to subclass it, or to register it by hand — which would otherwise break with
 ``ModuleNotFoundError`` on upgrade.
 
-One behavioural difference is worth knowing, though it is not a loss of
-capability. 3.0.0's ``create_connect_args`` hard-coded
-``plugins = "aurora_connection_tracker,failover_v2"`` whenever ``wrapper_plugins``
-was absent from the URL. The replacement class does not set ``plugins`` at all,
-so the wrapper's own default chain applies instead. For mysql-connector that
-default is ``initial_connection,aurora_connection_tracker,failover_v2`` — a
-superset of what 3.0.0 injected — so failover remains enabled by default. An
-application that relied on the old value *exactly* (for instance to keep
-``initial_connection`` out of the chain) should now pass ``wrapper_plugins`` in
-the URL, or ``plugins`` via ``connect_args``, explicitly.
+Note that starting v3.1.0, the plugin chain is no longer hardcoded to `aurora_connection_tracker,failover_v2`
+if the connection property `wrapper_plugins` is not set, and will use the default plugin chain instead.
 """
 
 import warnings
