@@ -47,6 +47,8 @@ class Warning(Exception):
 
 class Error(Exception):
     __module__ = "aws_advanced_python_wrapper"
+    errno = None
+    sqlstate = None
 
 
 class InterfaceError(Error):

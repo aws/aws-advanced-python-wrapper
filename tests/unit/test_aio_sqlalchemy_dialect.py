@@ -260,22 +260,21 @@ def test_async_failover_rewrap_do_execute_is_synchronous():
     import inspect
 
     from aws_advanced_python_wrapper.sqlalchemy_dialects._exception_handling import \
-        _AsyncFailoverSuccessRewrapMixin
+        _AsyncDriverErrorNormalizeMixin
     assert not inspect.iscoroutinefunction(
-        _AsyncFailoverSuccessRewrapMixin.do_execute)
+        _AsyncDriverErrorNormalizeMixin.do_execute)
     assert not inspect.iscoroutinefunction(
-        _AsyncFailoverSuccessRewrapMixin.do_executemany)
+        _AsyncDriverErrorNormalizeMixin.do_executemany)
 
 
-def test_async_failover_rewrap_runs_parent_and_rewraps_failover_success():
+def test_async_mixin_runs_parent_and_passes_failover_errors_through():
     import pytest
 
-    from aws_advanced_python_wrapper.errors import FailoverSuccessError
+    from aws_advanced_python_wrapper.errors import (
+        FailoverFailedError, FailoverSuccessError,
+        TransactionResolutionUnknownError)
     from aws_advanced_python_wrapper.sqlalchemy_dialects._exception_handling import \
-        _AsyncFailoverSuccessRewrapMixin
-
-    class _Target(Exception):
-        pass
+        _AsyncDriverErrorNormalizeMixin
 
     calls = []
 
@@ -283,23 +282,37 @@ def test_async_failover_rewrap_runs_parent_and_rewraps_failover_success():
         def do_execute(self, cursor, statement, parameters, context=None):
             calls.append((statement, parameters))
 
-    class _Dialect(_AsyncFailoverSuccessRewrapMixin, _Parent):
-        _failover_success_target_cls = _Target
+    class _Dialect(_AsyncDriverErrorNormalizeMixin, _Parent):
+        pass
 
     # Synchronous call actually invokes the parent => the query runs.
     _Dialect().do_execute(MagicMock(), "select 1", None)
     assert calls == [("select 1", None)]
 
-    class _ParentRaises:
-        def do_execute(self, *a, **k):
-            raise FailoverSuccessError("failover")
+    # Regression guard. The wrapper's failover errors MUST reach SQLAlchemy
+    # unchanged. An earlier version of this mixin re-raised FailoverSuccessError
+    # as pep249.OperationalError, which (a) replaced DBAPIError.orig, breaking
+    # the documented ``isinstance(err.orig, FailoverSuccessError)`` idiom, and
+    # (b) hid the error from the dialects' is_disconnect override, so upstream's
+    # ``e.errno`` probe raised AttributeError from a call site SQLAlchemy does
+    # not guard -- the consumer's ``except DBAPIError`` never ran.
+    for err_cls in (FailoverSuccessError, TransactionResolutionUnknownError,
+                    FailoverFailedError):
+        raised = err_cls("failover")
 
-    class _DialectRaises(_AsyncFailoverSuccessRewrapMixin, _ParentRaises):
-        _failover_success_target_cls = _Target
+        class _ParentRaises:
+            def do_execute(self, *a, **k):
+                raise raised
 
-    # FailoverSuccessError from the driver is rewrapped to the target class.
-    with pytest.raises(_Target):
-        _DialectRaises().do_execute(MagicMock(), "select 1", None)
+        class _DialectRaises(_AsyncDriverErrorNormalizeMixin, _ParentRaises):
+            pass
+
+        with pytest.raises(err_cls) as exc_info:
+            _DialectRaises().do_execute(MagicMock(), "select 1", None)
+        assert exc_info.value is raised, (
+            f"do_execute replaced {err_cls.__name__} with "
+            f"{type(exc_info.value).__name__}; DBAPIError.orig would no longer "
+            f"be the wrapper's own error")
 
 
 def test_async_dialect_type_info_fetch_falls_through_without_wrapper(mocker):

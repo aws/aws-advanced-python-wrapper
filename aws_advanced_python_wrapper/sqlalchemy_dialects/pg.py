@@ -29,13 +29,11 @@ from typing import Any
 
 from sqlalchemy.dialects.postgresql.psycopg import PGDialect_psycopg
 
-from aws_advanced_python_wrapper.pep249 import \
-    OperationalError as _PEP249OperationalError
 from aws_advanced_python_wrapper.sqlalchemy_dialects._exception_handling import \
-    _FailoverSuccessRewrapMixin
+    _DriverErrorNormalizeMixin
 
 
-class AwsWrapperPGPsycopgDialect(_FailoverSuccessRewrapMixin, PGDialect_psycopg):
+class AwsWrapperPGPsycopgDialect(_DriverErrorNormalizeMixin, PGDialect_psycopg):
     """SQLAlchemy dialect that uses the AWS Advanced Python Wrapper as its DBAPI.
 
     Wrapper-specific override pattern
@@ -55,17 +53,6 @@ class AwsWrapperPGPsycopgDialect(_FailoverSuccessRewrapMixin, PGDialect_psycopg)
 
     driver = "aws_wrapper_psycopg"
     supports_statement_cache = True
-
-    # See _FailoverSuccessRewrapMixin. SA's classifier checks
-    # ``isinstance(exc, dialect.dbapi.OperationalError)``; for our shim
-    # ``dialect.dbapi.OperationalError`` resolves to the wrapper's PEP-249
-    # ``OperationalError`` (installed via ``_dbapi.install``), NOT psycopg's
-    # native one. The target class must therefore be the wrapper's PEP-249
-    # class so SA's classifier matches and wraps to
-    # ``sqlalchemy.exc.OperationalError``. (psycopg.OperationalError would
-    # only work if SA's dbapi attribute pointed at the real psycopg module,
-    # which it doesn't here because ``import_dbapi`` returns our shim.)
-    _failover_success_target_cls = _PEP249OperationalError
 
     @classmethod
     def import_dbapi(cls):

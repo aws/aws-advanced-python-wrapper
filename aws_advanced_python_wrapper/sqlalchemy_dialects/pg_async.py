@@ -44,10 +44,8 @@ from sqlalchemy.dialects.postgresql.psycopg import (
 from sqlalchemy.util import asbool
 from sqlalchemy.util.concurrency import await_fallback, await_only
 
-from aws_advanced_python_wrapper.pep249 import \
-    OperationalError as _PEP249OperationalError
 from aws_advanced_python_wrapper.sqlalchemy_dialects._exception_handling import \
-    _AsyncFailoverSuccessRewrapMixin
+    _AsyncDriverErrorNormalizeMixin
 
 
 class AwsWrapperAsyncPsycopgAdaptDBAPI:
@@ -110,7 +108,7 @@ class AwsWrapperAsyncPsycopgAdaptDBAPI:
 
 
 class AwsWrapperPGPsycopgAsyncDialect(
-        _AsyncFailoverSuccessRewrapMixin, PGDialectAsync_psycopg):
+        _AsyncDriverErrorNormalizeMixin, PGDialectAsync_psycopg):
     """Async SQLAlchemy dialect that uses the AWS Advanced Python Wrapper as its DBAPI.
 
     Wrapper-specific override pattern
@@ -138,12 +136,6 @@ class AwsWrapperPGPsycopgAsyncDialect(
     driver = "aws_wrapper_psycopg"
     supports_statement_cache = True
 
-    # See _AsyncFailoverSuccessRewrapMixin / sqlalchemy_dialects/pg.py.
-    # ``dialect.dbapi.OperationalError`` resolves to the wrapper's PEP-249
-    # ``OperationalError`` via the shim's ``_dbapi.install`` — rewrap
-    # target must be that class for SA's classifier to wrap us to
-    # ``sqlalchemy.exc.OperationalError``.
-    _failover_success_target_cls = _PEP249OperationalError
     is_async = True
 
     def _driver_error_module(self):
@@ -160,7 +152,7 @@ class AwsWrapperPGPsycopgAsyncDialect(
         #     auto-rebound to the new writer via plugin_service; SA pool
         #     slot is still valid).
         #   - FailoverFailedError → True (no usable connection).
-        # Complements _AsyncFailoverSuccessRewrapMixin for the
+        # Complements _AsyncDriverErrorNormalizeMixin for the
         # cursor-creation path that runs before do_execute.
         from aws_advanced_python_wrapper.errors import (FailoverError,
                                                         FailoverFailedError)
