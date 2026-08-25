@@ -3,13 +3,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/#semantic-versioning-200).
 
-## [Unreleased]
+## [3.1.0] - 2026-08-24
 ### :magic_wand: Added
 * Python 3.14 support. ([PR #1252](https://github.com/aws/aws-advanced-python-wrapper/pull/1252))
+* Aurora Global Database support. Adds the `gdb_failover` plugin, which is aware of a home region and selects a failover target using the `failover_home_region`, `active_home_failover_mode` and `inactive_home_failover_mode` parameters, and the `gdb_rw` plugin, which restricts read/write splitting to the home region and can defer writes to Global Write Forwarding. Global writer endpoints are recognized, and cross-region topology is discovered through the `global-aurora-pg` / `global-aurora-mysql` dialects using `global_cluster_instance_host_patterns`. See [Aurora Global Databases](./docs/using-the-python-wrapper/GlobalDatabases.md). ([PR #1243](https://github.com/aws/aws-advanced-python-wrapper/pull/1243), [PR #1246](https://github.com/aws/aws-advanced-python-wrapper/pull/1246))
+* `gdb_accessible_regions`, restricting host selection to the AWS regions an application can reach, and `monitoring_connection_priority` / `gdb_monitoring_connection_priority`, controlling which host role or region the topology monitor uses for its background connection. Both are currently supported in the synchronous driver only. ([PR #1266](https://github.com/aws/aws-advanced-python-wrapper/pull/1266))
 * Async (asyncio) counterpart of the wrapper (`aws_advanced_python_wrapper.aio`), targeting sync parity for the shipped plugins: failover v2, read/write splitting, EFM v2, IAM auth, AWS Secrets Manager, federated + Okta auth, Aurora connection tracker, cluster topology monitor, custom endpoint, stale DNS, Aurora initial connection strategy, simple read/write splitting, developer plugin, blue/green deployment, limitless, fastest-response strategy. Backed by psycopg async and aiomysql, with async SQLAlchemy support via `create_async_engine` (`postgresql+aws_wrapper_psycopg://` serves both sync and async; MySQL async uses `mysql+aws_wrapper_aiomysql://`). Includes `AsyncConnectionProvider`/`AsyncPooledConnectionProvider`, `AsyncSessionStateService`, an async IdP factory registry, and `release_resources_async()` for background-task teardown. ([PR #1257](https://github.com/aws/aws-advanced-python-wrapper/pull/1257))
 
 ### :bug: Fixed
 * Cross-thread use-after-free (SIGSEGV) when an offloaded query times out (e.g. during failover) and the connection is later closed or reused while the query is still running: on timeout the driver dialects now shut down the connection socket and wait for the worker to unwind before propagating, and leak rather than close a connection whose worker cannot be drained. ([PR #1252](https://github.com/aws/aws-advanced-python-wrapper/pull/1252))
+* Schema-qualified every function, operator, cast and catalog reference in the PostgreSQL queries the driver issues internally, so a session `search_path` cannot redirect them. This covers the queries issued by the asynchronous Aurora host list provider as well. ([PR #1262](https://github.com/aws/aws-advanced-python-wrapper/pull/1262), [PR #1270](https://github.com/aws/aws-advanced-python-wrapper/pull/1270))
+* Connection properties whose name indicates a credential are now masked when connection properties are logged. Previously only `password` was masked, so properties such as `idp_password` and the `monitoring-` and `blue-green-monitoring-` prefixed passwords were logged in clear text. The Secrets Manager properties remain readable, since they identify a secret rather than hold one. ([PR #1270](https://github.com/aws/aws-advanced-python-wrapper/pull/1270))
+* `opentelemetry-api` is now declared as a runtime dependency rather than a development one. ([PR #1261](https://github.com/aws/aws-advanced-python-wrapper/pull/1261))
+* `boto3-stubs` and `types_aws_xray_sdk` are no longer declared as runtime dependencies. Both are type-stub distributions with no runtime effect, and declaring them meant their version ranges constrained applications that pin those packages themselves. ([PR #1274](https://github.com/aws/aws-advanced-python-wrapper/pull/1274))
+* `create_engine("postgresql+aws_wrapper_psycopg://")` now resolves. The PostgreSQL SQLAlchemy dialect entry point registered by 3.0.0 pointed at a module that was not present in the distribution, so constructing the engine raised `ModuleNotFoundError` before any connection was attempted. ([Issue #1260](https://github.com/aws/aws-advanced-python-wrapper/issues/1260), [Issue #1273](https://github.com/aws/aws-advanced-python-wrapper/issues/1273), [PR #1252](https://github.com/aws/aws-advanced-python-wrapper/pull/1252))
+* Query timeouts are now threaded through the failover paths, and pooled connections are invalidated in the Aurora connection tracker. ([PR #1255](https://github.com/aws/aws-advanced-python-wrapper/pull/1255))
+* `pool_pre_ping` is now supported in the SQLAlchemy ORM MySQL dialect. ([PR #1245](https://github.com/aws/aws-advanced-python-wrapper/pull/1245))
+* Issues found while aligning the synchronous and asynchronous implementations ([PR #1256](https://github.com/aws/aws-advanced-python-wrapper/pull/1256)):
+  * The Aurora Initial Connection Strategy Plugin computed its retry deadline from `open_connection_retry_interval_ms` rather than `open_connection_retry_timeout_ms`, so it gave up retrying much earlier than configured.
+  * The Limitless Plugin discarded the result of its login-exception check, so an authentication failure while fetching transaction routers was never recognized as one.
+  * The Limitless Plugin did not read the connection from its routing context before using it.
+  * Resetting the session state transfer handler assigned to a name that did not exist, leaving a previously registered handler installed.
+  * A message key was raised in place of its resolved text when the current host could not be determined.
+  * Added two missing Blue/Green deployment log messages.
+* Documentation corrections. ([PR #1244](https://github.com/aws/aws-advanced-python-wrapper/pull/1244))
+* Corrected documented examples that could not run as written: the plugin codes `failover2` and `efm2` (the registered codes are `failover_v2` and `host_monitoring_v2`), `dialect` in place of the `wrapper_dialect` parameter, and a MySQL Global Database chain containing `host_monitoring_v2`, which cannot be loaded on `mysql-connector-python`. Also documents the event loop requirement for asyncio on Windows, and notes that `gdb_accessible_regions` is currently supported in the synchronous driver only. ([PR #1270](https://github.com/aws/aws-advanced-python-wrapper/pull/1270))
+
+### :cloud: Changed
+* The SQLAlchemy dialects moved to `aws_advanced_python_wrapper.sqlalchemy_dialects` and register as drivers under SQLAlchemy's existing dialects: `postgresql+aws_wrapper_psycopg://`, `mysql+aws_wrapper_mysqlconnector://` and `mysql+aws_wrapper_aiomysql://`. The URL driver names are unchanged, so URL-based and `creator=` configurations continue to work without modification. `aws_advanced_python_wrapper.sqlalchemy.mysql_orm_dialect.SqlAlchemyOrmMysqlDialect` remains importable as a deprecated alias for `sqlalchemy_dialects.mysql.AwsWrapperMySQLConnectorDialect` and will be removed in the next major version. Note that the replacement class does not inject a default `aurora_connection_tracker,failover_v2` plugin chain when `wrapper_plugins` is absent; the wrapper's own default chain applies instead, which for `mysql-connector-python` is `initial_connection,aurora_connection_tracker,failover_v2`. See [SQLAlchemy Support](./docs/using-the-python-wrapper/SqlAlchemySupport.md). ([PR #1274](https://github.com/aws/aws-advanced-python-wrapper/pull/1274))
+* Reworked the Aurora initial connection strategy plugin. ([PR #1253](https://github.com/aws/aws-advanced-python-wrapper/pull/1253), [PR #1264](https://github.com/aws/aws-advanced-python-wrapper/pull/1264))
+* Updated the Community and Aurora database versions the test suite runs against. ([PR #1248](https://github.com/aws/aws-advanced-python-wrapper/pull/1248))
 
 ## [3.0.0] - 2026-06-02
 
@@ -135,6 +158,7 @@ The Amazon Web Services (AWS) Advanced Python Wrapper allows an application to t
 * Support for PostgreSQL
 * Support for MySQL
 
+[3.1.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/3.0.0...3.1.0
 [3.0.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/2.1.0...3.0.0
 [2.1.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/2.0.0...2.1.0
 [2.0.0]: https://github.com/aws/aws-advanced-python-wrapper/compare/1.4.0...2.0.0
