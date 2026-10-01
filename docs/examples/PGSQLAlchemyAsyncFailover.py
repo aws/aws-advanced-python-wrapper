@@ -31,7 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from aws_advanced_python_wrapper import release_resources
+from aws_advanced_python_wrapper.aio import release_resources_async
 
 CLUSTER_ENDPOINT = "database.cluster-xyz.us-east-1.rds.amazonaws.com"
 DB_NAME = "postgres"
@@ -69,7 +69,7 @@ async def main() -> None:
         await run_workload(engine)
     finally:
         await engine.dispose()
-        release_resources()
+        await release_resources_async()
 
 
 if __name__ == "__main__":
