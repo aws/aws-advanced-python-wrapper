@@ -265,3 +265,58 @@ def test_async_dialects_define_do_ping():
     # Each defines its own do_ping (not merely inherited from the stock base).
     assert "do_ping" in AwsWrapperMySQLAiomysqlAsyncDialect.__dict__
     assert "do_ping" in AwsWrapperPGPsycopgAsyncDialect.__dict__
+
+
+# --- driver-error classification (issue #1275) -------------------------------
+#
+# SQLAlchemy picks the ``sqlalchemy.exc`` class by walking the raised
+# exception's MRO and matching base class *names*. Because ``loaded_dbapi`` is
+# this package, that only produces the right answer if the exception reaching SA
+# carries a base named after its PEP-249 category. These tests pin both halves
+# of that: the dialect normalizes a driver error into such a class, and a
+# generic ``AwsWrapperError`` -- what the failover plugins raise in place of the
+# driver's exception unless ``preserve_driver_exception_type`` is set -- does not
+# classify at all.
+
+def test_driver_integrity_error_classifies_as_sa_integrity_error():
+    from mysql.connector import errors as mysql_errors
+    from sqlalchemy import exc as sa_exc
+
+    import aws_advanced_python_wrapper
+    from aws_advanced_python_wrapper.sqlalchemy_dialects._exception_handling import \
+        _normalize_driver_error
+
+    driver_error = mysql_errors.IntegrityError(
+        "1062 (23000): Duplicate entry 'a' for key 'tbl.col'")
+    normalized = _normalize_driver_error(driver_error, mysql_errors)
+
+    classified = sa_exc.DBAPIError.instance(
+        "INSERT INTO tbl (col) VALUES (%s)", {}, normalized,
+        aws_advanced_python_wrapper.Error)
+
+    assert type(classified) is sa_exc.IntegrityError
+    assert classified.orig is normalized
+
+
+def test_generic_aws_wrapper_error_does_not_classify():
+    """Why the failover plugins must not substitute the driver's exception.
+
+    ``AwsWrapperError``'s MRO contributes only the names ``AwsWrapperError``,
+    ``Error`` and ``Exception``, none of which ``sqlalchemy.exc`` exports, so
+    SA falls back to the generic ``DBAPIError`` and every
+    ``except sqlalchemy.exc.IntegrityError:`` recovery path stops matching.
+    """
+    from mysql.connector import errors as mysql_errors
+    from sqlalchemy import exc as sa_exc
+
+    import aws_advanced_python_wrapper
+    from aws_advanced_python_wrapper.errors import AwsWrapperError
+
+    driver_error = mysql_errors.IntegrityError(
+        "1062 (23000): Duplicate entry 'a' for key 'tbl.col'")
+    classified = sa_exc.DBAPIError.instance(
+        "INSERT INTO tbl (col) VALUES (%s)", {},
+        AwsWrapperError("wrapped", driver_error),
+        aws_advanced_python_wrapper.Error)
+
+    assert type(classified) is sa_exc.DBAPIError

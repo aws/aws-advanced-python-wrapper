@@ -132,7 +132,27 @@ Wrapper errors are classified so SQLAlchemy maps them to the correct `sqlalchemy
 | `UnsupportedOperationError` | `sqlalchemy.exc.NotSupportedError` |
 | `AwsWrapperError` (generic) | `sqlalchemy.exc.DBAPIError` |
 
-Applications writing SA retry loops can `except sqlalchemy.exc.OperationalError` and catch failover events naturally. Target-driver exceptions (e.g., `psycopg.errors.*`, `mysql.connector.errors.*`) are not remapped and flow through SA's dialect-specific classification unchanged.
+Applications writing SQLAlchemy retry loops can `except sqlalchemy.exc.OperationalError` and catch failover events naturally.
+
+### Target driver errors
+
+An error raised by the target driver that is not a failover condition — a duplicate key, a syntax error, a constraint violation — keeps its PEP-249 category only if the failover plugins are told to preserve it:
+
+```python
+engine = create_engine(
+    "mysql+aws_wrapper_mysqlconnector://user:password@my-cluster.cluster-xyz.us-east-2.rds.amazonaws.com/db"
+    "?preserve_driver_exception_type=True"
+)
+
+try:
+    session.add(obj)
+    session.commit()
+except sqlalchemy.exc.IntegrityError:   # duplicate key, FK violation, ...
+    session.rollback()
+```
+The `failover` and `failover_v2` plugins currently wrap a target driver error that does not trigger failover in a generic `AwsWrapperError`, which SQLAlchemy can only classify as `sqlalchemy.exc.DBAPIError`. Applications catching these errors with `except sqlalchemy.exc.IntegrityError:` therefore do not match them. The driver's error is still reachable as `err.orig.driver_error`.
+
+Set the [`preserve_driver_exception_type`](./using-plugins/UsingTheFailover2Plugin.md#failover-plugin-v2-configuration-parameters) parameter to `True` to propagate target driver errors as-is, so SQLAlchemy classifies them by PEP-249 category and `except sqlalchemy.exc.IntegrityError:` matches again.
 
 ## Resource cleanup
 

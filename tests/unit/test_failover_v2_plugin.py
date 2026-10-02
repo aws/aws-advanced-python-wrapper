@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 
 import psycopg
 import pytest
+from mysql.connector import errors as mysql_errors
 
 from aws_advanced_python_wrapper.errors import (
     AwsWrapperError, FailoverFailedError, FailoverSuccessError,
@@ -77,6 +78,13 @@ def properties():
 @pytest.fixture
 def failover_v2_plugin(plugin_service_mock, properties):
     return FailoverV2Plugin(plugin_service_mock, properties)
+
+
+@pytest.fixture
+def preserve_type_plugin(plugin_service_mock, properties):
+    props = Properties(properties)
+    WrapperProperties.PRESERVE_DRIVER_EXCEPTION_TYPE.set(props, "true")
+    return FailoverV2Plugin(plugin_service_mock, props)
 
 
 class TestFailoverV2Plugin:
@@ -141,26 +149,83 @@ class TestFailoverV2Plugin:
             failover_v2_plugin._invalid_invocation_on_closed_connection()
 
     def test_deal_with_original_exception_network_error(self, failover_v2_plugin):
+        # A real _pick_new_connection signals the outcome of the switch by
+        # raising, so the original exception is never reached.
         network_exception = Exception("Network error")
         failover_v2_plugin._plugin_service.is_network_exception.return_value = True
         failover_v2_plugin._invalidate_current_connection = MagicMock()
-        failover_v2_plugin._pick_new_connection = MagicMock()
+        failover_v2_plugin._pick_new_connection = MagicMock(side_effect=FailoverSuccessError())
 
-        with pytest.raises(AwsWrapperError):
+        with pytest.raises(FailoverSuccessError):
             failover_v2_plugin._deal_with_original_exception(network_exception)
 
         failover_v2_plugin._invalidate_current_connection.assert_called_once()
         failover_v2_plugin._pick_new_connection.assert_called_once()
 
     def test_deal_with_original_exception_non_network_error(self, failover_v2_plugin):
-        non_network_exception = ValueError("Not a network error")
+        # Default behavior: the driver's exception is replaced, and only
+        # reachable through driver_error.
+        non_network_exception = mysql_errors.IntegrityError(
+            "1062 (23000): Duplicate entry 'a' for key 'tbl.col'")
         failover_v2_plugin._plugin_service.is_network_exception.return_value = False
         failover_v2_plugin._invalidate_current_connection = MagicMock()
 
-        with pytest.raises(AwsWrapperError):
+        with pytest.raises(AwsWrapperError) as exc_info:
             failover_v2_plugin._deal_with_original_exception(non_network_exception)
 
+        assert exc_info.value.driver_error is non_network_exception
         failover_v2_plugin._invalidate_current_connection.assert_not_called()
+
+    def test_deal_with_original_exception_preserves_driver_exception_type(self, preserve_type_plugin):
+        # With preserve_driver_exception_type the driver's exception is re-raised
+        # as-is: its class is what SQLAlchemy, Django and others classify by.
+        non_network_exception = mysql_errors.IntegrityError(
+            "1062 (23000): Duplicate entry 'a' for key 'tbl.col'")
+        preserve_type_plugin._plugin_service.is_network_exception.return_value = False
+        preserve_type_plugin._invalidate_current_connection = MagicMock()
+
+        with pytest.raises(mysql_errors.IntegrityError) as exc_info:
+            preserve_type_plugin._deal_with_original_exception(non_network_exception)
+
+        assert exc_info.value is non_network_exception
+        preserve_type_plugin._invalidate_current_connection.assert_not_called()
+
+    def test_execute_preserves_non_failover_driver_exception(self, preserve_type_plugin, connection_mock):
+        # End-to-end through execute(): a duplicate-key error is not a failover
+        # condition and reaches the caller with its class intact.
+        driver_exception = mysql_errors.IntegrityError(
+            "1062 (23000): Duplicate entry 'a' for key 'tbl.col'")
+        preserve_type_plugin._plugin_service.is_network_exception.return_value = False
+        preserve_type_plugin._plugin_service.is_read_only_connection_exception.return_value = False
+        preserve_type_plugin._invalidate_current_connection = MagicMock()
+        preserve_type_plugin._pick_new_connection = MagicMock()
+
+        def failing_func():
+            raise driver_exception
+
+        with pytest.raises(mysql_errors.IntegrityError) as exc_info:
+            preserve_type_plugin.execute(connection_mock, "Cursor.execute", failing_func)
+
+        assert exc_info.value is driver_exception
+        preserve_type_plugin._pick_new_connection.assert_not_called()
+
+    def test_execute_wraps_non_failover_driver_exception_by_default(self, failover_v2_plugin, connection_mock):
+        # Same path with the property unset: the exception is replaced.
+        driver_exception = mysql_errors.IntegrityError(
+            "1062 (23000): Duplicate entry 'a' for key 'tbl.col'")
+        failover_v2_plugin._plugin_service.is_network_exception.return_value = False
+        failover_v2_plugin._plugin_service.is_read_only_connection_exception.return_value = False
+        failover_v2_plugin._invalidate_current_connection = MagicMock()
+        failover_v2_plugin._pick_new_connection = MagicMock()
+
+        def failing_func():
+            raise driver_exception
+
+        with pytest.raises(AwsWrapperError) as exc_info:
+            failover_v2_plugin.execute(connection_mock, "Cursor.execute", failing_func)
+
+        assert exc_info.value.driver_error is driver_exception
+        failover_v2_plugin._pick_new_connection.assert_not_called()
 
     def test_failover_writer_mode(self, failover_v2_plugin):
         failover_v2_plugin._failover_mode = FailoverMode.STRICT_WRITER

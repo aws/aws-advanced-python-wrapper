@@ -3,6 +3,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/#semantic-versioning-200).
 
+## [Unreleased]
+
+### :magic_wand: Added
+* The `failover` and `failover_v2` plugins currently rewraps all errors to an AwsWrapperError even when the errors do not trigger failover. Set the `preserve_driver_exception_type` configuration parameter to `True` to re-raise the target driver errors as-is for the failover plugins. Failover errors are unaffected and are still raised as `FailoverSuccessError`, `FailoverFailedError` or `TransactionResolutionUnknownError`. This is useful for ORMs to properly classify the errors. ([Issue #1275](https://github.com/aws/aws-advanced-python-wrapper/issues/1275))
+
 ## [3.1.0] - 2026-08-24
 ### :magic_wand: Added
 * Python 3.14 support. ([PR #1252](https://github.com/aws/aws-advanced-python-wrapper/pull/1252))
