@@ -284,6 +284,14 @@ class WrapperProperties:
         "Reader connection attempt timeout in seconds during a reader failover process.",
         30,
     )
+    PRESERVE_DRIVER_EXCEPTION_TYPE = WrapperProperty(
+        "preserve_driver_exception_type",
+        """Re-raise a target driver exception unchanged when it does not trigger a connection switch,
+        instead of replacing it with an AwsWrapperError. The driver's exception class is what SQLAlchemy,
+        Django and similar libraries use to classify a failure, so preserving it keeps a duplicate key
+        reaching the application as an integrity error rather than a generic database error.""",
+        False,
+    )
 
     # Failover2Plugin properties
     FAILOVER_READER_HOST_SELECTOR_STRATEGY = WrapperProperty(
