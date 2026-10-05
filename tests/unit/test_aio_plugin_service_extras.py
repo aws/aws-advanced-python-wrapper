@@ -72,17 +72,46 @@ def test_get_availability_returns_none_when_unset():
 
 
 def test_set_then_get_availability():
+    """The mark lands on the live host and is cached under the host's url.
+
+    The url is the key because that is what ``_update_host_availability`` looks up when a
+    topology query replaces the host objects; an alias-keyed entry was never read back.
+    """
     svc = _make_service()
-    svc.set_availability(frozenset({"host-1.cluster.example"}), HostAvailability.UNAVAILABLE)
-    assert svc.get_availability("host-1.cluster.example") == HostAvailability.UNAVAILABLE
+    host = HostInfo("host-1.cluster.example", 5432)
+    svc._all_hosts = (host,)
+
+    # as_aliases() is what every caller passes, and it spells the host as "host:port".
+    svc.set_availability(host.as_aliases(), HostAvailability.UNAVAILABLE)
+
+    assert host.get_raw_availability() == HostAvailability.UNAVAILABLE
+    assert svc.get_availability(host.url) == HostAvailability.UNAVAILABLE
 
 
-def test_set_availability_covers_all_aliases():
+def test_set_availability_matches_a_host_through_any_of_its_aliases():
     svc = _make_service()
-    aliases = frozenset({"h1.example", "h1-alias.example"})
-    svc.set_availability(aliases, HostAvailability.UNAVAILABLE)
-    for alias in aliases:
-        assert svc.get_availability(alias) == HostAvailability.UNAVAILABLE
+    host = HostInfo("h1.example", 5432)
+    host.add_alias("h1-alias.example")
+    svc._all_hosts = (host,)
+
+    svc.set_availability(frozenset({"h1-alias.example"}), HostAvailability.UNAVAILABLE)
+
+    assert host.get_raw_availability() == HostAvailability.UNAVAILABLE
+    assert svc.get_availability(host.url) == HostAvailability.UNAVAILABLE
+
+
+def test_set_availability_ignores_a_host_outside_the_topology():
+    """A mark for a host the service does not hold is dropped rather than cached.
+
+    Otherwise a stale entry could be re-hydrated onto an unrelated host that later joins the
+    topology under the same address.
+    """
+    svc = _make_service()
+    svc._all_hosts = ()
+
+    svc.set_availability(frozenset({"not-in-topology.example"}), HostAvailability.UNAVAILABLE)
+
+    assert svc.get_availability("not-in-topology.example/") is None
 
 
 def test_default_plugin_accepts_random_strategy():

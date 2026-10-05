@@ -45,7 +45,9 @@ def _plugin(props, all_hosts=()):
 
 def test_retry_deadline_uses_timeout_property():
     props = Properties({})
-    # Zero total budget: the retry loop must not run even once despite the long interval.
+    # A zero total budget means "do not retry", not "do not connect". The budget is checked
+    # after an attempt rather than before one, so exactly one attempt is made however long
+    # the retry interval is -- and the interval is never slept, because there is no retry.
     WrapperProperties.OPEN_CONNECTION_RETRY_TIMEOUT_MS.set(props, "0")
     WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.set(props, "600000")
 
@@ -56,7 +58,7 @@ def test_retry_deadline_uses_timeout_property():
         plugin.connect(
             MagicMock(), MagicMock(), HostInfo(WRITER_CLUSTER), props, True, connect_func)
 
-    connect_func.assert_not_called()
+    assert connect_func.call_count == 1
 
 
 def test_wait_for_initial_topology_disabled_by_default():
@@ -112,7 +114,10 @@ def test_wait_for_initial_topology_connects_to_instance_after_wait():
     assert conn is instance_conn
     assert host.host == WRITER_INSTANCE
     # The timeout must reach the monitor in seconds.
-    plugin_service.force_monitoring_refresh_host_list.assert_called_once_with(True, 5.0)
+    # Deliberately False: asking the monitor to verify the writer closes the shared
+    # per-cluster monitoring connection, which under a pool prefill means every arriving
+    # connection tears down what the previous one established.
+    plugin_service.force_monitoring_refresh_host_list.assert_called_once_with(False, 5.0)
     fallback_conn.close.assert_called_once()
 
 
