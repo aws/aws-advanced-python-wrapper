@@ -727,3 +727,22 @@ def test_monitor_whose_loop_closed_is_replaced():
     (new,) = list(_monitors.values())
     assert new is not old
     assert old._stopped is True
+
+
+def test_failed_instance_identification_is_not_cached():
+    """#1288: when the instance behind a cluster endpoint can't be
+    identified, the plugin must not remember the cluster endpoint and
+    silently monitor it on later statements."""
+    plugin, svc, _dd, _conn = _build()
+    cluster = HostInfo(host="mydb.cluster-xyz.us-east-1.rds.amazonaws.com", port=5432)
+    svc._current_host_info = cluster
+    svc.identify_connection = AsyncMock(return_value=None)
+
+    async def _body():
+        for _ in range(2):
+            with pytest.raises(AwsWrapperError):
+                await plugin._get_monitoring_host_info()
+        assert svc.identify_connection.await_count == 2
+        assert plugin._monitoring_host_info is None
+
+    asyncio.run(_body())

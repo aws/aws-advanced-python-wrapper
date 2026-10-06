@@ -676,11 +676,11 @@ class AsyncHostMonitoringPlugin(AsyncPlugin):
         current_host_info = self._plugin_service.current_host_info
         if current_host_info is None:
             raise AwsWrapperError(Messages.get("HostMonitoringV2Plugin.HostInfoNone"))
-        self._monitoring_host_info = current_host_info
-        rds_url_type = self._rds_utils.identify_rds_type(self._monitoring_host_info.host)
+        rds_url_type = self._rds_utils.identify_rds_type(current_host_info.host)
 
         try:
             if not rds_url_type.is_rds_cluster:
+                self._monitoring_host_info = current_host_info
                 return self._monitoring_host_info
             logger.debug("HostMonitoringV2Plugin.ClusterEndpointHostInfo")
             current_connection = self._plugin_service.current_connection

@@ -67,6 +67,15 @@ _TOPOLOGY_REQUIRING_PLUGINS = frozenset({
     "aurora_connection_tracker",
 })
 
+# Host monitoring identifies the instance behind a cluster endpoint through the
+# topology, so on a topology-aware dialect (Aurora, Multi-AZ, Global) it needs
+# a topology provider too. Sync gets one from every such dialect whatever the
+# plugins (#1288); other dialects have no topology and keep the static one.
+_TOPOLOGY_ON_TOPOLOGY_DIALECT_PLUGINS = frozenset({
+    "host_monitoring",
+    "host_monitoring_v2",
+})
+
 
 def _build_host_list_provider(
         props: Properties,
@@ -76,7 +85,8 @@ def _build_host_list_provider(
     """Pick an async host list provider based on plugins + DB dialect.
 
     Selection order, matching sync database_dialect.py:
-      * ``plugins`` references no topology-requiring plugin -> static.
+      * ``plugins`` references no topology-requiring plugin, and no host
+        monitoring plugin on a topology-aware dialect -> static.
       * database_dialect is a MultiAz dialect -> MultiAz provider.
       * database_dialect is a GlobalAurora dialect -> GlobalAurora provider.
       * Otherwise -> Aurora provider (the default topology path).
@@ -90,9 +100,14 @@ def _build_host_list_provider(
         AsyncMultiAzHostListProvider, AsyncStaticHostListProvider)
     from aws_advanced_python_wrapper.aio.plugin_factory import \
         parse_plugins_property
+    from aws_advanced_python_wrapper.database_dialect import \
+        TopologyAwareDatabaseDialect
 
-    codes = parse_plugins_property(props) or []
-    if not any(c.strip() in _TOPOLOGY_REQUIRING_PLUGINS for c in codes):
+    codes = {c.strip() for c in parse_plugins_property(props) or []}
+    needs_topology = bool(codes & _TOPOLOGY_REQUIRING_PLUGINS) or (
+        bool(codes & _TOPOLOGY_ON_TOPOLOGY_DIALECT_PLUGINS)
+        and isinstance(database_dialect, TopologyAwareDatabaseDialect))
+    if not needs_topology:
         return AsyncStaticHostListProvider(props)
 
     # Topology-aware path. Pick the provider matching the dialect.
