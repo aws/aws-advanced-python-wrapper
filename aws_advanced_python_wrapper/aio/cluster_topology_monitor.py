@@ -18,7 +18,8 @@ Background :class:`asyncio.Task` that periodically awakens, calls
 :meth:`AsyncAuroraHostListProvider.force_refresh`, and sleeps. Replaces
 the sync :class:`ClusterTopologyMonitor`'s thread-based loop.
 
-The monitor is deliberately minimal: one task per provider instance, fixed
+The monitor is deliberately minimal: one task per cluster (shared by every
+provider for that cluster, see ``host_list_provider._topology_monitors``), fixed
 interval, no suggestions feedback loop (sync EFM uses that; the async EFM
 plugin runs its own monitors). Cancellation is clean -- ``stop()`` cancels
 the task and awaits its exit.
@@ -45,6 +46,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import time
+import weakref
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional,
                     Set, Tuple)
 
@@ -106,6 +108,10 @@ class AsyncClusterTopologyMonitor:
             When ``None``, falls back to ``connection_getter`` (test/back-compat).
         """
         self._provider = provider
+        # Every provider sharing this monitor; each one's cache receives the
+        # topologies the monitor publishes. Weak so a provider whose connection
+        # was dropped without close() doesn't stay alive through the monitor.
+        self._subscribers: weakref.WeakSet = weakref.WeakSet()
         self._connection_getter = connection_getter
         self._connection_factory = connection_factory
         self._owned_conn: Optional[Any] = None
@@ -147,6 +153,10 @@ class AsyncClusterTopologyMonitor:
 
     def is_running(self) -> bool:
         return self._task is not None and not self._task.done()
+
+    def subscribe(self, provider: Any) -> None:
+        """Add ``provider`` to the set that receives published topologies."""
+        self._subscribers.add(provider)
 
     def is_in_panic_mode(self) -> bool:
         """True when panic-mode probe tasks are currently running."""
@@ -369,12 +379,13 @@ class AsyncClusterTopologyMonitor:
         topology = self._role_corrected(topology)
         self._last_topology = topology
         self._check_for_writer_change(topology)
-        adopt = getattr(self._provider, "adopt_topology", None)
-        if adopt is not None:
-            try:
-                adopt(topology)
-            except Exception:  # noqa: BLE001 - cache publication is best-effort
-                pass
+        for provider in list(self._subscribers) or [self._provider]:
+            adopt = getattr(provider, "adopt_topology", None)
+            if adopt is not None:
+                try:
+                    adopt(topology)
+                except Exception:  # noqa: BLE001 - cache publication is best-effort
+                    pass
         self._topology_updated.set()
 
     async def _wait_for_tick(self, interval: float) -> None:
