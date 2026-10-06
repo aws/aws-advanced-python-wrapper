@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import socket as socket_mod
+import threading
 import time
 import weakref
 from unittest.mock import AsyncMock, MagicMock
@@ -666,3 +667,63 @@ def test_async_dialects_support_abort_connection():
 
     assert AsyncPsycopgDriverDialect().supports_abort_connection() is True
     assert AsyncAiomysqlDriverDialect().supports_abort_connection() is True
+
+
+# ---- Multiple event loops (#1287) --------------------------------------
+
+
+class _LoopThread:
+    """An event loop running forever on its own thread, like one loop per
+    worker thread in an application."""
+
+    def __init__(self) -> None:
+        self.loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+        self._thread.start()
+
+    def run(self, coro):
+        return asyncio.run_coroutine_threadsafe(coro, self.loop).result(timeout=5)
+
+    def close(self) -> None:
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self._thread.join(timeout=5)
+        self.loop.close()
+
+
+def test_event_loops_do_not_stop_each_others_monitors():
+    """A statement on one loop must not stop another live loop's monitor for
+    the same host, and each loop keeps reusing its own monitor."""
+    other = _LoopThread()
+    try:
+        p_other, svc_other, *_ = _build(grace_ms=100000)
+        svc_other.force_connect = AsyncMock()
+
+        async def _body():
+            p_here, svc_here, *_ = _build(grace_ms=100000)
+            svc_here.force_connect = AsyncMock()
+            seen = set()
+            for _ in range(3):
+                other.run(_execute_once(p_other))
+                await _execute_once(p_here)
+                seen.update(id(m) for m in list(_monitors.values()))
+            assert len(_monitors) == 2
+            assert len(seen) == 2
+            assert all(not m._stopped for m in list(_monitors.values()))
+
+        asyncio.run(_body())
+    finally:
+        efm._reset_monitor_registry()
+        other.close()
+
+
+def test_monitor_whose_loop_closed_is_replaced():
+    plugin, svc, *_ = _build(grace_ms=100000)
+    svc.force_connect = AsyncMock()
+
+    asyncio.run(_execute_once(plugin))
+    (old,) = list(_monitors.values())
+
+    asyncio.run(_execute_once(plugin))
+    (new,) = list(_monitors.values())
+    assert new is not old
+    assert old._stopped is True
