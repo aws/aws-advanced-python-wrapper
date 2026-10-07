@@ -80,6 +80,7 @@ class FailoverPlugin(Plugin):
         self._writer_failover_handler: WriterFailoverHandler
 
         self._enable_failover_setting = WrapperProperties.ENABLE_FAILOVER.get_bool(self._properties)
+        self._preserve_driver_exception_type = WrapperProperties.PRESERVE_DRIVER_EXCEPTION_TYPE.get_bool(self._properties)
         self._failover_timeout_sec = WrapperProperties.FAILOVER_TIMEOUT_SEC.get_float(self._properties)
         self._failover_cluster_topology_refresh_rate_sec = WrapperProperties.FAILOVER_CLUSTER_TOPOLOGY_REFRESH_RATE_SEC.get_float(
             self._properties)
@@ -175,6 +176,15 @@ class FailoverPlugin(Plugin):
 
                 self._pick_new_connection()
                 self._last_exception = ex
+
+            # This line is only reachable if the original error does not trigger a connection switch.
+            if self._preserve_driver_exception_type:
+                # Re-raise the error as-is.
+                raise
+
+            # Replacing the error discards the driver's exception class, which is what SQLAlchemy,
+            # Django and similar libraries classify a failure by. Kept as the default for backwards
+            # compatibility.
             raise AwsWrapperError(Messages.get_formatted("FailoverPlugin.DetectedException", str(ex)), ex) from ex
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):

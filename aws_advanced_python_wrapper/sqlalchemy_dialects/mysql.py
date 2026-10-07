@@ -52,15 +52,6 @@ class AwsWrapperMySQLConnectorDialect(
         return args, kwargs
 
     def _extract_error_code(self, exception: BaseException) -> int:
-        # Plugins such as failover re-raise the underlying driver error
-        # wrapped in an ``AwsWrapperError``, which hides the numeric MySQL
-        # error code that SA's ``has_table`` / ``is_disconnect`` logic keys
-        # off. In particular ``has_table`` must see 1146 ("table doesn't
-        # exist") to return False so ``create_all`` can proceed -- otherwise
-        # the wrapped error propagates and ORM table setup fails. Unwrap to
-        # the underlying mysql-connector error so the stock classifier can
-        # read ``.errno``. Restores the override that main's
-        # SqlAlchemyOrmMysqlDialect carried before it was dropped in the merge.
         from aws_advanced_python_wrapper.errors import AwsWrapperError
         if isinstance(exception, AwsWrapperError) and exception.driver_error is not None:
             exception = exception.driver_error

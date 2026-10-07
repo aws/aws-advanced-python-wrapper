@@ -27,7 +27,7 @@ from unittest import mock
 from unittest.mock import MagicMock, PropertyMock
 
 from aws_advanced_python_wrapper.errors import (
-    FailoverSuccessError, TransactionResolutionUnknownError)
+    AwsWrapperError, FailoverSuccessError, TransactionResolutionUnknownError)
 from aws_advanced_python_wrapper.failover_plugin import (FailoverMode,
                                                          FailoverPlugin)
 from aws_advanced_python_wrapper.failover_result import (ReaderFailoverResult,
@@ -425,3 +425,54 @@ def test_execute(plugin_service_mock, mock_sql_method):
     plugin.execute(None, "close", mock_sql_method)
 
     assert mock_sql_method.call_count == 2
+
+
+def test_execute_preserves_non_failover_driver_exception(plugin_service_mock, mock_sql_method):
+    """With preserve_driver_exception_type, a non-failover driver error keeps its class.
+
+    Its class is what SQLAlchemy, Django and other libraries use to decide what
+    kind of database error occurred, so it is re-raised unchanged.
+    """
+    from mysql.connector import errors as mysql_errors
+
+    plugin_service_mock.is_network_exception.return_value = False
+    plugin_service_mock.is_read_only_connection_exception.return_value = False
+
+    properties = Properties()
+    WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
+    WrapperProperties.PRESERVE_DRIVER_EXCEPTION_TYPE.set(properties, "True")
+    plugin = FailoverPlugin(plugin_service_mock, properties)
+    plugin._pick_new_connection = MagicMock()
+
+    driver_exception = mysql_errors.IntegrityError(
+        "1062 (23000): Duplicate entry 'a' for key 'tbl.col'")
+    mock_sql_method.side_effect = driver_exception
+
+    with pytest.raises(mysql_errors.IntegrityError) as exc_info:
+        plugin.execute(None, "Cursor.execute", mock_sql_method)
+
+    assert exc_info.value is driver_exception
+    plugin._pick_new_connection.assert_not_called()
+
+
+def test_execute_wraps_non_failover_driver_exception_by_default(plugin_service_mock, mock_sql_method):
+    """Default behavior: the driver error is replaced with an AwsWrapperError."""
+    from mysql.connector import errors as mysql_errors
+
+    plugin_service_mock.is_network_exception.return_value = False
+    plugin_service_mock.is_read_only_connection_exception.return_value = False
+
+    properties = Properties()
+    WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
+    plugin = FailoverPlugin(plugin_service_mock, properties)
+    plugin._pick_new_connection = MagicMock()
+
+    driver_exception = mysql_errors.IntegrityError(
+        "1062 (23000): Duplicate entry 'a' for key 'tbl.col'")
+    mock_sql_method.side_effect = driver_exception
+
+    with pytest.raises(AwsWrapperError) as exc_info:
+        plugin.execute(None, "Cursor.execute", mock_sql_method)
+
+    assert exc_info.value.driver_error is driver_exception
+    plugin._pick_new_connection.assert_not_called()
