@@ -1008,11 +1008,8 @@ def test_departed_host_invalidation_fires_when_pin_is_first_observation():
 
 
 def test_cluster_endpoint_connection_survives_its_first_execute():
-    """Issue #1276: the connect-time live-probe pin used
-    ``current_host_info``, which for a cluster-endpoint connection is the
-    cluster endpoint. The first execute compared that pin against the
-    topology writer (an instance endpoint), saw a writer change, and
-    ``invalidate_all`` closed the connection about to run its statement."""
+    """The pin is the instance, not the cluster endpoint, so the first
+    execute doesn't see a writer change and close the connection."""
     plugin, svc, driver_dialect, tracker = _build()
     cluster = "mydb.cluster-xyz.us-east-1.rds.amazonaws.com"
     instance = "inst-1.xyz.us-east-1.rds.amazonaws.com"
@@ -1060,10 +1057,8 @@ def _connect_via(plugin, svc, driver_dialect, endpoint, conn):
 
 
 def test_failover_invalidates_departed_instance_of_cluster_endpoint_connection():
-    """A cluster-endpoint connection departs the INSTANCE it landed on, not
-    the cluster endpoint. With topology still lagged (old writer named), the
-    departed-host path must resolve the cluster endpoint to that instance so
-    idle connections to the demoted writer are closed."""
+    """With lagged topology, failover still closes idle connections to the
+    instance a cluster-endpoint connection departed."""
     plugin, svc, driver_dialect, tracker = _build()
     cluster = "mydb.cluster-xyz.us-east-1.rds.amazonaws.com"
     old = "inst-1.xyz.us-east-1.rds.amazonaws.com"

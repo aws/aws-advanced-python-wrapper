@@ -99,17 +99,11 @@ _MONITOR_EXPIRATION_SEC = 60.0
 _DEFAULT_MONITORING_CONNECT_TIMEOUT_SEC = 10
 
 # Module-level shared-monitor registry, keyed by "{time}:{interval}:{count}:{url}"
-# and event loop.
+# and event loop (a monitor task only runs on the loop that started it).
 # Holds monitors (which reference the plugin service, NOT the plugin), so a
 # closed connection's plugin stays collectable. Sliding-expiry disposal is
 # opportunistic (on next monitor request) + on host-deleted notifications +
-# via the single module shutdown hook.
-#
-# The key also holds the event loop the monitor runs on: an asyncio task only
-# runs on the loop that started it, so an application with one loop per thread
-# gets one monitor per loop, and a loop never stops another live loop's
-# monitors (#1287). The lock guards the registry across those threads, like
-# the RLock in sync's monitor service.
+# via the single module shutdown hook. The lock guards it across threads.
 _RegistryKey = Tuple[str, asyncio.AbstractEventLoop]
 _monitors: Dict[_RegistryKey, AsyncHostMonitorV2] = {}
 _monitors_lock = threading.RLock()
@@ -335,9 +329,7 @@ class AsyncHostMonitorV2:
         return not self._active_contexts and not self._new_contexts
 
     def is_usable(self) -> bool:
-        # Usable from the loop that owns it; other loops get their own monitor
-        # (registry key), so a different running loop isn't a reason to stop
-        # this one (#1287). Only a closed loop is.
+        # Other loops have their own monitors, so only a closed loop matters.
         if self._stopped or self._task is None or self._task.done():
             return False
         return self._loop is not None and not self._loop.is_closed()

@@ -108,9 +108,8 @@ class AsyncClusterTopologyMonitor:
             When ``None``, falls back to ``connection_getter`` (test/back-compat).
         """
         self._provider = provider
-        # Every provider sharing this monitor; each one's cache receives the
-        # topologies the monitor publishes. Weak so a provider whose connection
-        # was dropped without close() doesn't stay alive through the monitor.
+        # Providers that receive published topologies. Weak so the monitor
+        # doesn't keep a dropped provider alive.
         self._subscribers: weakref.WeakSet = weakref.WeakSet()
         self._connection_getter = connection_getter
         self._connection_factory = connection_factory

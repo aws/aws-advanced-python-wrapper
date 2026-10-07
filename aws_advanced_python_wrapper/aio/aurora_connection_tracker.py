@@ -270,7 +270,7 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         self._plugin_service = plugin_service
         self._tracker = tracker or AsyncOpenedConnectionTracker()
         self._current_writer: Optional[HostInfo] = None
-        # The instance a cluster-endpoint connection landed on (#1276).
+        # The instance a cluster-endpoint connection landed on.
         self._connected_instance: Optional[HostInfo] = None
         self._pending_invalidations: Set[asyncio.Task] = set()
 
@@ -344,11 +344,8 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
             role = await self._plugin_service.get_host_role(conn)
             if role == HostRole.WRITER:
                 host = self._plugin_service.current_host_info
-                # Topology names instances, so a cluster or custom endpoint
-                # never matches the writer and the first execute would
-                # invalidate this connection (#1276). Pin the instance the
-                # connection landed on; if it can't be identified, keep the
-                # topology pin.
+                # Topology names instances, so pin the instance behind a
+                # cluster endpoint; if it's unknown, keep the topology pin.
                 if host is not None and not rds.is_rds_instance(host.host):
                     host = self._connected_instance
                 if host is not None and (
@@ -515,8 +512,7 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         """
         if pre_failover_host is None:
             return
-        # A cluster-endpoint connection departed the instance it landed on,
-        # which is what the pin and the tracker's instance keys name (#1276).
+        # A cluster-endpoint connection departed the instance it landed on.
         if (self._connected_instance is not None
                 and not RdsUtils().is_rds_instance(pre_failover_host.host)):
             pre_failover_host = self._connected_instance

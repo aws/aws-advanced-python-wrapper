@@ -67,11 +67,10 @@ _TOPOLOGY_REQUIRING_PLUGINS = frozenset({
     "aurora_connection_tracker",
 })
 
-# Host monitoring identifies the instance behind a cluster endpoint through the
-# topology, so on a topology-aware dialect (Aurora, Multi-AZ, Global) it needs
-# a topology provider too. Sync gets one from every such dialect whatever the
-# plugins (#1288); other dialects have no topology and keep the static one.
-_TOPOLOGY_ON_TOPOLOGY_DIALECT_PLUGINS = frozenset({
+# Plugins that use the topology when the dialect has one (Aurora, Multi-AZ,
+# Global), to resolve the instance behind a cluster endpoint. Sync gets a
+# topology provider from those dialects whatever the plugins.
+_TOPOLOGY_WHEN_AVAILABLE_PLUGINS = frozenset({
     "host_monitoring",
     "host_monitoring_v2",
 })
@@ -105,7 +104,7 @@ def _build_host_list_provider(
 
     codes = {c.strip() for c in parse_plugins_property(props) or []}
     needs_topology = bool(codes & _TOPOLOGY_REQUIRING_PLUGINS) or (
-        bool(codes & _TOPOLOGY_ON_TOPOLOGY_DIALECT_PLUGINS)
+        bool(codes & _TOPOLOGY_WHEN_AVAILABLE_PLUGINS)
         and isinstance(database_dialect, TopologyAwareDatabaseDialect))
     if not needs_topology:
         return AsyncStaticHostListProvider(props)

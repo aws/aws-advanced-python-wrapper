@@ -113,10 +113,8 @@ def test_plain_aurora_dialect_selects_aurora_provider() -> None:
 
 
 def test_host_monitoring_on_topology_aware_dialect_returns_topology_provider() -> None:
-    # #1288: host_monitoring(_v2) identifies the instance behind a cluster
-    # endpoint through the topology. Sync gets a topology provider from every
-    # Aurora/Multi-AZ dialect whatever the plugins; the static provider can't
-    # identify the instance, so the first statement failed.
+    # Host monitoring needs the topology to identify the instance behind a
+    # cluster endpoint.
     from aws_advanced_python_wrapper.database_dialect import (
         AuroraMysqlDialect, AuroraPgDialect)
     dd = AsyncPsycopgDriverDialect()

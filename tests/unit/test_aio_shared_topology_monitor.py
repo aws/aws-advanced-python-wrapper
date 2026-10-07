@@ -12,13 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""Async topology monitors are shared per cluster, like sync's
-``monitor_service.run_if_absent(ClusterTopologyMonitorImpl, cluster_id, ...)``.
-
-Every async connect builds its own host list provider, so a per-provider
-monitor meant one dedicated monitoring connection per application connection
-(issue #1284).
-"""
+"""Async topology monitors are shared per cluster, as in sync."""
 
 from __future__ import annotations
 
@@ -128,9 +122,7 @@ def test_providers_for_different_clusters_get_separate_monitors() -> None:
 
 
 def test_monitor_outlives_its_connections_and_is_reused() -> None:
-    # Sync parity: closing a connection doesn't stop the cluster's monitor, so
-    # connections that come and go (NullPool, a pool draining to zero) reuse
-    # one monitoring connection instead of opening a new one each time.
+    # As in sync, closing a connection doesn't stop the cluster's monitor.
     factory = _ConnFactory()
 
     async def _body():
@@ -153,8 +145,7 @@ def test_monitor_outlives_its_connections_and_is_reused() -> None:
 
 
 def test_stop_stops_the_shared_monitor_for_the_cluster() -> None:
-    # Sync parity: RdsHostListProvider.stop_monitor stops the cluster's monitor
-    # (blue/green switchover); the next provider starts a fresh one.
+    # Like sync's stop_monitor; the next provider starts a fresh monitor.
     factory = _ConnFactory()
 
     async def _body():

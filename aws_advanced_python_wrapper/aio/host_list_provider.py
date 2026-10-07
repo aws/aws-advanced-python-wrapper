@@ -58,12 +58,9 @@ if TYPE_CHECKING:
 
 Topology = Tuple[HostInfo, ...]
 
-# Topology monitors shared by every provider of the same cluster. Every async
-# connect builds its own provider, so a per-provider monitor meant one
-# dedicated monitoring connection per application connection (issue #1284).
-# Sync parity: monitor_service.run_if_absent(ClusterTopologyMonitorImpl,
-# cluster_id, ...). Keyed by event loop as well because an asyncio monitor
-# task is bound to the loop that started it.
+# One topology monitor per cluster, shared by all its providers (each connect
+# builds its own provider). The event loop is part of the key because a monitor
+# task only runs on the loop that started it.
 _MonitorKey = Tuple[type, str, asyncio.AbstractEventLoop]
 _topology_monitors: Dict[_MonitorKey, Any] = {}
 
@@ -677,10 +674,8 @@ class AsyncAuroraHostListProvider:
     async def stop(self) -> None:
         """Stop this cluster's shared topology monitor.
 
-        Sync parity: ``RdsHostListProvider.stop_monitor`` stops the cluster's
-        monitor for every connection (blue/green switchover). Closing a
-        connection does not stop it, as in sync: the monitor lives until this,
-        ``release_resources_async()``, or its event loop closes.
+        As in sync, closing a connection doesn't stop the monitor; it runs
+        until this, ``release_resources_async()``, or its event loop closes.
         """
         monitor = self._monitor
         key = self._monitor_key

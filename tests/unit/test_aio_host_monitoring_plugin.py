@@ -669,7 +669,7 @@ def test_async_dialects_support_abort_connection():
     assert AsyncAiomysqlDriverDialect().supports_abort_connection() is True
 
 
-# ---- Multiple event loops (#1287) --------------------------------------
+# ---- Multiple event loops ----------------------------------------------
 
 
 class _LoopThread:
@@ -730,9 +730,7 @@ def test_monitor_whose_loop_closed_is_replaced():
 
 
 def test_failed_instance_identification_is_not_cached():
-    """#1288: when the instance behind a cluster endpoint can't be
-    identified, the plugin must not remember the cluster endpoint and
-    silently monitor it on later statements."""
+    """An unidentified cluster endpoint isn't cached and monitored later."""
     plugin, svc, _dd, _conn = _build()
     cluster = HostInfo(host="mydb.cluster-xyz.us-east-1.rds.amazonaws.com", port=5432)
     svc._current_host_info = cluster
