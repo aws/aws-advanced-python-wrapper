@@ -58,6 +58,12 @@ if TYPE_CHECKING:
 
 Topology = Tuple[HostInfo, ...]
 
+# One topology monitor per cluster, shared by all its providers (each connect
+# builds its own provider). The event loop is part of the key because a monitor
+# task only runs on the loop that started it.
+_MonitorKey = Tuple[type, str, asyncio.AbstractEventLoop]
+_topology_monitors: Dict[_MonitorKey, Any] = {}
+
 
 def _is_programming_error(ex: BaseException) -> bool:
     """True when ``ex`` is a PEP-249 ``ProgrammingError`` (bad SQL / not an
@@ -239,6 +245,7 @@ class AsyncAuroraHostListProvider:
         # Monitor wiring (N.1b). Lazy-created on first refresh so
         # provider construction stays cheap and test-friendly.
         self._monitor: Optional[Any] = None  # AsyncClusterTopologyMonitor
+        self._monitor_key: Optional[_MonitorKey] = None
         self._last_conn: Optional[Any] = None
         # Panic-mode probe: opens a pipeline connection to a host and
         # classifies its role, used by the monitor to discover the new
@@ -375,7 +382,7 @@ class AsyncAuroraHostListProvider:
         return topology or ()
 
     def _get_or_create_monitor(self) -> Optional[Any]:
-        """Lazy-construct the per-provider topology monitor.
+        """Return this cluster's shared topology monitor, creating it if needed.
 
         Returns ``None`` if monitor construction fails or if the
         topology_query is absent (e.g., static/unsupported dialects).
@@ -385,6 +392,17 @@ class AsyncAuroraHostListProvider:
             return self._monitor
         if not self._topology_query:
             return None
+        key: _MonitorKey = (
+            type(self), self._cluster_id, asyncio.get_running_loop())
+        for stale_key in [
+                k for k, m in _topology_monitors.items() if not m.is_running()]:
+            del _topology_monitors[stale_key]
+        shared = _topology_monitors.get(key)
+        if shared is not None:
+            shared.subscribe(self)
+            self._monitor = shared
+            self._monitor_key = key
+            return shared
         try:
             from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
                 AsyncClusterTopologyMonitor
@@ -420,7 +438,10 @@ class AsyncAuroraHostListProvider:
             connection_factory=self._monitor_connection_factory,
         )
         monitor.start()
+        monitor.subscribe(self)
         self._monitor = monitor
+        self._monitor_key = key
+        _topology_monitors[key] = monitor
         # Register monitor teardown with the global cleanup hook so
         # release_resources_async() tears it down.
         try:
@@ -651,14 +672,18 @@ class AsyncAuroraHostListProvider:
         return server_id
 
     async def stop(self) -> None:
-        """Tear down the provider's background topology monitor.
+        """Stop this cluster's shared topology monitor.
 
-        Sync parity: sync ``RdsHostListProvider`` stops its monitor on release.
-        The async provider previously no-op'd here, leaking the monitor task
-        (it only stopped via the global cleanup hook).
+        As in sync, closing a connection doesn't stop the monitor; it runs
+        until this, ``release_resources_async()``, or its event loop closes.
         """
         monitor = self._monitor
+        key = self._monitor_key
         self._monitor = None
+        self._monitor_key = None
+        if key is not None and monitor is not None \
+                and _topology_monitors.get(key) is monitor:
+            del _topology_monitors[key]
         if monitor is not None:
             try:
                 await monitor.stop()

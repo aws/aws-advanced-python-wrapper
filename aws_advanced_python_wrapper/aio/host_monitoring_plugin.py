@@ -22,7 +22,8 @@ threads). The load-bearing v2 semantics preserved here:
   ``plugin_service.force_connect`` and probes THAT (never the in-band
   application connection). Sync ref: ``HostMonitorV2.check_connection_status``.
 * **Shared monitors.** One monitor per ``"{time}:{interval}:{count}:{url}"`` key
-  is shared across every connection with the same parameters, held in a
+  and event loop is shared across every connection with the same parameters on
+  that loop, held in a
   module-level registry with sliding idle expiry. Sync ref:
   ``MonitorServiceV2.get_monitor`` + ``_CACHE_CLEANUP_NANO``.
 * **Execute-window-bounded monitoring.** Each network-bound execute registers a
@@ -51,6 +52,7 @@ collectable.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 import weakref
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, List,
@@ -96,12 +98,15 @@ _MONITOR_EXPIRATION_SEC = 60.0
 # connects to an unreachable host hang without a bound, so always supply one.
 _DEFAULT_MONITORING_CONNECT_TIMEOUT_SEC = 10
 
-# Module-level shared-monitor registry, keyed "{time}:{interval}:{count}:{url}".
+# Module-level shared-monitor registry, keyed by "{time}:{interval}:{count}:{url}"
+# and event loop (a monitor task only runs on the loop that started it).
 # Holds monitors (which reference the plugin service, NOT the plugin), so a
 # closed connection's plugin stays collectable. Sliding-expiry disposal is
 # opportunistic (on next monitor request) + on host-deleted notifications +
-# via the single module shutdown hook.
-_monitors: Dict[str, AsyncHostMonitorV2] = {}
+# via the single module shutdown hook. The lock guards it across threads.
+_RegistryKey = Tuple[str, asyncio.AbstractEventLoop]
+_monitors: Dict[_RegistryKey, AsyncHostMonitorV2] = {}
+_monitors_lock = threading.RLock()
 _shutdown_hook_registered: bool = False
 
 
@@ -142,11 +147,12 @@ def _cleanup_idle_monitors() -> None:
     task/loop is no longer usable. Opportunistic: called on each monitor
     request so cleanup piggybacks on activity rather than a standing task."""
     now = time.monotonic()
-    for key, monitor in list(_monitors.items()):
-        if not monitor.is_usable() or (
-                monitor.can_dispose and now - monitor.last_used >= _MONITOR_EXPIRATION_SEC):
-            monitor.stop()
-            _monitors.pop(key, None)
+    with _monitors_lock:
+        for key, monitor in list(_monitors.items()):
+            if not monitor.is_usable() or (
+                    monitor.can_dispose and now - monitor.last_used >= _MONITOR_EXPIRATION_SEC):
+                monitor.stop()
+                _monitors.pop(key, None)
 
 
 def _get_or_create_monitor(
@@ -157,34 +163,37 @@ def _get_or_create_monitor(
         failure_detection_interval_ms: int,
         failure_detection_count: int,
         aborted_counter: Optional[TelemetryCounter]) -> AsyncHostMonitorV2:
-    _cleanup_idle_monitors()
     key = _monitor_key(
         failure_detection_time_ms, failure_detection_interval_ms,
         failure_detection_count, host_info.url)
-    existing = _monitors.get(key)
-    if existing is not None and existing.is_usable():
-        existing.touch()
-        return existing
-    if existing is not None:
-        # Stale (task done or bound to a closed loop): replace it.
-        existing.stop()
-    monitor = AsyncHostMonitorV2(
-        plugin_service, host_info, props, failure_detection_time_ms,
-        failure_detection_interval_ms, failure_detection_count,
-        aborted_counter, key)
-    monitor.start()
-    _monitors[key] = monitor
-    _register_shutdown_hook_once()
-    return monitor
+    registry_key = (key, asyncio.get_running_loop())
+    with _monitors_lock:
+        _cleanup_idle_monitors()
+        existing = _monitors.get(registry_key)
+        if existing is not None and existing.is_usable():
+            existing.touch()
+            return existing
+        if existing is not None:
+            # Stale (task done or loop closed): replace it.
+            existing.stop()
+        monitor = AsyncHostMonitorV2(
+            plugin_service, host_info, props, failure_detection_time_ms,
+            failure_detection_interval_ms, failure_detection_count,
+            aborted_counter, key)
+        monitor.start()
+        _monitors[registry_key] = monitor
+        _register_shutdown_hook_once()
+        return monitor
 
 
 def _stop_monitors_for_hosts(host_urls: Set[str]) -> None:
     """Stop + drop shared monitors whose host was deleted from the topology."""
-    for key, monitor in list(_monitors.items()):
-        if monitor.host_url in host_urls:
-            logger.debug("HostMonitorV2.StopMonitoringThread", monitor.host)
-            monitor.stop()
-            _monitors.pop(key, None)
+    with _monitors_lock:
+        for key, monitor in list(_monitors.items()):
+            if monitor.host_url in host_urls:
+                logger.debug("HostMonitorV2.StopMonitoringThread", monitor.host)
+                monitor.stop()
+                _monitors.pop(key, None)
 
 
 async def _stop_all_monitors() -> None:
@@ -194,9 +203,10 @@ async def _stop_all_monitors() -> None:
     plugin or connection. Idempotent.
     """
     global _shutdown_hook_registered
-    monitors = list(_monitors.values())
-    _monitors.clear()
-    _shutdown_hook_registered = False
+    with _monitors_lock:
+        monitors = list(_monitors.values())
+        _monitors.clear()
+        _shutdown_hook_registered = False
     for monitor in monitors:
         monitor.stop()
     if monitors:
@@ -211,10 +221,11 @@ def _reset_monitor_registry() -> None:
     creates a fresh loop), so cancelling and forgetting them is sufficient.
     """
     global _shutdown_hook_registered
-    for monitor in list(_monitors.values()):
-        monitor.stop()
-    _monitors.clear()
-    _shutdown_hook_registered = False
+    with _monitors_lock:
+        for monitor in list(_monitors.values()):
+            monitor.stop()
+        _monitors.clear()
+        _shutdown_hook_registered = False
 
 
 class _AsyncMonitoringContext:
@@ -318,12 +329,10 @@ class AsyncHostMonitorV2:
         return not self._active_contexts and not self._new_contexts
 
     def is_usable(self) -> bool:
+        # Other loops have their own monitors, so only a closed loop matters.
         if self._stopped or self._task is None or self._task.done():
             return False
-        try:
-            return self._loop is asyncio.get_running_loop()
-        except RuntimeError:
-            return False
+        return self._loop is not None and not self._loop.is_closed()
 
     def stop(self) -> None:
         """Signal the monitor to stop (sync, fire-and-forget). The task drains
@@ -659,11 +668,11 @@ class AsyncHostMonitoringPlugin(AsyncPlugin):
         current_host_info = self._plugin_service.current_host_info
         if current_host_info is None:
             raise AwsWrapperError(Messages.get("HostMonitoringV2Plugin.HostInfoNone"))
-        self._monitoring_host_info = current_host_info
-        rds_url_type = self._rds_utils.identify_rds_type(self._monitoring_host_info.host)
+        rds_url_type = self._rds_utils.identify_rds_type(current_host_info.host)
 
         try:
             if not rds_url_type.is_rds_cluster:
+                self._monitoring_host_info = current_host_info
                 return self._monitoring_host_info
             logger.debug("HostMonitoringV2Plugin.ClusterEndpointHostInfo")
             current_connection = self._plugin_service.current_connection

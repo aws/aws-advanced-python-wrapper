@@ -110,3 +110,27 @@ def test_plain_aurora_dialect_selects_aurora_provider() -> None:
     provider = _build_host_list_provider(
         Properties({"plugins": "failover"}), dd, AuroraPgDialect())
     assert type(provider) is AsyncAuroraHostListProvider
+
+
+def test_host_monitoring_on_topology_aware_dialect_returns_topology_provider() -> None:
+    # Host monitoring needs the topology to identify the instance behind a
+    # cluster endpoint.
+    from aws_advanced_python_wrapper.database_dialect import (
+        AuroraMysqlDialect, AuroraPgDialect)
+    dd = AsyncPsycopgDriverDialect()
+    for code in ("host_monitoring_v2", "host_monitoring"):
+        for dialect in (AuroraPgDialect(), AuroraMysqlDialect()):
+            provider = _build_host_list_provider(
+                Properties({"plugins": code}), dd, dialect)
+            assert isinstance(provider, AsyncAuroraHostListProvider), (code, dialect)
+
+
+def test_host_monitoring_on_non_topology_dialect_stays_static() -> None:
+    # Plain PostgreSQL / RDS instances have no topology to query.
+    from aws_advanced_python_wrapper.database_dialect import (
+        PgDatabaseDialect, RdsPgDialect)
+    dd = AsyncPsycopgDriverDialect()
+    for dialect in (RdsPgDialect(), PgDatabaseDialect(), None):
+        provider = _build_host_list_provider(
+            Properties({"plugins": "host_monitoring_v2"}), dd, dialect)
+        assert isinstance(provider, AsyncStaticHostListProvider), dialect

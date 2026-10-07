@@ -67,6 +67,14 @@ _TOPOLOGY_REQUIRING_PLUGINS = frozenset({
     "aurora_connection_tracker",
 })
 
+# Plugins that use the topology when the dialect has one (Aurora, Multi-AZ,
+# Global), to resolve the instance behind a cluster endpoint. Sync gets a
+# topology provider from those dialects whatever the plugins.
+_TOPOLOGY_WHEN_AVAILABLE_PLUGINS = frozenset({
+    "host_monitoring",
+    "host_monitoring_v2",
+})
+
 
 def _build_host_list_provider(
         props: Properties,
@@ -76,7 +84,8 @@ def _build_host_list_provider(
     """Pick an async host list provider based on plugins + DB dialect.
 
     Selection order, matching sync database_dialect.py:
-      * ``plugins`` references no topology-requiring plugin -> static.
+      * ``plugins`` references no topology-requiring plugin, and no host
+        monitoring plugin on a topology-aware dialect -> static.
       * database_dialect is a MultiAz dialect -> MultiAz provider.
       * database_dialect is a GlobalAurora dialect -> GlobalAurora provider.
       * Otherwise -> Aurora provider (the default topology path).
@@ -90,9 +99,14 @@ def _build_host_list_provider(
         AsyncMultiAzHostListProvider, AsyncStaticHostListProvider)
     from aws_advanced_python_wrapper.aio.plugin_factory import \
         parse_plugins_property
+    from aws_advanced_python_wrapper.database_dialect import \
+        TopologyAwareDatabaseDialect
 
-    codes = parse_plugins_property(props) or []
-    if not any(c.strip() in _TOPOLOGY_REQUIRING_PLUGINS for c in codes):
+    codes = {c.strip() for c in parse_plugins_property(props) or []}
+    needs_topology = bool(codes & _TOPOLOGY_REQUIRING_PLUGINS) or (
+        bool(codes & _TOPOLOGY_WHEN_AVAILABLE_PLUGINS)
+        and isinstance(database_dialect, TopologyAwareDatabaseDialect))
+    if not needs_topology:
         return AsyncStaticHostListProvider(props)
 
     # Topology-aware path. Pick the provider matching the dialect.
