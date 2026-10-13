@@ -602,7 +602,15 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         ``[::1]:5432`` split correctly on the LAST colon. Falls back to
         port 5432 when the alias has no colon (or the port part isn't
         numeric).
+
+        The trailing slash is stripped first: host-list-change keys are
+        ``HostInfo.url``, which is ``host:port/``. Without this, ``int()``
+        fails on ``"3306/"`` and the port silently became 5432, so a
+        rebuilt key never matched the tracked one and a demoted MySQL
+        writer's connections were never invalidated.
         """
+        if alias.endswith("/"):
+            alias = alias[:-1]
         host_part, sep, port_part = alias.rpartition(":")
         if not sep:
             # No colon -> treat entire alias as host, port defaults.

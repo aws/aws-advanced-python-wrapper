@@ -55,7 +55,8 @@ if TYPE_CHECKING:
         AsyncPluginManager
     from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
         AllowedAndBlockedHosts
-    from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
+    from aws_advanced_python_wrapper.database_dialect import (
+        DatabaseDialect, DatabaseDialectManager)
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.utils.properties import Properties
     from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
@@ -94,6 +95,16 @@ class AsyncPluginService(ExceptionHandler, Protocol):
 
     @database_dialect.setter
     def database_dialect(self, value: Optional[DatabaseDialect]) -> None:
+        ...
+
+    @property
+    def is_dialect_confirmed(self) -> bool:
+        """Whether the database dialect is confirmed via a live connection or user configuration and can't be updated.
+        """
+        ...
+
+    @is_dialect_confirmed.setter
+    def is_dialect_confirmed(self, value: bool) -> None:
         ...
 
     def set_availability(
@@ -384,9 +395,11 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         self._props: Properties = props
         self._driver_dialect: AsyncDriverDialect = driver_dialect
         self._database_dialect: Optional[DatabaseDialect] = None
-        # True once update_database_dialect has made a definitive decision
-        # (sync parity: DatabaseDialectManager can_update going False).
-        self._database_dialect_settled: bool = False
+        # True once the dialect is finalized. Host list providers
+        # wait on this before querying topology or starting a topology
+        # monitor.
+        self._is_dialect_confirmed: bool = False
+        self._database_dialect_manager: Optional[DatabaseDialectManager] = None
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._plugin_manager: Optional[AsyncPluginManager] = None
         self._host_list_provider: Optional[AsyncHostListProvider] = None
@@ -477,6 +490,23 @@ class AsyncPluginServiceImpl(AsyncPluginService):
     def database_dialect(self, value: Optional[DatabaseDialect]) -> None:
         self._database_dialect = value
 
+    @property
+    def is_dialect_confirmed(self) -> bool:
+        return self._is_dialect_confirmed
+
+    @is_dialect_confirmed.setter
+    def is_dialect_confirmed(self, value: bool) -> None:
+        self._is_dialect_confirmed = value
+
+    @property
+    def database_dialect_manager(self) -> Optional[DatabaseDialectManager]:
+        return self._database_dialect_manager
+
+    @database_dialect_manager.setter
+    def database_dialect_manager(
+            self, value: Optional[DatabaseDialectManager]) -> None:
+        self._database_dialect_manager = value
+
     def is_network_exception(
             self,
             error: Optional[Exception] = None,
@@ -498,19 +528,38 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         return self._exception_manager.is_read_only_connection_exception(
             self._database_dialect, error=error, sql_state=sql_state)
 
+    @staticmethod
+    def _availability_key(value: str) -> str:
+        """Normalize a host alias or url to one availability cache key.
+
+        ``HostInfo.url`` is ``as_alias()`` plus a trailing slash, so writing
+        under aliases and reading under urls never matched and every mark
+        was discarded.
+        """
+        return value[:-1] if value.endswith("/") else value
+
     def set_availability(
             self,
             host_aliases: FrozenSet[str],
             availability: HostAvailability) -> None:
         for alias in host_aliases:
             AsyncPluginServiceImpl._host_availability_expiring_cache.put(
-                alias,
+                AsyncPluginServiceImpl._availability_key(alias),
                 availability,
                 AsyncPluginServiceImpl._HOST_AVAILABILITY_EXPIRATION_NANO,
             )
+        # Also mark the live hosts, not just the cache. Host selection reads
+        # HostInfo.get_availability() directly, so a cache-only write would
+        # not reach it until the topology was rebuilt.
+        keys = {AsyncPluginServiceImpl._availability_key(a) for a in host_aliases}
+        for host in self._all_hosts:
+            if keys & {AsyncPluginServiceImpl._availability_key(a)
+                       for a in host.as_aliases()}:
+                host.set_availability(availability)
 
     def get_availability(self, host_url: str) -> Optional[HostAvailability]:
-        return AsyncPluginServiceImpl._host_availability_expiring_cache.get(host_url)
+        return AsyncPluginServiceImpl._host_availability_expiring_cache.get(
+            AsyncPluginServiceImpl._availability_key(host_url))
 
     @property
     def plugin_manager(self) -> Optional[AsyncPluginManager]:
@@ -612,64 +661,138 @@ class AsyncPluginServiceImpl(AsyncPluginService):
 
         Async parity for sync ``PluginServiceImpl.update_dialect``
         (plugin_service.py:538), invoked from the terminal plugin's connect
-        (sync default_plugin.py:82) so every OUTER plugin's post-connect logic
-        already sees the corrected dialect. The async layer previously ran
-        this upgrade only AFTER the whole connect pipeline
-        (``_upgrade_database_dialect_after_connect`` in aio/wrapper.py), which
-        left plugin connect hooks working with the pattern-guessed dialect --
-        on an Aurora MySQL *instance* endpoint that guess is
-        ``RdsMysqlDialect`` (no topology query; ``@@read_only`` role probe
-        that does not flip on Aurora failover), so hook-time topology/role
-        operations failed silently (the root asymmetry behind the
-        connection-tracker's pin and exception-classification defenses).
+        (sync default_plugin.py:82) so every OUTER plugin's post-connect
+        logic already sees the corrected dialect.
 
-        Only MySQL needs a live probe: the PG pattern guess is already
-        Aurora-correct for every endpoint form. Settles after a definitive
-        probe (mirrors sync ``can_update`` going False); a transient probe
-        failure leaves it unsettled so the next connect retries -- sync runs
-        update_dialect on every connect for the same reason.
+        Before a connection exists the dialect is only a guess made from the
+        endpoint pattern. On an Aurora MySQL *instance* endpoint that guess
+        is ``RdsMysqlDialect``: no topology query, and an ``@@read_only``
+        role probe that does not flip on Aurora failover, so hook-time
+        topology and role operations failed silently (the root asymmetry
+        behind the connection-tracker's pin and the exception-classification
+        defenses). Live verification replaces it with ``AuroraMysqlDialect``, and
+        the host list provider is rebuilt from the new dialect, because the
+        provider carries that dialect's topology SQL.
+
+        Marks the dialect confirmed once it can no longer change, which is
+        what releases the host list providers to query topology at all.
+
+        Walks the full ``dialect_update_candidates`` chain through the
+        dialect manager, so both engines upgrade to the same dialect from
+        the same connection -- including the chained upgrades a single rule set
+        misses, such as Aurora MySQL to Global Aurora MySQL.
+
+        Deviation from sync: a verification failure is swallowed and the dialect
+        left unconfirmed, where sync propagates. The next connect then
+        retries rather than freezing a wrong guess.
         """
-        if self._database_dialect_settled:
+        if self._is_dialect_confirmed:
             return
-        driver_dialect = self._driver_dialect
-        if getattr(driver_dialect, "_driver_name", None) != "aiomysql":
-            self._database_dialect_settled = True
-            return
-        from aws_advanced_python_wrapper.aio.host_list_provider import \
-            AsyncAuroraHostListProvider
-        from aws_advanced_python_wrapper.database_dialect import (
-            AuroraMysqlDialect, DatabaseDialectManager, DialectCode,
-            MysqlDatabaseDialect)
 
-        database_dialect = self._database_dialect
-        # A base/RDS MySQL dialect needs a live probe; a cluster-endpoint
-        # connect already resolved to AuroraMysqlDialect by pattern and skips
-        # the probe (but still needs the provider wired below).
-        if (not isinstance(database_dialect, AuroraMysqlDialect)
-                and isinstance(database_dialect, MysqlDatabaseDialect)):
+        manager = self._database_dialect_manager
+        if manager is None:
+            # No manager means nothing resolved the initial guess, so there
+            # is no candidate chain to walk. Settle rather than retry
+            # forever: a dialect supplied directly (tests, a custom dialect
+            # assigned onto the service) is the user's answer.
+            self._is_dialect_confirmed = True
+            return
+
+        original_dialect = self._database_dialect
+        host_info = self._initial_connection_host_info
+        url = host_info.url if host_info is not None else ""
+        try:
+            database_dialect = await manager.query_for_dialect_async(
+                url, host_info, connection, self._driver_dialect)
+        except Exception as ex:  # noqa: BLE001 - keep initial dialect; retry next connect
+            # Deliberately left unconfirmed: a transient verification failure must
+            # not freeze the guess, so the next connect retries.
+            logger.debug(
+                "AsyncPluginService.DatabaseDialectUnconfirmed",
+                f"{type(original_dialect).__name__} ({ex})")
+            return
+
+        self._database_dialect = database_dialect
+        self._is_dialect_confirmed = True
+        if original_dialect is not database_dialect:
+            logger.debug(
+                "AsyncPluginService.DatabaseDialectUpdated",
+                type(original_dialect).__name__,
+                type(database_dialect).__name__)
+            await self._update_host_list_provider(connection)
+        else:
+            logger.debug(
+                "AsyncPluginService.DatabaseDialectConfirmed",
+                type(database_dialect).__name__)
+
+    # The provider attributes that come from the dialect. Two
+    # providers of the same class agreeing on all of these are
+    # interchangeable, because everything else a supplier passes (props,
+    # driver dialect, provider service, monitor factory) comes from this
+    # plugin service and is identical either way.
+    #
+    # Kept in step with the suppliers by
+    # test_provider_identity_covers_every_dialect_supplied_argument, which
+    # fails if a supplier gains an argument this list does not name.
+    _PROVIDER_DIALECT_ATTRS = (
+        "_topology_query",
+        "_default_port",
+        "_writer_host_query",
+        "_host_id_query",
+        "_writer_host_column_index",
+    )
+
+    @staticmethod
+    def _provider_identity(provider: Any) -> tuple:
+        """What makes a provider the right one for a dialect.
+
+        ``getattr`` with a default rather than direct access: the static
+        (no-topology) provider carries none of these, and only the Multi-AZ
+        providers carry the writer/host-id ones.
+        """
+        return (type(provider),) + tuple(
+            getattr(provider, attr, None)
+            for attr in AsyncPluginServiceImpl._PROVIDER_DIALECT_ATTRS)
+
+    async def _update_host_list_provider(self, connection: Any) -> None:
+        """Replace the host list provider when the dialect calls for a
+        different one.
+        """
+        dialect = self._database_dialect
+        if dialect is None:
+            return
+
+        supplier = dialect.get_async_host_list_provider_supplier()
+        replacement = supplier(self, self._props)
+        previous = self._host_list_provider
+
+        if previous is not None and \
+                self._provider_identity(previous) == self._provider_identity(replacement):
+            logger.debug(
+                "AsyncPluginService.HostListProviderUnchanged",
+                type(dialect).__name__,
+                type(previous).__name__)
+            return
+
+        if previous is not None:
             try:
-                async with connection.cursor() as cur:
-                    await cur.execute("SHOW VARIABLES LIKE 'aurora_version'")
-                    # fetchall (not fetchone) so the result set is fully
-                    # drained -- a partially-read result leaves the shared
-                    # aiomysql connection dirty and the app's next query reads
-                    # the leftover row.
-                    is_aurora = len(await cur.fetchall()) > 0
-            except Exception:  # noqa: BLE001 - keep initial dialect; retry next connect
-                return
-            if is_aurora:
-                aurora = DatabaseDialectManager._known_dialects_by_code.get(
-                    DialectCode.AURORA_MYSQL)
-                if aurora is not None:
-                    database_dialect = aurora
-                    self._database_dialect = aurora
+                await previous.stop()
+            except Exception as ex:  # noqa: BLE001 - teardown is best-effort
+                logger.debug(
+                    "AsyncPluginService.HostListProviderStopFailed", ex)
+            # Carry the panic-mode probe across.
+            probe_host = getattr(previous, "_probe_host", None)
+            set_probe = getattr(replacement, "set_probe_host", None)
+            if probe_host is not None and callable(set_probe):
+                set_probe(probe_host)
 
-        if (isinstance(database_dialect, AuroraMysqlDialect)
-                and isinstance(self._host_list_provider,
-                               AsyncAuroraHostListProvider)):
-            self._host_list_provider.reconfigure_topology_query(
-                database_dialect.topology_query, default_port=3306)
-        self._database_dialect_settled = True
+        self._host_list_provider = replacement
+        logger.debug(
+            "AsyncPluginService.HostListProviderReplaced",
+            type(dialect).__name__,
+            "<none>" if previous is None else type(previous).__name__,
+            type(replacement).__name__)
+        await self.force_refresh_host_list(connection)
 
     async def identify_connection(
             self, connection: Optional[Any] = None) -> Optional[HostInfo]:
@@ -795,9 +918,18 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         # (topology queries return AVAILABLE-by-default hosts). Mirrors sync
         # PluginServiceImpl._update_host_availability.
         for host in hosts:
-            availability = AsyncPluginServiceImpl._host_availability_expiring_cache.get(host.url)
+            availability = self.get_availability(host.url)
             if availability:
                 host.set_availability(availability)
+            elif host.get_availability() == HostAvailability.UNAVAILABLE:
+                # The cache entry expired, so the mark has to expire with it.
+                # set_availability also marks the live HostInfo, and the
+                # providers that reuse one object forever -- the static
+                # provider, and the seed host a topology provider reports
+                # before its dialect is confirmed -- would otherwise stay
+                # UNAVAILABLE for the process lifetime, excluded from host
+                # selection with nothing to clear them.
+                host.set_availability(HostAvailability.AVAILABLE)
 
     def _update_hosts(self, new_hosts: Tuple[HostInfo, ...]) -> None:
         # Diff old vs new topology into per-host HostEvent sets and notify

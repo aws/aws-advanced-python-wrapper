@@ -190,7 +190,7 @@ class FailoverV2Plugin(Plugin):
         if not self._closed_explicitly:
             self._is_closed = False
             self._pick_new_connection()
-            logger.info(Messages.get("Failover.connectionChangedError"))
+            logger.info(Messages.get("FailoverPlugin.ConnectionChangedError"))
             raise FailoverSuccessError()
         else:
             raise AwsWrapperError("No operations allowed after connection closed")

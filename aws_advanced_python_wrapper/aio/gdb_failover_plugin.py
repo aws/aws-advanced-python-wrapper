@@ -260,8 +260,8 @@ class AsyncGdbFailoverPlugin(AsyncFailoverPlugin):
                 # deadline (validated on Aurora: 2592 reconnects to the stale
                 # host over 5 min, then timeout).
                 # STRICT_WRITER means "reconnect to the new writer" -- exactly
-                # failover_v2's job. (Requires the real topology provider, i.e.
-                # gdb_failover present in wrapper._TOPOLOGY_REQUIRING_PLUGINS.)
+                # failover_v2's job. (Requires a real topology provider, which
+                # the Global Aurora dialects supply.)
                 await self._failover_writer(
                     self._plugin_service.all_hosts, driver_dialect, deadline, None)
             case GdbFailoverMode.STRICT_HOME_READER:

@@ -87,6 +87,48 @@ def test_tracker_records_connection_on_connect():
     assert conn in tracked
 
 
+@pytest.mark.parametrize("port", [3306, 5432, 8666])
+def test_host_list_change_invalidates_a_demoted_writer_on_any_port(port):
+    """Host-list-change keys are HostInfo.url ("host:port/"). The trailing
+    slash used to break the port parse back to 5432, so a rebuilt key never
+    matched the tracked one and a demoted MySQL writer's connections were
+    never invalidated."""
+    plugin, svc, driver_dialect, tracker = _build()
+    host = HostInfo(host="instance-1.abc.us-east-1.rds.amazonaws.com",
+                    port=port, role=HostRole.WRITER)
+    conn = MagicMock(name="conn")
+
+    async def _connect_func():
+        return conn
+
+    async def _run():
+        await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=host,
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func)
+        assert conn in tracker._tracked_for(host)
+
+        # The host the demotion path rebuilds from the published url key has
+        # to resolve to the connection that connect() tracked. The trailing
+        # slash used to force the port back to 5432, so on MySQL the rebuilt
+        # host found nothing and the connection survived the demotion.
+        rebuilt_host, rebuilt_port = plugin._parse_alias(host.url)
+        assert (rebuilt_host, rebuilt_port) == (host.host, port)
+        rebuilt = HostInfo(host=rebuilt_host, port=rebuilt_port)
+        assert conn in tracker._tracked_for(rebuilt)
+
+    asyncio.run(_run())
+
+
+def test_parse_alias_keeps_the_port_from_a_url_key():
+    parsed = AsyncAuroraConnectionTrackerPlugin._parse_alias(
+        "instance-1.abc.us-east-1.rds.amazonaws.com:3306/")
+    assert parsed == ("instance-1.abc.us-east-1.rds.amazonaws.com", 3306)
+
+
 def test_connect_enriches_cluster_endpoint_with_resolved_instance_alias():
     """A cluster-endpoint connection must be tracked under the resolved
     *instance* alias so writer-failover ``invalidate_all(instance)`` closes
