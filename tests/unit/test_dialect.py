@@ -108,34 +108,60 @@ def test_pg_is_dialect(mock_conn, mock_cursor, mock_session, pg_dialect, mock_dr
     assert not pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
 
+def wire_cursor_by_query(mock_cursor, responses, default=()):
+    """Answer each verification query with its own rows.
+
+    A dialect's rules run several queries through one cursor, so a single
+    fetchone/fetchall return value cannot express "the extensions query
+    says yes but the topology query says no". Keys are substrings matched
+    against the query last executed.
+    """
+    state = {"query": ""}
+
+    def execute(query, *args, **kwargs):
+        state["query"] = query
+
+    def rows():
+        for fragment, response in responses.items():
+            if fragment in state["query"]:
+                return list(response)
+        return list(default)
+
+    mock_cursor.execute.side_effect = execute
+    mock_cursor.fetchall.side_effect = rows
+    mock_cursor.fetchone.side_effect = lambda: next(iter(rows()), None)
+
+
 def test_mysql_is_dialect(mock_conn, mock_cursor, mock_session, mysql_dialect, mock_driver_dialect):
-    records = [("some_value", "some_value"), ("some_value", "mysql")]
-    mock_cursor.__iter__.return_value = records
+    # The identifying row need not be first in the result set.
+    mock_cursor.fetchall.return_value = [("some_value", "some_value"), ("some_value", "mysql")]
 
     assert mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
-    records = [("some_value", "some_value"), ("some_value", "some_value")]
-    mock_cursor.__iter__.return_value = records
+    mock_cursor.fetchall.return_value = [("some_value", "some_value"), ("some_value", "some_value")]
 
     assert not mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
 
-@patch('aws_advanced_python_wrapper.database_dialect.super')
-def test_rds_mysql_is_dialect(mock_super, mock_cursor, mock_conn, rds_mysql_dialect, mock_driver_dialect):
-    mock_super().is_dialect.return_value = True
-
-    records = ("some_value", "source distribution")
-    mock_cursor.fetchone.return_value = records
-
+def test_rds_mysql_is_dialect(mock_cursor, mock_conn, rds_mysql_dialect, mock_driver_dialect):
+    wire_cursor_by_query(mock_cursor, {
+        "version_comment": [("some_value", "source distribution")],
+        "report_host": [("report_host", "instance-1")],
+    })
     assert rds_mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
-    records = ("some_value", "some_value")
-    mock_cursor.fetchone.return_value = records
-
+    # Not an RDS build.
+    wire_cursor_by_query(mock_cursor, {
+        "version_comment": [("some_value", "some_value")],
+        "report_host": [("report_host", "instance-1")],
+    })
     assert not rds_mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
-    mock_super().is_dialect.return_value = False
-
+    # RDS build, but report_host unset.
+    wire_cursor_by_query(mock_cursor, {
+        "version_comment": [("some_value", "source distribution")],
+        "report_host": [("report_host", "")],
+    })
     assert not rds_mysql_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
 
@@ -150,47 +176,124 @@ def test_aurora_mysql_is_dialect(mock_conn, mock_cursor, mock_driver_dialect):
     assert dialect.is_dialect(mock_conn, mock_driver_dialect) is True
 
 
-@patch('aws_advanced_python_wrapper.database_dialect.super')
-def test_aurora_pg_is_dialect(mock_super, mock_conn, mock_cursor, mock_driver_dialect):
+def test_aurora_pg_is_dialect(mock_conn, mock_cursor, mock_driver_dialect):
     aurora_pg_dialect = AuroraPgDialect()
     mock_conn.cursor.return_value = mock_cursor
-    mock_super().is_dialect.return_value = True
 
-    records = [("aurora_stat_utils", "aurora_stat_utils"), ("some_value", "source distribution")]
-    mock_cursor.__iter__.return_value = records
+    pg_base_present = {"pg_proc": [(1,)]}
 
+    wire_cursor_by_query(mock_cursor, {
+        **pg_base_present,
+        "aurora_stat_utils": [(True,)],
+        "aurora_replica_status": [(1,)],
+    })
     assert aurora_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
-    mock_cursor.fetchone.return_value = None
-
+    # Extension present, topology function absent: not Aurora PG.
+    wire_cursor_by_query(mock_cursor, {
+        **pg_base_present,
+        "aurora_stat_utils": [(True,)],
+        "aurora_replica_status": [],
+    })
     assert not aurora_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
-    mock_cursor.fetchone.return_value = records
-    mock_super().is_dialect.return_value = False
+    # Topology function present, extension absent.
+    wire_cursor_by_query(mock_cursor, {
+        **pg_base_present,
+        "aurora_stat_utils": [(False,)],
+        "aurora_replica_status": [(1,)],
+    })
+    assert not aurora_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
+    # The inherited PG base rules fail, so nothing else matters. Replaces
+    # the previous patch of ``database_dialect.super``: the parent rules are
+    # now a chained spec rather than a super() call.
+    wire_cursor_by_query(mock_cursor, {
+        "pg_proc": [],
+        "aurora_stat_utils": [(True,)],
+        "aurora_replica_status": [(1,)],
+    })
     assert not aurora_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
 
-@patch('aws_advanced_python_wrapper.database_dialect.super')
-def test_rds_pg_is_dialect(mock_super, mock_cursor, mock_conn, rds_pg_dialect, mock_driver_dialect):
-    mock_super().is_dialect.return_value = True
-
-    mock_cursor.__iter__.return_value = [(False, False), (True, False)]
-
+def test_rds_pg_is_dialect(mock_cursor, mock_conn, rds_pg_dialect, mock_driver_dialect):
+    # rds_tools without aurora_stat_utils is plain RDS PG; the identifying
+    # row need not be first.
+    wire_cursor_by_query(mock_cursor, {
+        "pg_proc": [(1,)],
+        "rds.extensions": [(False, False), (True, False)],
+    })
     assert rds_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
-    mock_cursor.__iter__.return_value = [(False, False), (False, False)]
-
+    wire_cursor_by_query(mock_cursor, {
+        "pg_proc": [(1,)],
+        "rds.extensions": [(False, False), (False, False)],
+    })
     assert not rds_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
-    mock_cursor.__iter__.return_value = []
-
+    wire_cursor_by_query(mock_cursor, {
+        "pg_proc": [(1,)],
+        "rds.extensions": [],
+    })
     assert not rds_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
 
-    mock_cursor.fetchone.return_value = [(False, False), (True, False)]
-    mock_super().is_dialect.return_value = False
-
+    # Both extensions present means Aurora PG, not RDS PG.
+    wire_cursor_by_query(mock_cursor, {
+        "pg_proc": [(1,)],
+        "rds.extensions": [(True, True)],
+    })
     assert not rds_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
+
+    # Inherited PG base rules fail.
+    wire_cursor_by_query(mock_cursor, {
+        "pg_proc": [],
+        "rds.extensions": [(True, False)],
+    })
+    assert not rds_pg_dialect.is_dialect(mock_conn, mock_driver_dialect)
+
+
+def test_multi_az_mysql_is_dialect(mock_conn, mock_cursor, mock_driver_dialect):
+    dialect = MultiAzClusterMysqlDialect()
+
+    # Topology rows present and report_host set: a Multi-AZ MySQL cluster.
+    mock_cursor.fetchall.return_value = [("instance-1",), ("instance-2",)]
+    mock_cursor.fetchone.return_value = ("report_host", "instance-1")
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is True
+
+    # No topology rows: not a Multi-AZ cluster.
+    mock_cursor.fetchall.return_value = []
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is False
+
+    # Topology present but report_host blank -- the variable exists and is
+    # unset, which is not the same as a Multi-AZ cluster.
+    mock_cursor.fetchall.return_value = [("instance-1",)]
+    mock_cursor.fetchone.return_value = ("report_host", "")
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is False
+
+    # report_host row missing entirely.
+    mock_cursor.fetchone.return_value = None
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is False
+
+
+def test_multi_az_pg_is_dialect(mock_conn, mock_cursor, mock_driver_dialect):
+    dialect = MultiAzClusterPgDialect()
+
+    mock_cursor.fetchone.return_value = ("instance-1",)
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is True
+
+    # Writer query answers with a falsy value: not a Multi-AZ cluster.
+    mock_cursor.fetchone.return_value = (None,)
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is False
+
+    mock_cursor.fetchone.return_value = None
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is False
+
+    # The query raising (rds_tools absent) means "not this dialect", not a
+    # propagated error.
+    mock_cursor.execute.side_effect = Exception("function does not exist")
+    mock_driver_dialect.is_in_transaction.return_value = False
+    assert dialect.is_dialect(mock_conn, mock_driver_dialect) is False
+    mock_cursor.execute.side_effect = None
 
 
 def test_get_dialect_custom_dialect(mock_custom_dialect, mock_driver_dialect):

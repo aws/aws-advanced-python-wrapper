@@ -47,12 +47,14 @@ from aws_advanced_python_wrapper.aio.cleanup import (register_shutdown_hook,
 from aws_advanced_python_wrapper.aio.topology_utils import (
     AsyncAuroraTopologyUtils, AsyncGlobalAuroraTopologyUtils,
     AsyncMultiAzTopologyUtils, AsyncTopologyUtils)
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import \
     create_host_availability_strategy
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.events import MonitorStopEvent
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 logger = Logger(__name__)
@@ -131,6 +133,13 @@ class AsyncHostListProviderService(Protocol):
         ...
 
     def is_static_host_list_provider(self) -> bool:
+        ...
+
+    @property
+    def is_dialect_confirmed(self) -> bool:
+        ...
+
+    def get_target_driver_func(self) -> Optional[Callable]:
         ...
 
 
@@ -214,7 +223,9 @@ class AsyncAuroraHostListProvider:
             default_port: int = 5432,
             monitor_connection_factory: Optional[
                 Callable[[], Awaitable[Any]]] = None,
-            topology_utils: Optional[AsyncTopologyUtils] = None) -> None:
+            topology_utils: Optional[AsyncTopologyUtils] = None,
+            provider_service: Optional[AsyncHostListProviderService] = None) -> None:
+        self._provider_service = provider_service
         self._props = props
         self._driver_dialect = driver_dialect
         self._default_port = default_port
@@ -257,6 +268,30 @@ class AsyncAuroraHostListProvider:
         # aio/wrapper.py and cluster_topology_monitor.build_probe_host.
         self._probe_host: Optional[Callable[..., Any]] = None
 
+    def _is_dialect_confirmed(self) -> bool:
+        """Whether the database dialect is finalized, and so whether topology may be queried yet.
+        """
+        if self._provider_service is None:
+            return True
+        return self._provider_service.is_dialect_confirmed
+
+    def _seed_topology(self) -> Topology:
+        """The host from the connection properties, reported until the dialect
+        is confirmed.
+
+        Taken from the topology utils rather than rebuilt here, so it carries
+        the cluster's availability strategy and the same port resolution every
+        topology host gets. Copied for the same reason
+        :meth:`AsyncStaticHostListProvider._host` copies: the default
+        availability strategy never expires a mark, so handing out the one
+        object would let a single failed connect pin the seed host
+        UNAVAILABLE for the life of the process, with nothing to clear it.
+        """
+        stored = self._get_stored_topology()
+        if stored:
+            return stored
+        return (copy(self._topology_utils.initial_host_info),)
+
     def set_probe_host(self, probe_host: Callable[..., Any]) -> None:
         """Arm panic-mode writer discovery on the (future) topology monitor.
 
@@ -266,21 +301,6 @@ class AsyncAuroraHostListProvider:
         panic mode -- same behavior as before wiring existed.
         """
         self._probe_host = probe_host
-
-    def reconfigure_topology_query(
-            self, topology_query: str, default_port: Optional[int] = None) -> None:
-        """Re-point the provider at a resolved dialect's query.
-
-        The provider is built before the connection exists, so an
-        instance-endpoint MySQL connection starts with the PostgreSQL default
-        query and port. Once the dialect is upgraded to Aurora MySQL the real
-        query and port are swapped in, and the stored topology is dropped
-        because anything the old query produced is stale or empty.
-        """
-        self._topology_utils.reconfigure(topology_query, default_port)
-        if default_port:
-            self._default_port = default_port
-        self._discard_stored_topology()
 
     @staticmethod
     def _derive_cluster_id(props: Properties) -> str:
@@ -341,6 +361,11 @@ class AsyncAuroraHostListProvider:
         if connection is not None:
             self._last_conn = connection
 
+        if not self._is_dialect_confirmed():
+            # No topology query and no monitor until the dialect is
+            # confirmed, so the guessed dialect's SQL is never run.
+            return self._seed_topology()
+
         if connection is None:
             return self._get_stored_topology() or ()
 
@@ -368,6 +393,10 @@ class AsyncAuroraHostListProvider:
         querying through a caller connection. Falls back to
         :meth:`force_refresh` when no monitor can be built (static dialects).
         """
+        if not self._is_dialect_confirmed():
+            # No topology query and no monitor until the dialect is
+            # confirmed, so the guessed dialect's SQL is never run.
+            return self._seed_topology()
         monitor = self._get_or_create_monitor()
         if monitor is None:
             return await self.force_refresh(self._last_conn)
@@ -527,6 +556,7 @@ class AsyncMultiAzHostListProvider(AsyncAuroraHostListProvider):
             monitor_connection_factory: Optional[
                 Callable[[], Awaitable[Any]]] = None,
             writer_host_column_index: int = 0,
+            provider_service: Optional[AsyncHostListProviderService] = None,
     ) -> None:
         super().__init__(
             props=props,
@@ -543,6 +573,7 @@ class AsyncMultiAzHostListProvider(AsyncAuroraHostListProvider):
                 host_id_query=host_id_query,
                 writer_host_column_index=writer_host_column_index,
                 instance_template_host=instance_template_host),
+            provider_service=provider_service,
         )
 
 
@@ -569,6 +600,7 @@ class AsyncGlobalAuroraHostListProvider(AsyncAuroraHostListProvider):
             default_port: int = 5432,
             monitor_connection_factory: Optional[
                 Callable[[], Awaitable[Any]]] = None,
+            provider_service: Optional[AsyncHostListProviderService] = None,
     ) -> None:
         super().__init__(
             props=props,
@@ -582,4 +614,99 @@ class AsyncGlobalAuroraHostListProvider(AsyncAuroraHostListProvider):
                 topology_query=topology_query,
                 default_port=default_port,
                 instance_templates_by_region=instance_templates_by_region),
+            provider_service=provider_service,
         )
+
+
+def build_monitor_connection_factory(
+        provider_service: AsyncHostListProviderService,
+        props: Properties) -> Callable[[], Awaitable[Any]]:
+    """Build the factory the topology monitor uses for its own connection.
+    """
+    from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                              PropertiesUtils)
+
+    async def _connect() -> Any:
+        target_func = provider_service.get_target_driver_func()
+        if target_func is None:
+            raise AwsWrapperError(
+                Messages.get_formatted(
+                    "HostListProvider.MonitorConnectionNoTargetDriverFunc",
+                    type(provider_service).__name__))
+        host_info = (provider_service.initial_connection_host_info
+                     or provider_service.current_host_info)
+        if host_info is None:
+            raise AwsWrapperError(
+                Messages.get_formatted(
+                    "HostListProvider.MonitorConnectionNoSeedHost",
+                    type(provider_service).__name__))
+        monitoring_props = PropertiesUtils.create_topology_monitoring_properties(
+            Properties(dict(props)))
+        return await provider_service.driver_dialect.connect(
+            host_info, monitoring_props, target_func)
+
+    return _connect
+
+
+def create_static_provider(
+        provider_service: AsyncHostListProviderService,
+        props: Properties) -> AsyncHostListProvider:
+    """Supplier body for dialects with no topology: a single seed host."""
+    return AsyncStaticHostListProvider(props)
+
+
+def create_aurora_provider(
+        provider_service: AsyncHostListProviderService,
+        props: Properties,
+        *,
+        topology_query: str,
+        default_port: int) -> AsyncHostListProvider:
+    """Supplier body for the Aurora topology dialects."""
+    return AsyncAuroraHostListProvider(
+        props,
+        provider_service.driver_dialect,
+        topology_query=topology_query,
+        default_port=default_port,
+        monitor_connection_factory=build_monitor_connection_factory(
+            provider_service, props),
+        provider_service=provider_service)
+
+
+def create_global_aurora_provider(
+        provider_service: AsyncHostListProviderService,
+        props: Properties,
+        *,
+        topology_query: str,
+        default_port: int) -> AsyncHostListProvider:
+    """Supplier body for the Aurora Global Database dialects."""
+    return AsyncGlobalAuroraHostListProvider(
+        props,
+        provider_service.driver_dialect,
+        topology_query=topology_query,
+        default_port=default_port,
+        monitor_connection_factory=build_monitor_connection_factory(
+            provider_service, props),
+        provider_service=provider_service)
+
+
+def create_multi_az_provider(
+        provider_service: AsyncHostListProviderService,
+        props: Properties,
+        *,
+        writer_host_query: str,
+        topology_query: str,
+        host_id_query: str,
+        default_port: int,
+        writer_host_column_index: int = 0) -> AsyncHostListProvider:
+    """Supplier body for the RDS Multi-AZ DB cluster dialects."""
+    return AsyncMultiAzHostListProvider(
+        props,
+        provider_service.driver_dialect,
+        writer_host_query=writer_host_query,
+        topology_query=topology_query,
+        host_id_query=host_id_query,
+        default_port=default_port,
+        writer_host_column_index=writer_host_column_index,
+        monitor_connection_factory=build_monitor_connection_factory(
+            provider_service, props),
+        provider_service=provider_service)
