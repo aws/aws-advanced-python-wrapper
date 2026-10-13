@@ -49,105 +49,31 @@ logger = Logger(__name__)
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
         AsyncDriverDialect
-    from aws_advanced_python_wrapper.aio.host_list_provider import \
-        AsyncHostListProvider
     from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
     from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
         TelemetryFactory
 
 
-_TOPOLOGY_REQUIRING_PLUGINS = frozenset({
-    "failover",
-    "failover_v2",
-    "gdb_failover",
-    "read_write_splitting",
-    "gdb_rw",
-    "custom_endpoint",
-    "aurora_connection_tracker",
-})
-
-
-def _build_host_list_provider(
-        props: Properties,
-        driver_dialect: AsyncDriverDialect,
-        database_dialect: Any = None,
-        monitor_connection_factory: Any = None) -> AsyncHostListProvider:
-    """Pick an async host list provider based on plugins + DB dialect.
-
-    Selection order, matching sync database_dialect.py:
-      * ``plugins`` references no topology-requiring plugin -> static.
-      * database_dialect is a MultiAz dialect -> MultiAz provider.
-      * database_dialect is a GlobalAurora dialect -> GlobalAurora provider.
-      * Otherwise -> Aurora provider (the default topology path).
-
-    ``database_dialect`` is passed optionally because early-phase callers
-    (tests, legacy paths) may not have resolved the dialect yet; the
-    function falls back to a plain Aurora provider in that case.
-    """
-    from aws_advanced_python_wrapper.aio.host_list_provider import (
-        AsyncAuroraHostListProvider, AsyncGlobalAuroraHostListProvider,
-        AsyncMultiAzHostListProvider, AsyncStaticHostListProvider)
-    from aws_advanced_python_wrapper.aio.plugin_factory import \
-        parse_plugins_property
-
-    codes = parse_plugins_property(props) or []
-    if not any(c.strip() in _TOPOLOGY_REQUIRING_PLUGINS for c in codes):
-        return AsyncStaticHostListProvider(props)
-
-    # Topology-aware path. Pick the provider matching the dialect.
-    if database_dialect is not None:
-        dialect_name = type(database_dialect).__name__
-        if "MultiAz" in dialect_name:
-            # Pull MultiAz queries off the dialect class. Sync exposes
-            # them as class-level constants; fall back to no provider
-            # if they're missing so callers degrade gracefully.
-            writer_q = getattr(
-                database_dialect, "_WRITER_HOST_QUERY", None)
-            topology_q = getattr(
-                database_dialect, "_TOPOLOGY_QUERY", None)
-            host_id_q = getattr(
-                database_dialect, "_HOST_ID_QUERY",
-                getattr(database_dialect, "host_id_query", None))
-            if writer_q and topology_q and host_id_q:
-                # MySQL's writer_host_query (SHOW REPLICA STATUS) carries the
-                # writer host at column 39; PG's single-column query uses 0.
-                # Sync threads this via MultiAzTopologyUtils -- mirror it here.
-                writer_col = getattr(
-                    database_dialect, "_WRITER_HOST_COLUMN_INDEX", 0)
-                return AsyncMultiAzHostListProvider(
-                    props, driver_dialect,
-                    writer_host_query=writer_q,
-                    topology_query=topology_q,
-                    host_id_query=host_id_q,
-                    monitor_connection_factory=monitor_connection_factory,
-                    writer_host_column_index=writer_col,
-                )
-        if "GlobalAurora" in dialect_name:
-            topology_q = getattr(
-                database_dialect, "topology_query", None)
-            if topology_q:
-                return AsyncGlobalAuroraHostListProvider(
-                    props, driver_dialect, topology_query=topology_q,
-                    monitor_connection_factory=monitor_connection_factory)
-
-    return AsyncAuroraHostListProvider(
-        props, driver_dialect,
-        monitor_connection_factory=monitor_connection_factory)
-
-
 def _resolve_database_dialect(
         driver_dialect: AsyncDriverDialect,
-        props: Properties) -> DatabaseDialect:
+        props: Properties) -> Tuple[DatabaseDialect, bool, DatabaseDialectManager]:
     """Resolve the initial ``DatabaseDialect`` guess.
 
     Honors the ``wrapper_dialect`` prop if set; otherwise falls back to the
     driver-dialect's default database dialect via :class:`DatabaseDialectManager`.
     The plugin service later upgrades the dialect from the live connection
     (``update_database_dialect``), mirroring sync.
+
+    Returns the dialect, whether it is already confirmed, and the manager itself.
+    The manager is returned rather than discarded because the live probe runs on it: it holds the
+    ``can_update`` / ``confirmed`` state and the resolved dialect code that
+    ``query_for_dialect_async`` needs in order to walk the candidate chain
+    and populate the endpoint cache.
     """
     manager = DatabaseDialectManager(props)
-    return manager.get_dialect(driver_dialect.dialect_code, props)
+    dialect = manager.get_dialect(driver_dialect.dialect_code, props)
+    return dialect, manager.is_confirmed_dialect(), manager
 
 
 class AsyncAwsWrapperCursor:
@@ -821,11 +747,11 @@ class AsyncAwsWrapperConnection:
         # Parity with the sync wrapper (PluginManager.create_plugins): when
         # NEITHER an explicit plugin list (``plugins=[...]``) NOR a ``plugins``
         # connection property is supplied, apply the default plugin list so
-        # failover/EFM/etc. load by default. Inject into props (not into
-        # build_async_plugins) so _build_host_list_provider stays in sync -- it
-        # reads the same property to choose a topology vs static provider. An
-        # explicit list leaves the ``plugins`` param non-None (skipped here); an
-        # explicit ``plugins=""`` leaves the key present (skipped -> no plugins).
+        # failover/EFM/etc. load by default. Injected into props rather than
+        # into build_async_plugins so every reader of the property sees the
+        # same list. An explicit list leaves the ``plugins`` param non-None
+        # (skipped here); an explicit ``plugins=""`` leaves the key present
+        # (skipped -> no plugins).
         # Async MySQL keeps host_monitoring_v2 (aiomysql EFM works via asyncio
         # cancellation), so both async engines use the full DEFAULT_PLUGINS.
         if plugins is None and WrapperProperties.PLUGINS.name not in props:
@@ -857,37 +783,17 @@ class AsyncAwsWrapperConnection:
         port = int(port_raw) if port_raw is not None else -1
         host_info = HostInfo(host=host, port=port)
 
-        # Resolve the database dialect first so the host-list-provider
-        # selection can pick a MultiAz/GlobalAurora variant when the
-        # dialect class indicates it (matches sync's behavior).
-        database_dialect = _resolve_database_dialect(driver_dialect, props)
-
-        # Dedicated topology-monitor connection factory: opens a FRESH raw
-        # monitoring connection (no plugins) to the seed host with
-        # topology-monitoring props. The background topology monitor uses this
-        # instead of the shared app connection -- driver connections (aiomysql)
-        # can't service concurrent queries, so a background refresh on the app's
-        # connection corrupts the app's in-flight query. Mirrors sync's monitor,
-        # which force_connects its own connection.
-        async def _monitor_conn_factory() -> Any:
-            from aws_advanced_python_wrapper.utils.properties import \
-                PropertiesUtils
-            mon_props = PropertiesUtils.create_topology_monitoring_properties(
-                Properties(dict(props)))
-            return await driver_dialect.connect(host_info, mon_props, target_func)
-
-        # Host-list-provider selection: if `plugins=...` references any
-        # topology-requiring plugin (failover, rws), build a topology
-        # provider matching the dialect; otherwise static is enough.
-        host_list_provider = _build_host_list_provider(
-            props, driver_dialect, database_dialect,
-            monitor_connection_factory=_monitor_conn_factory)
+        # Resolve the database dialect first: it decides which host list
+        # provider gets built, and whether that choice is already final.
+        database_dialect, is_dialect_confirmed, dialect_manager = _resolve_database_dialect(
+            driver_dialect, props)
 
         plugin_service = AsyncPluginServiceImpl(
             props=props,
             driver_dialect=driver_dialect,
             host_info=host_info,
         )
+
         # Share the connect-time telemetry factory (sync parity: sync passes
         # DefaultTelemetryFactory into PluginManager). Must happen BEFORE
         # AsyncPluginManager is built -- the manager caches the service's
@@ -897,15 +803,24 @@ class AsyncAwsWrapperConnection:
         # reach for them in their own ``connect`` hook (e.g., failover
         # checking ``is_network_exception``) have them available.
         plugin_service.database_dialect = database_dialect
-        plugin_service.host_list_provider = host_list_provider
+        plugin_service.is_dialect_confirmed = is_dialect_confirmed
+        plugin_service.database_dialect_manager = dialect_manager
         plugin_service.initial_connection_host_info = host_info
+        plugin_service.set_target_driver_func(target_func)
+        host_list_provider_init = database_dialect.get_async_host_list_provider_supplier()
+        host_list_provider = host_list_provider_init(plugin_service, props)
+        plugin_service.host_list_provider = host_list_provider
+        logger.debug(
+            "AsyncAwsWrapperConnection.HostListProviderInitialized",
+            type(host_list_provider).__name__,
+            host_list_provider.get_cluster_id(),
+            type(database_dialect).__name__,
+            is_dialect_confirmed)
 
         # Arm the topology monitor's panic-mode writer discovery: when the
         # monitoring connection dies mid-failover, the monitor probes every
         # host through the plugin pipeline to find the new writer (mirrors
-        # sync ClusterTopologyMonitor's per-host HostMonitor threads). The
-        # probe needs the plugin service, which didn't exist when the
-        # provider was built above.
+        # sync ClusterTopologyMonitor's per-host HostMonitor threads).
         set_probe = getattr(host_list_provider, "set_probe_host", None)
         if callable(set_probe):
             from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
@@ -930,16 +845,10 @@ class AsyncAwsWrapperConnection:
             plugins=plugins,
         )
         plugin_service.plugin_manager = plugin_manager
-        plugin_service.set_target_driver_func(target_func)
 
         # Run the init_host_provider pipeline (sync parity: wrapper.py:62 --
         # after the default provider is selected, before the initial
-        # connect). Subscribed plugins capture the host-list-provider
-        # service (implemented by the plugin service) and can validate or
-        # replace the provider chosen by _build_host_list_provider above.
-        # The dialect->provider mapping lives in that helper rather than on
-        # the dialect because the shared sync dialects' provider suppliers
-        # return SYNC providers.
+        # connect).
         plugin_manager.init_host_provider(props, plugin_service)
 
         target_conn = await plugin_manager.connect(

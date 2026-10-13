@@ -14,9 +14,14 @@
 
 from __future__ import annotations
 
-from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, FrozenSet, List,
-                    Optional, Protocol, Sequence, Tuple, runtime_checkable)
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, FrozenSet,
+                    List, Optional, Protocol, Sequence, Tuple,
+                    runtime_checkable)
 
+from aws_advanced_python_wrapper.dialect_verifier import (
+    AsyncDialectVerifier, DialectVerificationRules, Rule, SyncDialectVerifier,
+    all_of, col_contains_ignore_case, col_equals_ignore_case, col_falsy,
+    col_greater_than, col_non_empty_str, col_truthy)
 from aws_advanced_python_wrapper.driver_info import DriverInfo
 from aws_advanced_python_wrapper.host_list_provider import (
     AuroraTopologyUtils, ConnectionStringHostListProvider,
@@ -165,13 +170,51 @@ class DatabaseDialect(Protocol):
     def exception_handler(self) -> Optional[ExceptionHandler]:
         ...
 
-    @abstractmethod
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        """The queries and row conditions that identify this dialect.
+
+        Declared as data so one set of rules serves both engines: the sync
+        and async verifiers in :mod:`dialect_verifier` run the same rules
+        against a DB-API or an async connection respectively. Writing them
+        once is the point -- a hand-written sync body and a hand-written
+        async body drift, which is how the async layer came to recognise
+        only one of the six candidate dialects.
+
+        None means the dialect cannot be identified by querying, so it is
+        never selected from a candidate list; the pattern-based guess
+        stands. That is the conservative answer and what
+        :class:`UnknownDatabaseDialect` wants.
+        """
+        return None
+
     def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        ...
+        """Verify over a live connection that this is the database's dialect.
+        """
+        try:
+            return SyncDialectVerifier.run(self.verification_rules, conn, driver_dialect)
+        except Exception:  # noqa: BLE001 - failed verification means "not this dialect"
+            return False
+
+    async def is_dialect_async(self, conn: Any, driver_dialect: Any) -> bool:
+        """Verify over a live async connection that this is the database's dialect.
+        """
+        try:
+            return await AsyncDialectVerifier.run(self.verification_rules, conn, driver_dialect)
+        except Exception:  # noqa: BLE001 - failed verification means "not this dialect"
+            return False
 
     @abstractmethod
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         ...
+
+    def get_async_host_list_provider_supplier(self) -> Callable:
+        """Returns a ``(provider_service, props) -> AsyncHostListProvider``
+        callable.Async counterpart of :meth:`get_host_list_provider_supplier`.
+        """
+        from aws_advanced_python_wrapper.aio.host_list_provider import \
+            create_static_provider
+        return create_static_provider
 
     @abstractmethod
     def prepare_conn_props(self, props: Properties):
@@ -204,6 +247,11 @@ class DatabaseDialectProvider(Protocol):
         """Returns the dialect identified by querying the database to identify the engine type"""
         ...
 
+    def is_confirmed_dialect(self) -> bool:
+        """Whether the database dialect has been finalized and can't be changed.
+        """
+        ...
+
 
 class MysqlDatabaseDialect(DatabaseDialect):
     _DIALECT_UPDATE_CANDIDATES: Tuple[DialectCode, ...] = (
@@ -212,6 +260,8 @@ class MysqlDatabaseDialect(DatabaseDialect):
     _HOST_ID_EXPRESSION = "CONCAT(@@hostname, ':', @@port)"
     _HOST_ID_QUERY = f"SELECT @@hostname AS host, {_HOST_ID_EXPRESSION} AS host_id"
     _IS_READER_QUERY = "SELECT @@read_only"
+    _SERVER_VERSION_QUERY = "SHOW VARIABLES LIKE 'version_comment'"
+    _REPORT_HOST_QUERY = "SHOW VARIABLES LIKE 'report_host'"
 
     @property
     def default_port(self) -> int:
@@ -223,7 +273,7 @@ class MysqlDatabaseDialect(DatabaseDialect):
 
     @property
     def server_version_query(self) -> str:
-        return "SHOW VARIABLES LIKE 'version_comment'"
+        return MysqlDatabaseDialect._SERVER_VERSION_QUERY
 
     @property
     def host_id_query(self) -> str:
@@ -244,21 +294,17 @@ class MysqlDatabaseDialect(DatabaseDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return MysqlDatabaseDialect._DIALECT_UPDATE_CANDIDATES
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self.server_version_query)
-                for record in cursor:
-                    if len(record) < 2:
-                        return False
-                    if "mysql" in record[1].lower():
-                        return True
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
+    # The version comment names the engine; MariaDB and others answer the
+    # same query without "mysql" in it.
+    _VERIFICATION_RULES = DialectVerificationRules(rules=(
+        Rule(_SERVER_VERSION_QUERY,
+             col_contains_ignore_case(1, "mysql"),
+             match_any_row=True),
+    ))
 
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return MysqlDatabaseDialect._VERIFICATION_RULES
 
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
@@ -306,18 +352,14 @@ class PgDatabaseDialect(DatabaseDialect):
                 "aws_advanced_python_wrapper.utils.pg_exception_handler.SingleAzPgExceptionHandler")
         return PgDatabaseDialect._exception_handler
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute('SELECT 1 FROM pg_catalog.pg_proc LIMIT 1')
-                if cursor.fetchone() is not None:
-                    return True
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
+    _PG_CATALOG_EXISTS_QUERY = 'SELECT 1 FROM pg_catalog.pg_proc LIMIT 1'
+    _VERIFICATION_RULES = DialectVerificationRules(rules=(
+        Rule(_PG_CATALOG_EXISTS_QUERY),
+    ))
 
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return PgDatabaseDialect._VERIFICATION_RULES
 
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
@@ -351,31 +393,18 @@ class RdsMysqlDialect(MysqlDatabaseDialect, BlueGreenDialect):
     def host_id_query(self) -> str:
         return self._HOST_ID_QUERY
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self.server_version_query)
-                record = cursor.fetchone()
-                if record is None or len(record) < 2:
-                    return False
+    # "source distribution" in the version comment is how an RDS MySQL host
+    # identifies itself, and report_host must be set for the topology
+    # queries to return anything usable.
+    _VERIFICATION_RULES = DialectVerificationRules(rules=(
+        Rule(MysqlDatabaseDialect._SERVER_VERSION_QUERY,
+             col_equals_ignore_case(1, "source distribution")),
+        Rule(MysqlDatabaseDialect._REPORT_HOST_QUERY, col_non_empty_str(1)),
+    ))
 
-                if "source distribution" != record[1].lower():
-                    return False
-
-            with closing(conn.cursor()) as cursor:
-                cursor.execute("SHOW VARIABLES LIKE 'report_host'")
-                record = cursor.fetchone()
-                if record is None or len(record) < 2:
-                    return False
-
-                report_host = record[1]
-                return report_host is not None and report_host != ""
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
-
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return RdsMysqlDialect._VERIFICATION_RULES
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -412,26 +441,17 @@ class RdsPgDialect(PgDatabaseDialect, BlueGreenDialect):
     def host_id_query(self) -> str:
         return self._HOST_ID_QUERY
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        if not super().is_dialect(conn, driver_dialect):
-            return False
+    _VERIFICATION_RULES = DialectVerificationRules(
+        inherits=PgDatabaseDialect._VERIFICATION_RULES,
+        rules=(
+            Rule(_EXTENSIONS_QUERY,
+                 all_of(col_truthy(0), col_falsy(1)),
+                 match_any_row=True),
+        ))
 
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(RdsPgDialect._EXTENSIONS_QUERY)
-                for row in cursor:
-                    rds_tools = bool(row[0])
-                    aurora_utils = bool(row[1])
-                    logger.debug(
-                        "RdsPgDialect.RdsToolsAuroraUtils", str(rds_tools), str(aurora_utils))
-                    if rds_tools and not aurora_utils:
-                        return True
-
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return RdsPgDialect._VERIFICATION_RULES
 
     @property
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
@@ -466,6 +486,7 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, Blu
     _BG_STATUS_QUERY = "SELECT version, endpoint, port, role, status FROM mysql.rds_topology"
     _BG_STATUS_EXISTS_QUERY = \
         "SELECT 1 AS tmp FROM information_schema.tables WHERE table_schema = 'mysql' AND table_name = 'rds_topology'"
+    _AURORA_VERSION_QUERY = "SHOW VARIABLES LIKE 'aurora_version'"
 
     @property
     def is_reader_query(self) -> str:
@@ -475,19 +496,14 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, Blu
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return AuroraMysqlDialect._DIALECT_UPDATE_CANDIDATES
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute("SHOW VARIABLES LIKE 'aurora_version'")
-                # If variable with such a name is presented then it means it's an Aurora cluster
-                if cursor.fetchone() is not None:
-                    return True
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
+    # The variable existing at all means an Aurora cluster.
+    _VERIFICATION_RULES = DialectVerificationRules(rules=(
+        Rule(_AURORA_VERSION_QUERY),
+    ))
 
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return AuroraMysqlDialect._VERIFICATION_RULES
 
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: RdsHostListProvider(
@@ -495,6 +511,14 @@ class AuroraMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDialect, Blu
             plugin_service,
             props,
             AuroraTopologyUtils(self, props))
+
+    def get_async_host_list_provider_supplier(self) -> Callable:
+        from aws_advanced_python_wrapper.aio.host_list_provider import \
+            create_aurora_provider
+        return lambda provider_service, props: create_aurora_provider(
+            provider_service, props,
+            topology_query=self.topology_query,
+            default_port=self.default_port)
 
     @property
     def blue_green_status_query(self) -> str:
@@ -540,38 +564,18 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLim
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return AuroraPgDialect._DIALECT_UPDATE_CANDIDATES
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        if not super().is_dialect(conn, driver_dialect):
-            return False
+    # Aurora PG needs both the aurora_stat_utils extension and the
+    # topology function; plain RDS PG has neither.
+    _VERIFICATION_RULES = DialectVerificationRules(
+        inherits=PgDatabaseDialect._VERIFICATION_RULES,
+        rules=(
+            Rule(_AURORA_UTILS_EXIST_QUERY, col_truthy(0)),
+            Rule(_HAS_TOPOLOGY_QUERY),
+        ))
 
-        has_extensions: bool = False
-        has_topology: bool = False
-
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self._AURORA_UTILS_EXIST_QUERY)
-                row = cursor.fetchone()
-                if row is None:
-                    return False
-
-                aurora_utils = bool(row[0])
-                logger.debug("AuroraPgDialect.AuroraUtils", aurora_utils)
-                if aurora_utils:
-                    has_extensions = True
-
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self._HAS_TOPOLOGY_QUERY)
-                if cursor.fetchone() is not None:
-                    logger.debug("AuroraPgDialect.HasTopologyTrue")
-                    has_topology = True
-
-            return has_extensions and has_topology
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
-
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return AuroraPgDialect._VERIFICATION_RULES
 
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: RdsHostListProvider(
@@ -579,6 +583,14 @@ class AuroraPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect, AuroraLim
             plugin_service,
             props,
             AuroraTopologyUtils(self, props))
+
+    def get_async_host_list_provider_supplier(self) -> Callable:
+        from aws_advanced_python_wrapper.aio.host_list_provider import \
+            create_aurora_provider
+        return lambda provider_service, props: create_aurora_provider(
+            provider_service, props,
+            topology_query=self.topology_query,
+            default_port=self.default_port)
 
     @property
     def blue_green_status_query(self) -> str:
@@ -612,27 +624,18 @@ class GlobalAuroraMysqlDialect(AuroraMysqlDialect, GlobalAuroraTopologyDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return None
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        try:
-            if not DialectUtils.check_existence_queries(
-                    conn, (self._GLOBAL_STATUS_TABLE_EXISTS_QUERY,
-                           self._GLOBAL_INSTANCE_STATUS_EXISTS_QUERY)):
-                return False
+    # Both global tables must exist AND report more than one region --
+    # a single-region Aurora cluster has the tables but is not a global
+    # database.
+    _VERIFICATION_RULES = DialectVerificationRules(rules=(
+        Rule(_GLOBAL_STATUS_TABLE_EXISTS_QUERY),
+        Rule(_GLOBAL_INSTANCE_STATUS_EXISTS_QUERY),
+        Rule(_REGION_COUNT_QUERY, col_greater_than(0, 1)),
+    ))
 
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self._REGION_COUNT_QUERY)
-                record = cursor.fetchone()
-                if record is None or len(record) < 1:
-                    return False
-
-                aws_region_count = record[0]
-                return aws_region_count is not None and aws_region_count > 1
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
-
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return GlobalAuroraMysqlDialect._VERIFICATION_RULES
 
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: GlobalAuroraHostListProvider(
@@ -640,6 +643,14 @@ class GlobalAuroraMysqlDialect(AuroraMysqlDialect, GlobalAuroraTopologyDialect):
             plugin_service,
             props,
             GlobalAuroraTopologyUtils(self, props))
+
+    def get_async_host_list_provider_supplier(self) -> Callable:
+        from aws_advanced_python_wrapper.aio.host_list_provider import \
+            create_global_aurora_provider
+        return lambda provider_service, props: create_global_aurora_provider(
+            provider_service, props,
+            topology_query=self.topology_query,
+            default_port=self.default_port)
 
     def filter_available_hosts(
         self,
@@ -664,39 +675,18 @@ class GlobalAuroraPgDialect(AuroraPgDialect, GlobalAuroraTopologyDialect):
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return None
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self._AURORA_UTILS_EXIST_QUERY)
-                row = cursor.fetchone()
-                if row is None:
-                    return False
+    # Aurora PG's extension first, then both global views, then more than
+    # one region -- a single-region cluster is not a global database.
+    _VERIFICATION_RULES = DialectVerificationRules(rules=(
+        Rule(AuroraPgDialect._AURORA_UTILS_EXIST_QUERY, col_truthy(0)),
+        Rule(_GLOBAL_STATUS_TABLE_EXISTS_QUERY),
+        Rule(_GLOBAL_INSTANCE_STATUS_EXISTS_QUERY),
+        Rule(_REGION_COUNT_QUERY, col_greater_than(0, 1)),
+    ))
 
-                aurora_utils = bool(row[0])
-                logger.debug("AuroraPgDialect.AuroraUtils", aurora_utils)
-                if not aurora_utils:
-                    return False
-
-            if not DialectUtils.check_existence_queries(
-                    conn, (self._GLOBAL_STATUS_TABLE_EXISTS_QUERY,
-                           self._GLOBAL_INSTANCE_STATUS_EXISTS_QUERY)):
-                return False
-
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(self._REGION_COUNT_QUERY)
-                record = cursor.fetchone()
-                if record is None or len(record) < 1:
-                    return False
-
-                aws_region_count = record[0]
-                return aws_region_count is not None and aws_region_count > 1
-
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
-
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return GlobalAuroraPgDialect._VERIFICATION_RULES
 
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: GlobalAuroraHostListProvider(
@@ -704,6 +694,14 @@ class GlobalAuroraPgDialect(AuroraPgDialect, GlobalAuroraTopologyDialect):
             plugin_service,
             props,
             GlobalAuroraTopologyUtils(self, props))
+
+    def get_async_host_list_provider_supplier(self) -> Callable:
+        from aws_advanced_python_wrapper.aio.host_list_provider import \
+            create_global_aurora_provider
+        return lambda provider_service, props: create_global_aurora_provider(
+            provider_service, props,
+            topology_query=self.topology_query,
+            default_port=self.default_port)
 
     def filter_available_hosts(
         self,
@@ -725,28 +723,16 @@ class MultiAzClusterMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDial
     def dialect_update_candidates(self) -> Optional[Tuple[DialectCode, ...]]:
         return None
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(MultiAzClusterMysqlDialect._TOPOLOGY_QUERY)
-                records = cursor.fetchall()
-                if not records:
-                    return False
+    # The Multi-AZ topology view returning rows, plus report_host set so
+    # those rows can be matched to this host.
+    _VERIFICATION_RULES = DialectVerificationRules(rules=(
+        Rule(_TOPOLOGY_QUERY, match_any_row=True),
+        Rule(MysqlDatabaseDialect._REPORT_HOST_QUERY, col_non_empty_str(1)),
+    ))
 
-            with closing(conn.cursor()) as cursor:
-                cursor.execute("SHOW VARIABLES LIKE 'report_host'")
-                record = cursor.fetchone()
-                if record is None or len(record) < 2:
-                    return False
-
-                report_host = record[1]
-                return report_host is not None and report_host != ""
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
-
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return MultiAzClusterMysqlDialect._VERIFICATION_RULES
 
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: RdsHostListProvider(
@@ -754,6 +740,17 @@ class MultiAzClusterMysqlDialect(MysqlDatabaseDialect, TopologyAwareDatabaseDial
             plugin_service,
             props,
             MultiAzTopologyUtils(self, props, self._WRITER_HOST_QUERY, self._WRITER_HOST_COLUMN_INDEX))
+
+    def get_async_host_list_provider_supplier(self) -> Callable:
+        from aws_advanced_python_wrapper.aio.host_list_provider import \
+            create_multi_az_provider
+        return lambda provider_service, props: create_multi_az_provider(
+            provider_service, props,
+            writer_host_query=self.writer_id_query,
+            topology_query=self.topology_query,
+            host_id_query=self.host_id_query,
+            default_port=self.default_port,
+            writer_host_column_index=self._WRITER_HOST_COLUMN_INDEX)
 
     def prepare_conn_props(self, props: Properties):
         # These props are added for RDS metrics purposes, they are not required for functional correctness.
@@ -791,19 +788,15 @@ class MultiAzClusterPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
                 "aws_advanced_python_wrapper.utils.pg_exception_handler.MultiAzPgExceptionHandler")
         return MultiAzClusterPgDialect._exception_handler
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
-        try:
-            with closing(conn.cursor()) as cursor:
-                cursor.execute(MultiAzClusterPgDialect._WRITER_HOST_QUERY)
-                record = cursor.fetchone()
-                if record is not None and len(record) > 0 and bool(record[0]):
-                    return True
-        except Exception:
-            if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
-                conn.rollback()
+    # The writer query answering with an id: only a Multi-AZ PG cluster
+    # exposes rds_tools.multi_az_db_cluster_source_dbi_resource_id().
+    _VERIFICATION_RULES = DialectVerificationRules(rules=(
+        Rule(_WRITER_HOST_QUERY, col_truthy(0)),
+    ))
 
-        return False
+    @property
+    def verification_rules(self) -> Optional[DialectVerificationRules]:
+        return MultiAzClusterPgDialect._VERIFICATION_RULES
 
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: RdsHostListProvider(
@@ -811,6 +804,19 @@ class MultiAzClusterPgDialect(PgDatabaseDialect, TopologyAwareDatabaseDialect):
             plugin_service,
             props,
             MultiAzTopologyUtils(self, props, self._WRITER_HOST_QUERY))
+
+    def get_async_host_list_provider_supplier(self) -> Callable:
+        from aws_advanced_python_wrapper.aio.host_list_provider import \
+            create_multi_az_provider
+
+        # No writer_host_column_index: the PG writer query returns a single
+        # column.
+        return lambda provider_service, props: create_multi_az_provider(
+            provider_service, props,
+            writer_host_query=self.writer_id_query,
+            topology_query=self.topology_query,
+            host_id_query=self.host_id_query,
+            default_port=self.default_port)
 
 
 class UnknownDatabaseDialect(DatabaseDialect):
@@ -854,9 +860,6 @@ class UnknownDatabaseDialect(DatabaseDialect):
     def exception_handler(self) -> Optional[ExceptionHandler]:
         return None
 
-    def is_dialect(self, conn: Connection, driver_dialect: DriverDialect) -> bool:
-        return False
-
     def get_host_list_provider_supplier(self, plugin_service: PluginService) -> Callable:
         return lambda provider_service, props: ConnectionStringHostListProvider(provider_service, props)
 
@@ -887,9 +890,17 @@ class DatabaseDialectManager(DatabaseDialectProvider):
         self._props: Properties = props
         self._rds_helper: RdsUtils = rds_helper if rds_helper else RdsUtils()
         self._can_update: bool = False
+        # Complement of _can_update: set wherever the resolved dialect is
+        # final. Tracked separately because _can_update also goes False on
+        # the paths that give up (unknown dialect), where the answer is NOT
+        # confirmed.
+        self._confirmed: bool = False
         self._dialect: DatabaseDialect = UnknownDatabaseDialect()
         self._dialect_code: DialectCode = DialectCode.UNKNOWN
         self._thread_pool = services_container.get_thread_pool(self._executor_name)
+
+    def is_confirmed_dialect(self) -> bool:
+        return self._confirmed
 
     @staticmethod
     def get_custom_dialect():
@@ -908,10 +919,14 @@ class DatabaseDialectManager(DatabaseDialectProvider):
 
     def get_dialect(self, driver_dialect: str, props: Properties) -> DatabaseDialect:
         self._can_update = False
+        self._confirmed = False
 
         if self._custom_dialect is not None:
             self._dialect_code = DialectCode.CUSTOM
             self._dialect = self._custom_dialect
+            # A custom dialect is the user's explicit choice; no verification can
+            # override it.
+            self._confirmed = True
             self._log_current_dialect()
             return self._dialect
 
@@ -928,6 +943,9 @@ class DatabaseDialectManager(DatabaseDialectProvider):
             if dialect:
                 self._dialect_code = dialect_code
                 self._dialect = dialect
+                # Either the user named the dialect or the endpoint cache
+                # already holds a verified answer for this url.
+                self._confirmed = True
                 self._log_current_dialect()
                 return dialect
             else:
@@ -940,6 +958,7 @@ class DatabaseDialectManager(DatabaseDialectProvider):
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER:
                 self._can_update = False
+                self._confirmed = True
                 self._dialect_code = DialectCode.GLOBAL_AURORA_MYSQL
                 self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.GLOBAL_AURORA_MYSQL]
                 return self._dialect
@@ -964,11 +983,13 @@ class DatabaseDialectManager(DatabaseDialectProvider):
             rds_type = self._rds_helper.identify_rds_type(host)
             if rds_type == RdsUrlType.RDS_AURORA_LIMITLESS_DB_SHARD_GROUP:
                 self._can_update = False
+                self._confirmed = True
                 self._dialect_code = DialectCode.AURORA_PG
                 self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.AURORA_PG]
                 return self._dialect
             if rds_type == RdsUrlType.RDS_GLOBAL_WRITER_CLUSTER:
                 self._can_update = False
+                self._confirmed = True
                 self._dialect_code = DialectCode.GLOBAL_AURORA_PG
                 self._dialect = DatabaseDialectManager._known_dialects_by_code[DialectCode.GLOBAL_AURORA_PG]
                 return self._dialect
@@ -1006,53 +1027,122 @@ class DatabaseDialectManager(DatabaseDialectProvider):
     def query_for_dialect(self, url: str, host_info: Optional[HostInfo], conn: Connection,
                           driver_dialect: DriverDialect) -> DatabaseDialect:
         if not self._can_update:
+            self._confirmed = True
             self._log_current_dialect()
             return self._dialect
 
+        for dialect_code, dialect_candidate in self._candidates():
+            timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
+            try:
+                cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
+                    self._thread_pool,
+                    timeout_sec,
+                    driver_dialect,
+                    conn)(dialect_candidate.is_dialect)
+                is_dialect = cursor_execute_func_with_timeout(conn, driver_dialect)
+            except TimeoutError as e:
+                raise QueryTimeoutError("DatabaseDialectManager.QueryForDialectTimeout") from e
+
+            if is_dialect:
+                return self._confirm_candidate(dialect_code, dialect_candidate, url, host_info)
+
+        return self._confirm_current(url, host_info)
+
+    async def query_for_dialect_async(
+            self, url: str, host_info: Optional[HostInfo], conn: Any,
+            driver_dialect: Any) -> DatabaseDialect:
+        """Async counterpart of :meth:`query_for_dialect`.
+
+        Walks the same ``dialect_update_candidates`` chain and shares the
+        same bookkeeping -- the endpoint cache, ``can_update`` and
+        ``confirmed`` -- so an async connect contributes to and benefits
+        from the cache exactly as a sync one does.
+
+        The timeout comes from ``asyncio.wait_for`` rather than the thread
+        pool the sync path uses, since verification is awaited rather than
+        offloaded. The transaction-status restore that
+        ``preserve_transaction_status_with_timeout`` provides on the sync
+        side is done by :class:`AsyncDialectVerifier` instead.
+
+        Runs the verifier directly rather than through
+        ``is_dialect_async`` so that a candidate that could not be verified
+        is distinguishable from one that answered no. When no candidate
+        matched *and* a verification failed, this raises instead of settling:
+        settling would write an unverified guess into the endpoint cache,
+        where every later connection to that host would reuse it.
+        """
+        import asyncio
+
+        if not self._can_update:
+            self._confirmed = True
+            self._log_current_dialect()
+            return self._dialect
+
+        timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_float(self._props)
+        for dialect_code, dialect_candidate in self._candidates():
+            try:
+                is_dialect = await asyncio.wait_for(
+                    AsyncDialectVerifier.run(
+                        dialect_candidate.verification_rules, conn, driver_dialect),
+                    timeout=timeout_sec)
+            except (asyncio.TimeoutError, TimeoutError) as e:
+                raise QueryTimeoutError(
+                    Messages.get("DatabaseDialectManager.QueryForDialectTimeout")) from e
+            except Exception:  # noqa: BLE001 - try the next candidate
+                # Verification asks about objects a given engine may not have, so
+                # one candidate erroring says nothing about the next.
+                continue
+
+            if is_dialect:
+                return self._confirm_candidate(dialect_code, dialect_candidate, url, host_info)
+
+        return self._confirm_current(url, host_info)
+
+    def _candidates(self) -> List[Tuple[DialectCode, DatabaseDialect]]:
+        """The dialects the current one says it may upgrade to, resolved."""
         dialect_candidates = self._dialect.dialect_update_candidates if self._dialect is not None else None
-        if dialect_candidates is not None:
-            for dialect_code in dialect_candidates:
-                dialect_candidate = DatabaseDialectManager._known_dialects_by_code.get(dialect_code)
-                if dialect_candidate is None:
-                    raise AwsWrapperError(Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", dialect_code))
+        if dialect_candidates is None:
+            return []
 
-                timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
-                try:
-                    cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                        self._thread_pool,
-                        timeout_sec,
-                        driver_dialect,
-                        conn)(dialect_candidate.is_dialect)
-                    is_dialect = cursor_execute_func_with_timeout(conn, driver_dialect)
-                except TimeoutError as e:
-                    raise QueryTimeoutError("DatabaseDialectManager.QueryForDialectTimeout") from e
+        resolved = []
+        for dialect_code in dialect_candidates:
+            dialect_candidate = DatabaseDialectManager._known_dialects_by_code.get(dialect_code)
+            if dialect_candidate is None:
+                raise AwsWrapperError(Messages.get_formatted("DatabaseDialectManager.UnknownDialectCode", dialect_code))
+            resolved.append((dialect_code, dialect_candidate))
+        return resolved
 
-                if not is_dialect:
-                    continue
+    def _confirm_candidate(
+            self, dialect_code: DialectCode, dialect_candidate: DatabaseDialect,
+            url: str, host_info: Optional[HostInfo]) -> DatabaseDialect:
+        """Settle on a verified candidate and remember it for this endpoint."""
+        self._can_update = False
+        self._confirmed = True
+        self._dialect_code = dialect_code
+        self._dialect = dialect_candidate
+        self._cache_endpoint_dialect(url, host_info, dialect_code)
+        self._log_current_dialect()
+        return self._dialect
 
-                self._can_update = False
-                self._dialect_code = dialect_code
-                self._dialect = dialect_candidate
-                DatabaseDialectManager._known_endpoint_dialects.put(url, dialect_code,
-                                                                    DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
-                if host_info is not None:
-                    DatabaseDialectManager._known_endpoint_dialects.put(
-                        host_info.url, dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
-
-                self._log_current_dialect()
-                return self._dialect
-
+    def _confirm_current(self, url: str, host_info: Optional[HostInfo]) -> DatabaseDialect:
+        """No candidate matched, so the current dialect is the answer."""
         if self._dialect_code is None or self._dialect_code == DialectCode.UNKNOWN:
             raise AwsWrapperError(Messages.get("DatabaseDialectManager.UnknownDialect"))
 
         self._can_update = False
-        DatabaseDialectManager._known_endpoint_dialects.put(url, self._dialect_code,
-                                                            DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
-        if host_info is not None:
-            DatabaseDialectManager._known_endpoint_dialects.put(
-                host_info.url, self._dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+        self._confirmed = True
+        self._cache_endpoint_dialect(url, host_info, self._dialect_code)
         self._log_current_dialect()
         return self._dialect
+
+    @staticmethod
+    def _cache_endpoint_dialect(
+            url: str, host_info: Optional[HostInfo], dialect_code: DialectCode) -> None:
+        DatabaseDialectManager._known_endpoint_dialects.put(
+            url, dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
+        if host_info is not None:
+            DatabaseDialectManager._known_endpoint_dialects.put(
+                host_info.url, dialect_code, DatabaseDialectManager._ENDPOINT_CACHE_EXPIRATION_NS)
 
     def _log_current_dialect(self):
         dialect_class = "<null>" if self._dialect is None else type(self._dialect).__name__

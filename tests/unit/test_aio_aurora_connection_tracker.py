@@ -87,6 +87,41 @@ def test_tracker_records_connection_on_connect():
     assert conn in tracked
 
 
+@pytest.mark.parametrize("port", [3306, 5432, 8666])
+def test_host_list_change_invalidates_a_demoted_writer_on_any_port(port):
+    """Host-list-change keys are HostInfo.url ("host:port/"), tracking keys
+    are "host:port". Publishing the url verbatim never matched the tracked
+    key, so a demoted writer's connections were never invalidated."""
+    plugin, svc, driver_dialect, tracker = _build()
+    host = HostInfo(host="instance-1.abc.us-east-1.rds.amazonaws.com",
+                    port=port, role=HostRole.WRITER)
+    conn = _plain_conn("conn")
+
+    from aws_advanced_python_wrapper.utils.notifications import HostEvent
+
+    async def _connect_func():
+        return conn
+
+    async def _run():
+        await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=host,
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func)
+        assert conn in tracker._tracked_for(host)
+
+        plugin.notify_host_list_changed(
+            {host.url: {HostEvent.CONVERTED_TO_READER}})
+        await plugin._shutdown()
+
+        conn.close.assert_called_once()
+        assert conn not in tracker._tracked_for(host)
+
+    asyncio.run(_run())
+
+
 def test_connect_enriches_cluster_endpoint_with_resolved_instance_alias():
     """A cluster-endpoint connection must be tracked under the resolved
     *instance* alias so writer-failover ``invalidate_all(instance)`` closes
