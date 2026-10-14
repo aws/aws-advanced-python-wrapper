@@ -363,11 +363,9 @@ def test_explicit_cluster_id_respected():
     assert prov.get_cluster_id() == "my-multi-az-cluster"
 
 
-def test_default_cluster_id_uses_host_port():
+def test_default_cluster_id_is_one():
     prov = _make_provider()
-    cid = prov.get_cluster_id()
-    assert "aurora:" in cid  # derived helper is shared
-    assert "cluster-xyz.example.com" in cid
+    assert prov.get_cluster_id() == "1"
 
 
 # ---- Query failure tolerance --------------------------------------------
