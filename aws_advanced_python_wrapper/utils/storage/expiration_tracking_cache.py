@@ -89,8 +89,7 @@ class ExpirationTrackingCache(Generic[K, V]):
     def detach_value(self, value: V) -> bool:
         for key, entry in self._cache.items():
             if entry.item is value:
-                self._cache.remove(key)
-                return True
+                return self._cache.remove(key) is not None
         return False
 
     def items(self) -> List[Tuple[K, V]]:

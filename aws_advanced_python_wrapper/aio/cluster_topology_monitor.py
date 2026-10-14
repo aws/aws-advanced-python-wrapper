@@ -1,4 +1,4 @@
-#  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+﻿#  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License").
 #  You may not use this file except in compliance with the License.
@@ -45,18 +45,22 @@ from __future__ import annotations
 import asyncio
 import copy
 import time
+import weakref
+from time import perf_counter_ns
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional,
                     Set, Tuple)
 
+from aws_advanced_python_wrapper.aio import topology_store
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 
 if TYPE_CHECKING:
-    from aws_advanced_python_wrapper.aio.host_list_provider import (
-        AsyncAuroraHostListProvider, Topology)
     from aws_advanced_python_wrapper.aio.plugin_service import \
         AsyncPluginService
+    from aws_advanced_python_wrapper.aio.topology_store import TopologyKey
+    from aws_advanced_python_wrapper.aio.topology_utils import (
+        AsyncTopologyUtils, Topology)
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.utils.properties import Properties
 
@@ -71,7 +75,9 @@ class AsyncClusterTopologyMonitor:
 
     def __init__(
             self,
-            provider: AsyncAuroraHostListProvider,
+            topology_utils: AsyncTopologyUtils,
+            cluster_id: str,
+            key: TopologyKey,
             connection_getter: Any,
             refresh_interval_sec: float = 30.0,
             high_refresh_rate_sec: float = 1.0,
@@ -80,8 +86,13 @@ class AsyncClusterTopologyMonitor:
             connection_factory: Optional[Callable[[], Awaitable[Any]]] = None,
     ) -> None:
         """
-        :param provider: the host list provider whose ``force_refresh`` to
-            call each tick.
+        :param topology_utils: owns this dialect's topology query and the
+            parsing of its rows. The monitor holds no host list provider, so
+            one monitor can serve every provider on the cluster.
+        :param cluster_id: the cluster this monitor watches, matched against
+            ``MonitorResetEvent.cluster_id``.
+        :param key: the compound ``(cluster_id, loop_token)`` key this monitor
+            is registered under and stores its topology at.
         :param connection_getter: a zero-arg callable returning the current
             async driver connection (or ``None``). Using a getter lets the
             monitor track connection replacement on failover.
@@ -105,7 +116,9 @@ class AsyncClusterTopologyMonitor:
             ``plugin_service.force_connect(initial_host, monitoring_props)``.
             When ``None``, falls back to ``connection_getter`` (test/back-compat).
         """
-        self._provider = provider
+        self._topology_utils = topology_utils
+        self._cluster_id = cluster_id
+        self._key = key
         self._connection_getter = connection_getter
         self._connection_factory = connection_factory
         self._owned_conn: Optional[Any] = None
@@ -123,6 +136,10 @@ class AsyncClusterTopologyMonitor:
         # force_monitoring_refresh (sync parity: _request_to_update_topology /
         # _wait_till_topology_gets_updated, cluster_topology_monitor.py:157-178).
         self._topology_updated: asyncio.Event = asyncio.Event()
+        # How many times this monitor has been reset, so a publication whose
+        # fetch began before a reset can be told apart and dropped. Counts
+        # resets only, never topology changes.
+        self._reset_count: int = 0
         # Wakes the run loop immediately (skip the tick sleep) when a
         # blocking refresh is requested.
         self._request_tick: asyncio.Event = asyncio.Event()
@@ -134,6 +151,20 @@ class AsyncClusterTopologyMonitor:
         self._submitted_host_aliases: Set[str] = set()
         self._probe_tasks: Dict[str, asyncio.Task] = {}
         self._writer_found_event: asyncio.Event = asyncio.Event()
+
+        # Monitor protocol state (utils/monitor_service.py). perf_counter_ns
+        # to match MonitorService._run_cleanup, which compares against it.
+        self._last_activity_ns: int = perf_counter_ns()
+        self._in_flight_refreshes: int = 0
+        self._closed: bool = False
+        # Weak: a shutdown hook holds this monitor for the life of the
+        # process, so a strong reference would pin the loop and everything it
+        # retains.
+        self._loop_ref: Optional[weakref.ref] = None
+        self._loop_strong: Optional[asyncio.AbstractEventLoop] = None
+        # Set by whoever registered a shutdown hook for this monitor, so the
+        # hook can drop itself once the monitor is gone.
+        self.on_closed: Optional[Callable[[], Any]] = None
 
     @property
     def high_refresh_rate_sec(self) -> float:
@@ -178,17 +209,21 @@ class AsyncClusterTopologyMonitor:
             await self._drop_owned_connection()
         self._topology_updated.clear()
         self._request_tick.set()
+        self._in_flight_refreshes += 1
         try:
             await asyncio.wait_for(self._topology_updated.wait(), timeout_sec)
         except asyncio.TimeoutError:
             return ()
+        finally:
+            self._in_flight_refreshes -= 1
         return self._last_topology
 
     def start(self) -> None:
         """Spawn the background refresh task. No-op if already running."""
-        if self.is_running():
+        if self.is_running() or self._closed:
             return
         self._stop_event.clear()
+        self._set_loop(asyncio.get_running_loop())
         self._task = asyncio.create_task(self._run())
 
     async def _get_monitoring_connection(self) -> Any:
@@ -224,6 +259,8 @@ class AsyncClusterTopologyMonitor:
     async def _run(self) -> None:
         try:
             while not self._stop_event.is_set():
+                self._last_activity_ns = perf_counter_ns()
+                reset_count = self._reset_count
                 conn = await self._get_monitoring_connection()
                 if conn is not None:
                     topology = None
@@ -231,7 +268,7 @@ class AsyncClusterTopologyMonitor:
                         # Use the provider's direct-DB path to avoid
                         # recursion; the public force_refresh now
                         # routes through this monitor (N.1b).
-                        topology = await self._fetch_via_provider(conn)
+                        topology = await self._topology_utils.query_for_topology(conn)
                     except Exception as ex:
                         # Monitor failures shouldn't crash the task; the cached
                         # topology remains usable. A failure may mean the owned
@@ -243,7 +280,7 @@ class AsyncClusterTopologyMonitor:
                         # on the next tick.
                         logger.debug(
                             "ClusterTopologyMonitor.ErrorFetchingTopology",
-                            self._provider.get_cluster_id(), ex)
+                            self._cluster_id, ex)
                         await self._drop_owned_connection()
                     if topology:
                         # Adopt only a NON-EMPTY result. A query through a dead /
@@ -253,7 +290,7 @@ class AsyncClusterTopologyMonitor:
                         # on _last_topology being non-empty). Mirrors sync
                         # RdsHostListProvider._get_topology ("use live only if
                         # len > 0").
-                        self._publish_topology(topology)
+                        self._publish_topology(topology, reset_count)
                     else:
                         # Empty/failed refresh: drop the (likely dead) connection
                         # so the next tick reopens to a live host; KEEP the cached
@@ -358,23 +395,27 @@ class AsyncClusterTopologyMonitor:
                 f"publishing a role-corrected view (replica_status lag)")
         return tuple(corrected)
 
-    def _publish_topology(self, topology: Topology) -> None:
-        """Adopt a NON-EMPTY topology: update the monitor state, push it into
-        the provider cache, and wake any blocked force_monitoring_refresh
-        callers. Sync parity: HostMonitor/_reader_thread publications land in
-        the shared storage-service cache and unblock
-        _wait_till_topology_gets_updated (:491-495, :157-178)."""
+    def _publish_topology(
+            self,
+            topology: Topology,
+            reset_count: Optional[int] = None) -> None:
+        """Adopt a NON-EMPTY topology: update the monitor state, store it, and
+        wake any blocked force_monitoring_refresh callers.
+
+        ``reset_count`` is this monitor's reset count when the caller started
+        fetching. A caller that read it passes it back so a topology fetched
+        before a reset is dropped rather than published after it.
+        """
         if not topology:
+            return
+        if reset_count is not None and reset_count != self._reset_count:
+            # A reset landed while this topology was being fetched, so it
+            # describes the pre-switchover cluster.
             return
         topology = self._role_corrected(topology)
         self._last_topology = topology
         self._check_for_writer_change(topology)
-        adopt = getattr(self._provider, "adopt_topology", None)
-        if adopt is not None:
-            try:
-                adopt(topology)
-            except Exception:  # noqa: BLE001 - cache publication is best-effort
-                pass
+        topology_store.put_topology(self._key, topology)
         self._topology_updated.set()
 
     async def _wait_for_tick(self, interval: float) -> None:
@@ -470,6 +511,7 @@ class AsyncClusterTopologyMonitor:
     async def _probe_and_report(self, host_info: HostInfo) -> None:
         """Run one probe; stash the conn + host on winner, close on loser."""
         assert self._probe_host is not None  # _should_panic gates this
+        reset_count = self._reset_count
         conn: Optional[Any] = None
         role: Optional[HostRole] = None
         for attempt in range(self._MAX_TRANSIENT_PROBE_ATTEMPTS + 1):
@@ -515,10 +557,10 @@ class AsyncClusterTopologyMonitor:
             # writer -- sync parity with HostMonitor's winner path
             # (_fetch_topology_and_update_cache, cluster_topology_monitor.py:561).
             try:
-                topology = await self._fetch_via_provider(conn)
+                topology = await self._topology_utils.query_for_topology(conn)
             except Exception:  # noqa: BLE001 - publication is best-effort
                 topology = ()
-            self._publish_topology(topology)
+            self._publish_topology(topology, reset_count)
             self._writer_found_event.set()
             return
 
@@ -531,7 +573,7 @@ class AsyncClusterTopologyMonitor:
                 and role == HostRole.READER
                 and not self._writer_found_event.is_set()):
             try:
-                topology = await self._fetch_via_provider(conn)
+                topology = await self._topology_utils.query_for_topology(conn)
             except Exception:  # noqa: BLE001 - publication is best-effort
                 topology = ()
             if topology:
@@ -540,7 +582,7 @@ class AsyncClusterTopologyMonitor:
                      if h.role == HostRole.WRITER), None)
                 if (new_writer is not None
                         and new_writer != self._last_known_writer):
-                    self._publish_topology(topology)
+                    self._publish_topology(topology, reset_count)
 
         # Lost the race OR role is reader: close the conn.
         if conn is not None:
@@ -626,54 +668,185 @@ class AsyncClusterTopologyMonitor:
         """
         if not bypass_ignore_window and self.should_ignore_refresh_request():
             return self._last_topology
+        reset_count = self._reset_count
         try:
             topology = await asyncio.wait_for(
-                self._fetch_via_provider(conn),
+                self._topology_utils.query_for_topology(conn),
                 timeout=timeout_sec,
             )
         except asyncio.TimeoutError as e:
             raise TimeoutError(Messages.get_formatted(
                 "ClusterTopologyMonitor.TopologyNotUpdated",
-                self._provider.get_cluster_id(), timeout_sec * 1000)) from e
+                self._cluster_id, timeout_sec * 1000)) from e
         # Never overwrite the cached topology with an empty result (a refresh
         # through a dead/failed-over connection returns nothing); keep the last
         # good topology so failover/panic can use it. Mirrors sync
         # RdsHostListProvider._get_topology ("use live only if len > 0").
         # _publish_topology also wakes any blocked force_monitoring_refresh.
-        self._publish_topology(topology)
+        self._publish_topology(topology, reset_count)
         return topology
 
-    async def _fetch_via_provider(self, conn: Any) -> Topology:
-        """Call the provider's direct-DB query path, preferring
-        :meth:`_fetch_from_db` when available. Falls back to
-        ``force_refresh`` for providers (or bare mocks) that don't have
-        the split -- preserves pre-N.1b behavior.
+    def stop(self) -> None:
+        """Signal the monitor to stop and schedule teardown on its own loop.
+
+        Non-blocking: MonitorStopEvent is delivered on the publisher's thread
+        and async blue/green publishes from a coroutine, so blocking here
+        would wedge that loop. Await :meth:`aclose` to wait for teardown.
+
+        Nothing here touches ``_stop_event``; aclose() sets it on the
+        monitor's own loop. Setting an asyncio.Event from the cleanup thread
+        raises once the loop is closed with a tick waiter parked on it.
         """
-        import inspect
+        if not self._schedule(self.aclose()):
+            logger.debug(
+                "AsyncClusterTopologyMonitor.StopWithoutLoop", self._cluster_id)
 
-        # Check the class first (normal case), then the instance (tests
-        # may monkey-patch an async override). Must be a coroutine
-        # function so bare MagicMock attrs don't trigger the path.
-        cls_direct = getattr(type(self._provider), "_fetch_from_db", None)
-        if cls_direct is not None and inspect.iscoroutinefunction(cls_direct):
-            inst_direct = getattr(self._provider, "_fetch_from_db", None)
-            if inspect.iscoroutinefunction(inst_direct):
-                return await inst_direct(conn)
-            return await cls_direct(self._provider, conn)
-        return await self._provider.force_refresh(conn)
+    def close(self) -> None:
+        """Release resources. Same work as stop() for this monitor."""
+        self.stop()
 
-    async def stop(self) -> None:
-        """Signal the task to exit and await its termination."""
+    async def aclose(self) -> None:
+        """Await full teardown: cancel the task, release the connections.
+
+        Idempotent. ``release_resources_async`` must drain this before the
+        synchronous release clears the monitor cache, which drops the last
+        reference to the monitor.
+        """
         self._stop_event.set()
-        if self._task is None:
+        if self._closed:
             return
-        if not self._task.done():
-            self._task.cancel()
+        self._closed = True
+        task = self._task
+        self._task = None
+        if task is not None and not task.done():
+            task.cancel()
             try:
-                await self._task
+                await task
             except (asyncio.CancelledError, Exception):
                 pass
-        self._task = None
+        # _run's finally closes these when its task is cancelled, but a
+        # monitor that never started, or whose task has already exited, still
+        # owns a connection.
+        await self._drop_owned_connection()
+        if self._verified_writer_conn is not None:
+            await self._close_best_effort(self._verified_writer_conn)
+            self._verified_writer_conn = None
+            self._verified_writer_host_info = None
+            self._writer_found_event.clear()
+        self._release_loop()
+        if self.on_closed is not None:
+            on_closed, self.on_closed = self.on_closed, None
+            try:
+                on_closed()
+            except Exception:  # noqa: BLE001 - deregistration is best-effort
+                pass
+
+    def _release_loop(self) -> None:
+        """Drop everything that ties this monitor to its event loop.
+
+        An asyncio.Event caches the loop it was first awaited on, so holding
+        the loop weakly is not enough on its own.
+
+        Anyone parked on one of these is woken first. A caller inside
+        force_monitoring_refresh awaits the event object it read, so
+        replacing the attribute without setting it would leave that caller
+        waiting on an orphan until its own timeout expired.
+        """
+        self._topology_updated.set()
+        self._writer_found_event.set()
+        self._request_tick.set()
+        self._loop_ref = None
+        self._loop_strong = None
+        self._stop_event = asyncio.Event()
+        self._request_tick = asyncio.Event()
+        self._topology_updated = asyncio.Event()
+        self._writer_found_event = asyncio.Event()
+
+    @property
+    def can_dispose(self) -> bool:
+        """Whether the monitor may be disposed when its entry expires.
+
+        Only the expiry path consults this. The stuck-monitor path removes
+        unconditionally, so a blocked caller is not protected by it.
+        """
+        return self._in_flight_refreshes == 0
+
+    @property
+    def last_activity_ns(self) -> int:
+        return self._last_activity_ns
+
+    def process_event(self, event: Any) -> None:
+        """Handle a blue/green MonitorResetEvent for this cluster.
+
+        Events are delivered on the publisher's thread, so this hands the work
+        to the monitor's own loop and returns.
+        """
+        from aws_advanced_python_wrapper.utils.events import MonitorResetEvent
+        if not isinstance(event, MonitorResetEvent):
+            return
+        if event.cluster_id != self._cluster_id:
+            return
+        self._reset_count += 1
+        self._schedule(self._reset())
+
+    def _set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        try:
+            self._loop_ref = weakref.ref(loop)
+        except TypeError:
+            self._loop_strong = loop
+
+    def _get_loop(self) -> Optional[asyncio.AbstractEventLoop]:
+        if self._loop_strong is not None:
+            return self._loop_strong
+        return self._loop_ref() if self._loop_ref is not None else None
+
+    def _schedule(self, coro: Awaitable[None]) -> bool:
+        """Run ``coro`` on the monitor's loop. False if there is no live loop."""
+        loop = self._get_loop()
+        if loop is None or loop.is_closed():
+            coro.close()  # type: ignore[attr-defined]
+            return False
+        try:
+            if loop is asyncio.get_running_loop():
+                loop.create_task(coro)  # type: ignore[arg-type]
+                return True
+        except RuntimeError:
+            pass
+        try:
+            asyncio.run_coroutine_threadsafe(coro, loop)  # type: ignore[arg-type]
+            return True
+        except RuntimeError:
+            coro.close()  # type: ignore[attr-defined]
+            return False
+
+    async def _reset(self) -> None:
+        """Drop everything tied to the pre-switchover cluster.
+
+        Removes the stored topology too, so a switchover does not keep serving
+        the old host list.
+        """
+        logger.debug(
+            "ClusterTopologyMonitor.ResetEventReceived", self._cluster_id)
+        pending = [t for t in self._probe_tasks.values() if not t.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        self._probe_tasks.clear()
+        self._submitted_host_aliases.clear()
+        await self._drop_owned_connection()
+        if self._verified_writer_conn is not None:
+            await self._close_best_effort(self._verified_writer_conn)
+            self._verified_writer_conn = None
+        self._verified_writer_host_info = None
+        self._writer_found_event.clear()
+        self._last_known_writer = None
+        self._last_topology = ()
+        self._high_refresh_until_ns = 0
+        topology_store.remove_topology(self._key)
+        # Wake the loop so it re-queries now rather than serving nothing for a
+        # full tick.
+        self._request_tick.set()
 
 
 def build_probe_host(
