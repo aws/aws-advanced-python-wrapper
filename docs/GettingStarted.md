@@ -191,3 +191,35 @@ The file follows the [Agent Skills](https://agentskills.io) format. It is large:
    - **Amazon Bedrock**: send the file as the system prompt of your `InvokeModel` or `Converse` request. Avoid attaching it to a Bedrock knowledge base: a knowledge base passes the model only the passages that match each question, so the skill's interview steps and rules (section 1 of the file) may be missing.
    - **Plain chat (ChatGPT, Claude, Gemini)**: paste it at the start of a new conversation, then ask your question.
 3. Ask the AI for help. It will interview you when it needs more details, or give you a configuration straight away if you ask it to skip the interview.
+
+### Example prompts
+
+The simplest way to start:
+
+```
+Help me configure the AWS Advanced Python Wrapper for my application.
+```
+
+Skip the interview when you already know what you want:
+
+```
+Give me a default configuration for Aurora PostgreSQL with SQLAlchemy, psycopg, and failover support.
+```
+
+Review an existing configuration:
+
+```
+Review this wrapper configuration and tell me what to change:
+
+<paste your AwsWrapperConnection.connect call, SQLAlchemy engine setup, or Django DATABASES setting here>
+```
+
+Diagnose an error:
+
+```
+My Django app on Aurora MySQL fails to connect with "[HostMonitoringV2Plugin] Aborting
+connections from a separate thread is not supported for the detected driver dialect:
+'MySQLDriverDialect'". What's wrong?
+```
+
+The skill targets release 3.1.0 and avoids guessing: if it doesn't know something, it says so and points you at the official docs.
