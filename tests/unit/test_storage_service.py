@@ -147,6 +147,29 @@ def test_get_miss_does_not_publish_event(storage, publisher):
     publisher.publish.assert_not_called()
 
 
+def test_get_can_opt_out_of_publishing_a_data_access_event(storage, publisher):
+    """A monitor reading the type it produces must not register an access.
+
+    The event extends the producing monitor's expiration, so a monitor that
+    reads its own output would renew itself on every read and never expire.
+    """
+    storage.register(TypeA, item_expiration_time=timedelta(minutes=5))
+    storage.put(TypeA, "key1", "value1")
+
+    publisher.reset_mock()
+    assert storage.get(TypeA, "key1", register_data_access=False) == "value1"
+
+    publisher.publish.assert_not_called()
+
+
+def test_register_data_access_is_keyword_only(storage):
+    """So a positional third argument cannot silently become this flag."""
+    import inspect
+
+    param = inspect.signature(StorageService.get).parameters["register_data_access"]
+    assert param.kind is inspect.Parameter.KEYWORD_ONLY
+
+
 def test_register_is_idempotent(storage):
     storage.register(TypeA, item_expiration_time=timedelta(minutes=5))
     storage.put(TypeA, "key1", "value1")

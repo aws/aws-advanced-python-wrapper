@@ -217,7 +217,11 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                         self._cluster_id, timeout_sec * 1000))
 
     def _get_stored_hosts(self) -> Topology:
-        hosts = services_container.get_storage_service().get(Topology, self._cluster_id)
+        # Not a data access: this monitor produces the topology it is reading,
+        # and a data access extends the producing monitor's expiration, so
+        # registering one here would make the monitor keep itself alive.
+        hosts = services_container.get_storage_service().get(
+            Topology, self._cluster_id, register_data_access=False)
         if hosts is None:
             return ()
         return hosts

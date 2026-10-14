@@ -52,12 +52,19 @@ class StorageService:
                 should_dispose_func=should_dispose,
                 item_disposal_func=on_dispose))
 
-    def get(self, item_type: Type[V], key: Any) -> Optional[V]:
+    def get(self, item_type: Type[V], key: Any, *, register_data_access: bool = True) -> Optional[V]:
+        """Read a stored item, publishing a data-access event by default.
+
+        Pass ``register_data_access=False`` when the reader is the monitor that
+        produces this type. A data access extends the producing monitor's
+        expiration, so a monitor reading its own output would keep itself alive
+        for as long as the process runs.
+        """
         cache = self._caches.get(item_type)
         if cache is None:
             return None
         value = cache.get(key)
-        if value is not None:
+        if value is not None and register_data_access:
             self._event_publisher.publish(DataAccessEvent(data_type=item_type, key=key))
         return value
 
