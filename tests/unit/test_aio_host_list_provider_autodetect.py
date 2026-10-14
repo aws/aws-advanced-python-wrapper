@@ -97,8 +97,8 @@ def test_no_topology_dialects_return_static(dialect) -> None:
 def test_aurora_pg_dialect_selects_aurora_provider() -> None:
     provider = _build(AuroraPgDialect())
     assert type(provider) is AsyncAuroraHostListProvider
-    assert provider._topology_query == AuroraPgDialect().topology_query
-    assert provider._default_port == PG_PORT
+    assert provider._topology_utils._topology_query == AuroraPgDialect().topology_query
+    assert provider._topology_utils._default_port == PG_PORT
 
 
 def test_aurora_mysql_dialect_selects_aurora_provider_with_mysql_sql() -> None:
@@ -107,8 +107,8 @@ def test_aurora_mysql_dialect_selects_aurora_provider_with_mysql_sql() -> None:
     # port 5432, so discovery returned nothing until a later reconfigure.
     provider = _build(AuroraMysqlDialect(), AsyncAiomysqlDriverDialect())
     assert type(provider) is AsyncAuroraHostListProvider
-    assert provider._topology_query == AuroraMysqlDialect().topology_query
-    assert provider._default_port == MYSQL_PORT
+    assert provider._topology_utils._topology_query == AuroraMysqlDialect().topology_query
+    assert provider._topology_utils._default_port == MYSQL_PORT
 
 
 def test_global_aurora_pg_dialect_selects_global_provider() -> None:
@@ -119,25 +119,25 @@ def test_global_aurora_pg_dialect_selects_global_provider() -> None:
                 "us-east-1:global-db-us-east-1.cluster-xyz.us-east-1.rds.amazonaws.com"),
         }))
     assert isinstance(provider, AsyncGlobalAuroraHostListProvider)
-    assert provider._topology_query == GlobalAuroraPgDialect().topology_query
+    assert provider._topology_utils._topology_query == GlobalAuroraPgDialect().topology_query
 
 
 def test_global_aurora_mysql_dialect_selects_global_provider() -> None:
     provider = _build(GlobalAuroraMysqlDialect(), AsyncAiomysqlDriverDialect())
     assert isinstance(provider, AsyncGlobalAuroraHostListProvider)
-    assert provider._topology_query == GlobalAuroraMysqlDialect().topology_query
-    assert provider._default_port == MYSQL_PORT
+    assert provider._topology_utils._topology_query == GlobalAuroraMysqlDialect().topology_query
+    assert provider._topology_utils._default_port == MYSQL_PORT
 
 
 def test_multi_az_pg_dialect_selects_multi_az_provider() -> None:
     dialect = MultiAzClusterPgDialect()
     provider = _build(dialect)
     assert isinstance(provider, AsyncMultiAzHostListProvider)
-    assert provider._topology_query == dialect.topology_query
-    assert provider._writer_host_query == dialect.writer_id_query
-    assert provider._host_id_query == dialect.host_id_query
+    assert provider._topology_utils._topology_query == dialect.topology_query
+    assert provider._topology_utils._writer_host_query == dialect.writer_id_query
+    assert provider._topology_utils._host_id_query == dialect.host_id_query
     # The PG writer query returns a single column.
-    assert provider._writer_host_column_index == 0
+    assert provider._topology_utils._writer_host_column_index == 0
 
 
 def test_multi_az_mysql_dialect_carries_writer_column_index() -> None:
@@ -146,8 +146,8 @@ def test_multi_az_mysql_dialect_carries_writer_column_index() -> None:
     dialect = MultiAzClusterMysqlDialect()
     provider = _build(dialect, AsyncAiomysqlDriverDialect())
     assert isinstance(provider, AsyncMultiAzHostListProvider)
-    assert provider._writer_host_column_index == dialect._WRITER_HOST_COLUMN_INDEX
-    assert provider._default_port == MYSQL_PORT
+    assert provider._topology_utils._writer_host_column_index == dialect._WRITER_HOST_COLUMN_INDEX
+    assert provider._topology_utils._default_port == MYSQL_PORT
 
 
 def test_provider_receives_provider_service_for_dialect_confirmation() -> None:
