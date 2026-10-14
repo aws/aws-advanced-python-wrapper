@@ -453,8 +453,18 @@ class AsyncReadWriteSplittingPlugin(
         for _ in range(2 * len(reader_candidates)):
             if not remaining:
                 break
-            reader = self._plugin_service.get_host_info_by_strategy(
-                HostRole.READER, strategy, remaining)
+            try:
+                reader = self._plugin_service.get_host_info_by_strategy(
+                    HostRole.READER, strategy, remaining)
+            except Exception as exc:
+                # The selectors raise HostSelector.NoHostsMatchingRole when
+                # availability filtering leaves nothing eligible -- reachable
+                # on async only since availability marking started taking
+                # effect. Treat it as "no reader available" so callers still
+                # get ReadWriteSplittingError rather than a bare
+                # AwsWrapperError escaping from inside selection.
+                last_error = exc
+                break
             if reader is None:
                 break
             try:

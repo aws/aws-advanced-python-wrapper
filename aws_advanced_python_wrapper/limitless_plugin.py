@@ -194,13 +194,13 @@ class LimitlessRouterMonitor:
                 sleep(self._interval_ms / 1000)
 
         except InterruptedError as e:
-            logger.debug("LimitlessRouterMonitor.InterruptedExceptionDuringMonitoring", self.host_info.host)
+            logger.debug("LimitlessRouterMonitor.InterruptedErrorDuringMonitoring", self.host_info.host)
             if telemetry_context:
                 telemetry_context.set_exception(e)
                 telemetry_context.set_success(False)
         except Exception as e:
             # this should not be reached; log and exit thread
-            logger.debug("LimitlessRouterMonitor.ExceptionDuringMonitoringStop", self.host_info.host, e)
+            logger.debug("LimitlessRouterMonitor.errorDuringMonitoringStop", self.host_info.host, e)
             if telemetry_context:
                 telemetry_context.set_exception(e)
                 telemetry_context.set_success(False)

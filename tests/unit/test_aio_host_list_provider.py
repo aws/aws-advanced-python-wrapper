@@ -20,7 +20,7 @@ import asyncio
 import time
 from datetime import datetime
 from typing import Any, List
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -319,35 +319,57 @@ def test_topology_query_other_error_returns_empty():
 # ---- _validate_host_pattern (sync parity) -----------------------------
 
 
+#
+# The pattern is resolved and validated in __init__ (sync parity:
+# TopologyUtils.__init__, host_list_provider.py:456-476), so an invalid
+# pattern is rejected at construction rather than on the first topology
+# refresh -- a misconfiguration fails before the connect instead of
+# surfacing later as an empty host list.
+
+
 def test_validate_rejects_pattern_without_placeholder():
-    prov = AsyncAuroraHostListProvider(
-        _props(cluster_instance_host_pattern="no-placeholder.example.com"),
-        driver_dialect=MagicMock())
     with pytest.raises(AwsWrapperError, match="must contain"):
-        prov._resolve_instance_pattern()
+        AsyncAuroraHostListProvider(
+            _props(cluster_instance_host_pattern="no-placeholder.example.com"),
+            driver_dialect=MagicMock())
 
 
 def test_validate_rejects_rds_proxy_pattern():
-    prov = AsyncAuroraHostListProvider(
-        _props(cluster_instance_host_pattern="?.proxy-abc123.us-east-1.rds.amazonaws.com"),
-        driver_dialect=MagicMock())
     with pytest.raises(AwsWrapperError, match="RDS Proxy"):
-        prov._resolve_instance_pattern()
+        AsyncAuroraHostListProvider(
+            _props(cluster_instance_host_pattern="?.proxy-abc123.us-east-1.rds.amazonaws.com"),
+            driver_dialect=MagicMock())
 
 
 def test_validate_rejects_rds_custom_pattern():
-    prov = AsyncAuroraHostListProvider(
-        _props(cluster_instance_host_pattern="?.cluster-custom-abc123.us-east-1.rds.amazonaws.com"),
-        driver_dialect=MagicMock())
     with pytest.raises(AwsWrapperError, match="RDS Custom"):
-        prov._resolve_instance_pattern()
+        AsyncAuroraHostListProvider(
+            _props(cluster_instance_host_pattern="?.cluster-custom-abc123.us-east-1.rds.amazonaws.com"),
+            driver_dialect=MagicMock())
 
 
 def test_validate_accepts_normal_cluster_pattern():
     prov = _aurora()
-    host_pattern, port = prov._resolve_instance_pattern()
-    assert host_pattern == "?.cluster-xyz.us-east-1.rds.amazonaws.com"
-    assert port is None
+    assert prov._instance_host_pattern == "?.cluster-xyz.us-east-1.rds.amazonaws.com"
+    assert prov._instance_pattern_port is None
+
+
+def test_instance_pattern_is_resolved_once_not_per_topology_row():
+    """The pattern feeds every topology row, and resolving it builds
+    RdsUtils and runs several regex passes, so it must not sit on the
+    per-row path."""
+    async def _body() -> None:
+        conn = _build_conn([("instance-1", True), ("instance-2", False),
+                            ("instance-3", False)])
+        prov = _aurora()
+        with patch.object(
+                AsyncAuroraHostListProvider, "_resolve_instance_pattern",
+                wraps=prov._resolve_instance_pattern) as resolve:
+            topo = await prov.force_refresh(conn)
+            assert len(topo) == 3
+            resolve.assert_not_called()
+
+    asyncio.run(_body())
 
 
 # ---- provider.stop() tears down the monitor ---------------------------

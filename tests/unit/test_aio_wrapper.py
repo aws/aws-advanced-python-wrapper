@@ -121,6 +121,15 @@ def _make_mock_async_conn() -> MagicMock:
     return conn
 
 
+# Naming the dialect makes it confirmed at resolution time, so connect
+# never runs the dialect-identification probe. These tests measure cursor
+# and connection routing against a single shared mock cursor, and a probe
+# would open cursors and consume scripted results that the assertions
+# count. Dialect probing has its own tests (test_dialect.py,
+# test_aio_plugin_service_extras.py).
+_NAMED_DIALECT = {"wrapper_dialect": "pg"}
+
+
 def _make_mock_async_cursor() -> MagicMock:
     cur = MagicMock()
     cur.execute = AsyncMock(return_value=None)
@@ -162,7 +171,7 @@ def test_connect_opens_via_plugin_pipeline_and_returns_wrapper():
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=example.com user=u password=p dbname=d port=5432",
+            conninfo="host=example.com user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins=[plugin],
         )
 
@@ -186,7 +195,7 @@ def test_connect_passes_host_and_port_from_props():
     async def _body() -> None:
         await AsyncAwsWrapperConnection.connect(
             target=_target,
-            conninfo="host=h.example user=u password=p dbname=db port=6543",
+            conninfo="host=h.example user=u password=p dbname=db port=6543", **_NAMED_DIALECT,
         )
 
     asyncio.run(_body())
@@ -204,7 +213,7 @@ def test_cursor_is_sync_and_returns_async_cursor_wrapper():
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
 
     wrapper = asyncio.run(_body())
@@ -221,7 +230,7 @@ def test_cursor_execute_routes_through_plugin_pipeline():
     async def _body() -> None:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins=[plugin],
         )
         cur = wrapper.cursor()
@@ -259,7 +268,7 @@ def test_cursor_creation_is_lazy_and_pipelined():
     async def _body() -> None:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins=[plugin],
         )
         calls_after_connect = raw_conn.cursor.call_count
@@ -324,7 +333,7 @@ def test_connect_runs_init_host_provider_pipeline():
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins=[ProbePlugin([])],
         )
 
@@ -337,7 +346,7 @@ def _connected_wrapper(raw_conn: Any) -> AsyncAwsWrapperConnection:
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
 
     return asyncio.run(_body())
@@ -566,7 +575,7 @@ def test_connection_commit_rollback_close_route_through_pipeline():
     async def _body() -> None:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins=[plugin],
         )
         await wrapper.commit()
@@ -598,7 +607,7 @@ def test_connection_async_context_manager_closes_on_exit():
         # context-manager close path from default-plugin activity.
         async with await AsyncAwsWrapperConnection.connect(
                 target=_build_mock_psycopg_connect(raw_conn),
-                conninfo="host=h user=u password=p dbname=d port=5432",
+                conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
                 plugins="",
         ) as conn:
             assert isinstance(conn, AsyncAwsWrapperConnection)
@@ -616,7 +625,7 @@ def test_connect_applies_default_plugins_when_unset():
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
 
     conn = asyncio.run(_body())
@@ -632,7 +641,7 @@ def test_connect_explicit_blank_plugins_loads_none():
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins="",
         )
 
@@ -657,7 +666,7 @@ def test_connect_rolls_back_lingering_nonautocommit_transaction():
     async def _body() -> None:
         await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins="",
         )
 
@@ -673,7 +682,7 @@ def test_connect_does_not_roll_back_autocommit_connection():
     async def _body() -> None:
         await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins="",
         )
 
@@ -688,7 +697,7 @@ def test_connection_getattr_forwards_to_raw_conn():
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
 
     wrapper = asyncio.run(_body())
@@ -701,7 +710,7 @@ def test_cursor_getattr_forwards_to_target_cursor():
     async def _body() -> AsyncAwsWrapperCursor:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
         cur = wrapper.cursor()
         # Before first use the driver cursor does not exist yet: the
@@ -726,7 +735,7 @@ def test_cursor_async_context_manager_closes_on_exit():
     async def _body() -> None:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
         async with wrapper.cursor() as cur:
             assert isinstance(cur, AsyncAwsWrapperCursor)
@@ -847,7 +856,7 @@ def _make_wrapper_and_cursor() -> tuple:
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
 
     wrapper = asyncio.run(_body())
@@ -944,7 +953,7 @@ def test_connection_autocommit_getter_reads_target_connection_directly():
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
 
     wrapper = asyncio.run(_body())
@@ -960,7 +969,7 @@ def test_connection_set_autocommit_awaits_driver_dialect():
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
 
     wrapper = asyncio.run(_body())
@@ -985,7 +994,7 @@ def test_connection_isolation_level_roundtrip():
     async def _body() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
 
     wrapper = asyncio.run(_body())
@@ -1017,7 +1026,7 @@ def test_connection_isolation_level_roundtrip():
     async def _body2() -> AsyncAwsWrapperConnection:
         return await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn2),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
 
     wrapper2 = asyncio.run(_body2())
@@ -1086,7 +1095,7 @@ def test_tpc_methods_route_through_plugin_pipeline():
     async def _body() -> Any:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins=[plugin],
         )
         await wrapper.tpc_begin("xid-1")
@@ -1140,7 +1149,7 @@ def test_cursor_async_for_iterates_via_plugin_routed_fetchone():
     async def _body() -> List[Any]:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins=[plugin],
         )
         rows: List[Any] = []
@@ -1167,7 +1176,7 @@ def test_get_read_only_routes_through_plugin_pipeline():
     async def _body() -> bool:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins=[plugin],
         )
         return await wrapper.get_read_only()
@@ -1187,7 +1196,7 @@ def test_get_autocommit_routes_through_plugin_pipeline():
     async def _body() -> bool:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins=[plugin],
         )
         return await wrapper.get_autocommit()
@@ -1261,7 +1270,7 @@ def test_connect_opens_and_closes_top_level_telemetry_context(monkeypatch):
     async def _body() -> None:
         await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins="",
         )
 
@@ -1295,7 +1304,7 @@ def test_connect_telemetry_context_records_failure_and_closes(monkeypatch):
     async def _body() -> None:
         await AsyncAwsWrapperConnection.connect(
             target=_boom_target,
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins="",
         )
 
@@ -1318,7 +1327,7 @@ def test_close_releases_plugin_service_resources():
     async def _body() -> None:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins="",
         )
         wrapper._plugin_service.release_resources = release  # type: ignore[method-assign]
@@ -1338,7 +1347,7 @@ def test_aexit_releases_plugin_service_resources():
     async def _body() -> None:
         async with await AsyncAwsWrapperConnection.connect(
                 target=_build_mock_psycopg_connect(raw_conn),
-                conninfo="host=h user=u password=p dbname=d port=5432",
+                conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
                 plugins="",
         ) as conn:
             conn._plugin_service.release_resources = release  # type: ignore[method-assign]
@@ -1356,7 +1365,7 @@ def test_close_swallows_release_resources_errors():
     async def _body() -> None:
         wrapper = await AsyncAwsWrapperConnection.connect(
             target=_build_mock_psycopg_connect(raw_conn),
-            conninfo="host=h user=u password=p dbname=d port=5432",
+            conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
             plugins="",
         )
         wrapper._plugin_service.release_resources = AsyncMock(  # type: ignore[method-assign]

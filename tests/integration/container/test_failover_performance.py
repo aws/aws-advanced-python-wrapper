@@ -253,7 +253,7 @@ class TestPerformance:
                     **connect_params,
                     **props)
             except Exception as e:
-                TestPerformance.logger.debug("OpenConnectionFailed", str(e))
+                TestPerformance.logger.debug("Testing.OpenConnectionFailed", str(e))
             connection_attempts += 1
 
         if conn is None:
