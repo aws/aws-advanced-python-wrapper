@@ -69,30 +69,68 @@ def is_connection_abandoned(conn: Optional[Connection]) -> bool:
 
 def _queue_wait_bound_sec(timeout_sec: float) -> float:
     # Queue delay is not charged against the operation timeout, but a
-    # permanently saturated pool must not hang the caller forever.
-    return max(float(timeout_sec) * 10.0, 60.0)
+    # saturated pool must not stall the caller for a minute. Bound queue wait
+    # to the larger of 2x the timeout and timeout+5s: a 5s socket_timeout
+    # waits at most 10s for a worker (not 60s), while a 0.2s timeout still
+    # has 5.2s to get scheduled.
+    timeout_sec = float(timeout_sec)
+    return max(timeout_sec * 2.0, timeout_sec + 5.0)
 
 
-def _submit_and_wait_until_running(
-        executor: Executor, timeout_sec: float, func: Callable[..., Any], *args: Any, **kwargs: Any
-) -> Tuple[Future, threading.Event]:
-    """Submit ``func`` and wait until a worker starts it.
+class _WorkGate:
+    """Handshake so a worker cannot start ``func`` after the caller gives up."""
 
-    ``future.result(timeout=...)`` starts its clock at submit, so time spent
-    queued in a shared executor would otherwise count as query time
-    (see GitHub issue #1278). The operation timeout applies only after the
-    worker begins.
-    """
-    started = threading.Event()
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._abandoned = False
+        self.started = threading.Event()
+
+    def try_start(self) -> bool:
+        with self._lock:
+            if self._abandoned:
+                return False
+            self.started.set()
+            return True
+
+    def mark_abandoned(self) -> None:
+        with self._lock:
+            self._abandoned = True
+
+    def abandon_if_not_started(self) -> bool:
+        """Return True if the worker already started; otherwise prevent start."""
+        with self._lock:
+            if self.started.is_set():
+                return True
+            self._abandoned = True
+            return False
+
+
+def _submit_timed_call(
+        executor: Executor, func: Callable[..., Any], *args: Any, **kwargs: Any
+) -> Tuple[Future, _WorkGate]:
+    """Submit ``func``; the timeout clock starts only after ``try_start``."""
+    gate = _WorkGate()
 
     def invoke() -> Any:
-        started.set()
+        if not gate.try_start():
+            return None
         return func(*args, **kwargs)
 
-    future = executor.submit(invoke)
-    if started.wait(timeout=_queue_wait_bound_sec(timeout_sec)) or future.done() or started.is_set():
-        return future, started
-    raise FuturesTimeoutError()
+    return executor.submit(invoke), gate
+
+
+def _give_up_if_still_queued(future: Future, gate: _WorkGate) -> None:
+    """Cancel queued work, or leave an in-flight call for abort/drain.
+
+    ``future.cancel()`` is True only while the task is still queued. If it
+    returns False the worker has started (or just finished); the caller
+    treats that as started and must abort/drain. The gate stops ``func``
+    from running if the worker is still in the handshake.
+    """
+    if future.cancel():
+        gate.mark_abandoned()
+        return
+    gate.abandon_if_not_started()
 
 
 def _drain_timed_out_worker(
@@ -127,11 +165,11 @@ def preserve_transaction_status_with_timeout(executor: Executor, timeout_sec, dr
 
             initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
 
-            started = threading.Event()
-            future: Optional[Future] = None
+            future, gate = _submit_timed_call(executor, func, *args, **kwargs)
             try:
-                future, started = _submit_and_wait_until_running(
-                    executor, timeout_sec, func, *args, **kwargs)
+                if not gate.started.wait(timeout=_queue_wait_bound_sec(timeout_sec)):
+                    _give_up_if_still_queued(future, gate)
+                    raise FuturesTimeoutError()
                 result = future.result(timeout=timeout_sec)
             except FuturesTimeoutError:
                 # The query is still running on the worker thread. Interrupt its
@@ -139,8 +177,8 @@ def preserve_transaction_status_with_timeout(executor: Executor, timeout_sec, dr
                 # propagating -- otherwise the caller may close/reuse this
                 # connection while the worker is still reading it, a cross-thread
                 # use-after-free in the driver (env-4 SIGSEGV). Skip abort when
-                # the call never left the executor queue.
-                if future is not None and started.is_set():
+                # the call never left the executor queue (cancelled above).
+                if gate.started.is_set():
                     _drain_timed_out_worker(future, timeout_sec, driver_dialect, conn)
                 raise
 
@@ -175,15 +213,15 @@ def timeout(executor: Executor, timeout_sec, driver_dialect: Optional[DriverDial
         @functools.wraps(func)
         def func_wrapper(*args, **kwargs):
 
-            started = threading.Event()
-            future: Optional[Future] = None
+            future, gate = _submit_timed_call(executor, func, *args, **kwargs)
             try:
-                future, started = _submit_and_wait_until_running(
-                    executor, timeout_sec, func, *args, **kwargs)
+                if not gate.started.wait(timeout=_queue_wait_bound_sec(timeout_sec)):
+                    _give_up_if_still_queued(future, gate)
+                    raise FuturesTimeoutError()
                 # raises TimeoutError on timeout, measured from worker start
                 return future.result(timeout=timeout_sec)
             except FuturesTimeoutError:
-                if future is not None and started.is_set():
+                if gate.started.is_set():
                     _drain_timed_out_worker(future, timeout_sec, driver_dialect, conn)
                 raise
 

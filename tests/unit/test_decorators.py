@@ -14,7 +14,7 @@
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Optional
 from unittest.mock import MagicMock
@@ -24,6 +24,7 @@ import pytest
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.errors import QueryTimeoutError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils import decorators as decorators_mod
 from aws_advanced_python_wrapper.utils.decorators import (
     is_connection_abandoned, mark_connection_abandoned,
     preserve_transaction_status_with_timeout, timeout)
@@ -211,6 +212,88 @@ def test_execute_queued_fast_call_does_not_raise_query_timeout():
             DbApiMethod.CURSOR_EXECUTE.method_name, lambda: "ok") == "ok"
     finally:
         occupy_pool.shutdown(wait=True)
+
+
+def test_queue_bound_expiry_cancels_queued_work_and_skips_conn(monkeypatch):
+    # Issue #1278 follow-up: when the queue-wait bound expires while the call
+    # is still queued, the work must never run and the connection must not be
+    # aborted/touched after the caller has already timed out.
+    monkeypatch.setattr(decorators_mod, "_queue_wait_bound_sec", lambda timeout_sec: 0.15)
+    executor = ThreadPoolExecutor(max_workers=1)
+    conn = _Conn()
+    occupy_hold = threading.Event()
+    occupy_started = threading.Event()
+    ran = threading.Event()
+    dialect = _dialect()
+
+    def occupy():
+        occupy_started.set()
+        occupy_hold.wait(timeout=5)
+
+    def queued():
+        ran.set()
+        return "ran"
+
+    executor.submit(occupy)
+    assert occupy_started.wait(timeout=2)
+    wrapped = timeout(executor, 0.2, dialect, conn)(queued)
+    try:
+        with pytest.raises(FuturesTimeoutError):
+            wrapped()
+        assert ran.is_set() is False
+        dialect.abort_connection.assert_not_called()
+        occupy_hold.set()
+        time.sleep(0.2)
+        assert ran.is_set() is False
+    finally:
+        occupy_hold.set()
+        executor.shutdown(wait=True)
+
+
+def test_queue_bound_expiry_race_starts_then_drains(monkeypatch):
+    # Bound expires in the same window the worker starts: cancel() is False,
+    # so abort/drain must run (the call is in-flight on conn).
+    monkeypatch.setattr(decorators_mod, "_queue_wait_bound_sec", lambda timeout_sec: 0.15)
+
+    class _CancelStartsExecutor:
+        def submit(self, fn, *args, **kwargs):
+            future = Future()
+
+            def run():
+                try:
+                    result = fn(*args, **kwargs)
+                except BaseException as exc:
+                    future.set_exception(exc)
+                else:
+                    future.set_result(result)
+
+            def cancel_starts_then_fails() -> bool:
+                if future.set_running_or_notify_cancel():
+                    threading.Thread(target=run, daemon=True).start()
+                    # Let invoke() pass try_start before we report cancel() == False.
+                    time.sleep(0.1)
+                return False
+
+            future.cancel = cancel_starts_then_fails  # type: ignore[method-assign]
+            return future
+
+    hold = threading.Event()
+    ran = threading.Event()
+    conn = _Conn()
+    dialect = _dialect(abort_releases=hold)
+
+    def work():
+        ran.set()
+        hold.wait(timeout=5)
+        return "done"
+
+    try:
+        with pytest.raises(FuturesTimeoutError):
+            timeout(_CancelStartsExecutor(), 0.2, dialect, conn)(work)()
+        assert ran.wait(timeout=2)
+        dialect.abort_connection.assert_called()
+    finally:
+        hold.set()
 
 
 def test_execute_slow_call_still_raises_query_timeout():
