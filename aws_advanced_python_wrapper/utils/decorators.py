@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import functools
 import threading
+from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional, Tuple
 from weakref import WeakSet
 
 if TYPE_CHECKING:
@@ -66,6 +67,55 @@ def is_connection_abandoned(conn: Optional[Connection]) -> bool:
         return False
 
 
+def _queue_wait_bound_sec(timeout_sec: float) -> float:
+    # Queue delay is not charged against the operation timeout, but a
+    # permanently saturated pool must not hang the caller forever.
+    return max(float(timeout_sec) * 10.0, 60.0)
+
+
+def _submit_and_wait_until_running(
+        executor: Executor, timeout_sec: float, func: Callable[..., Any], *args: Any, **kwargs: Any
+) -> Tuple[Future, threading.Event]:
+    """Submit ``func`` and wait until a worker starts it.
+
+    ``future.result(timeout=...)`` starts its clock at submit, so time spent
+    queued in a shared executor would otherwise count as query time
+    (see GitHub issue #1278). The operation timeout applies only after the
+    worker begins.
+    """
+    started = threading.Event()
+
+    def invoke() -> Any:
+        started.set()
+        return func(*args, **kwargs)
+
+    future = executor.submit(invoke)
+    if started.wait(timeout=_queue_wait_bound_sec(timeout_sec)) or future.done() or started.is_set():
+        return future, started
+    raise FuturesTimeoutError()
+
+
+def _drain_timed_out_worker(
+        future: Future,
+        timeout_sec: float,
+        driver_dialect: Optional[DriverDialect],
+        conn: Optional[Connection]) -> None:
+    if conn is None or driver_dialect is None:
+        return
+    driver_dialect.abort_connection(conn)
+    try:
+        future.result(timeout=timeout_sec)
+    except FuturesTimeoutError:
+        # The worker still has not finished: abort_connection could not
+        # interrupt it (e.g. the mysql C-extension, where it is a no-op).
+        # Closing this connection now would free it under the running
+        # query and crash the process, so mark it abandoned -- close
+        # paths skip it and the worker frees it when it finishes.
+        mark_connection_abandoned(conn)
+    except Exception:  # noqa: BLE001 - worker raised its own error; it has drained
+        pass
+
+
 def preserve_transaction_status_with_timeout(executor: Executor, timeout_sec, driver_dialect: DriverDialect, conn: Connection):
     """
     Timeout decorator, timeout in seconds
@@ -77,28 +127,21 @@ def preserve_transaction_status_with_timeout(executor: Executor, timeout_sec, dr
 
             initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
 
-            future = executor.submit(func, *args, **kwargs)
-
+            started = threading.Event()
+            future: Optional[Future] = None
             try:
+                future, started = _submit_and_wait_until_running(
+                    executor, timeout_sec, func, *args, **kwargs)
                 result = future.result(timeout=timeout_sec)
             except FuturesTimeoutError:
                 # The query is still running on the worker thread. Interrupt its
                 # socket so it unwinds, then WAIT for the worker to finish before
                 # propagating -- otherwise the caller may close/reuse this
                 # connection while the worker is still reading it, a cross-thread
-                # use-after-free in the driver (env-4 SIGSEGV).
-                driver_dialect.abort_connection(conn)
-                try:
-                    future.result(timeout=timeout_sec)
-                except FuturesTimeoutError:
-                    # The worker still has not finished: abort_connection could not
-                    # interrupt it (e.g. the mysql C-extension, where it is a no-op).
-                    # Closing this connection now would free it under the running
-                    # query and crash the process, so mark it abandoned -- close
-                    # paths skip it and the worker frees it when it finishes.
-                    mark_connection_abandoned(conn)
-                except Exception:  # noqa: BLE001 - worker raised its own error; it has drained
-                    pass
+                # use-after-free in the driver (env-4 SIGSEGV). Skip abort when
+                # the call never left the executor queue.
+                if future is not None and started.is_set():
+                    _drain_timed_out_worker(future, timeout_sec, driver_dialect, conn)
                 raise
 
             if not initial_transaction_status and driver_dialect.is_in_transaction(conn):
@@ -132,23 +175,16 @@ def timeout(executor: Executor, timeout_sec, driver_dialect: Optional[DriverDial
         @functools.wraps(func)
         def func_wrapper(*args, **kwargs):
 
-            future = executor.submit(func, *args, **kwargs)
-
+            started = threading.Event()
+            future: Optional[Future] = None
             try:
-                # raises TimeoutError on timeout
+                future, started = _submit_and_wait_until_running(
+                    executor, timeout_sec, func, *args, **kwargs)
+                # raises TimeoutError on timeout, measured from worker start
                 return future.result(timeout=timeout_sec)
             except FuturesTimeoutError:
-                if conn is not None and driver_dialect is not None:
-                    driver_dialect.abort_connection(conn)
-                    try:
-                        future.result(timeout=timeout_sec)
-                    except FuturesTimeoutError:
-                        # Worker uninterruptible (e.g. mysql C-extension). Closing
-                        # conn now would crash the process; mark it abandoned so
-                        # close paths skip it and the worker frees it on completion.
-                        mark_connection_abandoned(conn)
-                    except Exception:  # noqa: BLE001 - worker raised its own error; it has drained
-                        pass
+                if future is not None and started.is_set():
+                    _drain_timed_out_worker(future, timeout_sec, driver_dialect, conn)
                 raise
 
         return func_wrapper
