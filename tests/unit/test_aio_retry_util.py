@@ -244,7 +244,7 @@ def test_get_writer_connection_returns_writer_when_role_matches():
         assert result.connection is conn
         assert result.host_info.host == _W.host
         svc.set_availability.assert_any_call(
-            _W.as_aliases(), HostAvailability.AVAILABLE)
+            _W, HostAvailability.AVAILABLE)
 
     asyncio.run(_body())
 
@@ -310,7 +310,7 @@ def test_get_writer_connection_marks_failed_host_unavailable():
             await util.get_writer_connection(
                 svc, hlp, _connect, (dead,), _deadline(0.25))
         svc.set_availability.assert_any_call(
-            dead.as_aliases(), HostAvailability.UNAVAILABLE)
+            dead, HostAvailability.UNAVAILABLE)
 
     asyncio.run(_body())
 
@@ -360,7 +360,7 @@ def test_get_writer_connection_finds_new_writer_via_reader_when_old_writer_dead(
         assert result.connection is conns["new-writer"]
         # Dead old writer marked unavailable; the reader probe connection dropped.
         svc.set_availability.assert_any_call(
-            old.as_aliases(), HostAvailability.UNAVAILABLE)
+            old, HostAvailability.UNAVAILABLE)
         svc.driver_dialect.abort_connection.assert_awaited()
 
     asyncio.run(_body())

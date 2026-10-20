@@ -12,12 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from unittest.mock import MagicMock
+
 import psycopg
 import pytest
 from _weakref import ref
 
 from aws_advanced_python_wrapper import release_resources
-from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_monitoring_plugin import \
     HostMonitorService
 from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -56,51 +57,59 @@ def cleanup():
 
 
 def test_start_monitoring(mocker, monitor_service, mock_plugin_service, mock_monitor, mock_conn):
-    aliases = frozenset({"instance-1"})
+    host_info = HostInfo("instance-1")
 
-    mocker.patch.object(monitor_service._monitor_service, 'run_if_absent_with_aliases', return_value=mock_monitor)
+    mocker.patch.object(monitor_service._monitor_service, 'run_if_absent', return_value=mock_monitor)
 
     monitor_service.start_monitoring(
-        mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
+        mock_conn, host_info, Properties(), 5000, 1000, 3)
 
     mock_monitor.start_monitoring.assert_called_once()
     assert mock_monitor == monitor_service._cached_monitor()
-    assert aliases == monitor_service._cached_monitor_aliases
+    assert host_info.url == monitor_service._cached_monitor_host_url
 
 
 def test_start_monitoring__cached_monitor(
         mocker, monitor_service, mock_plugin_service, mock_monitor, mock_conn):
-    aliases = frozenset({"instance-1"})
+    host_info = HostInfo("instance-1")
     monitor_service._cached_monitor = ref(mock_monitor)
-    monitor_service._cached_monitor_aliases = aliases
+    monitor_service._cached_monitor_host_url = host_info.url
 
     monitor_service.start_monitoring(
-        mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
+        mock_conn, host_info, Properties(), 5000, 1000, 3)
 
     mock_monitor.start_monitoring.assert_called_once()
     assert mock_monitor == monitor_service._cached_monitor()
-    assert aliases == monitor_service._cached_monitor_aliases
+    assert host_info.url == monitor_service._cached_monitor_host_url
 
 
-def test_start_monitoring__errors(monitor_service, mock_conn):
-    with pytest.raises(AwsWrapperError):
-        monitor_service.start_monitoring(
-            mock_conn, frozenset(), HostInfo("instance-1"), Properties(), 5000, 1000, 3)
+def test_start_monitoring__replaces_a_monitor_for_a_different_host(
+        mocker, monitor_service, mock_plugin_service, mock_monitor, mock_conn):
+    """The cached monitor is keyed on one host; another host needs its own."""
+    stale = MagicMock()
+    stale.is_stopped = False
+    monitor_service._cached_monitor = ref(stale)
+    monitor_service._cached_monitor_host_url = HostInfo("other").url
+    mocker.patch.object(monitor_service._monitor_service, 'run_if_absent', return_value=mock_monitor)
+
+    monitor_service.start_monitoring(
+        mock_conn, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
+
+    assert mock_monitor == monitor_service._cached_monitor()
+    stale.start_monitoring.assert_not_called()
 
 
 def test_stop_monitoring(mocker, monitor_service, mock_monitor, mock_conn):
-    aliases = frozenset({"instance-1"})
-    mocker.patch.object(monitor_service._monitor_service, 'run_if_absent_with_aliases', return_value=mock_monitor)
+    mocker.patch.object(monitor_service._monitor_service, 'run_if_absent', return_value=mock_monitor)
 
     context = monitor_service.start_monitoring(
-        mock_conn, aliases, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
+        mock_conn, HostInfo("instance-1"), Properties(), 5000, 1000, 3)
     monitor_service.stop_monitoring(context)
     mock_monitor.stop_monitoring.assert_called_once_with(context)
 
 
 def test_stop_monitoring_host(mocker, monitor_service, mock_monitor):
-    aliases = frozenset({"alias-1"})
     mocker.patch.object(monitor_service._monitor_service, 'get', return_value=mock_monitor)
 
-    monitor_service.stop_monitoring_host(aliases)
+    monitor_service.stop_monitoring_host(HostInfo("instance-1").url)
     mock_monitor.clear_contexts.assert_called_once()

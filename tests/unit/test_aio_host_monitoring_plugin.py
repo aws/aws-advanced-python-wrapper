@@ -344,7 +344,7 @@ def test_dead_host_marks_unavailable_and_aborts_active_context():
         await asyncio.sleep(0.3)
 
         svc.set_availability.assert_any_call(
-            HostInfo(host="h.example", port=5432).as_aliases(),
+            HostInfo(host="h.example", port=5432),
             HostAvailability.UNAVAILABLE)
         dd.abort_connection.assert_awaited()
         aborted_with = dd.abort_connection.await_args_list[0].args[0]
