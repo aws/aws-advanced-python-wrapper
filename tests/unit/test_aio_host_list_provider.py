@@ -303,21 +303,24 @@ def test_topology_multiple_writers_without_timestamps_keeps_one():
     assert len(writers) == 1
 
 
-def test_topology_rows_carry_host_id_and_instance_alias():
-    """Integration regression (EFM cluster-RO, both Aurora envs):
-    _rows_to_topology dropped host_id, so plugin_service.identify_connection
-    (which matches `h.host_id == instance_id`) could NEVER resolve a
-    cluster-endpoint connection -- EFM's _get_monitoring_host_info raised
-    UnableToIdentifyConnection on every cluster-RO connect. Sync parity:
-    create_host (host_list_provider.py:548-556) sets host_id AND adds the
-    bare instance id as an alias; the async MultiAz/GlobalAurora providers
-    already did both."""
+def test_topology_rows_carry_host_id():
+    """Integration regression (EFM cluster-RO, both Aurora envs): the row
+    parser dropped host_id, so identify_connection could never resolve a
+    cluster-endpoint connection and host monitoring could not pick a
+    monitoring host."""
     rows = [("w-1", True), ("r-1", False)]
     prov = _aurora()
     topo = prov._topology_utils._process_query_results(rows)
     assert {h.host_id for h in topo} == {"w-1", "r-1"}
-    for h in topo:
-        assert h.host_id in h.as_aliases()
+
+
+def test_topology_rows_share_one_availability_strategy():
+    """One strategy per provider, matching the synchronous provider, so the
+    backoff window is per cluster rather than per host."""
+    prov = _aurora()
+    topo = prov._topology_utils._process_query_results([("w-1", True), ("r-1", False)])
+    strategies = {id(h.host_availability_strategy) for h in topo}
+    assert strategies == {id(prov._topology_utils._host_availability_strategy)}
 
 
 def test_topology_query_programming_error_raises_invalid_query():

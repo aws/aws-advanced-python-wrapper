@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from time import perf_counter_ns
-from typing import Callable, FrozenSet, Generic, List, Optional, Tuple, TypeVar
+from typing import Callable, Generic, List, Optional, Tuple, TypeVar
 
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
 
@@ -63,13 +63,6 @@ class ExpirationTrackingCache(Generic[K, V]):
         if entry is None:
             return None
         entry.extend(self._expiration_timeout_ns)
-        return entry.item
-
-    def get_or_create_for_aliases(self, aliases: FrozenSet[K], factory: Callable[[], V]) -> V:
-        entry = self._cache.compute_for_keys(
-            aliases,
-            lambda: _CacheItem(factory(), perf_counter_ns() + self._expiration_timeout_ns),
-            on_existing=lambda e: e.extend(self._expiration_timeout_ns))
         return entry.item
 
     def extend_expiration(self, key: K) -> None:
