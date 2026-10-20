@@ -323,6 +323,7 @@ class PluginService(ExceptionHandler, Protocol):
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
     _STATUS_CACHE_EXPIRATION_NANO = 60 * 60 * 1_000_000_000  # one hour
+    _HOST_AVAILABILITY_EXPIRATION_NANO: ClassVar[int] = 5 * 60 * 1_000_000_000  # five minutes
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
 
     _executor_name: ClassVar[str] = "PluginServiceImplExecutor"
@@ -618,7 +619,31 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             self._target_func, self._driver_dialect, host_info, props, self.current_connection is None, plugin_to_skip)
 
     def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
-        ...
+        if not host_aliases:
+            return
+
+        hosts_to_change = {
+            host.url: host for host in self.all_hosts
+            if not host_aliases.isdisjoint(host.all_aliases)
+        }
+        if not hosts_to_change:
+            return
+
+        changes: Dict[str, Set[HostEvent]] = {}
+        for url, host in hosts_to_change.items():
+            previous_availability = host.get_raw_availability()
+            host.set_availability(availability)
+            PluginServiceImpl._host_availability_expiring_cache.put(
+                url, availability, PluginServiceImpl._HOST_AVAILABILITY_EXPIRATION_NANO)
+
+            if previous_availability != availability:
+                changes[url] = {
+                    HostEvent.WENT_UP if availability == HostAvailability.AVAILABLE else HostEvent.WENT_DOWN,
+                    HostEvent.HOST_CHANGED,
+                }
+
+        if changes:
+            self._container.plugin_manager.notify_host_list_changed(changes)
 
     def identify_connection(self, connection: Optional[Connection] = None) -> Optional[HostInfo]:
         connection = self.current_connection if connection is None else connection

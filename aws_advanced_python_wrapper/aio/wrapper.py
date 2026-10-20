@@ -57,6 +57,12 @@ if TYPE_CHECKING:
         TelemetryFactory
 
 
+# A plugin belongs here when it reads the host list -- all_hosts, hosts,
+# identify_connection, or a forced refresh. Omitting one does not disable the plugin, it
+# hands it a static provider holding only the connection-string host, so the plugin either
+# raises (host monitoring cannot identify the instance behind a cluster endpoint) or
+# silently does nothing (initial_connection finds no instance host to substitute). Add new
+# topology-reading plugins here; "srw" and "limitless" are deliberately absent because they don't require the topology.
 _TOPOLOGY_REQUIRING_PLUGINS = frozenset({
     "failover",
     "failover_v2",
@@ -65,6 +71,12 @@ _TOPOLOGY_REQUIRING_PLUGINS = frozenset({
     "gdb_rw",
     "custom_endpoint",
     "aurora_connection_tracker",
+    "initial_connection",
+    "host_monitoring",
+    "host_monitoring_v2",
+    "stale_dns",
+    "fastest_response_strategy",
+    "bg",
 })
 
 

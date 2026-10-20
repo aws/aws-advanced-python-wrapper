@@ -502,12 +502,34 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             self,
             host_aliases: FrozenSet[str],
             availability: HostAvailability) -> None:
-        for alias in host_aliases:
+        if not host_aliases:
+            return
+
+        hosts_to_change = {
+            host.url: host for host in self.all_hosts
+            if not host_aliases.isdisjoint(host.all_aliases)
+        }
+        if not hosts_to_change:
+            return
+
+        changes: Dict[str, Set[HostEvent]] = {}
+        for url, host in hosts_to_change.items():
+            previous_availability = host.get_raw_availability()
+            host.set_availability(availability)
             AsyncPluginServiceImpl._host_availability_expiring_cache.put(
-                alias,
+                url,
                 availability,
                 AsyncPluginServiceImpl._HOST_AVAILABILITY_EXPIRATION_NANO,
             )
+
+            if previous_availability != availability:
+                changes[url] = {
+                    HostEvent.WENT_UP if availability == HostAvailability.AVAILABLE else HostEvent.WENT_DOWN,
+                    HostEvent.HOST_CHANGED,
+                }
+
+        if changes and self._plugin_manager is not None:
+            self._plugin_manager.notify_host_list_changed(changes)
 
     def get_availability(self, host_url: str) -> Optional[HostAvailability]:
         return AsyncPluginServiceImpl._host_availability_expiring_cache.get(host_url)
