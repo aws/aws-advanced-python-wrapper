@@ -737,9 +737,14 @@ def test_cursor_async_context_manager_closes_on_exit():
             target=_build_mock_psycopg_connect(raw_conn),
             conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
         )
-        async with wrapper.cursor() as cur:
-            assert isinstance(cur, AsyncAwsWrapperCursor)
-        mock_cursor.close.assert_awaited_once()
+        # The mock conn hands out one cursor for everything, including the
+        # wrapper's own auxiliary queries, so measure across the exit alone.
+        manager = wrapper.cursor()
+        cur = await manager.__aenter__()
+        assert isinstance(cur, AsyncAwsWrapperCursor)
+        before = mock_cursor.close.await_count
+        await manager.__aexit__(None, None, None)
+        assert mock_cursor.close.await_count == before + 1
 
     asyncio.run(_body())
 

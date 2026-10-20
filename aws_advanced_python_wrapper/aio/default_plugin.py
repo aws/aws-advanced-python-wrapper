@@ -147,18 +147,17 @@ class AsyncDefaultPlugin(AsyncPlugin):
     def _post_connect_bookkeeping(self, host_info: HostInfo, connection_provider: Any) -> None:
         """Post-connect bookkeeping after a successful connect.
 
-        Sync parity: ``DefaultPlugin._connect`` (default_plugin.py:80-82) marks
-        every alias of the just-connected host AVAILABLE and lets the service
-        re-pick the driver dialect for the provider that produced the
-        connection (a no-op on async today). The DATABASE-dialect upgrade
+        Sync parity: ``DefaultPlugin._connect`` marks the just-connected host
+        AVAILABLE and lets the service re-pick the driver dialect for the
+        provider that produced the connection (a no-op on async today).
+        The DATABASE-dialect upgrade
         (sync ``plugin_service.update_dialect(conn)``) is invoked by the
         connect/force_connect callers right after this bookkeeping, mirroring
         sync's ordering; it is async so it cannot live in this sync helper.
         """
         if self._plugin_service is None:
             return
-        self._plugin_service.set_availability(
-            host_info.as_aliases(), HostAvailability.AVAILABLE)
+        self._plugin_service.set_availability(host_info, HostAvailability.AVAILABLE)
         self._plugin_service.update_driver_dialect(connection_provider)
 
     async def execute(

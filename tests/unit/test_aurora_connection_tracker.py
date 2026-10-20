@@ -29,6 +29,7 @@ from aws_advanced_python_wrapper.aurora_connection_tracker_plugin import (
     AuroraConnectionTrackerPlugin, OpenedConnectionTracker)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
 
 @pytest.fixture
@@ -43,7 +44,11 @@ def mock_cursor(mocker):
 
 @pytest.fixture
 def mock_plugin_service(mocker):
-    return mocker.MagicMock()
+    service = mocker.MagicMock()
+    # A MagicMock attribute would stand in for a routed host and send the
+    # tracker down the identify path.
+    service.routed_host_info = None
+    return service
 
 
 @pytest.fixture
@@ -67,11 +72,13 @@ def props():
 
 
 def test_track_new_instance_connection(
-        mocker, mock_plugin_service, mock_rds_utils, mock_tracker, mock_cursor, mock_callable):
+        mocker, mock_plugin_service, mock_rds_utils, mock_tracker, mock_cursor, mock_callable,
+        mock_conn):
     host_info: HostInfo = HostInfo("instance1")
     mock_plugin_service.all_hosts = [host_info]
     mock_plugin_service.current_host_info = host_info
     mock_rds_utils.is_rds_instance.return_value = True
+    mock_rds_utils.identify_rds_type.return_value = RdsUrlType.RDS_INSTANCE
     mock_callable.return_value = mock_conn
 
     plugin: AuroraConnectionTrackerPlugin = AuroraConnectionTrackerPlugin(mock_plugin_service, Properties(),
@@ -80,14 +87,35 @@ def test_track_new_instance_connection(
     conn: Connection = plugin.connect(
         mocker.MagicMock(), mocker.MagicMock(), host_info, Properties(), True, mock_callable)
     assert mock_conn == conn
-    mock_tracker.populate_opened_connection_queue(host_info, mock_conn)
-    assert 0 == len(host_info.aliases)
+    mock_tracker.populate_opened_connection_set.assert_called_with(host_info, mock_conn)
+    # An instance endpoint names the instance, so there is nothing to identify.
+    mock_plugin_service.identify_connection.assert_not_called()
 
     conn = plugin.connect(
         mocker.MagicMock(), mocker.MagicMock(), host_info, Properties(), False, mock_callable)
     assert mock_conn == conn
-    mock_tracker.populate_opened_connection_queue(host_info, mock_conn)
-    assert 0 == len(host_info.aliases)
+    mock_tracker.populate_opened_connection_set.assert_called_with(host_info, mock_conn)
+    mock_plugin_service.identify_connection.assert_not_called()
+
+
+def test_connect_tracks_a_cluster_connection_under_its_identified_host(
+        mocker, mock_plugin_service, mock_rds_utils, mock_tracker, mock_callable, mock_conn):
+    """A cluster endpoint does not name the instance the connection landed on,
+    so the tracker needs the identified host to key it correctly."""
+    cluster_host = HostInfo("mydb.cluster-abc.us-east-2.rds.amazonaws.com", 5432)
+    identified = HostInfo("instance-1.abc.us-east-2.rds.amazonaws.com", 5432,
+                          host_id="instance-1")
+    mock_rds_utils.identify_rds_type.return_value = RdsUrlType.RDS_WRITER_CLUSTER
+    mock_plugin_service.identify_connection.return_value = identified
+    mock_callable.return_value = mock_conn
+
+    plugin = AuroraConnectionTrackerPlugin(
+        mock_plugin_service, Properties(), mock_rds_utils, mock_tracker)
+    plugin.connect(
+        mocker.MagicMock(), mocker.MagicMock(), cluster_host, Properties(), True, mock_callable)
+
+    mock_tracker.populate_opened_connection_set.assert_called_with(identified, mock_conn)
+    assert mock_plugin_service.routed_host_info is identified
 
 
 def test_invalidate_opened_connections(
@@ -177,6 +205,98 @@ def test_invalidate_all_connections_drains_set(mocker):
 
     tracker.invalidate_all_connections(host_info=host_info)
     assert len(captured) == 1
+
+
+def _real_tracker(mocker):
+    """A tracker with a real RdsUtils and no prune thread or closer thread."""
+    OpenedConnectionTracker._opened_connections = {}
+    mocker.patch.object(OpenedConnectionTracker, "_start_prune_thread")
+    captured: list = []
+    mocker.patch.object(
+        OpenedConnectionTracker,
+        "_invalidate_connections",
+        side_effect=lambda connections_list: captured.append(list(connections_list)))
+    return OpenedConnectionTracker(), captured
+
+
+def test_a_non_instance_endpoint_is_tracked_under_its_host_id_too(mocker):
+    """The endpoint a connection was opened against can differ from the one a
+    later invalidation names; the host id is what they share."""
+    tracker, _ = _real_tracker(mocker)
+    conn = mocker.MagicMock()
+
+    tracker.populate_opened_connection_set(
+        HostInfo("db.example.com", 5432, host_id="instance-1"), conn)
+
+    assert set(OpenedConnectionTracker._opened_connections) == {
+        "instance-1", "db.example.com:5432"}
+
+
+def test_an_instance_endpoint_is_tracked_under_one_key(mocker):
+    tracker, _ = _real_tracker(mocker)
+
+    tracker.populate_opened_connection_set(
+        HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", 5432, host_id="instance-1"),
+        mocker.MagicMock())
+
+    assert set(OpenedConnectionTracker._opened_connections) == {
+        "instance-1.xyz.us-east-2.rds.amazonaws.com:5432"}
+
+
+def test_invalidate_reaches_a_connection_through_its_host_id(mocker):
+    tracker, captured = _real_tracker(mocker)
+    conn = mocker.MagicMock()
+    tracker.populate_opened_connection_set(
+        HostInfo("db.example.com", 5432, host_id="instance-1"), conn)
+
+    tracker.invalidate_all_connections(
+        HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", 5432, host_id="instance-1"))
+
+    assert captured and conn in captured[0]
+
+
+def test_invalidate_closes_a_multi_key_connection_once(mocker):
+    """Closing a pool-proxied connection twice would invalidate whatever the
+    pool handed out in between."""
+    tracker, captured = _real_tracker(mocker)
+    conn = mocker.MagicMock()
+    host = HostInfo("db.example.com", 5432, host_id="instance-1")
+    tracker.populate_opened_connection_set(host, conn)
+
+    tracker.invalidate_all_connections(host)
+
+    assert len(captured) == 1
+    assert captured[0].count(conn) == 1
+
+
+def test_notify_strips_the_trailing_slash_from_a_change_key(
+        mocker, mock_plugin_service, mock_rds_utils, mock_callable):
+    """Change keys are urls; tracking keys are not. Matching them without
+    stripping would never find the connection."""
+    from aws_advanced_python_wrapper.utils.notifications import HostEvent
+
+    tracker, captured = _real_tracker(mocker)
+    conn = mocker.MagicMock()
+    host = HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", 5432)
+    tracker.populate_opened_connection_set(host, conn)
+
+    plugin = AuroraConnectionTrackerPlugin(
+        mock_plugin_service, Properties(), mock_rds_utils, tracker)
+    plugin.notify_host_list_changed({host.url: {HostEvent.CONVERTED_TO_READER}})
+
+    assert captured and conn in captured[0]
+
+
+def test_remove_connection_tracking_clears_every_key(mocker):
+    tracker, _ = _real_tracker(mocker)
+    conn = mocker.MagicMock()
+    host = HostInfo("db.example.com", 5432, host_id="instance-1")
+    tracker.populate_opened_connection_set(host, conn)
+
+    tracker.remove_connection_tracking(host, conn)
+
+    assert all(conn not in conn_set
+               for conn_set in OpenedConnectionTracker._opened_connections.values())
 
 
 def test_task_invalidates_pool_proxied_connections(mocker):

@@ -16,8 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import (TYPE_CHECKING, ClassVar, FrozenSet, Optional, Set, Tuple,
-                    TypeAlias)
+from typing import TYPE_CHECKING, ClassVar, Optional, Tuple, TypeAlias
 
 from aws_advanced_python_wrapper.host_availability import (
     HostAvailability, HostAvailabilityStrategy)
@@ -45,7 +44,7 @@ class HostInfo:
             port: int = NO_PORT,
             role: HostRole = HostRole.WRITER,
             availability: HostAvailability = HostAvailability.AVAILABLE,
-            host_availability_strategy=HostAvailabilityStrategy(),
+            host_availability_strategy: Optional[HostAvailabilityStrategy] = None,
             weight: int = DEFAULT_WEIGHT,
             host_id: Optional[str] = None,
             last_update_time: Optional[datetime] = None):
@@ -53,13 +52,14 @@ class HostInfo:
         self.port = port
         self.role = role
         self.availability = availability
-        self.host_availability_strategy = host_availability_strategy
+        # A default argument is evaluated once, so every host that omitted it
+        # would share one strategy object.
+        self.host_availability_strategy = (
+            host_availability_strategy if host_availability_strategy is not None
+            else HostAvailabilityStrategy())
         self.weight = weight
         self.host_id = host_id
         self.last_update_time = last_update_time
-
-        self._aliases: Set[str] = set()
-        self._all_aliases: Set[str] = {self.as_alias()}
 
     def __eq__(self, other: object):
         if self is object:
@@ -84,6 +84,9 @@ class HostInfo:
             port=self.port,
             role=self.role,
             availability=self.availability,
+            # Shared by reference, so the copy keeps the original's backoff
+            # count and retry window rather than starting a fresh one.
+            host_availability_strategy=self.host_availability_strategy,
             weight=self.weight,
             host_id=self.host_id,
             last_update_time=self.last_update_time
@@ -91,45 +94,12 @@ class HostInfo:
 
     @property
     def url(self):
-        return f"{self.as_alias()}/"
-
-    @property
-    def aliases(self) -> FrozenSet[str]:
-        return frozenset(self._aliases)
-
-    @property
-    def all_aliases(self) -> FrozenSet[str]:
-        return frozenset(self._all_aliases)
+        # The trailing slash is part of the format: the availability cache, the
+        # notify_host_list_changed change map and the monitor keys all use it.
+        return f"{self.get_host_and_port()}/"
 
     def get_host_and_port(self):
         return f"{self.host}:{self.port}" if self.is_port_specified() else self.host
-
-    def as_alias(self) -> str:
-        return self.get_host_and_port()
-
-    def add_alias(self, *aliases: str):
-        if not aliases:
-            return
-
-        for alias in aliases:
-            self._aliases.add(alias)
-            self._all_aliases.add(alias)
-
-    def as_aliases(self) -> FrozenSet[str]:
-        return frozenset(self.all_aliases)
-
-    def remove_alias(self, *kwargs):
-        if not kwargs or len(kwargs) == 0:
-            return
-
-        for x in kwargs:
-            self._aliases.discard(x)
-            self._all_aliases.discard(x)
-
-    def reset_aliases(self):
-        self._aliases.clear()
-        self._all_aliases.clear()
-        self._all_aliases.add(self.as_alias())
 
     def is_port_specified(self) -> bool:
         return self.port != HostInfo.NO_PORT

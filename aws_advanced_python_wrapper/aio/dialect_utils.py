@@ -23,7 +23,7 @@ polluting the caller's transaction state.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 QueryTimeoutError)
@@ -83,12 +83,14 @@ class AsyncDialectUtils:
             conn: Any,
             driver_dialect: AsyncDriverDialect,
             host_id_query: str,
-            timeout_sec: float = 5.0) -> Optional[str]:
-        """Run the dialect's ``host_id_query`` to learn the Aurora
-        instance identifier ``conn`` is bound to. Returns ``None`` on
-        empty result or query failure (best-effort; callers fall back
-        to topology resolution by host_id). Mirrors sync
-        DialectUtils.get_instance_id at database_dialect.py.
+            timeout_sec: float = 5.0) -> Optional[Tuple[str, str]]:
+        """Run the dialect's ``host_id_query`` for the instance ``conn`` is
+        bound to, returning ``(instance_id, instance_name)``.
+
+        Aurora returns the same value in both columns. Multi-AZ returns a
+        numeric id and a short instance name, and callers match on either.
+        Returns ``None`` on an empty result or a query failure, since
+        identification is best-effort.
         """
         was_in_txn = await AsyncDialectUtils._safe_in_transaction(
             conn, driver_dialect)
@@ -107,10 +109,12 @@ class AsyncDialectUtils:
             await AsyncDialectUtils._restore_idle(conn, was_in_txn)
         if not result:
             return None
-        first = result[0]
-        if first is None:
+        instance_id = result[0]
+        if instance_id is None:
             return None
-        return str(first)
+        # A single-column result repeats the id, as the Aurora query does.
+        instance_name = result[1] if len(result) > 1 and result[1] is not None else instance_id
+        return str(instance_id), str(instance_name)
 
     @staticmethod
     async def _safe_in_transaction(

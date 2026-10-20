@@ -102,6 +102,11 @@ class LimitlessPlugin(Plugin):
         self._limitless_router_service.establish_connection(self._context)
         connection = self._context.get_connection()
         if connection is not None and not self._plugin_service.driver_dialect.is_closed(connection):
+            # The connection is on a router, not on the shard group endpoint
+            # the caller named.
+            routed_host_info = self._context.get_connection_host_info()
+            if routed_host_info is not None:
+                self._plugin_service.routed_host_info = routed_host_info
             return connection
 
         raise AwsWrapperError(Messages.get_formatted("LimitlessPlugin.FailedToConnectToHost", host_info.host))
@@ -291,9 +296,17 @@ class LimitlessContext:
         self._connect_func = connect_func
         self._limitless_routers = limitless_routers
         self._connection_plugin = connection_plugin
+        self._connection_host_info: Optional[HostInfo] = None
 
     def get_host_info(self):
         return self._host_info
+
+    def get_connection_host_info(self) -> Optional[HostInfo]:
+        """The router the connection was actually opened against."""
+        return self._connection_host_info
+
+    def set_connection_host_info(self, host_info: HostInfo):
+        self._connection_host_info = host_info
 
     def get_props(self):
         return self._props
@@ -393,6 +406,7 @@ class LimitlessRouterService:
 
         try:
             context.set_connection(self._plugin_service.connect(selected_host_info, context.get_props(), context.get_connection_plugin()))
+            context.set_connection_host_info(selected_host_info)
         except Exception as e:
             if self._is_login_exception(e):
                 raise e
@@ -452,6 +466,7 @@ class LimitlessRouterService:
             try:
                 context.set_connection(self._plugin_service.connect(selected_host_info, context.get_props(), context.get_connection_plugin()))
                 if context.get_connection() is not None:
+                    context.set_connection_host_info(selected_host_info)
                     return
 
             except Exception as e:

@@ -32,6 +32,7 @@ from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 ReadWriteSplittingError)
 from aws_advanced_python_wrapper.hostinfo import HostRole
+from aws_advanced_python_wrapper.pep249 import Error
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -453,8 +454,16 @@ class AsyncReadWriteSplittingPlugin(
         for _ in range(2 * len(reader_candidates)):
             if not remaining:
                 break
-            reader = self._plugin_service.get_host_info_by_strategy(
-                HostRole.READER, strategy, remaining)
+            try:
+                reader = self._plugin_service.get_host_info_by_strategy(
+                    HostRole.READER, strategy, remaining)
+            except Error:
+                # Every reader is currently marked unavailable. Stop here so
+                # the caller reports that no reader was available, rather than
+                # surfacing a host-selector error to the application. Error,
+                # not AwsWrapperError: the default random selector raises the
+                # base class, which AwsWrapperError is a subclass of.
+                break
             if reader is None:
                 break
             try:

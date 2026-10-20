@@ -48,6 +48,8 @@ from aws_advanced_python_wrapper.aio.topology_utils import (
     AsyncAuroraTopologyUtils, AsyncGlobalAuroraTopologyUtils,
     AsyncMultiAzTopologyUtils, AsyncTopologyUtils)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.host_availability import \
+    create_host_availability_strategy
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.events import MonitorStopEvent
@@ -152,14 +154,21 @@ class AsyncStaticHostListProvider:
         host = props.get("host", "")
         port_raw = props.get("port")
         port = int(port_raw) if port_raw is not None else -1
-        self._host_info = HostInfo(host=host, port=port, role=HostRole.WRITER)
+        self._host_info = HostInfo(
+            host=host, port=port, role=HostRole.WRITER,
+            host_availability_strategy=create_host_availability_strategy(props))
         self._cluster_id = f"static:{host}:{port}"
 
+    def _host(self) -> HostInfo:
+        """A copy, so marking the returned host unavailable does not mark the
+        one this provider hands to every later caller."""
+        return copy(self._host_info)
+
     async def refresh(self, connection: Optional[Any] = None) -> Topology:
-        return (self._host_info,)
+        return (self._host(),)
 
     async def force_refresh(self, connection: Optional[Any] = None) -> Topology:
-        return (self._host_info,)
+        return (self._host(),)
 
     def get_cluster_id(self) -> str:
         return self._cluster_id
