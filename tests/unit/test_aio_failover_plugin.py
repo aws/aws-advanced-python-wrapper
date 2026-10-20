@@ -529,7 +529,7 @@ def test_failover_marks_connected_host_available():
     asyncio.run(plugin._do_failover(driver_dialect=driver_dialect))
 
     svc.set_availability.assert_any_call(
-        writer.as_aliases(), HostAvailability.AVAILABLE)
+        writer, HostAvailability.AVAILABLE)
 
 
 def test_failover_marks_failed_host_unavailable():
@@ -547,7 +547,7 @@ def test_failover_marks_failed_host_unavailable():
         asyncio.run(plugin._do_failover(driver_dialect=driver_dialect))
 
     svc.set_availability.assert_any_call(
-        writer.as_aliases(), HostAvailability.UNAVAILABLE)
+        writer, HostAvailability.UNAVAILABLE)
 
 
 # ---- B.4: reader retry loop + strategy + writer fallback ---------------
@@ -950,9 +950,9 @@ def test_connect_time_failover_on_failover_worthy_connect_error():
         conn = await plugin.connect(
             MagicMock(), driver_dialect, host, Properties({}), True, _dial)
         assert conn is failover_conn
-        marked_aliases, marked_avail = svc.set_availability.call_args_list[0][0]
+        marked_host, marked_avail = svc.set_availability.call_args_list[0][0]
         assert marked_avail == HostAvailability.UNAVAILABLE
-        assert host.as_aliases() == marked_aliases
+        assert marked_host is host
 
     asyncio.run(_body())
 

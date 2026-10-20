@@ -21,6 +21,7 @@ from queue import Empty, Queue
 from typing import TYPE_CHECKING, Optional, Tuple
 
 from aws_advanced_python_wrapper.hostinfo import HostRole
+from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -97,6 +98,51 @@ class Utils:
                 return True
 
         return False
+
+    @staticmethod
+    def requires_host_identification(url_type: RdsUrlType) -> bool:
+        """Whether the instance behind ``url_type`` has to be looked up.
+
+        An instance endpoint names its instance already. A proxy or shard
+        group endpoint names a router, which stays reachable and is the right
+        thing to monitor; the instance behind it may not accept a direct
+        connection at all.
+        """
+        return url_type not in (
+            RdsUrlType.RDS_INSTANCE,
+            RdsUrlType.RDS_PROXY,
+            RdsUrlType.RDS_AURORA_LIMITLESS_DB_SHARD_GROUP)
+
+    @staticmethod
+    def matches_host(host: HostInfo, other: HostInfo) -> bool:
+        """Whether two hosts name the same instance.
+
+        Host ids match exactly; host names are compared case-insensitively,
+        since DNS names are case-insensitive.
+        """
+        if host.host_id is not None and host.host_id == other.host_id:
+            return True
+        return (host.host is not None and other.host is not None
+                and host.host.casefold() == other.host.casefold())
+
+    @staticmethod
+    def find_host(
+            hosts: Tuple[HostInfo, ...],
+            instance_id: Optional[str],
+            instance_name: Optional[str]) -> Optional[HostInfo]:
+        """Find the host a connection is bound to from what ``host_id_query``
+        reported.
+
+        The id is matched against ``host_id`` and the name against ``host``.
+        The dialects disagree about which column holds which: the Aurora
+        queries repeat one value, Multi-AZ returns a numeric id and a short
+        name, and the plain MySQL and PostgreSQL queries return the name
+        first. Matching on either column covers all of them.
+        """
+        return next(
+            (host for host in hosts
+             if host.host_id == instance_id or host.host == instance_name),
+            None)
 
     @staticmethod
     def get_writer(hosts: Tuple[HostInfo, ...]) -> Optional[HostInfo]:

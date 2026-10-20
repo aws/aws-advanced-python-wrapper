@@ -77,7 +77,7 @@ class DefaultPlugin(Plugin):
             if context is not None:
                 context.close_context()
 
-        self._plugin_service.set_availability(host_info.all_aliases, HostAvailability.AVAILABLE)
+        self._plugin_service.set_availability(host_info, HostAvailability.AVAILABLE)
         self._plugin_service.update_driver_dialect(conn_provider)
         self._plugin_service.update_dialect(conn)
 
