@@ -1,0 +1,67 @@
+{
+  "data_key_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "hmac_key_b64": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+  "key_id": 7,
+  "vectors": [
+    {
+      "name": "string",
+      "marker": 1,
+      "ciphertext_b64": "XslAWGOdcN33t9PGj/Ad5P2qduJW98IIcAO9D35GFO8AAAAHAQAAAAAAAAAAAAAAAGbZ2bLaDgxGefOoJST14EmSceFvMA==",
+      "expect": "hello"
+    },
+    {
+      "name": "unicode",
+      "marker": 1,
+      "ciphertext_b64": "r7RX2BhwDQ3/4ji+pOzRQupCqxDM9QEpUhV/L5bNJqIAAAAHAQEBAQEBAQEBAQEBARSig/bBqI7adrHKj2d74NVpKj+1BpQ7PUtA0bg=",
+      "expect": "café-漢字"
+    },
+    {
+      "name": "long",
+      "marker": 3,
+      "ciphertext_b64": "WtKO+JQ/tvljs2m6wN/20mtP0RjxSgOL9OQ+/AtWav4AAAAHAwICAgICAgICAgICApsoGKTIIjWQjDIWKCI17OeKddqJp0Xvgw==",
+      "expect": 1234567890123
+    },
+    {
+      "name": "double",
+      "marker": 4,
+      "ciphertext_b64": "B4A5M6ZEJQZhnd/k0/LgE74ZEkxhxi7r1AiK0AJuwoIAAAAHBAMDAwMDAwMDAwMDA65CHS/7idR4htDh6LqJIRV4KrT1LPgvWg==",
+      "expect": 3.14159
+    },
+    {
+      "name": "bool_t",
+      "marker": 6,
+      "ciphertext_b64": "0QKYtGKWTimUZeF5rFkGpcuwB6mRzUyNm713I+0rYacAAAAHBgQEBAQEBAQEBAQEBGUFno4Yz+nLDktDMtW6jjZK",
+      "expect": true
+    },
+    {
+      "name": "bool_f",
+      "marker": 6,
+      "ciphertext_b64": "Fd2/bfeCseuDMNlQ4wBzKmtZDKAnzpa+be/TPBd7fhMAAAAHBgkJCQkJCQkJCQkJCbOAaSswGIgGR2DJzfBb9MbL",
+      "expect": false
+    },
+    {
+      "name": "bytes",
+      "marker": 14,
+      "ciphertext_b64": "4qouGFi5vlgvx7Rr7VLCeesTvPJgLaBP1ABPORv0V4cAAAAHDgUFBQUFBQUFBQUFBUw32o7IuuK9V+EU923mD2KtAiyc",
+      "expect_b64": "AAEC/w=="
+    },
+    {
+      "name": "decimal",
+      "marker": 7,
+      "ciphertext_b64": "EmpCpu9th4vd3tEf2qu5tGBxSZTnWfm/e7kMV3D/JFMAAAAHBwYGBgYGBgYGBgYGBg1q3r1Mm5um410VyuIP4OFlsM5NmnsY75E6",
+      "expect": "12345.6789"
+    },
+    {
+      "name": "local_date_time_no_seconds",
+      "marker": 13,
+      "ciphertext_b64": "1BOLaYntqR3/P5GfqTTB6HsTEhxZRJgQJJnrcCB3uOwAAAAHDQcHBwcHBwcHBwcHBz1almtCPuXZ9q5HsbBrxa7tcVb6A5KNZFPMDTj2EitF",
+      "expect_datetime_iso": "2007-12-03T10:15:00"
+    },
+    {
+      "name": "local_date_time_nanos",
+      "marker": 13,
+      "ciphertext_b64": "UTa3QSMzLg1ZyYUYUrL4UimhX3cbz6cHc5wjtJIMvkAAAAAHDQgICAgICAgICAgICBhz6OHAtQTb4GQPqbCnQQ3ZJjOBpPBKW3AgPhnEX+JmSXag1k5jcXP4ga5VPw==",
+      "expect_datetime_iso": "2007-12-03T10:15:30.123456"
+    }
+  ]
+}
