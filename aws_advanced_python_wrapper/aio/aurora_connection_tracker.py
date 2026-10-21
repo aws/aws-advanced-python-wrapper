@@ -270,6 +270,8 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         self._plugin_service = plugin_service
         self._tracker = tracker or AsyncOpenedConnectionTracker()
         self._current_writer: Optional[HostInfo] = None
+        # The instance a cluster-endpoint connection landed on.
+        self._connected_instance: Optional[HostInfo] = None
         self._pending_invalidations: Set[asyncio.Task] = set()
 
         # Telemetry counter -- the sync tracker plugin doesn't emit this,
@@ -342,6 +344,10 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
             role = await self._plugin_service.get_host_role(conn)
             if role == HostRole.WRITER:
                 host = self._plugin_service.current_host_info
+                # Topology names instances, so pin the instance behind a
+                # cluster endpoint; if it's unknown, keep the topology pin.
+                if host is not None and not rds.is_rds_instance(host.host):
+                    host = self._connected_instance
                 if host is not None and (
                         self._current_writer is None
                         or not self._same_host(host, self._current_writer)):
@@ -376,6 +382,7 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
             identified = await self._plugin_service.identify_connection(conn)
             if identified is None:
                 return
+            self._connected_instance = identified
             host_info.reset_aliases()
             host_info.add_alias(host_info.as_alias())
             host_info.add_alias(*identified.as_aliases())
@@ -505,9 +512,14 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         """
         if pre_failover_host is None:
             return
+        # A cluster-endpoint connection departed the instance it landed on.
+        if (self._connected_instance is not None
+                and not RdsUtils().is_rds_instance(pre_failover_host.host)):
+            pre_failover_host = self._connected_instance
         post = self._plugin_service.current_host_info
         if post is None or self._same_host(pre_failover_host, post):
             return
+        self._connected_instance = post
         if (self._current_writer is not None
                 and not self._same_host(pre_failover_host, self._current_writer)
                 and not self._same_host(post, self._current_writer)):

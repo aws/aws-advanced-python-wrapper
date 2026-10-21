@@ -1005,3 +1005,123 @@ def test_departed_host_invalidation_fires_when_pin_is_first_observation():
         assert plugin._current_writer.host == new_writer.host
 
     asyncio.run(_run())
+
+
+def test_cluster_endpoint_connection_survives_its_first_execute():
+    """The pin is the instance, not the cluster endpoint, so the first
+    execute doesn't see a writer change and close the connection."""
+    plugin, svc, driver_dialect, tracker = _build()
+    cluster = "mydb.cluster-xyz.us-east-1.rds.amazonaws.com"
+    instance = "inst-1.xyz.us-east-1.rds.amazonaws.com"
+    writer = HostInfo(host=instance, port=5432, role=HostRole.WRITER)
+
+    async def _refresh(*a, **k):
+        svc._all_hosts = (writer,)
+    svc.refresh_host_list = AsyncMock(side_effect=_refresh)
+    svc.identify_connection = AsyncMock(
+        return_value=HostInfo(host=instance, port=5432))
+    svc.get_host_role = AsyncMock(return_value=HostRole.WRITER)
+
+    conn = _plain_conn("conn")
+
+    async def _connect_func():
+        return conn
+
+    async def _run():
+        svc._current_host_info = HostInfo(host=cluster, port=5432)
+        await plugin.connect(
+            target_driver_func=MagicMock(), driver_dialect=driver_dialect,
+            host_info=HostInfo(host=cluster, port=5432), props=svc.props,
+            is_initial_connection=True, connect_func=_connect_func)
+        assert plugin._current_writer is not None
+        assert plugin._current_writer.host == instance
+
+        result = await plugin.execute(
+            MagicMock(), "Cursor.execute", AsyncMock(return_value="ok"))
+        assert result == "ok"
+        conn.close.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def _connect_via(plugin, svc, driver_dialect, endpoint, conn):
+    async def _connect_func():
+        return conn
+
+    host_info = HostInfo(host=endpoint, port=5432)
+    svc._current_host_info = host_info
+    return plugin.connect(
+        target_driver_func=MagicMock(), driver_dialect=driver_dialect,
+        host_info=host_info, props=svc.props,
+        is_initial_connection=True, connect_func=_connect_func)
+
+
+def test_failover_invalidates_departed_instance_of_cluster_endpoint_connection():
+    """With lagged topology, failover still closes idle connections to the
+    instance a cluster-endpoint connection departed."""
+    plugin, svc, driver_dialect, tracker = _build()
+    cluster = "mydb.cluster-xyz.us-east-1.rds.amazonaws.com"
+    old = "inst-1.xyz.us-east-1.rds.amazonaws.com"
+    new = "inst-2.xyz.us-east-1.rds.amazonaws.com"
+    lagged = (HostInfo(old, 5432, role=HostRole.WRITER),
+              HostInfo(new, 5432, role=HostRole.READER))
+
+    async def _refresh(*a, **k):
+        svc._all_hosts = lagged
+    svc.refresh_host_list = AsyncMock(side_effect=_refresh)
+    svc.force_refresh_host_list = AsyncMock(side_effect=_refresh)
+    svc.identify_connection = AsyncMock(return_value=HostInfo(old, 5432))
+    svc.get_host_role = AsyncMock(return_value=HostRole.WRITER)
+
+    idle_conn = _plain_conn("idle")
+    active_conn = _plain_conn("active")
+
+    async def _run():
+        await _connect_via(plugin, svc, driver_dialect, cluster, idle_conn)
+        await _connect_via(plugin, svc, driver_dialect, cluster, active_conn)
+
+        async def _raising():
+            svc._current_host_info = HostInfo(new, 5432, role=HostRole.WRITER)
+            raise FailoverSuccessError("failover")
+        with pytest.raises(FailoverSuccessError):
+            await plugin.execute(MagicMock(), "Cursor.execute", _raising)
+        idle_conn.close.assert_called()
+
+    asyncio.run(_run())
+
+
+def test_reader_endpoint_failover_does_not_invalidate_the_writer():
+    """A reader-endpoint connection that fails over between readers departs
+    a reader, so writer connections must survive."""
+    plugin, svc, driver_dialect, tracker = _build()
+    reader_ep = "mydb.cluster-ro-xyz.us-east-1.rds.amazonaws.com"
+    writer = "inst-1.xyz.us-east-1.rds.amazonaws.com"
+    reader_1 = "inst-2.xyz.us-east-1.rds.amazonaws.com"
+    reader_2 = "inst-3.xyz.us-east-1.rds.amazonaws.com"
+    topology = (HostInfo(writer, 5432, role=HostRole.WRITER),
+                HostInfo(reader_1, 5432, role=HostRole.READER),
+                HostInfo(reader_2, 5432, role=HostRole.READER))
+
+    async def _refresh(*a, **k):
+        svc._all_hosts = topology
+    svc.refresh_host_list = AsyncMock(side_effect=_refresh)
+    svc.force_refresh_host_list = AsyncMock(side_effect=_refresh)
+    svc.identify_connection = AsyncMock(return_value=HostInfo(reader_1, 5432))
+    svc.get_host_role = AsyncMock(return_value=HostRole.READER)
+
+    writer_conn = _plain_conn("writer")
+    reader_conn = _plain_conn("reader")
+
+    async def _run():
+        tracker.track(HostInfo(writer, 5432), writer_conn)
+        await _connect_via(plugin, svc, driver_dialect, reader_ep, reader_conn)
+        assert plugin._current_writer.host == writer
+
+        async def _raising():
+            svc._current_host_info = HostInfo(reader_2, 5432, role=HostRole.READER)
+            raise FailoverSuccessError("failover")
+        with pytest.raises(FailoverSuccessError):
+            await plugin.execute(MagicMock(), "Cursor.execute", _raising)
+        writer_conn.close.assert_not_called()
+
+    asyncio.run(_run())
