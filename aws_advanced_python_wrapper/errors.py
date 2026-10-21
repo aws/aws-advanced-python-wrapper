@@ -14,7 +14,8 @@
 
 from typing import Optional
 
-from .pep249 import Error, InterfaceError, NotSupportedError, OperationalError
+from .pep249 import (Error, IntegrityError, InterfaceError, NotSupportedError,
+                     OperationalError)
 
 
 class AwsWrapperError(Error):
@@ -72,4 +73,70 @@ class ReadWriteSplittingError(AwsWrapperError, InterfaceError):
 
 
 class AwsConnectError(AwsWrapperError, OperationalError):
+    __module__ = "aws_advanced_python_wrapper"
+
+
+# -- KMS encryption plugin errors --
+#
+# Callers branch on the exception type. For example, the read path's lenient
+# ``encryption_return_unverified_data`` mode catches ``IntegrityCheckError``
+# and lets every other failure propagate.
+#
+# Each class derives from ``AwsWrapperError`` for the wrapper's own error
+# handling and mixes in a PEP 249 type, which is what SQLAlchemy and Django use
+# to classify errors at the DB-API boundary. The optional ``algorithm`` and
+# ``data_type`` attributes help with diagnostics.
+#
+# These classes are specific to Python. Only the on-the-wire byte format is
+# shared with the other wrappers.
+
+class EncryptionPluginError(AwsWrapperError):
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class EncryptionError(EncryptionPluginError, OperationalError):
+    __module__ = "aws_advanced_python_wrapper"
+
+    def __init__(self, message: str = "", *, algorithm: Optional[str] = None,
+                 data_type: Optional[str] = None):
+        super().__init__(message)
+        self.algorithm = algorithm
+        self.data_type = data_type
+
+
+class IntegrityCheckError(EncryptionError, IntegrityError):
+    """The payload is not a valid encrypted value: too short to hold the
+    framing, or its HMAC tag does not match.
+
+    Lenient mode (``encryption_return_unverified_data``) may swallow this
+    read-side failure and no other. A value that verifies but will not decrypt
+    raises ``DecryptionError``, which lenient mode always lets through.
+    """
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class DecryptionError(EncryptionError):
+    """A verified payload could not be decrypted, usually because the data key
+    is wrong (the GCM authentication tag does not match) or the marker is bad.
+    """
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class EncryptionFailedError(EncryptionError):
+    """A value could not be encrypted or serialized."""
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class InvalidKeyError(EncryptionError):
+    """A data key or HMAC key is missing or the wrong length."""
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class InvalidAlgorithmError(EncryptionError):
+    """An unsupported encryption algorithm was requested."""
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class TypeConversionError(EncryptionError):
+    """A decrypted value could not be coerced to its declared or requested type."""
     __module__ = "aws_advanced_python_wrapper"
