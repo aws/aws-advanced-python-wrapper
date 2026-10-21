@@ -14,10 +14,10 @@
 
 from __future__ import annotations
 
+from _weakrefset import WeakSet
 from typing import TYPE_CHECKING
 
 import pytest
-from _weakrefset import WeakSet
 from sqlalchemy.pool import QueuePool
 
 from aws_advanced_python_wrapper.errors import FailoverError

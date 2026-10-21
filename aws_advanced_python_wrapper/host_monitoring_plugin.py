@@ -22,13 +22,12 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
     from aws_advanced_python_wrapper.plugin_service import PluginService
 
+from _weakref import ReferenceType, ref
 from dataclasses import dataclass
 from queue import Queue
 from threading import Event, Lock, Thread
 from time import perf_counter_ns
 from typing import Any, Callable, Dict, Optional, Set
-
-from _weakref import ReferenceType, ref
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability

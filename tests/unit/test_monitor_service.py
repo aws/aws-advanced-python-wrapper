@@ -12,11 +12,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from _weakref import ref
 from unittest.mock import MagicMock
 
 import psycopg
 import pytest
-from _weakref import ref
 
 from aws_advanced_python_wrapper import release_resources
 from aws_advanced_python_wrapper.host_monitoring_plugin import \
