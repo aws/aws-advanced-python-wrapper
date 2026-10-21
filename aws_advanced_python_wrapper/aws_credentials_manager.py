@@ -34,7 +34,7 @@ class AwsCredentialsManager:
     @staticmethod
     def get_session(host_info: HostInfo, props: Properties, region: Optional[str] = None) -> Session:
         profile_name = WrapperProperties.AWS_PROFILE.get(props)
-        host_key = f'{host_info.as_alias()}{region}{profile_name}'
+        host_key = f'{host_info.get_host_and_port()}{region}{profile_name}'
 
         with AwsCredentialsManager._lock:
             if host_key in AwsCredentialsManager._sessions:

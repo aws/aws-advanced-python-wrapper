@@ -137,11 +137,6 @@ class DatabaseDialect(Protocol):
 
     @property
     @abstractmethod
-    def host_alias_query(self) -> str:
-        ...
-
-    @property
-    @abstractmethod
     def server_version_query(self) -> str:
         ...
 
@@ -218,10 +213,6 @@ class MysqlDatabaseDialect(DatabaseDialect):
         return 3306
 
     @property
-    def host_alias_query(self) -> str:
-        return f"SELECT {self._HOST_ID_EXPRESSION}"
-
-    @property
     def server_version_query(self) -> str:
         return "SHOW VARIABLES LIKE 'version_comment'"
 
@@ -278,10 +269,6 @@ class PgDatabaseDialect(DatabaseDialect):
     @property
     def default_port(self) -> int:
         return 5432
-
-    @property
-    def host_alias_query(self) -> str:
-        return f"SELECT {self._HOST_ID_EXPRESSION}"
 
     @property
     def server_version_query(self) -> str:
@@ -829,10 +816,6 @@ class UnknownDatabaseDialect(DatabaseDialect):
         return HostInfo.NO_PORT
 
     @property
-    def host_alias_query(self) -> str:
-        return ""
-
-    @property
     def server_version_query(self) -> str:
         return ""
 
@@ -1098,7 +1081,16 @@ class DialectUtils:
                         thread_pool, timeout_sec: float) -> Optional[Tuple[str, str]]:
         cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
             thread_pool, timeout_sec, driver_dialect, conn)(DialectUtils._execute_instance_id_query)
-        result = cursor_execute_func_with_timeout(conn, instance_id_query)
+        try:
+            result = cursor_execute_func_with_timeout(conn, instance_id_query)
+        except TimeoutError:
+            # A timeout is transient, so it stays an error the caller can see.
+            raise
+        except Exception:  # noqa: BLE001 - see below
+            # A host whose id the database declines to report is simply
+            # unidentifiable, which every caller handles. Raising instead
+            # would fail a connect over a host the caller never needed named.
+            return None
         if result is not None and len(result) >= 2:
             return (str(result[0]), str(result[1]))
 

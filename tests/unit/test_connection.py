@@ -46,6 +46,47 @@ def test_connection_basic():
                                                    password="qwerty")
 
 
+def _wrapper_with(plugin_service, plugin_manager, conn):
+    """Drive AwsWrapperConnection.__init__ past its setup to the host-adoption
+    step, which is what decides the connection's current host."""
+    plugin_manager.connect.return_value = conn
+    plugin_service.database_dialect.get_host_list_provider_supplier.return_value = \
+        lambda _service, _props: MagicMock()
+    wrapper = AwsWrapperConnection.__new__(AwsWrapperConnection)
+    AwsWrapperConnection.__init__(
+        wrapper, MagicMock(), MagicMock(), plugin_service, plugin_manager)
+    return wrapper
+
+
+def test_the_wrapper_adopts_the_host_a_plugin_routed_the_connect_to():
+    """The initial connection strategy plugin substitutes an instance for a
+    cluster endpoint. Binding the connection to the endpoint instead would
+    leave every later host comparison naming the wrong host."""
+    routed = HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", 5432)
+    conn = MagicMock(spec=psycopg.Connection)
+    plugin_service = MagicMock()
+    plugin_service.current_connection = None
+    plugin_service.initial_connection_host_info = HostInfo("mydb.cluster-xyz.us-east-2.rds.amazonaws.com", 5432)
+    plugin_service.take_routed_host_info.return_value = routed
+
+    _wrapper_with(plugin_service, MagicMock(), conn)
+
+    plugin_service.set_current_connection.assert_called_once_with(conn, routed)
+
+
+def test_the_wrapper_falls_back_to_the_initial_host_when_nothing_routed():
+    initial = HostInfo("mydb.cluster-xyz.us-east-2.rds.amazonaws.com", 5432)
+    conn = MagicMock(spec=psycopg.Connection)
+    plugin_service = MagicMock()
+    plugin_service.current_connection = None
+    plugin_service.initial_connection_host_info = initial
+    plugin_service.take_routed_host_info.return_value = None
+
+    _wrapper_with(plugin_service, MagicMock(), conn)
+
+    plugin_service.set_current_connection.assert_called_once_with(conn, initial)
+
+
 def test_connection_getattr_delegates_to_underlying_connection():
     # Driver-specific extension methods absent from the wrapper's PEP-249 surface
     # (e.g. psycopg's add_notice_handler, called by SQLAlchemy) must reach the

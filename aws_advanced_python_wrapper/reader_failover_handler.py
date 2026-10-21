@@ -150,7 +150,7 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
     def _failover_internal(self, hosts: Tuple[HostInfo, ...], current_host: Optional[HostInfo]) -> ReaderFailoverResult:
         if current_host is not None:
-            self._plugin_service.set_availability(current_host.all_aliases, HostAvailability.UNAVAILABLE)
+            self._plugin_service.set_availability(current_host, HostAvailability.UNAVAILABLE)
 
         hosts_by_priority = ReaderFailoverHandlerImpl.get_hosts_by_priority(hosts, self._strict_reader_failover)
         return self._get_connection_from_host_group(hosts_by_priority)
@@ -201,13 +201,13 @@ class ReaderFailoverHandlerImpl(ReaderFailoverHandler):
 
         try:
             conn: Connection = self._plugin_service.force_connect(host, props)
-            self._plugin_service.set_availability(host.all_aliases, HostAvailability.AVAILABLE)
+            self._plugin_service.set_availability(host, HostAvailability.AVAILABLE)
 
             logger.debug("ReaderFailoverHandler.SuccessfulReaderConnection", host.url)
             return ReaderFailoverResult(conn, True, host, None)
         except Exception as ex:
             logger.debug("ReaderFailoverHandler.FailedReaderConnection", host.url)
-            self._plugin_service.set_availability(host.all_aliases, HostAvailability.UNAVAILABLE)
+            self._plugin_service.set_availability(host, HostAvailability.UNAVAILABLE)
             if not self._plugin_service.is_network_exception(ex):
                 return ReaderFailoverResult(None, False, None, ex)
 

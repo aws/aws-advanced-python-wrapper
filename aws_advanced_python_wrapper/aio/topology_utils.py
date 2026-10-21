@@ -27,6 +27,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.host_availability import \
+    create_host_availability_strategy
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole, Topology
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
@@ -67,9 +69,14 @@ class AsyncTopologyUtils(ABC):
         self._topology_query = topology_query
         self._default_port = default_port
         self._rds_utils = RdsUtils()
+        # One strategy for every host these utils produce, as the synchronous
+        # provider does, so the backoff window is per cluster.
+        self._host_availability_strategy = create_host_availability_strategy(props)
 
         self.initial_host_info: HostInfo = HostInfo(
-            host=str(props.get("host", "")), port=self._port_from_props(default_port))
+            host=str(props.get("host", "")),
+            port=self._port_from_props(default_port),
+            host_availability_strategy=self._host_availability_strategy)
         self.instance_template: Optional[HostInfo] = self._build_instance_template()
 
     def _port_from_props(self, default_port: int) -> int:
@@ -134,8 +141,8 @@ class AsyncTopologyUtils(ABC):
             # host_id is how identify_connection correlates a live connection
             # back to its topology row; without it every cluster-endpoint
             # identification fails.
-            host_id=str(host_id))
-        host_info.add_alias(str(host_id))
+            host_id=str(host_id),
+            host_availability_strategy=self._host_availability_strategy)
         return host_info
 
     def _resolved_port(self) -> int:
@@ -333,8 +340,8 @@ class AsyncMultiAzTopologyUtils(AsyncTopologyUtils):
                 host=host,
                 port=port,
                 role=HostRole.WRITER if row_id == writer_id else HostRole.READER,
-                host_id=row_id)
-            host_info.add_alias(host)
+                host_id=row_id,
+                host_availability_strategy=self._host_availability_strategy)
             hosts.append(host_info)
 
         if not any(h.role == HostRole.WRITER for h in hosts):
@@ -419,8 +426,8 @@ class AsyncGlobalAuroraTopologyUtils(AsyncTopologyUtils):
                 host=host,
                 port=port,
                 role=HostRole.WRITER if is_writer else HostRole.READER,
-                host_id=server_id)
-            host_info.add_alias(host)
+                host_id=server_id,
+                host_availability_strategy=self._host_availability_strategy)
             hosts.append(host_info)
 
         writers = [h for h in hosts if h.role == HostRole.WRITER]

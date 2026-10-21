@@ -1002,7 +1002,11 @@ class AsyncAwsWrapperConnection:
         except Exception:  # noqa: BLE001 - best-effort txn cleanup
             pass
 
-        await plugin_service.set_current_connection(target_conn, host_info)
+        # A plugin may have routed the connect elsewhere; that is the host this
+        # connection is actually on.
+        routed = plugin_service.take_routed_host_info()
+        await plugin_service.set_current_connection(
+            target_conn, routed if routed is not None else host_info)
         return AsyncAwsWrapperConnection(plugin_service, plugin_manager)
 
     def cursor(self, *args: Any, **kwargs: Any) -> AsyncAwsWrapperCursor:

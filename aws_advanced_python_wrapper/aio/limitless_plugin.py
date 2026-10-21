@@ -163,9 +163,17 @@ class AsyncLimitlessContext:
         self._limitless_routers = limitless_routers
         self._connection_plugin = connection_plugin
         self._plugin_service = plugin_service
+        self._connection_host_info: Optional[HostInfo] = None
 
     def get_host_info(self) -> HostInfo:
         return self._host_info
+
+    def get_connection_host_info(self) -> Optional[HostInfo]:
+        """The router the connection was actually opened against."""
+        return self._connection_host_info
+
+    def set_connection_host_info(self, host_info: HostInfo) -> None:
+        self._connection_host_info = host_info
 
     def get_props(self) -> Properties:
         return self._props
@@ -486,6 +494,7 @@ class AsyncLimitlessRouterService:
             await context.set_connection(await self._plugin_service.connect(
                 selected_host_info, context.get_props(),
                 plugin_to_skip=context.get_connection_plugin()))
+            context.set_connection_host_info(selected_host_info)
         except Exception as e:  # noqa: BLE001
             if self._is_login_exception(e):
                 raise e
@@ -542,6 +551,7 @@ class AsyncLimitlessRouterService:
                     selected_host_info, context.get_props(),
                     plugin_to_skip=context.get_connection_plugin()))
                 if context.get_connection() is not None:
+                    context.set_connection_host_info(selected_host_info)
                     return
             except Exception as e:  # noqa: BLE001
                 if self._is_login_exception(e):
@@ -762,6 +772,11 @@ class AsyncLimitlessPlugin(AsyncPlugin):
         await self._limitless_router_service.establish_connection(context)
         connection = context.get_connection()
         if connection is not None and not await self._plugin_service.driver_dialect.is_closed(connection):
+            # The connection is on a router, not on the shard group endpoint
+            # the caller named.
+            routed_host_info = context.get_connection_host_info()
+            if routed_host_info is not None:
+                self._plugin_service.routed_host_info = routed_host_info
             return connection
 
         raise AwsWrapperError(Messages.get_formatted(
