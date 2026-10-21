@@ -217,7 +217,10 @@ class ClusterTopologyMonitorImpl(ClusterTopologyMonitor):
                         self._cluster_id, timeout_sec * 1000))
 
     def _get_stored_hosts(self) -> Topology:
-        hosts = services_container.get_storage_service().get(Topology, self._cluster_id)
+        # This monitor produces the topology it is reading, so registering an
+        # access would make it renew its own expiration.
+        hosts = services_container.get_storage_service().get(
+            Topology, self._cluster_id, register_data_access=False)
         if hosts is None:
             return ()
         return hosts

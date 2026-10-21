@@ -141,6 +141,19 @@ class MonitorService(EventSubscriber):
             if monitor is not None:
                 _CacheContainer._dispose(monitor)
 
+    def stop_and_remove_value(self, monitor_type: type, monitor: Any) -> None:
+        """Remove and dispose this exact monitor, whatever key it sits under.
+
+        Use this instead of stop_and_remove when the caller holds the monitor
+        it means: removing by key would dispose whatever is at the key now,
+        which may be a replacement another caller is already using.
+        """
+        container = self._monitor_caches.get(monitor_type)
+        if container is None:
+            return
+        if container.cache.detach_value(monitor):
+            _CacheContainer._dispose(monitor)
+
     def stop_and_remove_all(self, monitor_type: type) -> None:
         container = self._monitor_caches.get(monitor_type)
         if container is not None:
