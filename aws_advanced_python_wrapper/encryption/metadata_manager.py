@@ -42,6 +42,7 @@ _KS_PREFIX = "ks_"
 
 
 class _Snapshot(NamedTuple):
+    # Keyed by SqlDialect.metadata_key of the names.
     columns: Mapping[Tuple[str, str], ColumnEncryptionConfig]
     by_table: Mapping[str, Tuple[ColumnEncryptionConfig, ...]]
     loaded_at: float  # time.monotonic()
@@ -59,6 +60,12 @@ class MetadataManager:
     With the background refresh disabled, the first lookup after expiry
     reloads it. Before :meth:`start`, after :meth:`close`, or with the cache
     disabled, each lookup queries the database.
+
+    Lookups compare names the way the engine does
+    (:meth:`SqlDialect.metadata_key`): exactly on PostgreSQL, where names are
+    stored as the catalog has them (``users`` for an unquoted ``Users``), and
+    case-insensitively on MySQL. That matches what the uncached query's
+    ``WHERE`` does, given the default (case-insensitive) MySQL collations.
 
     Call :meth:`close` when done. The refresh thread holds the manager only
     weakly, so a manager dropped without ``close`` still stops its thread once
@@ -162,7 +169,7 @@ class MetadataManager:
             return None
         snapshot = self._usable_snapshot(table_name, column_name)
         if snapshot is not None:
-            return snapshot.columns.get((table_name, column_name))
+            return snapshot.columns.get((self._sql.metadata_key(table_name), self._sql.metadata_key(column_name)))
         rows = self._query(
             f"{self._joined_sql()} WHERE em.table_name {self._sql.equals} %s AND em.column_name {self._sql.equals} %s",
             (table_name, column_name), table_name=table_name, column_name=column_name)
@@ -174,7 +181,7 @@ class MetadataManager:
             return ()
         snapshot = self._usable_snapshot(table_name)
         if snapshot is not None:
-            return snapshot.by_table.get(table_name, ())
+            return snapshot.by_table.get(self._sql.metadata_key(table_name), ())
         rows = self._query(f"{self._joined_sql()} WHERE em.table_name {self._sql.equals} %s",
                            (table_name,), table_name=table_name)
         return tuple(self._to_column_config(row) for row in rows)
@@ -213,11 +220,12 @@ class MetadataManager:
         # returned.
         loaded_at = time.monotonic()
         columns = self._load_all(table_name=table_name, column_name=column_name)
+        key = self._sql.metadata_key
         by_table: Dict[str, List[ColumnEncryptionConfig]] = {}
         for config in columns.values():
-            by_table.setdefault(config.table_name, []).append(config)
+            by_table.setdefault(key(config.table_name), []).append(config)
         snapshot = _Snapshot(
-            MappingProxyType(dict(columns)),
+            MappingProxyType({(key(c.table_name), key(c.column_name)): c for c in columns.values()}),
             MappingProxyType({t: tuple(c) for t, c in by_table.items()}),
             loaded_at)
         with self._lifecycle_lock:
@@ -269,14 +277,30 @@ class MetadataManager:
     def _to_column_config(row: Mapping[str, Any]) -> ColumnEncryptionConfig:
         key_metadata = None if row.get(f"{_KS_PREFIX}id") is None else KeyMetadata.from_row(row, _KS_PREFIX)
         return ColumnEncryptionConfig(
-            table_name=row["table_name"],
-            column_name=row["column_name"],
+            table_name=MetadataManager._name(row, "table_name"),
+            column_name=MetadataManager._name(row, "column_name"),
             algorithm=row.get("encryption_algorithm") or EncryptionAlgorithm.DEFAULT,
             key_id=None if row.get("key_id") is None else int(row["key_id"]),
             key_metadata=key_metadata,
             created_at=row.get("created_at"),
             updated_at=row.get("updated_at"),
         )
+
+    @staticmethod
+    def _name(row: Mapping[str, Any], field: str) -> str:
+        # A driver can return text as bytes (psycopg on a SQL_ASCII database,
+        # Connector/Python with use_unicode=False). Such a name would never
+        # match the str names parsed from SQL, so an encrypted column would
+        # look like an ordinary one: decode it, and refuse anything else.
+        value = row[field]
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            try:
+                return bytes(value).decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+        raise MetadataError(Messages.get_formatted("MetadataManager.InvalidName", field, type(value).__name__))
 
     @staticmethod
     def _finalize(stop: Event, thread_holder: List[Optional[Thread]]) -> None:

@@ -514,3 +514,63 @@ def test_failed_reload_names_the_lookup(clock):
     with pytest.raises(MetadataError) as err:
         mm.column_config("users", "ssn")
     assert (err.value.table_name, err.value.column_name) == ("users", "ssn")
+
+
+# ---- name matching ----
+
+def test_postgresql_lookups_are_exact(clock):
+    # Names are stored as the catalog has them; "Users" and users differ.
+    db = FakeDb([row("users", "ssn"), row("Users", "SSN", 2)])
+    mm = MetadataManager(db, PG, config())
+    mm.start()
+    assert mm.column_config("users", "ssn").key_id == 1
+    assert mm.column_config("Users", "SSN").key_id == 2
+    assert mm.column_config("USERS", "ssn") is None
+    assert [c.key_id for c in mm.table_configs("Users")] == [2]
+
+
+def test_mysql_lookups_ignore_case(clock):
+    # MySQL compares these names case-insensitively, as the uncached query's
+    # WHERE does under the metadata table's collation.
+    db = FakeDb([row("Users", "SSN")])
+    mm = MetadataManager(db, MYSQL, config())
+    mm.start()
+    found = mm.column_config("users", "ssn")
+    assert found is not None and (found.table_name, found.column_name) == ("Users", "SSN")
+    assert mm.is_column_encrypted("USERS", "Ssn")
+    assert [c.column_name for c in mm.table_configs("users")] == ["SSN"]
+    assert [c.column_name for c in mm.table_configs("USERS")] == ["SSN"]
+    assert db.opened == 1  # all from the cache
+
+
+def test_load_metadata_keeps_the_stored_names():
+    db = FakeDb([row("Users", "SSN")])
+    assert list(MetadataManager(db, MYSQL, config()).load_metadata()) == [("Users", "SSN")]
+
+
+@pytest.mark.parametrize("raw", [b"users", bytearray(b"users"), memoryview(b"users")])
+def test_bytes_names_are_decoded(clock, raw):
+    # psycopg on a SQL_ASCII database, or Connector/Python with
+    # use_unicode=False, returns text as bytes. Undecoded, the snapshot would
+    # be keyed by bytes and no str lookup would find the encrypted column.
+    db = FakeDb([row(raw, b"ssn")])
+    mm = MetadataManager(db, PG, config())
+    mm.start()
+    assert mm.is_column_encrypted("users", "ssn")
+    assert mm.column_config("users", "ssn").table_name == "users"
+
+
+@pytest.mark.parametrize("raw", [b"\xff\xfe", 42, None])
+def test_names_that_are_not_text_are_refused(clock, raw):
+    db = FakeDb([row(raw, "ssn")])
+    mm = MetadataManager(db, PG, config())
+    with pytest.raises(MetadataError, match="table_name") as info:
+        mm.start()
+    assert info.value.__context__ is None
+
+
+def test_names_that_are_not_text_are_refused_on_an_uncached_lookup():
+    db = FakeDb([row("users", 7)])
+    mm = MetadataManager(db, PG, config(metadata_cache_enabled=False))
+    with pytest.raises(MetadataError, match="column_name"):
+        mm.column_config("users", 7)  # type: ignore[arg-type]
