@@ -111,6 +111,14 @@ The AWS Advanced Python Wrapper has several built-in plugins that are available 
 In addition to the built-in plugins, you can also create custom plugins more suitable for your needs.
 For more information, see [Custom Plugins](../development-guide/LoadablePlugins.md#using-custom-plugins).
 
+## Runtime Guidance
+
+The wrapper's default (stateful) configuration assumes a long-lived process that holds a small number of connections for many transactions. For short-lived runtimes — Spark executors, per-task connections, jobs that open and close a connection per invocation — see:
+
+- [Stateless Mode](./UsingStatelessMode.md) — strip background threads and caches; keep the failover exception contract.
+- [Using From Glue PySpark](./UsingFromGluePySpark.md) — opinionated guide for mixing the Python wrapper (driver-side) with the JDBC wrapper (executor bulk I/O).
+- [Not For Executors](./NotForExecutors.md) — when the Python wrapper is at the wrong layer, what symptoms to expect, and what to use instead.
+
 ## Logging
 
 The AWS Advanced Python Wrapper uses the standard [Python logging module](https://docs.python.org/3/library/logging.html) to log information. To configure logging for the AWS Advanced Python Wrapper, refer to [this section of the Python logging docs](https://docs.python.org/3/howto/logging.html#configuring-logging). Please note the following:
