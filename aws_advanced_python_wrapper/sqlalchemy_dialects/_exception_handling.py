@@ -58,10 +58,18 @@ and it cost two things:
 What this module DOES do
 ------------------------
 Normalize *raw driver-native* DBAPI errors (``mysql.connector.errors.*`` /
-``psycopg.*`` / ``pymysql.*``) into the wrapper's PEP-249 equivalents, for plugin
-chains that do not already re-wrap them (``iam`` / ``aws_secrets_manager`` / no
-plugins). Without that SA cannot classify them at all, so e.g. ``has_table``
-never sees MySQL's 1146 and ``create_all`` fails.
+``psycopg.*`` / ``pymysql.*``) into the wrapper's PEP-249 equivalents. SA cannot
+classify driver-native errors at all, because ``loaded_dbapi`` is this package
+rather than the driver: without the normalization ``has_table`` never sees
+MySQL's 1146 and ``create_all`` fails, and an application's
+``except sqlalchemy.exc.IntegrityError:`` never fires on a duplicate key.
+
+A driver error arrives here raw from any chain that does not substitute it --
+``iam`` / ``aws_secrets_manager`` / no plugins, and the ``failover`` /
+``failover_v2`` plugins once ``preserve_driver_exception_type`` is set. At that
+property's default those plugins replace the driver error with a generic
+``AwsWrapperError``, which is already a wrapper PEP-249 error, so it is passed
+through untouched and SA can only classify it as ``sqlalchemy.exc.DBAPIError``.
 """
 
 from __future__ import annotations
@@ -71,21 +79,11 @@ def _normalize_driver_error(e, driver_error_module):
     """Translate a raw driver-native DBAPI error into the wrapper's PEP-249
     equivalent so SQLAlchemy's classifier recognizes it.
 
-    SA wraps an exception into ``sqlalchemy.exc.DBAPIError`` (enabling
+    SQLAlchemy wraps an error into ``sqlalchemy.exc.DBAPIError`` (enabling
     ``has_table`` / ``is_disconnect`` / retry handling) only when
-    ``isinstance(e, dialect.dbapi.Error)`` -- and ``dialect.dbapi.Error`` is the
-    wrapper's PEP-249 ``Error``. Plugin chains that re-wrap driver errors as
-    ``AwsWrapperError`` (e.g. failover) are already recognized, but auth-only
-    chains (``iam`` / ``aws_secrets_manager`` / no plugins) let the raw driver
-    error (``mysql.connector.errors.*``, ``psycopg.*``, ``pymysql.*``) escape --
-    which SA cannot classify, so e.g. ``has_table`` never catches a 1146
-    "table doesn't exist" and ``create_all`` fails.
+    ``isinstance(e, dialect.dbapi.Error)``.
 
-    Returns an equivalent wrapper PEP-249 error (same PEP-249 subtype matched by
-    name; ``errno`` / ``sqlstate`` / ``pgcode`` preserved so the dialect's
-    ``_extract_error_code`` still reads the numeric code; original chained via
-    ``__cause__``), or ``None`` if ``e`` is already a wrapper error or not a
-    recognizable driver error (caller should re-raise the original).
+    Wrap and return an equivalent wrapper PEP-249 `dialect.dbapi.Error`` if necessary.
     """
     from aws_advanced_python_wrapper import pep249
     if isinstance(e, pep249.Error):

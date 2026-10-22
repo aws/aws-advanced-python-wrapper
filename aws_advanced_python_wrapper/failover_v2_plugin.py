@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, NoReturn, Optional, Set
 
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 
@@ -83,6 +83,7 @@ class FailoverV2Plugin(Plugin):
         strategy = WrapperProperties.FAILOVER_READER_HOST_SELECTOR_STRATEGY.get(self._properties)
         self._failover_reader_host_selector_strategy: str = strategy if strategy is not None else ""
         self._enable_connect_failover = WrapperProperties.ENABLE_CONNECT_FAILOVER.get_bool(self._properties)
+        self._preserve_driver_exception_type = WrapperProperties.PRESERVE_DRIVER_EXCEPTION_TYPE.get_bool(self._properties)
 
         self._closed_explicitly = False
         self._is_closed = False
@@ -109,12 +110,10 @@ class FailoverV2Plugin(Plugin):
             self._invalid_invocation_on_closed_connection()
 
         try:
-            result = execute_func()
+            return execute_func()
         except Exception as e:
             logger.debug("FailoverPlugin.DetectedException", str(e))
             self._deal_with_original_exception(e)
-
-        return result
 
     def init_host_provider(
             self,
@@ -195,7 +194,7 @@ class FailoverV2Plugin(Plugin):
         else:
             raise AwsWrapperError("No operations allowed after connection closed")
 
-    def _deal_with_original_exception(self, original_exception: Exception) -> None:
+    def _deal_with_original_exception(self, original_exception: Exception) -> NoReturn:
         if (self._last_exception_dealt_with != original_exception and
                 (self._should_exception_trigger_connection_switch(original_exception))):
             self._invalidate_current_connection()
@@ -204,6 +203,14 @@ class FailoverV2Plugin(Plugin):
             self._pick_new_connection()
             self._last_exception_dealt_with = original_exception
 
+        # This line is only reachable if the original error does not trigger a connection switch.
+        if self._preserve_driver_exception_type:
+            # Re-raise the error as-is.
+            raise original_exception
+
+        # Replacing the error discards the driver's exception class, which is what SQLAlchemy,
+        # Django and similar libraries classify a failure by. Kept as the default for backwards
+        # compatibility.
         raise AwsWrapperError(Messages.get_formatted("FailoverPlugin.DetectedException", str(original_exception)), original_exception) \
             from original_exception
 
