@@ -17,7 +17,7 @@ import sys
 import pydevd_pycharm
 import pytest
 
-pydevd_pycharm.settrace('host.docker.internal', port=5005, stdoutToServer=True, stderrToServer=True)
+pydevd_pycharm.settrace('host.docker.internal', port=5005, stdout_to_server=True, stderr_to_server=True)
 
 if __name__ == "__main__":
     test_filter = sys.argv[1]

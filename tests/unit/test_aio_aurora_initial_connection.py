@@ -133,7 +133,7 @@ def test_non_rds_cluster_host_passes_through():
     svc.get_host_role.assert_not_awaited()
     # A non-cluster URL needs no role verification, so the loop records the
     # original host and returns on the first pass.
-    assert svc.initial_connection_host_info is host
+    assert svc.routed_host_info is host
 
 
 # ---- 2. Writer cluster URL + already writer -> direct writer conn ------
@@ -168,7 +168,7 @@ def test_writer_cluster_already_writer_returns_direct_conn():
     result = asyncio.run(_run())
     assert result is writer_conn
     driver_dialect.connect.assert_awaited_once()
-    assert svc.initial_connection_host_info is writer
+    assert svc.routed_host_info is writer
 
 
 # ---- 3. Writer cluster URL + connected to reader -> retry --------------
@@ -207,8 +207,8 @@ def test_writer_cluster_connected_to_reader_retries_and_swaps():
     driver_dialect.abort_connection.assert_any_await(first_conn)
     # Topology force-refreshed on the bad conn.
     svc.force_refresh_host_list.assert_awaited()
-    # initial_connection_host_info -> writer from topology.
-    assert svc.initial_connection_host_info is writer
+    # routed_host_info -> writer from topology.
+    assert svc.routed_host_info is writer
 
 
 # ---- 4. Reader cluster URL + connected to reader -> returns conn -------
@@ -242,7 +242,7 @@ def test_reader_cluster_connected_to_reader_returns_conn():
 
     result = asyncio.run(_run())
     assert result is reader_conn
-    assert svc.initial_connection_host_info is reader
+    assert svc.routed_host_info is reader
 
 
 # ---- 5. Reader cluster URL + no readers -> writer fallback -------------
@@ -280,7 +280,7 @@ def test_reader_cluster_no_readers_returns_writer_fallback():
     assert result is cluster_conn
     # The no-readers fallback records the candidate host, which on the stale
     # path is the original connect host rather than the writer.
-    assert svc.initial_connection_host_info is host
+    assert svc.routed_host_info is host
 
 
 # ---- 6. Timeout exhausted -> raises (parity with sync) -----------------
@@ -420,8 +420,8 @@ def test_availability_marked_when_verification_fails_after_connecting():
         asyncio.run(_run())
 
     assert svc.set_availability.call_count >= 1
-    called_aliases = svc.set_availability.call_args_list[0][0][0]
-    assert reader.host in "".join(called_aliases)
+    marked_host = svc.set_availability.call_args_list[0][0][0]
+    assert marked_host.host == reader.host
     assert svc.set_availability.call_args_list[0][0][1] == \
         HostAvailability.UNAVAILABLE
 

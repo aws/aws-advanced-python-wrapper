@@ -16,6 +16,7 @@ from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.notifications import HostEvent
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
@@ -73,16 +74,97 @@ def test_get_availability_returns_none_when_unset():
 
 def test_set_then_get_availability():
     svc = _make_service()
-    svc.set_availability(frozenset({"host-1.cluster.example"}), HostAvailability.UNAVAILABLE)
-    assert svc.get_availability("host-1.cluster.example") == HostAvailability.UNAVAILABLE
+    host = HostInfo("host-1.cluster.example", 5432)
+    svc._all_hosts = (host,)
+
+    svc.set_availability(host, HostAvailability.UNAVAILABLE)
+
+    assert svc.get_availability(host.url) == HostAvailability.UNAVAILABLE
+    assert host.get_raw_availability() == HostAvailability.UNAVAILABLE
 
 
-def test_set_availability_covers_all_aliases():
+def test_set_availability_matches_a_host_by_its_host_id():
+    """The caller's host and the topology's host can carry different endpoints
+    for the same instance, which is what the host id is for."""
     svc = _make_service()
-    aliases = frozenset({"h1.example", "h1-alias.example"})
-    svc.set_availability(aliases, HostAvailability.UNAVAILABLE)
-    for alias in aliases:
-        assert svc.get_availability(alias) == HostAvailability.UNAVAILABLE
+    in_topology = HostInfo("instance-1.abc.us-east-1.rds.amazonaws.com", 5432,
+                           host_id="instance-1")
+    svc._all_hosts = (in_topology,)
+
+    svc.set_availability(HostInfo("db.example.com", 5432, host_id="instance-1"),
+                         HostAvailability.UNAVAILABLE)
+
+    assert in_topology.get_raw_availability() == HostAvailability.UNAVAILABLE
+
+
+def test_set_availability_ignores_a_host_that_is_not_in_the_host_list():
+    svc = _make_service()
+    in_list = HostInfo("h1.example", 5432)
+    svc._all_hosts = (in_list,)
+    stranger = HostInfo("stranger.example", 5432)
+
+    svc.set_availability(stranger, HostAvailability.UNAVAILABLE)
+
+    assert svc.get_availability(stranger.url) is None
+    # Bound both sides: the argument itself is not marked either.
+    assert stranger.get_raw_availability() == HostAvailability.AVAILABLE
+    assert in_list.get_raw_availability() == HostAvailability.AVAILABLE
+
+
+def test_set_availability_notifies_only_on_an_actual_change():
+    svc = _make_service()
+    host = HostInfo("h1.example", 5432)
+    svc._all_hosts = (host,)
+    manager = MagicMock()
+    svc.plugin_manager = manager
+
+    # Already AVAILABLE, so nothing changed.
+    svc.set_availability(host, HostAvailability.AVAILABLE)
+    manager.notify_host_list_changed.assert_not_called()
+
+    svc.set_availability(host, HostAvailability.UNAVAILABLE)
+    changes = manager.notify_host_list_changed.call_args.args[0]
+    assert changes == {host.url: {HostEvent.WENT_DOWN, HostEvent.HOST_CHANGED}}
+
+
+def test_set_current_connection_clears_the_routed_host():
+    """A switch that reuses a cached connection never runs a connect, so this
+    is the only thing that stops the next reader of the field seeing the host
+    the connection has already moved off."""
+    async def _body():
+        svc = _make_service()
+        reader = HostInfo("reader-1.example", 5432)
+        writer = HostInfo("writer-1.example", 5432)
+        svc.routed_host_info = reader
+
+        await svc.set_current_connection(MagicMock(), writer)
+
+        assert svc.routed_host_info is None
+
+    asyncio.run(_body())
+
+
+def test_take_routed_host_info_returns_it_once():
+    svc = _make_service()
+    routed = HostInfo("instance-1.example", 5432)
+    svc.routed_host_info = routed
+
+    assert svc.take_routed_host_info() is routed
+    assert svc.take_routed_host_info() is None
+
+
+def test_set_availability_writes_the_cache_under_the_host_url():
+    """_update_host_availability reads back by url, so the write has to use the
+    same key or a fresh topology never recovers the mark."""
+    svc = _make_service()
+    host = HostInfo("h1.example", 5432)
+    svc._all_hosts = (host,)
+
+    svc.set_availability(host, HostAvailability.UNAVAILABLE)
+
+    rebuilt = HostInfo("h1.example", 5432)
+    svc._update_host_availability((rebuilt,))
+    assert rebuilt.get_raw_availability() == HostAvailability.UNAVAILABLE
 
 
 def test_default_plugin_accepts_random_strategy():
@@ -496,64 +578,6 @@ def test_current_host_info_raises_when_writer_not_allowed():
         _ = svc.current_host_info
 
 
-# ---- fill_aliases (sync parity) --------------------------------------
-
-
-def _alias_cursor(rows):
-    cur = MagicMock()
-    cur.__aenter__ = AsyncMock(return_value=cur)
-    cur.__aexit__ = AsyncMock(return_value=None)
-    cur.execute = AsyncMock()
-    cur.fetchall = AsyncMock(return_value=rows)
-    return cur
-
-
-def test_fill_aliases_adds_self_query_and_identify_aliases():
-    async def _body():
-        svc = _make_service()
-        dialect = MagicMock(spec=DatabaseDialect)
-        dialect.host_alias_query = "SELECT CONCAT(...)"
-        svc.database_dialect = dialect
-
-        conn = MagicMock()
-        conn.cursor = MagicMock(return_value=_alias_cursor([("db-alias",)]))
-
-        identified = HostInfo("h", 5432)
-        identified.add_alias("id-alias")
-        svc.identify_connection = AsyncMock(return_value=identified)
-
-        host = HostInfo("h", 5432)
-        await svc.fill_aliases(conn, host)
-
-        assert "h:5432" in host.aliases       # host:port self-alias
-        assert "db-alias" in host.aliases     # from host_alias_query
-        assert "id-alias" in host.aliases     # from identify_connection
-
-    asyncio.run(_body())
-
-
-def test_fill_aliases_noop_when_already_has_aliases():
-    async def _body():
-        svc = _make_service()
-        host = HostInfo("h", 5432)
-        host.add_alias("existing")
-        conn = MagicMock()
-        await svc.fill_aliases(conn, host)
-        conn.cursor.assert_not_called()
-
-    asyncio.run(_body())
-
-
-def test_fill_aliases_noop_when_no_connection():
-    async def _body():
-        svc = _make_service()
-        host = HostInfo("h", 5432)
-        await svc.fill_aliases(None, host)
-        assert len(host.aliases) == 0
-
-    asyncio.run(_body())
-
-
 # ---- get_host_role default timeout (sync parity) ---------------------
 
 
@@ -627,7 +651,7 @@ def test_default_plugin_connect_marks_host_available_and_updates_driver_dialect(
     result = asyncio.run(_body())
     assert result is conn
     svc.set_availability.assert_called_once_with(
-        host.as_aliases(), HostAvailability.AVAILABLE)
+        host, HostAvailability.AVAILABLE)
     svc.update_driver_dialect.assert_called_once_with(provider)
 
 
@@ -648,7 +672,7 @@ def test_default_plugin_force_connect_marks_host_available():
 
     asyncio.run(_body())
     svc.set_availability.assert_called_once_with(
-        host.as_aliases(), HostAvailability.AVAILABLE)
+        host, HostAvailability.AVAILABLE)
     svc.update_driver_dialect.assert_called_once_with(provider)
 
 

@@ -37,14 +37,22 @@ A background refresh loop (:class:`AsyncClusterTopologyMonitor`) lives in
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
-from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, List,
-                    Optional, Protocol, Tuple, runtime_checkable)
+from copy import copy
+from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional,
+                    Protocol, Tuple, runtime_checkable)
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.aio import topology_store
+from aws_advanced_python_wrapper.aio.cleanup import (register_shutdown_hook,
+                                                     unregister_shutdown_hook)
+from aws_advanced_python_wrapper.aio.topology_utils import (
+    AsyncAuroraTopologyUtils, AsyncGlobalAuroraTopologyUtils,
+    AsyncMultiAzTopologyUtils, AsyncTopologyUtils)
+from aws_advanced_python_wrapper.host_availability import \
+    create_host_availability_strategy
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.events import MonitorStopEvent
 from aws_advanced_python_wrapper.utils.log import Logger
-from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 
 logger = Logger(__name__)
@@ -52,28 +60,12 @@ logger = Logger(__name__)
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.aio.driver_dialect.base import \
         AsyncDriverDialect
+    from aws_advanced_python_wrapper.aio.topology_store import TopologyKey
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
     from aws_advanced_python_wrapper.utils.properties import Properties
 
 
 Topology = Tuple[HostInfo, ...]
-
-
-def _is_programming_error(ex: BaseException) -> bool:
-    """True when ``ex`` is a PEP-249 ``ProgrammingError`` (bad SQL / not an
-    Aurora cluster), regardless of which driver raised it.
-
-    The async topology query runs on the raw driver connection, so the
-    exception is the driver's own ``ProgrammingError`` (psycopg / aiomysql) or
-    the wrapper's :class:`aws_advanced_python_wrapper.pep249.ProgrammingError`.
-    Match by class name across the MRO so all of them are recognized -- sync
-    catches ``pep249.ProgrammingError`` directly (host_list_provider.py:593).
-    """
-    from aws_advanced_python_wrapper.pep249 import \
-        ProgrammingError as WrapperProgrammingError
-    if isinstance(ex, WrapperProgrammingError):
-        return True
-    return any(cls.__name__ == "ProgrammingError" for cls in type(ex).__mro__)
 
 
 @runtime_checkable
@@ -153,14 +145,21 @@ class AsyncStaticHostListProvider:
         host = props.get("host", "")
         port_raw = props.get("port")
         port = int(port_raw) if port_raw is not None else -1
-        self._host_info = HostInfo(host=host, port=port, role=HostRole.WRITER)
+        self._host_info = HostInfo(
+            host=host, port=port, role=HostRole.WRITER,
+            host_availability_strategy=create_host_availability_strategy(props))
         self._cluster_id = f"static:{host}:{port}"
 
+    def _host(self) -> HostInfo:
+        """A copy, so marking the returned host unavailable does not mark the
+        one this provider hands to every later caller."""
+        return copy(self._host_info)
+
     async def refresh(self, connection: Optional[Any] = None) -> Topology:
-        return (self._host_info,)
+        return (self._host(),)
 
     async def force_refresh(self, connection: Optional[Any] = None) -> Topology:
-        return (self._host_info,)
+        return (self._host(),)
 
     def get_cluster_id(self) -> str:
         return self._cluster_id
@@ -172,29 +171,22 @@ class AsyncStaticHostListProvider:
 class AsyncAuroraHostListProvider:
     """Aurora topology discovery over an async driver connection.
 
-    Runs an Aurora-topology query (e.g., ``SELECT server_id, session_id
-    OPERATOR(pg_catalog.=) 'MASTER_SESSION_ID' AS is_writer, ... FROM
-    pg_catalog.aurora_replica_status()``) and returns a tuple of
-    :class:`HostInfo` objects. The exact SQL and parsing live on the shared sync
-    :class:`TopologyAwareDatabaseDialect` classes (reused rather than
-    duplicated). Note the schema qualification: every function and operator in a
-    PostgreSQL query the driver issues internally is pinned to ``pg_catalog`` so
-    the session's ``search_path`` cannot redirect it.
+    The query and its row parsing live on an :class:`AsyncTopologyUtils`, so
+    the topology monitor can query the cluster without holding a provider.
+    Every function and operator in a PostgreSQL query the driver issues is
+    pinned to ``pg_catalog`` so the session's ``search_path`` cannot redirect
+    it.
 
-    Refresh flow (N.1b, matches sync RdsHostListProvider -> ClusterTopologyMonitor):
-
-    * :meth:`refresh` / :meth:`force_refresh` delegate to a per-provider
-      :class:`AsyncClusterTopologyMonitor` so panic-mode probing
-      engages automatically on initial connect when writer discovery
-      stalls. The monitor also keeps a cached ``last_topology`` so
-      cache-hit refreshes don't hit the DB.
-    * The monitor itself calls :meth:`_fetch_from_db` (private, no
-      recursion) to run the actual SQL probe.
-
-    Thread-safety: the cache is protected by an :class:`asyncio.Lock`.
+    :meth:`refresh` returns the stored topology when there is one;
+    :meth:`force_refresh` goes through the cluster's topology monitor, so
+    panic-mode probing engages when writer discovery stalls on initial
+    connect. The monitor is shared per cluster and event loop, and the
+    topology it publishes lives in the storage service.
     """
 
     _DEFAULT_REFRESH_RATE_NS = 30 * 1_000_000_000  # 30 seconds
+    _MONITOR_EXPIRATION_NS = 15 * 60 * 1_000_000_000  # 15 minutes
+    _MONITOR_INACTIVE_TIMEOUT_NS = 3 * 60 * 1_000_000_000  # 3 minutes
 
     def __init__(
             self,
@@ -221,25 +213,42 @@ class AsyncAuroraHostListProvider:
             cluster_id: Optional[str] = None,
             default_port: int = 5432,
             monitor_connection_factory: Optional[
-                Callable[[], Awaitable[Any]]] = None) -> None:
+                Callable[[], Awaitable[Any]]] = None,
+            topology_utils: Optional[AsyncTopologyUtils] = None) -> None:
         self._props = props
         self._driver_dialect = driver_dialect
-        self._topology_query = topology_query
         self._default_port = default_port
         self._monitor_connection_factory = monitor_connection_factory
         self._cluster_id = cluster_id or self._derive_cluster_id(props)
-        self._topology_cache: Optional[Topology] = None
-        self._last_refresh_ns: int = 0
         self._refresh_lock = asyncio.Lock()
         refresh_ms = WrapperProperties.TOPOLOGY_REFRESH_MS.get(props)
         self._refresh_ns: int = (
             int(refresh_ms) * 1_000_000 if refresh_ms is not None
             else self._DEFAULT_REFRESH_RATE_NS
         )
-        # Monitor wiring (N.1b). Lazy-created on first refresh so
-        # provider construction stays cheap and test-friendly.
-        self._monitor: Optional[Any] = None  # AsyncClusterTopologyMonitor
+        # Owns this dialect's topology query and row parsing. Subclasses pass
+        # their own; the monitor is handed the same object so it can query the
+        # cluster without a provider.
+        self._topology_utils: AsyncTopologyUtils = (
+            topology_utils if topology_utils is not None
+            else AsyncAuroraTopologyUtils(props, topology_query, default_port))
         self._last_conn: Optional[Any] = None
+
+        # produced_data_type is what links a topology read to this monitor:
+        # the monitor service turns a read of the stored topology into an
+        # expiration extension for the monitor that produces it.
+        from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
+            AsyncClusterTopologyMonitor
+        self._monitor_service = services_container.get_monitor_service()
+        # The monitor stamps its activity once per tick, so the inactive
+        # timeout has to outlast a tick, and topology_refresh_ms is
+        # user-settable and can exceed the default on its own.
+        self._monitor_service.register_monitor_type(
+            AsyncClusterTopologyMonitor,
+            expiration_timeout_ns=self._MONITOR_EXPIRATION_NS,
+            inactive_timeout_ns=max(self._MONITOR_INACTIVE_TIMEOUT_NS,
+                                    2 * self._refresh_ns),
+            produced_data_type=topology_store.StoredTopology)
         # Panic-mode probe: opens a pipeline connection to a host and
         # classifies its role, used by the monitor to discover the new
         # writer when the monitoring connection dies (mirrors sync
@@ -260,52 +269,64 @@ class AsyncAuroraHostListProvider:
 
     def reconfigure_topology_query(
             self, topology_query: str, default_port: Optional[int] = None) -> None:
-        """Re-point the provider at a (post-connect) resolved dialect's query.
+        """Re-point the provider at a resolved dialect's query.
 
-        The provider is built BEFORE the connection exists, so an
-        instance-endpoint MySQL connection starts with the PostgreSQL-default
-        topology query + port (the ctor default). Once the database dialect is
-        resolved/upgraded to the Aurora MySQL dialect we swap in its topology
-        query and the MySQL port so discovery actually works. Clears the cache
-        so the next refresh re-probes with the new query (any cached PG-query
-        result is stale/empty).
+        The provider is built before the connection exists, so an
+        instance-endpoint MySQL connection starts with the PostgreSQL default
+        query and port. Once the dialect is upgraded to Aurora MySQL the real
+        query and port are swapped in, and the stored topology is dropped
+        because anything the old query produced is stale or empty.
         """
-        if topology_query:
-            self._topology_query = topology_query
+        self._topology_utils.reconfigure(topology_query, default_port)
         if default_port:
             self._default_port = default_port
-        self._topology_cache = None
-        self._last_refresh_ns = 0
+        self._discard_stored_topology()
 
     @staticmethod
     def _derive_cluster_id(props: Properties) -> str:
-        # Only treat `cluster_id` as explicit when present in the props dict;
-        # WrapperProperties.CLUSTER_ID.get() returns the default '1' even
-        # when unset.
-        if WrapperProperties.CLUSTER_ID.name in props:
-            return str(props[WrapperProperties.CLUSTER_ID.name])
-        host = props.get("host", "")
-        port = props.get("port", "")
-        return f"aurora:{host}:{port}"
+        """Identify the cluster this provider is talking to.
+
+        The ``cluster_id`` property, which defaults to ``"1"``, as the
+        synchronous provider and the reference implementation both do.
+        Deriving one from the endpoint was tried and abandoned upstream.
+
+        Connections sharing an id share a topology entry and a topology
+        monitor, so an application connecting to more than one cluster has to
+        set it per cluster. Without that, the second cluster reuses the
+        first's monitor -- and therefore the first's topology query and
+        monitoring credentials -- and a blue/green reset for either resets
+        both.
+        """
+        return str(WrapperProperties.CLUSTER_ID.get(props) or "1")
 
     def get_cluster_id(self) -> str:
         return self._cluster_id
 
-    async def refresh(self, connection: Optional[Any] = None) -> Topology:
-        """Return cached topology if still fresh, else force a refresh.
+    def _storage_key(self) -> Optional[TopologyKey]:
+        return topology_store.topology_key(self._cluster_id)
 
-        Matches sync :meth:`RdsHostListProvider.refresh` semantics: if the
-        cache is within the refresh window, short-circuit; otherwise
-        delegate to :meth:`force_refresh` which goes through the
-        cluster topology monitor (panic mode engages automatically on
-        initial connect when writer discovery stalls).
+    def _get_stored_topology(self) -> Optional[Topology]:
+        return topology_store.get_topology(self._storage_key())
+
+    def _store_topology(self, topology: Topology) -> None:
+        topology_store.put_topology(self._storage_key(), topology)
+
+    def _discard_stored_topology(self) -> None:
+        topology_store.remove_topology(self._storage_key())
+
+    async def refresh(self, connection: Optional[Any] = None) -> Topology:
+        """Return the stored topology if there is one, else force a refresh.
+
+        Matches sync :meth:`RdsHostListProvider.refresh`: a present entry is
+        returned and the topology monitor is what keeps it fresh. No second
+        freshness window here, on purpose -- the store already expires
+        entries.
         """
         if connection is not None:
             self._last_conn = connection
-        now_ns = asyncio.get_running_loop().time() * 1_000_000_000
-        if (self._topology_cache is not None
-                and now_ns - self._last_refresh_ns < self._refresh_ns):
-            return self._topology_cache
+        stored = self._get_stored_topology()
+        if stored:
+            return stored
         return await self.force_refresh(connection)
 
     async def force_refresh(self, connection: Optional[Any] = None) -> Topology:
@@ -321,9 +342,7 @@ class AsyncAuroraHostListProvider:
             self._last_conn = connection
 
         if connection is None:
-            if self._topology_cache is not None:
-                return self._topology_cache
-            return ()
+            return self._get_stored_topology() or ()
 
         async with self._refresh_lock:
             monitor = self._get_or_create_monitor()
@@ -335,25 +354,8 @@ class AsyncAuroraHostListProvider:
                     connection, bypass_ignore_window=True)
             except Exception:  # noqa: BLE001 - monitor failure
                 return await self._fetch_and_cache(connection)
-            if topology:
-                self._topology_cache = topology
-                self._last_refresh_ns = int(
-                    asyncio.get_running_loop().time() * 1_000_000_000
-                )
-            return topology or (self._topology_cache or ())
-
-    def adopt_topology(self, topology: Topology) -> None:
-        """Adopt a monitor-published NON-EMPTY topology into the cache.
-
-        Called by ``AsyncClusterTopologyMonitor._publish_topology`` when a
-        background tick or a panic probe discovers fresh topology -- the async
-        analogue of sync's monitor publishing to the shared storage-service
-        cache (_update_topology_cache, cluster_topology_monitor.py:491-495)."""
-        if not topology:
-            return
-        self._topology_cache = topology
-        self._last_refresh_ns = int(
-            asyncio.get_running_loop().time() * 1_000_000_000)
+            self._store_topology(topology)
+            return topology or (self._get_stored_topology() or ())
 
     async def force_monitoring_refresh(
             self,
@@ -375,40 +377,63 @@ class AsyncAuroraHostListProvider:
         return topology or ()
 
     def _get_or_create_monitor(self) -> Optional[Any]:
-        """Lazy-construct the per-provider topology monitor.
+        """Get the cluster's topology monitor from the monitor service.
 
-        Returns ``None`` if monitor construction fails or if the
-        topology_query is absent (e.g., static/unsupported dialects).
-        Mirrors sync :meth:`RdsHostListProvider._get_or_create_monitor`.
+        One monitor serves every provider on the cluster and loop, so a
+        dialect upgrade or a second connection reuses it rather than starting
+        a second background task.
+
+        No ``await`` between acquiring the monitor and re-checking it, on
+        purpose: ``run_if_absent``, ``is_running`` and the removal are all
+        synchronous, so nothing can interleave. Making this method async
+        would reopen that gap.
         """
-        if self._monitor is not None and self._monitor.is_running():
-            return self._monitor
-        if not self._topology_query:
+        key = self._storage_key()
+        if key is None or not self._topology_utils.topology_query:
             return None
-        try:
-            from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
-                AsyncClusterTopologyMonitor
-        except Exception:  # noqa: BLE001 - defensive import guard
+        from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
+            AsyncClusterTopologyMonitor
+
+        monitor_service = services_container.get_monitor_service()
+        monitor = monitor_service.run_if_absent(
+            AsyncClusterTopologyMonitor, key,
+            lambda: self._create_monitor(key))
+        if monitor is None:
             return None
+        # The monitor service has no liveness check of its own, and
+        # compute_if_absent extends expiration on every hit, so a monitor
+        # whose loop has closed would be handed out until the stuck-monitor
+        # sweep removed it, while every blocking refresh waits for an update
+        # that can never arrive.
+        if not monitor.is_running():
+            monitor_service.stop_and_remove_value(
+                AsyncClusterTopologyMonitor, monitor)
+            monitor = monitor_service.run_if_absent(
+                AsyncClusterTopologyMonitor, key,
+                lambda: self._create_monitor(key))
+        return monitor
+
+    def _create_monitor(self, key: TopologyKey) -> Any:
+        from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
+            AsyncClusterTopologyMonitor
 
         high_refresh_ms = WrapperProperties.CLUSTER_TOPOLOGY_HIGH_REFRESH_RATE_MS.get_int(
             self._props)
-        # The background monitor must never query the shared app connection
-        # concurrently with the app -- driver connections can't service
-        # concurrent queries, so a background refresh there corrupts the app's
-        # in-flight query. When a dedicated monitoring connection factory is
-        # wired the monitor opens its own connection; when it isn't, hand it a
-        # getter that yields None so the background loop skips rather than
-        # falling back to the shared app connection. The foreground
-        # force_refresh path still refreshes on demand via the connection
-        # passed to it.
+        # The background loop must never query the shared application
+        # connection: driver connections cannot service concurrent queries, so
+        # a background refresh there corrupts the application's in-flight
+        # query. Without a dedicated monitoring connection the getter yields
+        # None and the loop skips, rather than falling back to the shared
+        # connection. Foreground force_refresh still refreshes on demand
+        # through the connection passed to it.
         if self._monitor_connection_factory is None:
             logger.warning(
-                "[AsyncAuroraHostListProvider] no dedicated monitoring "
-                "connection factory wired; background topology refresh disabled "
-                "to avoid racing the shared application connection.")
+                "AsyncAuroraHostListProvider.NoMonitoringConnectionFactory",
+                self._cluster_id)
         monitor = AsyncClusterTopologyMonitor(
-            provider=self,
+            topology_utils=self._topology_utils,
+            cluster_id=self._cluster_id,
+            key=key,
             connection_getter=(
                 (lambda: self._last_conn)
                 if self._monitor_connection_factory is not None
@@ -420,250 +445,44 @@ class AsyncAuroraHostListProvider:
             connection_factory=self._monitor_connection_factory,
         )
         monitor.start()
-        self._monitor = monitor
-        # Register monitor teardown with the global cleanup hook so
-        # release_resources_async() tears it down.
-        try:
-            from aws_advanced_python_wrapper.aio.cleanup import \
-                register_shutdown_hook
-            register_shutdown_hook(monitor.stop)
-        except Exception:  # noqa: BLE001
-            pass
+
+        # A shutdown hook as well as the monitor-service entry:
+        # release_resources() clears the cache, dropping the last reference
+        # before the teardown stop() scheduled could run, and
+        # release_resources_async only awaits registered hooks.
+        async def _close_and_unregister() -> None:
+            await monitor.aclose()
+
+        # aclose calls on_closed itself, so this has to be callable without
+        # awaiting: a coroutine function here is created and dropped, and the
+        # hook stays registered for the life of the process.
+        def _unregister() -> None:
+            unregister_shutdown_hook(_close_and_unregister)
+
+        monitor.on_closed = _unregister
+        register_shutdown_hook(_close_and_unregister)
         return monitor
 
     async def _fetch_and_cache(self, connection: Any) -> Topology:
-        """Direct DB query + cache update, used as a monitor fallback."""
-        rows = await self._run_topology_query(connection)
-        topology = self._rows_to_topology(rows)
-        if topology:
-            self._topology_cache = topology
-            self._last_refresh_ns = int(
-                asyncio.get_running_loop().time() * 1_000_000_000
-            )
-        return topology or (self._topology_cache or ())
-
-    async def _fetch_from_db(self, connection: Any) -> Topology:
-        """Raw DB-query path used BY the cluster topology monitor.
-
-        Does NOT re-enter the monitor (which would recurse). The
-        monitor's ``_run`` / ``force_refresh_with_connection`` both
-        call this; all other callers should go through the public
-        :meth:`refresh` / :meth:`force_refresh`.
-        """
-        rows = await self._run_topology_query(connection)
-        return self._rows_to_topology(rows)
-
-    async def _run_topology_query(self, connection: Any) -> List[tuple]:
-        """Execute the topology query and return its rows.
-
-        Uses the driver's raw async cursor -- we bypass the plugin pipeline
-        here on purpose. Topology queries run in a tight loop; running them
-        through the full pipeline would double-count timing, trigger
-        failover-retry on every refresh, and prevent the topology monitor
-        from operating independently of app-level plugins.
-        """
-        # The underlying connection is a raw async driver connection
-        # (psycopg.AsyncConnection at 3.0.0). It exposes a sync ``cursor()``
-        # method that returns an async cursor.
-        try:
-            # ``connection.cursor()`` MUST stay inside the try. On a fully
-            # closed connection psycopg raises OperationalError('the connection
-            # is closed') from cursor() itself -- not just from execute(). If
-            # that escapes, force_refresh / _fetch_and_cache propagate it to the
-            # caller instead of falling back to the cached topology, which
-            # strands failover on the single seed host and yields a spurious
-            # FailoverFailedError (test_fail_from_reader_to_writer): the failover
-            # refreshes through the dead current connection, the probe raises
-            # rather than returning [], and the cached [writer, reader,...]
-            # topology is never consulted.
-            # Bind the ENTERED cursor: psycopg's ``cursor()`` returns the
-            # cursor directly, but aiomysql's returns a ``_ContextManager``
-            # whose ``__aenter__`` yields the real cursor -- ``async with X
-            # as cur`` gets the right object for both. Using the bare
-            # ``_ContextManager`` (no ``as``) would call ``.execute`` on the
-            # manager and raise AttributeError on aiomysql, so every MySQL
-            # topology probe returned [] (failover then stranded on the seed).
-            async with connection.cursor() as cur:
-                await cur.execute(self._topology_query)
-                return list(await cur.fetchall())
-        except Exception as ex:
-            # A ProgrammingError means the query itself is invalid (wrong SQL
-            # after a dialect mismatch, or not an Aurora cluster) -- surface it
-            # rather than silently degrading, matching sync
-            # AuroraTopologyUtils._query_for_topology (:593-594).
-            if _is_programming_error(ex):
-                raise AwsWrapperError(
-                    Messages.get("RdsHostListProvider.InvalidQuery")) from ex
-            # Any OTHER failure (closed connection, timeout) should not raise
-            # into the caller; it sees an empty topology and falls back to the
-            # cache. Log so a transient probe failure stays distinguishable
-            # from a genuinely empty cluster.
-            logger.debug(
-                f"[AsyncAuroraHostListProvider] topology query failed; "
-                f"returning empty topology (caller falls back to cache): {ex}")
-            return []
-
-    def _rows_to_topology(self, rows: List[tuple]) -> Topology:
-        # The instance host pattern may carry an explicit ``:port`` (proxied
-        # test endpoints do); use it for every topology host. See
-        # :meth:`_resolve_instance_pattern`.
-        _, pattern_port = self._resolve_instance_pattern()
-        port = pattern_port if pattern_port is not None else self._default_port
-        # Dedup by resolved host (a row may repeat), matching sync
-        # AuroraTopologyUtils._process_query_results (:603-606).
-        host_map: Dict[str, HostInfo] = {}
-        for row in rows:
-            if not row:
-                continue
-            server_id = row[0]
-            is_writer = bool(row[1]) if len(row) > 1 else False
-            # The topology query may include LAST_UPDATE_TIMESTAMP as a 5th
-            # column (sync _create_host:527-528); it disambiguates multiple
-            # writer rows during a failover window.
-            last_update = row[4] if len(row) > 4 and isinstance(row[4], datetime) else None
-            host = self._host_from_server_id(server_id)
-            host_info = HostInfo(
-                host=host,
-                port=port,
-                role=HostRole.WRITER if is_writer else HostRole.READER,
-                last_update_time=last_update,
-                # Sync parity (create_host, host_list_provider.py:548-556):
-                # host_id is how identify_connection correlates a live
-                # connection back to its topology row. Without it, EVERY
-                # cluster-endpoint identification fails (EFM's
-                # _get_monitoring_host_info raises UnableToIdentifyConnection).
-                # The MultiAz and GlobalAurora async providers already set it.
-                host_id=str(server_id),
-            )
-            host_info.add_alias(str(server_id))
-            host_map[host] = host_info
-
-        readers = [h for h in host_map.values() if h.role != HostRole.WRITER]
-        writers = [h for h in host_map.values() if h.role == HostRole.WRITER]
-
-        if not host_map:
-            return ()
-        # No writer => invalid topology. Return empty so callers fall back to
-        # the cached topology instead of acting on a readers-only host list
-        # (matches sync AuroraTopologyUtils._process_query_results and the
-        # async MultiAz/GlobalAurora providers).
-        if not writers:
-            # Caller falls back to the cached topology on the empty result.
-            logger.debug("RdsHostListProvider.InvalidTopology")
-            return ()
-        if len(writers) == 1:
-            chosen_writer = writers[0]
-        else:
-            # More than one writer row: take the most-recently-updated writer as
-            # the current writer and ignore the rest -- sync parity
-            # (_process_query_results:621-625). Writers without a timestamp are
-            # only considered if none carry one.
-            timestamped = [w for w in writers if w.last_update_time is not None]
-            if timestamped:
-                timestamped.sort(reverse=True, key=lambda h: h.last_update_time or datetime.min)
-                chosen_writer = timestamped[0]
-            else:
-                chosen_writer = writers[0]
-            logger.debug(
-                "[AsyncAuroraHostListProvider] topology query returned multiple "
-                "writers; using the latest-updated one")
-        # Writer first, readers after (async convention).
-        return (chosen_writer, *readers)
-
-    def _resolve_instance_pattern(self) -> Tuple[Optional[str], Optional[int]]:
-        """Resolve the instance host pattern and its explicit port (if any).
-
-        Returns ``(host_pattern_with_'?', port)``; ``port`` is ``None`` when the
-        pattern carries no explicit ``:port`` suffix.
-
-        Prefers the ``cluster_instance_host_pattern`` connection property; when
-        unset, auto-derives the pattern from the connection endpoint via
-        ``RdsUtils.get_rds_instance_host_pattern`` -- exactly what the sync
-        ``AuroraHostListProvider`` does (host_list_provider.py:459).
-
-        The pattern may include a port -- proxied test endpoints use
-        ``?.<suffix>:8666``. That port MUST be split out (mirroring sync
-        ``AuroraHostListProvider.__init__`` at host_list_provider.py:445-449):
-        otherwise it stays baked into the hostname (``<id>.<suffix>:8666``,
-        which doesn't resolve) while the connection uses the wrong default
-        port, so every failover/reader connect to a topology host fails and
-        writer failover is stranded (test_fail_from_reader_to_writer).
-        """
-        user_pattern = WrapperProperties.CLUSTER_INSTANCE_HOST_PATTERN.get(
-            self._props
-        )
-        pattern = user_pattern
-        if user_pattern and "?" not in user_pattern:
-            # The user explicitly set a pattern with no '?' placeholder --
-            # reject it (sync _validate_host_pattern:470-473).
-            self._validate_host_pattern(user_pattern.split(":", 1)[0])
-        if not (pattern and "?" in pattern):
-            from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
-            derived = RdsUtils().get_rds_instance_host_pattern(
-                self._props.get("host", "") or "")
-            if derived and "?" in derived:
-                pattern = derived
-        if not (pattern and "?" in pattern):
-            return None, None
-        port: Optional[int] = None
-        if ":" in pattern:
-            pattern, _, port_str = pattern.rpartition(":")
-            try:
-                port = int(port_str)
-            except ValueError:
-                port = None
-        # Reject RDS Proxy / RDS Custom endpoints as instance host patterns
-        # (sync _validate_host_pattern:475-484).
-        self._validate_host_pattern(pattern)
-        return pattern, port
-
-    def _validate_host_pattern(self, host: str) -> None:
-        """Reject invalid instance host patterns -- sync parity
-        (host_list_provider.py:469-484). An invalid pattern is a configuration
-        error and should fail loudly rather than silently yield no topology."""
-        from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
-        from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
-        rds_utils = RdsUtils()
-        if not rds_utils.is_dns_pattern_valid(host):
-            logger.error("RdsHostListProvider.InvalidPattern")
-            raise AwsWrapperError(Messages.get("RdsHostListProvider.InvalidPattern"))
-        url_type = rds_utils.identify_rds_type(host)
-        if url_type == RdsUrlType.RDS_PROXY:
-            logger.error("RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy")
-            raise AwsWrapperError(
-                Messages.get("RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSProxy"))
-        if url_type == RdsUrlType.RDS_CUSTOM_CLUSTER:
-            logger.error("RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom")
-            raise AwsWrapperError(
-                Messages.get("RdsHostListProvider.ClusterInstanceHostPatternNotSupportedForRDSCustom"))
-
-    def _host_from_server_id(self, server_id: str) -> str:
-        """Translate an Aurora server ID into a reachable host name.
-
-        Builds ``<server_id>.<suffix>`` from the resolved instance host pattern
-        (see :meth:`_resolve_instance_pattern`). Falling back to the bare server
-        ID yields a non-resolvable name, so every reader/failover connect to a
-        topology host fails with "failed to resolve host '<server_id>'".
-        """
-        host_pattern, _ = self._resolve_instance_pattern()
-        if host_pattern:
-            return host_pattern.replace("?", server_id)
-        return server_id
+        """Direct topology query plus a store update, used as a fallback."""
+        topology = await self._topology_utils.query_for_topology(connection)
+        self._store_topology(topology)
+        return topology or (self._get_stored_topology() or ())
 
     async def stop(self) -> None:
-        """Tear down the provider's background topology monitor.
+        """Stop the cluster's topology monitor.
 
-        Sync parity: sync ``RdsHostListProvider`` stops its monitor on release.
-        The async provider previously no-op'd here, leaking the monitor task
-        (it only stopped via the global cleanup hook).
+        Publishes MonitorStopEvent as sync ``stop_monitor`` does, so the
+        monitor service owns the disposal. The monitor is shared, so this
+        stops it for every provider on the cluster and loop.
         """
-        monitor = self._monitor
-        self._monitor = None
-        if monitor is not None:
-            try:
-                await monitor.stop()
-            except Exception:  # noqa: BLE001 - best-effort teardown
-                pass
+        from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
+            AsyncClusterTopologyMonitor
+        key = self._storage_key()
+        if key is None:
+            return
+        services_container.get_event_publisher().publish(
+            MonitorStopEvent(monitor_type=AsyncClusterTopologyMonitor, key=key))
 
 
 class AsyncMultiAzHostListProvider(AsyncAuroraHostListProvider):
@@ -716,136 +535,27 @@ class AsyncMultiAzHostListProvider(AsyncAuroraHostListProvider):
             cluster_id=cluster_id,
             default_port=default_port,
             monitor_connection_factory=monitor_connection_factory,
+            topology_utils=AsyncMultiAzTopologyUtils(
+                props=props,
+                topology_query=topology_query,
+                default_port=default_port,
+                writer_host_query=writer_host_query,
+                host_id_query=host_id_query,
+                writer_host_column_index=writer_host_column_index,
+                instance_template_host=instance_template_host),
         )
-        self._writer_host_query = writer_host_query
-        self._host_id_query = host_id_query
-        # Column of ``writer_host_query``'s result row holding the writer's
-        # ID. PG's query returns a single column (index 0); MySQL's
-        # ``SHOW REPLICA STATUS`` carries the source host at column 39 --
-        # matching sync ``MultiAzTopologyUtils`` /
-        # ``MultiAzClusterMysqlDialect._WRITER_HOST_COLUMN_INDEX``.
-        self._writer_host_column_index = writer_host_column_index
-        self._instance_template_host = instance_template_host
-        # Import locally to avoid widening the module's top-level import set.
-        from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
-        self._rds_utils = RdsUtils()
-        self._writer_id: Optional[str] = None
-
-    async def _run_topology_query(self, connection: Any) -> List[tuple]:
-        """Two-step MultiAz topology query.
-
-        Step 1: ``writer_host_query``. Empty row => fall through to
-        ``host_id_query`` (we are the writer, MySQL-style).
-        Step 2: ``topology_query`` for the full host list.
-
-        We stash the identified writer ID on ``self._writer_id`` so
-        :meth:`_rows_to_topology` can assign roles. A failure at any step
-        returns ``[]`` so callers fall back to cache, matching
-        :meth:`AsyncAuroraHostListProvider._run_topology_query`.
-        """
-        try:
-            # Bind the ENTERED cursor (``as cur``) -- aiomysql's cursor() is a
-            # _ContextManager whose __aenter__ yields the real cursor; the bare
-            # manager has no ``.execute``. See AsyncAuroraHostListProvider.
-            async with connection.cursor() as cur:
-                # Step 1: writer host query. Empty row => we're the writer
-                # (MySQL), fall back to host_id_query.
-                await cur.execute(self._writer_host_query)
-                writer_row = await cur.fetchone()
-                if writer_row is not None:
-                    writer_id = str(writer_row[self._writer_host_column_index])
-                else:
-                    await cur.execute(self._host_id_query)
-                    self_row = await cur.fetchone()
-                    if self_row is None:
-                        return []
-                    writer_id = str(self_row[0])
-
-                # Step 2: topology query.
-                await cur.execute(self._topology_query)
-                rows = list(await cur.fetchall())
-
-            self._writer_id = writer_id
-            return rows
-        except Exception as ex:
-            # A ProgrammingError means the query itself is invalid -- surface it
-            # (sync MultiAzTopologyUtils._query_for_topology:659-660). Any other
-            # failure yields an empty topology so callers fall back to cache.
-            if _is_programming_error(ex):
-                raise AwsWrapperError(
-                    Messages.get("RdsHostListProvider.InvalidQuery")) from ex
-            logger.debug(
-                f"[AsyncMultiAzHostListProvider] topology query failed; "
-                f"returning empty topology (caller falls back to cache): {ex}")
-            return []
-
-    def _rows_to_topology(self, rows: List[tuple]) -> Topology:
-        writer_id = self._writer_id
-        hosts: List[HostInfo] = []
-        for row in rows:
-            if len(row) < 3:
-                continue
-            row_id = str(row[0])
-            host = str(row[1])
-            try:
-                port = int(row[2])
-            except (TypeError, ValueError):
-                port = self._default_port
-
-            role = HostRole.WRITER if row_id == writer_id else HostRole.READER
-
-            # Optional instance-template substitution. Matches sync
-            # MultiAzTopologyUtils._create_multi_az_host.
-            if self._instance_template_host:
-                instance_name = self._rds_utils.get_instance_id(host)
-                if instance_name:
-                    substituted = self._instance_template_host.replace(
-                        "?", instance_name
-                    )
-                    if ":" in substituted:
-                        host_part, _, port_part = substituted.partition(":")
-                        host = host_part
-                        if port_part.isdigit():
-                            port = int(port_part)
-                    else:
-                        host = substituted
-
-            host_info = HostInfo(
-                host=host,
-                port=port,
-                role=role,
-                host_id=row_id,
-            )
-            host_info.add_alias(host)
-            hosts.append(host_info)
-
-        # Validate: must have exactly one writer (sync MultiAz clears
-        # everything if no writer is found).
-        writers = [h for h in hosts if h.role == HostRole.WRITER]
-        if not writers:
-            return ()
-        # Writer first, readers after -- matches AsyncAuroraHostListProvider.
-        hosts.sort(key=lambda h: 0 if h.role == HostRole.WRITER else 1)
-        return tuple(hosts)
 
 
 class AsyncGlobalAuroraHostListProvider(AsyncAuroraHostListProvider):
-    """Async Global Aurora topology provider.
+    """Async Aurora Global Database topology provider.
 
-    Subclasses :class:`AsyncAuroraHostListProvider` and overrides row
-    parsing to handle Global Aurora's cross-region topology. Row shape:
-    ``(server_id, region, is_writer)``. Each host is built from the
-    region-specific template configured via the ``instance_templates_by_region``
-    ctor argument or the ``GLOBAL_CLUSTER_INSTANCE_HOST_PATTERNS`` property
-    (comma-separated ``region=pattern`` pairs, where ``pattern`` may include
-    a ``:port`` suffix).
+    An Aurora global database spans regions, so each host is built from the
+    template configured for its own region rather than this connection's DNS
+    suffix. Templates come from the ``instance_templates_by_region`` argument
+    or the ``global_cluster_instance_host_patterns`` property.
 
-    Minimal port -- sync's :class:`GlobalAuroraTopologyMonitor` thread
-    machinery is not mirrored; topology is fetched on-demand via the base
-    class's standard refresh path. Full auto-detection via ``DatabaseDialect``
-    is a future enhancement (sync reads the topology query from
-    ``GlobalAuroraTopologyDialect`` -- that path does not yet flow through
-    the async ``PluginService`` dialect resolution chain).
+    A partial port: sync's GlobalAuroraTopologyMonitor thread machinery is not
+    mirrored, so topology is fetched through the normal refresh path.
     """
 
     def __init__(
@@ -867,90 +577,9 @@ class AsyncGlobalAuroraHostListProvider(AsyncAuroraHostListProvider):
             cluster_id=cluster_id,
             default_port=default_port,
             monitor_connection_factory=monitor_connection_factory,
+            topology_utils=AsyncGlobalAuroraTopologyUtils(
+                props=props,
+                topology_query=topology_query,
+                default_port=default_port,
+                instance_templates_by_region=instance_templates_by_region),
         )
-        if instance_templates_by_region is None:
-            raw = WrapperProperties.GLOBAL_CLUSTER_INSTANCE_HOST_PATTERNS.get(
-                props
-            )
-            if raw:
-                instance_templates_by_region = self._parse_templates(raw)
-            else:
-                instance_templates_by_region = {}
-        self._templates_by_region: Dict[str, str] = instance_templates_by_region
-
-    @staticmethod
-    def _parse_templates(raw: str) -> Dict[str, str]:
-        """Parse ``'region:host:port,region:host,...'`` into a dict.
-
-        Same format as the sync ``GlobalAuroraTopologyUtils.parse_instance_templates``
-        (``region:host:port`` or ``region:host``, comma-separated) so one
-        ``global_cluster_instance_host_patterns`` value works for both the
-        sync and async wrappers. A pair without a host raises, matching sync.
-        """
-        result: Dict[str, str] = {}
-        for pair in raw.split(","):
-            pair = pair.strip()
-            if not pair:
-                continue
-            parts = pair.split(":", 2)
-            if len(parts) < 2 or not parts[0].strip() or not parts[1].strip():
-                raise AwsWrapperError(Messages.get_formatted(
-                    "GlobalAuroraTopologyUtils.invalidInstanceTemplate", pair))
-            region = parts[0].strip()
-            pattern = parts[1].strip()
-            if len(parts) > 2 and parts[2].strip():
-                pattern = f"{pattern}:{parts[2].strip()}"
-            result[region] = pattern
-        return result
-
-    def _rows_to_topology(self, rows: List[tuple]) -> Topology:
-        """Override. Rows are ``(server_id, is_writer, lag, aws_region)`` —
-        the sync Global Aurora topology-query shape (``SERVER_ID``,
-        ``SESSION_ID``-derived writer flag, ``VISIBILITY_LAG_IN_MSEC``,
-        ``AWS_REGION``); the lag column is unused, matching sync.
-
-        Each row's host is built from the region-specific template. Rows
-        referencing a region without a configured template are skipped.
-        Returns an empty tuple if no writer is present (matches
-        :class:`AsyncMultiAzHostListProvider`).
-        """
-        hosts: List[HostInfo] = []
-        for row in rows:
-            if len(row) < 4:
-                continue
-            server_id = str(row[0])
-            is_writer = bool(row[1])
-            region = str(row[3])
-            template = self._templates_by_region.get(region)
-            if template is None:
-                # No template for this region -- skip the host.
-                continue
-            host_str = template.replace("?", server_id)
-            host = host_str
-            port = self._default_port
-            if ":" in host_str:
-                host_part, port_part = host_str.rsplit(":", 1)
-                try:
-                    port = int(port_part)
-                    host = host_part
-                except ValueError:
-                    # Non-numeric port -- treat whole string as host.
-                    pass
-            role = HostRole.WRITER if is_writer else HostRole.READER
-            host_info = HostInfo(
-                host=host,
-                port=port,
-                role=role,
-                host_id=server_id,
-            )
-            host_info.add_alias(host)
-            hosts.append(host_info)
-
-        # Validate: at least one writer. Match the MultiAz/sync convention
-        # of returning an empty topology when no writer is found so callers
-        # fall back to the cache.
-        if not any(h.role == HostRole.WRITER for h in hosts):
-            return ()
-        # Writer first, readers after -- matches the other async providers.
-        hosts.sort(key=lambda h: 0 if h.role == HostRole.WRITER else 1)
-        return tuple(hosts)
