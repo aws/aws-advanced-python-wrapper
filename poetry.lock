@@ -3145,6 +3145,24 @@ pymysql = ["pymysql"]
 sqlcipher = ["sqlcipher3_binary"]
 
 [[package]]
+name = "sqlglot"
+version = "30.24.0"
+description = "An easily customizable SQL parser and transpiler"
+optional = false
+python-versions = ">=3.9"
+groups = ["main", "dev"]
+files = [
+    {file = "sqlglot-30.24.0-py3-none-any.whl", hash = "sha256:9488828cc018453b7a3ba01e65d2749c9a731314c14583695163ca1f358203fe"},
+    {file = "sqlglot-30.24.0.tar.gz", hash = "sha256:6451aabd1c9994d0f73355c962a5eaf9258381b3f2554e53db916cd9a605552a"},
+]
+markers = {main = "extra == \"encryption\""}
+
+[package.extras]
+c = ["sqlglotc (==30.24.0) ; python_version >= \"3.10\""]
+dev = ["duckdb (>=0.6)", "mypy (>=2.4.0) ; python_version >= \"3.10\"", "mypy ; python_version < \"3.10\"", "pandas", "pandas-stubs", "pdoc", "pre-commit", "pyperf", "python-dateutil", "pytz", "ruff (==0.15.6)", "setuptools_scm", "types-python-dateutil", "types-pytz", "typing_extensions"]
+rs = ["sqlglotc (==30.24.0) ; python_version >= \"3.10\"", "sqlglotrs (==0.13.0)"]
+
+[[package]]
 name = "sqlparse"
 version = "0.6.0"
 description = "A non-validating SQL parser."
@@ -3955,9 +3973,9 @@ multidict = ">=4.0"
 propcache = ">=0.2.1"
 
 [extras]
-encryption = ["cryptography"]
+encryption = ["cryptography", "sqlglot"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10.0"
-content-hash = "6ebd63b0760af1e534d5bd91abfdb86d4a79a40470256abebf9e0530736089c6"
+content-hash = "45539b1bfeded69674630df77c6ed0a8b2d1777b0c9f0d9280fc0dfc4241b5cc"
