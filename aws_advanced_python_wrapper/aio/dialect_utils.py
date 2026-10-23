@@ -176,6 +176,33 @@ class AsyncDialectUtils:
                     pass
 
     @staticmethod
+    async def fetch_one(conn: Any, query: str) -> Optional[tuple]:
+        """Run the provided query and fetch the first row.
+        """
+        return await AsyncDialectUtils._execute_scalar_query(conn, query)
+
+    @staticmethod
+    async def fetch_all(conn: Any, query: str) -> list:
+        """Run the provided query and fetch all rows. Returns an empty list on no results.
+        """
+        cursor_ret = conn.cursor()
+        cursor = await cursor_ret if asyncio.iscoroutine(cursor_ret) else cursor_ret
+        try:
+            await cursor.execute(query)
+            return list(await cursor.fetchall())
+        finally:
+            # Call close on the cursor if it has a close method.
+            # Some async DBAPI implementations may not have a close method on their cursor.
+            close = getattr(cursor, "close", None)
+            if close is not None:
+                try:
+                    result = close()
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception:  # noqa: BLE001 - cursor close best-effort
+                    pass
+
+    @staticmethod
     async def _execute_is_reader_query(
             conn: Any,
             is_reader_query: str) -> Optional[tuple]:

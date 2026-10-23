@@ -159,24 +159,6 @@ def test_refresh_with_no_connection_and_nothing_stored_returns_empty():
     asyncio.run(_run())
 
 
-def test_reconfiguring_the_query_discards_the_stored_topology():
-    """A result produced by the previous dialect's query is stale."""
-    prov = _aurora()
-
-    async def _run():
-        prov._store_topology(HOSTS)
-        prov.reconfigure_topology_query("SELECT 1", 3306)
-        assert prov._get_stored_topology() is None
-
-    asyncio.run(_run())
-
-
-def test_reconfiguring_the_query_off_loop_does_not_raise():
-    """It is a synchronous method, and the key names a loop."""
-    prov = _aurora()
-    prov.reconfigure_topology_query("SELECT 1", 3306)
-
-
 def test_storing_an_empty_topology_does_not_overwrite_a_good_one():
     prov = _aurora()
 

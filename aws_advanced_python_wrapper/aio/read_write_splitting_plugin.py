@@ -457,12 +457,15 @@ class AsyncReadWriteSplittingPlugin(
             try:
                 reader = self._plugin_service.get_host_info_by_strategy(
                     HostRole.READER, strategy, remaining)
-            except Error:
+            except Error as exc:
                 # Every reader is currently marked unavailable. Stop here so
                 # the caller reports that no reader was available, rather than
                 # surfacing a host-selector error to the application. Error,
                 # not AwsWrapperError: the default random selector raises the
-                # base class, which AwsWrapperError is a subclass of.
+                # base class, which AwsWrapperError is a subclass of. Kept as
+                # the cause, so the raise below says why selection came up
+                # empty.
+                last_error = exc
                 break
             if reader is None:
                 break

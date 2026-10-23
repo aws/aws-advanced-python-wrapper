@@ -238,3 +238,29 @@ def test_query_for_topology__empty_writer_query_results(
 
     result = provider._topology_utils._query_for_topology(mock_conn)
     assert result == queried_hosts
+
+
+def test_unconfirmed_dialect_reports_the_initial_hosts_without_querying(
+        mocker, mock_provider_service, mock_conn, props):
+    """Sync half of the dialect gate. Until the dialect is verified the
+    provider must report the connection-string host and must not query, since
+    the topology SQL it would run belongs to the unverified guess.
+
+    This gate had no test on either engine: both conditions could be replaced
+    with ``if False:`` and the full suite stayed green.
+    """
+    mock_provider_service.is_dialect_confirmed = False
+    provider = create_provider(mock_provider_service, props)
+    provider._initialize()
+    mock_force_refresh = mocker.patch.object(provider, '_force_refresh_monitor')
+
+    assert provider.refresh(mock_conn) == provider._initial_hosts
+    mock_force_refresh.assert_not_called()
+
+    provider.force_refresh(mock_conn)
+    mock_force_refresh.assert_not_called()
+
+    # Confirmed: the gate opens and the monitor is consulted.
+    mock_provider_service.is_dialect_confirmed = True
+    provider.force_refresh(mock_conn)
+    mock_force_refresh.assert_called()

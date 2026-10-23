@@ -147,9 +147,9 @@ def test_sort_factories_respects_custom_endpoint_before_failover():
 
 def test_build_async_plugins_returns_empty_when_no_plugins_property():
     # build_async_plugins itself applies NO defaults -- the default plugin list
-    # is injected into props by AsyncAwsWrapperConnection.connect (so
-    # _build_host_list_provider stays in sync). Given bare props, this returns
-    # []. See test_connect_applies_default_plugins_when_unset for the
+    # is injected into props by AsyncAwsWrapperConnection.connect, so every
+    # reader of the property sees the same list. Given bare props, this
+    # returns []. See test_connect_applies_default_plugins_when_unset for the
     # connect-level default behavior.
     props = Properties({"host": "h"})
     plugins = build_async_plugins(_svc(props), props)

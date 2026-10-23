@@ -346,6 +346,14 @@ def test_topology_query_other_error_returns_empty():
 # ---- host pattern validation, at construction as sync does -----------------------------
 
 
+#
+# The pattern is resolved and validated in __init__ (sync parity:
+# TopologyUtils.__init__, host_list_provider.py:456-476), so an invalid
+# pattern is rejected at construction rather than on the first topology
+# refresh -- a misconfiguration fails before the connect instead of
+# surfacing later as an empty host list.
+
+
 def test_validate_rejects_pattern_without_placeholder():
     with pytest.raises(AwsWrapperError, match="must contain"):
         AsyncAuroraHostListProvider(

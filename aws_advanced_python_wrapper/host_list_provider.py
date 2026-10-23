@@ -223,6 +223,12 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
                 # Return the original hosts passed to the connect method
                 return RdsHostListProvider.FetchTopologyResult(self._copy_initial_hosts(), False)
 
+            if not self._plugin_service.is_dialect_confirmed:
+                # The dialect must be confirmed before the a topology monitor is
+                # created. Until then, report the hosts parsed from the connection
+                # properties.
+                return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
+
             hosts = self._force_refresh_monitor(False, self._DEFAULT_TOPOLOGY_QUERY_TIMEOUT_SEC)
             if hosts is not None and len(hosts) > 0:
                 return RdsHostListProvider.FetchTopologyResult(hosts, False)
@@ -289,6 +295,11 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
     def force_monitoring_refresh(self, should_verify_writer: bool, timeout_sec: float) -> Topology:
         """Public API for forcing monitor refresh"""
         self._initialize()
+        if not self._plugin_service.is_dialect_confirmed:
+            # The dialect must be confirmed before the a topology monitor is
+            # created. Until then, report the hosts parsed from the connection
+            # properties.
+            return self._initial_hosts
         hosts = self._force_refresh_monitor(should_verify_writer, timeout_sec)
         return hosts if hosts else ()
 

@@ -287,7 +287,7 @@ class TestPerformanceAsync:
                     connect_params=connect_params,
                     **dict(props))
             except Exception as e:
-                TestPerformanceAsync.logger.debug("OpenConnectionFailed", str(e))
+                TestPerformanceAsync.logger.debug("Testing.OpenConnectionFailed", str(e))
             connection_attempts += 1
 
         if conn is None:
