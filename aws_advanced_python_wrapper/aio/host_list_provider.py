@@ -470,12 +470,15 @@ class AsyncAuroraHostListProvider:
         # before the teardown stop() scheduled could run, and
         # release_resources_async only awaits registered hooks.
         async def _close_and_unregister() -> None:
-            try:
-                await monitor.aclose()
-            finally:
-                unregister_shutdown_hook(_close_and_unregister)
+            await monitor.aclose()
 
-        monitor.on_closed = _close_and_unregister
+        # aclose calls on_closed itself, so this has to be callable without
+        # awaiting: a coroutine function here is created and dropped, and the
+        # hook stays registered for the life of the process.
+        def _unregister() -> None:
+            unregister_shutdown_hook(_close_and_unregister)
+
+        monitor.on_closed = _unregister
         register_shutdown_hook(_close_and_unregister)
         return monitor
 
