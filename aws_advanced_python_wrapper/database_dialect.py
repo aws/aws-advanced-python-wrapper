@@ -210,7 +210,7 @@ class DatabaseDialect(Protocol):
 
     def get_async_host_list_provider_supplier(self) -> Callable:
         """Returns a ``(provider_service, props) -> AsyncHostListProvider``
-        callable.Async counterpart of :meth:`get_host_list_provider_supplier`.
+        callable. Async counterpart of :meth:`get_host_list_provider_supplier`.
         """
         from aws_advanced_python_wrapper.aio.host_list_provider import \
             create_static_provider

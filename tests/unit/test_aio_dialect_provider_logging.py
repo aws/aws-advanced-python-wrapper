@@ -50,7 +50,6 @@ KEYS_AND_ARG_COUNTS = [
     ("AsyncPluginService.DatabaseDialectConfirmed", 1),
     ("AsyncPluginService.DatabaseDialectUnconfirmed", 1),
     ("AsyncPluginService.HostListProviderReplaced", 3),
-    ("AsyncPluginService.HostListProviderStopFailed", 1),
     ("HostListProvider.MonitorConnectionNoSeedHost", 1),
     ("HostListProvider.MonitorConnectionNoTargetDriverFunc", 1),
 ]

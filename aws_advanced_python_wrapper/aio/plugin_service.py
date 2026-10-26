@@ -40,7 +40,8 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
     ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
-from aws_advanced_python_wrapper.utils.properties import WrapperProperties
+from aws_advanced_python_wrapper.utils.properties import (PropertiesUtils,
+                                                          WrapperProperties)
 from aws_advanced_python_wrapper.utils.storage.cache_map import CacheMap
 
 logger = Logger(__name__)
@@ -681,7 +682,10 @@ class AsyncPluginServiceImpl(AsyncPluginService):
 
         original_dialect = self._database_dialect
         host_info = self._initial_connection_host_info
-        url = host_info.url if host_info is not None else ""
+        try:
+            url = PropertiesUtils.get_url(self._props)
+        except Exception:  # noqa: BLE001 - no host to key on; nothing to cache
+            url = ""
         try:
             database_dialect = await manager.query_for_dialect_async(
                 url, host_info, connection, self._driver_dialect)
@@ -712,10 +716,6 @@ class AsyncPluginServiceImpl(AsyncPluginService):
     # driver dialect, provider service, monitor factory) comes from this
     # plugin service and is identical either way.
     #
-    # They live on the provider's topology utils, which is where the
-    # dialect's SQL and port landed; only the static provider has no utils
-    # at all.
-    #
     # Kept in step with the suppliers by
     # test_provider_identity_covers_every_dialect_supplied_argument, which
     # fails if a supplier gains an argument this list does not name.
@@ -732,17 +732,21 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         """What makes a provider the right one for a dialect.
 
         ``getattr`` with a default rather than direct access: the static
-        (no-topology) provider has no topology utils, and only the Multi-AZ
-        utils carry the writer/host-id queries.
+        (no-topology) provider carries no topology query or port, and only
+        the Multi-AZ provider carries the writer/host-id queries.
         """
-        utils = getattr(provider, "_topology_utils", None)
         return (type(provider),) + tuple(
-            getattr(utils, attr, None)
+            getattr(provider, attr, None)
             for attr in AsyncPluginServiceImpl._PROVIDER_DIALECT_ATTRS)
 
     async def _update_host_list_provider(self, connection: Any) -> None:
         """Replace the host list provider when the dialect calls for a
         different one.
+
+        The outgoing provider is not stopped because it has nothing to stop:
+        its topology monitor is built on the first refresh, and a provider
+        built from an unconfirmed dialect refuses to refresh, so the one
+        being replaced here never built one.
         """
         dialect = self._database_dialect
         if dialect is None:
@@ -761,11 +765,6 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             return
 
         if previous is not None:
-            try:
-                await previous.stop()
-            except Exception as ex:  # noqa: BLE001 - teardown is best-effort
-                logger.debug(
-                    "AsyncPluginService.HostListProviderStopFailed", ex)
             # Carry the panic-mode probe across.
             probe_host = getattr(previous, "_probe_host", None)
             set_probe = getattr(replacement, "set_probe_host", None)

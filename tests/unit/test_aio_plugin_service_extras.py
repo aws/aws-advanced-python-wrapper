@@ -85,9 +85,9 @@ def test_set_availability_covers_all_aliases():
         assert svc.get_availability(alias) == HostAvailability.UNAVAILABLE
 
 
-def test_set_availability_marks_only_the_matching_live_host():
-    """Host selection reads HostInfo.get_availability() directly, so the mark
-    has to reach the live object -- and only the host it names."""
+def test_set_availability_marks_only_the_named_host():
+    """The mark is keyed by alias, so marking one host must leave the other
+    hosts in the topology selectable."""
     svc = _make_service()
     writer = HostInfo(host="instance-1.abc.us-east-2.rds.amazonaws.com",
                       port=3306, role=HostRole.WRITER)
@@ -95,10 +95,12 @@ def test_set_availability_marks_only_the_matching_live_host():
                       port=3306, role=HostRole.READER)
     svc._all_hosts = (writer, reader)
 
-    svc.set_availability(writer, HostAvailability.UNAVAILABLE)
+    svc.set_availability(writer.all_aliases, HostAvailability.UNAVAILABLE)
 
-    assert writer.get_availability() == HostAvailability.UNAVAILABLE
-    assert reader.get_availability() != HostAvailability.UNAVAILABLE
+    for alias in writer.all_aliases:
+        assert svc.get_availability(alias) == HostAvailability.UNAVAILABLE
+    for alias in reader.all_aliases:
+        assert svc.get_availability(alias) is None
 
 
 def test_default_plugin_accepts_random_strategy():
@@ -1015,10 +1017,42 @@ def test_update_database_dialect_rebuilds_provider_on_dialect_change():
         assert isinstance(provider, AsyncAuroraHostListProvider)
         # The replacement carries the MySQL topology SQL and port, not the
         # provider ctor's PostgreSQL defaults.
-        assert provider._topology_utils._topology_query == AuroraMysqlDialect().topology_query
-        assert provider._topology_utils._default_port == 3306
+        assert provider._topology_query == AuroraMysqlDialect().topology_query
+        assert provider._default_port == 3306
 
     asyncio.run(_run())
+
+
+def test_verified_dialect_is_cached_under_the_url_the_next_connect_reads():
+    """The endpoint cache is what keeps the next connect from re-running the
+    whole candidate chain, and what lets it start out already confirmed.
+    ``DatabaseDialectManager.get_dialect`` keys it by
+    ``PropertiesUtils.get_url``, so confirming under ``HostInfo.url`` -- the
+    same endpoint plus a trailing slash -- writes a key nothing ever reads."""
+    from aws_advanced_python_wrapper.database_dialect import (
+        DatabaseDialectManager, DialectCode, RdsMysqlDialect)
+    from aws_advanced_python_wrapper.utils.properties import PropertiesUtils
+
+    props = Properties({"host": "instance-1.xyz.us-east-2.rds.amazonaws.com", "port": "3306"})
+    svc = _service_with_manager(RdsMysqlDialect(), DialectCode.RDS_MYSQL, props)
+    svc.initial_connection_host_info = HostInfo(host=props["host"], port=3306)
+    svc.force_refresh_host_list = AsyncMock()
+
+    conn = _async_conn_answering({
+        "aurora_version": [("aurora_version", "3.0")],
+        "AURORA_GLOBAL_DB_STATUS": [],
+    })
+
+    async def _run():
+        await svc.update_database_dialect(conn)
+
+    DatabaseDialectManager._known_endpoint_dialects.clear()
+    try:
+        asyncio.run(_run())
+        assert DatabaseDialectManager._known_endpoint_dialects.get(
+            PropertiesUtils.get_url(props)) is DialectCode.AURORA_MYSQL
+    finally:
+        DatabaseDialectManager._known_endpoint_dialects.clear()
 
 
 def test_update_database_dialect_reaches_global_aurora_mysql():
@@ -1231,9 +1265,54 @@ def test_host_list_provider_is_replaced_when_the_topology_sql_differs():
         provider = svc.host_list_provider
         assert provider is not existing
         assert type(provider) is type(existing)
-        assert provider._topology_utils._topology_query == AuroraMysqlDialect().topology_query
-        assert provider._topology_utils._default_port == 3306
-        existing.stop.assert_awaited_once()
+        assert provider._topology_query == AuroraMysqlDialect().topology_query
+        assert provider._default_port == 3306
+
+    asyncio.run(_run())
+
+
+def test_replacing_the_provider_does_not_stop_the_outgoing_one():
+    """The outgoing provider is left alone, which is only safe because it has
+    nothing to stop: its monitor is built on the first refresh, and a provider
+    built from an unconfirmed dialect refuses to refresh. Awaiting its stop
+    would instead close a monitor connection on the path that needed a dialect
+    upgrade."""
+    from aws_advanced_python_wrapper.database_dialect import (
+        AuroraMysqlDialect, MultiAzClusterMysqlDialect)
+
+    props = Properties({"host": "h", "port": "3306"})
+    svc = _service_with_manager(AuroraMysqlDialect(), None, props)
+    existing = AuroraMysqlDialect().get_async_host_list_provider_supplier()(svc, props)
+    existing.stop = AsyncMock()
+    svc.host_list_provider = existing
+    svc.force_refresh_host_list = AsyncMock()
+
+    svc.database_dialect = MultiAzClusterMysqlDialect()
+
+    async def _run():
+        await svc._update_host_list_provider(MagicMock(name="conn"))
+        existing.stop.assert_not_awaited()
+        assert existing._monitor is None
+        assert svc.host_list_provider is not existing
+
+    asyncio.run(_run())
+
+
+def test_no_topology_monitor_is_built_before_the_dialect_is_confirmed():
+    """The gate that makes stopping the outgoing provider's monitor
+    unnecessary: until the dialect is confirmed a provider reports the hosts
+    parsed from the connection properties and builds no monitor, so no monitor
+    can carry the guessed dialect's SQL."""
+    from aws_advanced_python_wrapper.database_dialect import AuroraMysqlDialect
+
+    props = Properties({"host": "h", "port": "3306"})
+    svc = _service_with_manager(AuroraMysqlDialect(), None, props)
+    provider = AuroraMysqlDialect().get_async_host_list_provider_supplier()(svc, props)
+
+    async def _run():
+        assert svc.is_dialect_confirmed is False
+        await provider.force_refresh(MagicMock(name="conn"))
+        assert provider._monitor is None
 
     asyncio.run(_run())
 
@@ -1403,7 +1482,7 @@ def test_unconfirmed_dialect_reports_the_seed_host_without_querying():
     conn = MagicMock(name="conn")
     conn.cursor = MagicMock(return_value=cursor)
 
-    seed = provider._topology_utils.initial_host_info
+    seed = provider._seed_topology()[0]
 
     async def _run():
         for topology in (await provider.refresh(conn),
@@ -1411,7 +1490,8 @@ def test_unconfirmed_dialect_reports_the_seed_host_without_querying():
             assert [(h.host, h.port) for h in topology] == [(seed.host, seed.port)]
         # The gate is the point: no SQL ran and no monitor was built.
         cursor.execute.assert_not_awaited()
-        assert provider._get_stored_topology() is None
+        assert provider._topology_cache is None
+        assert provider._monitor is None
 
         # And the gate tracks the service flag rather than latching. The
         # open direction is asserted on the predicate, not on downstream
