@@ -108,6 +108,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
     def __init__(self, plugin_service: PluginService, props: Properties):
         self._plugin_service: PluginService = plugin_service
         self._rds_utils = RdsUtils()
+        self._host_list_provider_service: Optional[HostListProviderService] = None
         self._accessible_regions: Optional[FrozenSet[str]] = AccessibleRegions.parse(props)
 
         self._retry_delay_ms: int = WrapperProperties.OPEN_CONNECTION_RETRY_INTERVAL_MS.get_int(props)
@@ -137,6 +138,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
             props: Properties,
             host_list_provider_service: HostListProviderService,
             init_host_provider_func: Callable):
+        self._host_list_provider_service = host_list_provider_service
         init_host_provider_func()
 
     def connect(
@@ -170,13 +172,13 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
                 if role_to_verify is None:
                     # No verification required.
-                    self._plugin_service.routed_host_info = candidate_host
+                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
                     return candidate_conn
 
                 conn_role = self._plugin_service.get_host_role(candidate_conn)
                 if conn_role == role_to_verify:
                     # Verification succeeded.
-                    self._plugin_service.routed_host_info = candidate_host
+                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
                     return candidate_conn
 
                 # Verification failed. Retry, unless a reader was requested but the cluster has no readers.
@@ -188,7 +190,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
                         logger.debug(
                             "AuroraInitialConnectionStrategyPlugin.VerifyReaderConfiguredButNoReadersExist",
                             WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name)
-                    self._plugin_service.routed_host_info = candidate_host
+                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
                     return candidate_conn
 
                 logger.debug(
@@ -202,7 +204,7 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
 
                 if candidate_host is not None:
                     self._plugin_service.set_availability(
-                        candidate_host, HostAvailability.UNAVAILABLE)
+                        candidate_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
                 if self._plugin_service.is_network_exception(e):
                     # Retry connection.
@@ -484,6 +486,13 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
         except Exception:
             # Unable to find a candidate host.
             return None
+
+    def _set_initial_connection_host_info(
+            self, is_initial_connection: bool, host_info: Optional[HostInfo]):
+        if (is_initial_connection
+                and self._host_list_provider_service is not None
+                and host_info is not None):
+            self._host_list_provider_service.initial_connection_host_info = host_info
 
     @staticmethod
     def _find_writer(hosts: Sequence[HostInfo]) -> Optional[HostInfo]:

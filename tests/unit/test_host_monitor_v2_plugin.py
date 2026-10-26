@@ -46,8 +46,6 @@ def mock_plugin_service(mocker, mock_driver_dialect, mock_conn, host_info):
     service_mock = mocker.MagicMock()
     service_mock.current_connection = mock_conn
     service_mock.current_host_info = host_info
-    # A MagicMock attribute would stand in for a routed host.
-    service_mock.routed_host_info = None
     type(service_mock).driver_dialect = mocker.PropertyMock(return_value=mock_driver_dialect)
     return service_mock
 
@@ -167,67 +165,28 @@ def test_execute_monitoring_enabled(mocker, plugin, mock_monitor_service, mock_e
 
 
 def test_connect(mocker, plugin, host_info, props, mock_conn, mock_plugin_service):
-    """A cluster endpoint does not name the instance the connection landed on,
-    so the instance is identified and recorded as the routed host."""
     mock_connect_func = mocker.MagicMock()
     mock_connect_func.return_value = mock_conn
-    identified = HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", host_id="instance-1")
-    mock_plugin_service.identify_connection.return_value = identified
 
     connection = plugin.connect(
         mocker.MagicMock(), mocker.MagicMock(), host_info, props, True, mock_connect_func)
-
-    mock_plugin_service.identify_connection.assert_called_once()
-    assert mock_plugin_service.routed_host_info is identified
+    mock_plugin_service.fill_aliases.assert_called_once()
     assert mock_conn == connection
 
 
-@pytest.mark.parametrize(
-    "host",
-    ["db.example.com",            # a custom domain, classified OTHER
-     "10.0.0.5",                  # an IP address
-     "mydb.cluster-custom-xyz.us-east-2.rds.amazonaws.com"])
-def test_a_non_instance_endpoint_has_its_instance_identified(
-        mocker, mock_plugin_service, mock_monitor_service, props, host):
-    """These endpoints do not name the instance the connection is on, so the
-    host to probe has to be resolved rather than taken from the endpoint."""
-    identified = HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", 5432,
-                          host_id="instance-1")
-    mock_plugin_service.current_host_info = HostInfo(host, 5432)
-    mock_plugin_service.identify_connection.return_value = identified
-    plugin = init_plugin(mock_plugin_service, props, mock_monitor_service)
-
-    assert plugin._get_monitoring_host_info() is identified
-
-
-@pytest.mark.parametrize(
-    "host",
-    ["instance-1.xyz.us-east-2.rds.amazonaws.com",
-     "myproxy.proxy-xyz.us-east-2.rds.amazonaws.com",
-     "myshardgroup.shardgrp-xyz.us-east-2.rds.amazonaws.com"])
-def test_a_managed_router_endpoint_is_monitored_as_itself(
-        mocker, mock_plugin_service, mock_monitor_service, props, host):
-    """A proxy or shard group endpoint stays reachable and is the right thing
-    to probe. The instance behind it may refuse a direct connection, which
-    would make the monitor declare a healthy host dead."""
-    router = HostInfo(host, 5432)
-    mock_plugin_service.current_host_info = router
-    plugin = init_plugin(mock_plugin_service, props, mock_monitor_service)
-
-    assert plugin._get_monitoring_host_info() is router
-    mock_plugin_service.identify_connection.assert_not_called()
-
-
-def test_get_monitoring_host_info_keeps_the_host_when_identification_fails(
-        mocker, plugin, mock_plugin_service, host_info):
-    """A localhost, IP or custom-domain host cannot be identified. Failing here
-    would fail every monitored call on a host that is perfectly monitorable."""
+def test_get_monitoring_host_info_errors(mocker, plugin, mock_plugin_service):
     mock_plugin_service.identify_connection.return_value = None
-    assert plugin._get_monitoring_host_info() is host_info
 
-    plugin._monitoring_host_info = None
-    mock_plugin_service.identify_connection.side_effect = Error()
-    assert plugin._get_monitoring_host_info() is host_info
+    with pytest.raises(AwsWrapperError):
+        plugin._get_monitoring_host_info()
+
+    expected_exception = Error()
+    mock_plugin_service.identify_connection.return_value = mocker.MagicMock()
+    mock_plugin_service.identify_connection.side_effect = expected_exception
+    with pytest.raises(AwsWrapperError) as exc_info:
+        plugin._get_monitoring_host_info()
+
+    assert expected_exception == exc_info.value.__cause__
 
 
 def test_release_resources(plugin, mock_monitor_service):

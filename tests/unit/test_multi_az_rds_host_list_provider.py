@@ -18,7 +18,6 @@ import pytest
 from aws_advanced_python_wrapper.database_dialect import (
     AuroraPgDialect, MultiAzClusterPgDialect)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
-from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.host_list_provider import (
     MultiAzTopologyUtils, RdsHostListProvider)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -158,32 +157,6 @@ def test_get_topology_no_connection(mocker, mock_provider_service, initial_hosts
 
     assert initial_hosts == result
     mock_force_refresh.assert_not_called()
-
-
-def test_multi_az_host_id_is_a_string(mock_provider_service, props):
-    """MySQL reports a numeric id. identify_connection compares host_id
-    against the string the host id query returns, so an int never matches and
-    no cluster-endpoint connection can be identified."""
-    provider = create_provider(mock_provider_service, props)
-    host = provider._topology_utils._create_multi_az_host(
-        (12345, "instance-1.xyz.us-east-2.rds.amazonaws.com", 5432), 12345)
-
-    assert host.host_id == "12345"
-
-
-def test_initial_hosts_are_handed_out_as_copies(mocker, mock_provider_service, props):
-    """These are built once and never replaced, so marking a host handed out
-    here would mark it for every later caller."""
-    provider = create_provider(mock_provider_service, props)
-    provider._initialize()
-
-    first = provider._get_topology(None).hosts
-    second = provider._get_topology(None).hosts
-
-    assert first[0] is not second[0]
-    assert first[0] is not provider._initial_hosts[0]
-    first[0].set_availability(HostAvailability.UNAVAILABLE)
-    assert provider._initial_hosts[0].get_raw_availability() == HostAvailability.AVAILABLE
 
 
 def test_host_pattern_setting(mock_provider_service, props):

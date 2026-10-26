@@ -78,11 +78,7 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         if not conn:
             raise AwsWrapperError(Messages.get("AwsWrapperConnection.ConnectionNotOpen"))
 
-        # A plugin may have routed the connect elsewhere; that is the host this
-        # connection is actually on.
-        routed = plugin_service.take_routed_host_info()
-        connected_host_info = routed if routed is not None else plugin_service.initial_connection_host_info
-        plugin_service.set_current_connection(conn, connected_host_info)
+        plugin_service.set_current_connection(conn, plugin_service.initial_connection_host_info)
 
     @property
     def target_connection(self):

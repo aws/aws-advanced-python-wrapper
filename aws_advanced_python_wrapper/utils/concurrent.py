@@ -77,6 +77,25 @@ class ConcurrentDict(Generic[K, V]):
                     return new_value
             return value
 
+    def compute_for_keys(
+            self, keys, factory: Callable,
+            on_existing: Optional[Callable] = None) -> V:
+        with self._lock:
+            value = None
+            for key in keys:
+                value = self._dict.get(key)
+                if value is not None:
+                    if on_existing:
+                        on_existing(value)
+                    break
+
+            if value is None:
+                value = factory()
+
+            for key in keys:
+                self._dict.setdefault(key, value)
+            return value
+
     def put(self, key: K, value: V):
         with self._lock:
             self._dict[key] = value

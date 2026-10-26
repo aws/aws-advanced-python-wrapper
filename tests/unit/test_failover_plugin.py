@@ -22,7 +22,7 @@ import pytest
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.writer_failover_handler import WriterFailoverHandler
 
-from typing import Dict, Set
+from typing import Dict, FrozenSet, Set
 from unittest import mock
 from unittest.mock import MagicMock, PropertyMock
 
@@ -130,21 +130,27 @@ def test_notify_host_list_changed_with_failover_disabled(plugin_service_mock, ho
 
     get_current_host_mock = PropertyMock(return_value=host_mock)
     type(plugin_service_mock).current_host_info = get_current_host_mock
+    get_aliases_mock = PropertyMock()
+    type(host_mock).aliases = get_aliases_mock
 
     plugin.notify_host_list_changed(changes)
 
     get_current_host_mock.assert_not_called()
+    get_aliases_mock.assert_not_called()
 
     WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
     plugin = FailoverPlugin(plugin_service_mock, properties)
     plugin.notify_host_list_changed(changes)
 
     get_current_host_mock.assert_called()
+    get_aliases_mock.assert_not_called()
 
 
 def test_notify_host_list_changed_with_valid_connection_not_in_topology(plugin_service_mock,
                                                                         host_mock):
     host_mock.url = "cluster-url/"
+    aliases: FrozenSet[str] = frozenset("instance")
+    host_mock.aliases = aliases
 
     properties = Properties()
     WrapperProperties.ENABLE_FAILOVER.set(properties, "True")
@@ -152,6 +158,8 @@ def test_notify_host_list_changed_with_valid_connection_not_in_topology(plugin_s
 
     get_current_host_mock = PropertyMock(return_value=host_mock)
     type(plugin_service_mock).current_host_info = get_current_host_mock
+    get_aliases_mock = PropertyMock()
+    type(host_mock).aliases = get_aliases_mock
 
     changes: Dict[str, Set[HostEvent]] = \
         {"cluster-host/": {HostEvent.HOST_DELETED},
@@ -159,6 +167,7 @@ def test_notify_host_list_changed_with_valid_connection_not_in_topology(plugin_s
     plugin.notify_host_list_changed(changes)
 
     get_current_host_mock.assert_called()
+    get_aliases_mock.assert_not_called()
 
 
 def test_update_topology(

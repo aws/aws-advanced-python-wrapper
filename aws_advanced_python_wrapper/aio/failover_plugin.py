@@ -212,7 +212,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
                 if not self._should_failover(e):
                     raise
                 self._plugin_service.set_availability(
-                    host_info, HostAvailability.UNAVAILABLE)
+                    host_info.as_aliases(), HostAvailability.UNAVAILABLE)
                 await self._do_failover(driver_dialect)
         else:
             # Known-dead target: refresh topology and fail over without
@@ -424,7 +424,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
         failed_host = self._plugin_service.current_host_info
         if failed_host is not None:
             self._plugin_service.set_availability(
-                failed_host, HostAvailability.UNAVAILABLE)
+                failed_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
         # Invalidate the current (likely broken) connection before
         # attempting failover so any pool-proxied target is evicted from
@@ -556,7 +556,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
                         self._open_connection(candidate, driver_dialect), deadline)
                 except Exception as e:  # noqa: BLE001
                     self._plugin_service.set_availability(
-                        candidate, HostAvailability.UNAVAILABLE)
+                        candidate.as_aliases(), HostAvailability.UNAVAILABLE)
                     last_error = e
                     if candidate in remaining:
                         remaining.remove(candidate)
@@ -578,7 +578,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
                 if role == HostRole.READER or self._mode != FailoverMode.STRICT_READER:
                     verified = HostInfo(candidate.host, candidate.port, role)
                     self._plugin_service.set_availability(
-                        candidate, HostAvailability.AVAILABLE)
+                        candidate.as_aliases(), HostAvailability.AVAILABLE)
                     await self._plugin_service.set_current_connection(new_conn, verified)
                     if self._failover_reader_completed is not None:
                         self._failover_reader_completed.inc()
@@ -608,7 +608,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
                     self._open_connection(original_writer, driver_dialect), deadline)
             except Exception as e:  # noqa: BLE001
                 self._plugin_service.set_availability(
-                    original_writer, HostAvailability.UNAVAILABLE)
+                    original_writer.as_aliases(), HostAvailability.UNAVAILABLE)
                 last_error = e
             else:
                 role = await self._probe_role(new_conn)
@@ -620,7 +620,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
                     verified = HostInfo(
                         original_writer.host, original_writer.port, role)
                     self._plugin_service.set_availability(
-                        original_writer, HostAvailability.AVAILABLE)
+                        original_writer.as_aliases(), HostAvailability.AVAILABLE)
                     await self._plugin_service.set_current_connection(
                         new_conn, verified)
                     if self._failover_reader_completed is not None:

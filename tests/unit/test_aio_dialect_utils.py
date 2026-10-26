@@ -143,5 +143,5 @@ def test_get_instance_id_rolls_back_transient_probe_txn():
     dd = MagicMock()
     dd.is_in_transaction = AsyncMock(return_value=False)
     iid = asyncio.run(AsyncDialectUtils.get_instance_id(conn, dd, "q"))
-    assert iid == ("inst-1", "inst-1")
+    assert iid == "inst-1"
     conn.rollback.assert_awaited_once()

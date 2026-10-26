@@ -71,7 +71,6 @@ from aws_advanced_python_wrapper.utils.properties import (PropertiesUtils,
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
-from aws_advanced_python_wrapper.utils.utils import Utils
 
 if TYPE_CHECKING:
     from weakref import ReferenceType
@@ -372,7 +371,7 @@ class AsyncHostMonitorV2:
 
                 if self._is_unhealthy:
                     self._plugin_service.set_availability(
-                        self._host_info, HostAvailability.UNAVAILABLE)
+                        self._host_info.as_aliases(), HostAvailability.UNAVAILABLE)
 
                 await self._drain_active_contexts()
 
@@ -581,7 +580,7 @@ class AsyncHostMonitoringPlugin(AsyncPlugin):
         self._failure_detection_count = WrapperProperties.FAILURE_DETECTION_COUNT.get_int(props)
         self._failure_detection_enabled = WrapperProperties.FAILURE_DETECTION_ENABLED.get_bool(props)
 
-        # Subscribe to connect (to record the routed host) + every
+        # Subscribe to connect (for cluster-alias resolution) + every
         # network-bound method (so execute() brackets them with monitoring).
         # notify_* hooks are dispatched to all plugins regardless of this set.
         self._subscribed: Set[str] = {DbApiMethod.CONNECT.method_name}
@@ -601,17 +600,10 @@ class AsyncHostMonitoringPlugin(AsyncPlugin):
             connect_func: Callable[..., Awaitable[Any]]) -> Any:
         connection = await connect_func()
         if connection is not None:
-            # Record which instance a cluster-endpoint connection landed on;
-            # the monitoring host is derived from it.
-            routed = self._plugin_service.routed_host_info
-            connection_host_info = routed if routed is not None else host_info
-            if self._rds_utils.identify_rds_type(connection_host_info.host).is_rds_cluster:
-                try:
-                    identified = await self._plugin_service.identify_connection(connection)
-                except Exception:  # noqa: BLE001 - identification is best-effort
-                    identified = None
-                if identified is not None:
-                    self._plugin_service.routed_host_info = identified
+            rds_type = self._rds_utils.identify_rds_type(host_info.host)
+            if rds_type.is_rds_cluster:
+                host_info.reset_aliases()
+                await self._fill_aliases(connection, host_info)
         return connection
 
     async def execute(
@@ -662,34 +654,49 @@ class AsyncHostMonitoringPlugin(AsyncPlugin):
             _stop_monitors_for_hosts(deleted)
 
     async def _get_monitoring_host_info(self) -> HostInfo:
-        # Held in a local because notify_connection_changed can clear the
-        # field while this method is between its assignment and its return.
-        monitoring_host_info = self._monitoring_host_info
-        if monitoring_host_info is not None:
-            return monitoring_host_info
-        # current_host_info, not routed_host_info: by the time any connection
-        # exists the wrapper has adopted the routed host, and a value still in
-        # that field belongs to a connect in flight, possibly another task's.
-        monitoring_host_info = self._plugin_service.current_host_info
-        if monitoring_host_info is None:
+        if self._monitoring_host_info is not None:
+            return self._monitoring_host_info
+        current_host_info = self._plugin_service.current_host_info
+        if current_host_info is None:
             raise AwsWrapperError(Messages.get("HostMonitoringV2Plugin.HostInfoNone"))
-        self._monitoring_host_info = monitoring_host_info
-        rds_url_type = self._rds_utils.identify_rds_type(monitoring_host_info.host)
+        self._monitoring_host_info = current_host_info
+        rds_url_type = self._rds_utils.identify_rds_type(self._monitoring_host_info.host)
 
         try:
-            if not Utils.requires_host_identification(rds_url_type):
-                return monitoring_host_info
+            if not rds_url_type.is_rds_cluster:
+                return self._monitoring_host_info
             logger.debug("HostMonitoringV2Plugin.ClusterEndpointHostInfo")
-            identified = await self._plugin_service.identify_connection(
-                self._plugin_service.current_connection)
+            current_connection = self._plugin_service.current_connection
+            # Async approximation of sync's identify_connection + fill_aliases:
+            # identify_connection already returns the topology (instance-level)
+            # HostInfo with its instance aliases, so it doubles as the monitoring
+            # host and the alias source.
+            identified = await self._plugin_service.identify_connection(current_connection)
+            if identified is None:
+                raise AwsWrapperError(Messages.get_formatted(
+                    "HostMonitoringV2Plugin.UnableToIdentifyConnection",
+                    current_host_info.host,
+                    self._plugin_service.host_list_provider))
+            self._monitoring_host_info = identified
+        except Exception as e:
+            if isinstance(e, AwsWrapperError):
+                raise
+            message = "HostMonitoringV2Plugin.ErrorIdentifyingConnection"
+            logger.debug(message, e)
+            raise AwsWrapperError(Messages.get_formatted(message, e)) from e
+        return self._monitoring_host_info
+
+    async def _fill_aliases(self, connection: Any, host_info: HostInfo) -> None:
+        """Add the connection's resolved instance endpoint as an alias of a
+        cluster-endpoint host (async approximation of sync ``fill_aliases``:
+        ``identify_connection`` + ``as_aliases``). Best-effort."""
+        try:
+            host_info.add_alias(host_info.as_alias())
+            identified = await self._plugin_service.identify_connection(connection)
             if identified is not None:
-                monitoring_host_info = identified
-                self._monitoring_host_info = identified
-        except Exception as e:  # noqa: BLE001 - the host id query failed
-            # Keep the connection's own host and monitor that. Raising here
-            # would fail every monitored call on the connection.
-            logger.debug("HostMonitoringV2Plugin.ErrorIdentifyingConnection", e)
-        return monitoring_host_info
+                host_info.add_alias(*identified.as_aliases())
+        except Exception:  # noqa: BLE001 - alias enrichment is best-effort
+            pass
 
     async def release_resources(self) -> None:
         """Drop this plugin's monitor-service reference. The shared monitors are

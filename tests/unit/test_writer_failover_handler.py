@@ -105,6 +105,14 @@ def new_topology(new_writer_host, reader_a, reader_b):
     return tuple([new_writer_host, reader_a, reader_b])
 
 
+@pytest.fixture(autouse=True)
+def setup(writer, new_writer_host, reader_a, reader_b):
+    writer.add_alias("writer-host")
+    new_writer_host.add_alias("new-writer-host")
+    reader_a.add_alias("reader-a")
+    reader_b.add_alias("reader-b")
+
+
 def test_reconnect_to_writer_task_b_reader_exception(
         writer_connection_mock, plugin_service_mock, reader_failover_mock, default_properties, writer, topology):
     exception = Exception("Test Exception")
@@ -134,8 +142,8 @@ def test_reconnect_to_writer_task_b_reader_exception(
     assert not result.is_new_host
     assert result.new_connection is writer_connection_mock
 
-    expected = [call(writer, HostAvailability.UNAVAILABLE),
-                call(writer, HostAvailability.AVAILABLE)]
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
+                call(writer.as_aliases(), HostAvailability.AVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected)
 
@@ -145,8 +153,8 @@ def test_reconnect_to_writer_slow_task_b(
         reader_a_connection_mock, default_properties, new_writer_host, writer, reader_a, reader_b, topology,
         new_topology):
     exception = Exception("Test Exception")
-    expected = [call(writer, HostAvailability.UNAVAILABLE),
-                call(writer, HostAvailability.AVAILABLE)]
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
+                call(writer.as_aliases(), HostAvailability.AVAILABLE)]
 
     mock_hosts_property = mocker.PropertyMock(side_effect=chain((topology,), cycle((new_topology,))))
     type(plugin_service_mock).all_hosts = mock_hosts_property
@@ -219,8 +227,8 @@ def test_reconnect_to_writer_task_b_defers(
     assert not result.is_new_host
     assert result.new_connection is writer_connection_mock
 
-    expected = [call(writer, HostAvailability.UNAVAILABLE),
-                call(writer, HostAvailability.AVAILABLE)]
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
+                call(writer.as_aliases(), HostAvailability.AVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected)
 
@@ -266,8 +274,8 @@ def test_connect_to_new_writer_slow_task_a(
     assert result.is_new_host
     assert result.new_connection is new_writer_connection_mock
 
-    expected = [call(writer, HostAvailability.UNAVAILABLE),
-                call(new_writer_host, HostAvailability.AVAILABLE)]
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
+                call(new_writer_host.as_aliases(), HostAvailability.AVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected)
 
@@ -317,8 +325,8 @@ def test_connect_to_new_writer_task_a_defers(
     assert len(result.topology) == 4
     assert "new-writer-host" == result.topology[0].host
 
-    expected = [call(writer, HostAvailability.UNAVAILABLE),
-                call(new_writer_host, HostAvailability.AVAILABLE)]
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
+                call(new_writer_host.as_aliases(), HostAvailability.AVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected, any_order=True)
 
@@ -369,7 +377,7 @@ def test_failed_to_connect_failover_timeout(
     assert not result.is_connected
     assert not result.is_new_host
 
-    expected = [call(writer, HostAvailability.UNAVAILABLE)]
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected)
 
@@ -412,7 +420,7 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(
     assert not result.is_connected
     assert not result.is_new_host
 
-    expected = [call(writer, HostAvailability.UNAVAILABLE),
-                call(new_writer_host, HostAvailability.UNAVAILABLE)]
+    expected = [call(writer.as_aliases(), HostAvailability.UNAVAILABLE),
+                call(new_writer_host.as_aliases(), HostAvailability.UNAVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected, any_order=True)

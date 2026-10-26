@@ -66,6 +66,24 @@ def test_compute_if_absent_extends_expiration():
     assert cache.get("k1") == "v1"
 
 
+def test_get_or_create_for_aliases(cache):
+    result = cache.get_or_create_for_aliases(
+        frozenset(["a", "b", "c"]), lambda: "val")
+    assert result == "val"
+    assert cache.get("a") == "val"
+    assert cache.get("b") == "val"
+    assert cache.get("c") == "val"
+
+
+def test_get_or_create_for_aliases_reuses_existing(cache):
+    cache.put("b", "existing")
+    result = cache.get_or_create_for_aliases(
+        frozenset(["a", "b", "c"]), lambda: "new")
+    assert result == "existing"
+    # "a" and "c" should also be set
+    assert cache.get("a") == "existing"
+
+
 def test_extend_expiration():
     cache = ExpirationTrackingCache(_SHORT_TTL)
     cache.put("k1", "v1")

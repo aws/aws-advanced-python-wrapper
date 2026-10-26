@@ -31,8 +31,6 @@ import pytest
 
 from aws_advanced_python_wrapper.aio.host_list_provider import \
     AsyncGlobalAuroraHostListProvider
-from aws_advanced_python_wrapper.aio.topology_utils import \
-    AsyncGlobalAuroraTopologyUtils
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.properties import Properties
@@ -61,7 +59,7 @@ def _make_provider(**overrides: Any) -> AsyncGlobalAuroraHostListProvider:
     return AsyncGlobalAuroraHostListProvider(**kwargs)
 
 
-# ---- parse_instance_templates ----------------------------------------------------
+# ---- _parse_templates ----------------------------------------------------
 
 
 def test_parse_templates_colon_format_pairs():
@@ -72,7 +70,7 @@ def test_parse_templates_colon_format_pairs():
         "us-east-1:?.xyz.us-east-1.rds.amazonaws.com:5432,"
         " us-west-2 : ?.abc.us-west-2.rds.amazonaws.com , "
     )
-    parsed = AsyncGlobalAuroraTopologyUtils.parse_instance_templates(raw)
+    parsed = AsyncGlobalAuroraHostListProvider._parse_templates(raw)
     assert parsed == {
         "us-east-1": "?.xyz.us-east-1.rds.amazonaws.com:5432",
         "us-west-2": "?.abc.us-west-2.rds.amazonaws.com",
@@ -83,11 +81,11 @@ def test_parse_templates_malformed_entry_raises():
     """An entry without a host part raises, matching sync
     ``GlobalAuroraTopologyUtils.parse_instance_templates``."""
     with pytest.raises(AwsWrapperError):
-        AsyncGlobalAuroraTopologyUtils.parse_instance_templates(
+        AsyncGlobalAuroraHostListProvider._parse_templates(
             "us-east-1:?.xyz.us-east-1.rds.amazonaws.com:5432,bad-entry-no-colon")
 
 
-# ---- _process_global_query_results ---------------------------------------------------
+# ---- _rows_to_topology ---------------------------------------------------
 
 
 def test_empty_templates_returns_empty_topology():
@@ -97,7 +95,7 @@ def test_empty_templates_returns_empty_topology():
         ("instance-1", True, 0.0, "us-east-1"),
         ("instance-2", False, 12.5, "us-west-2"),
     ]
-    assert prov._topology_utils._process_global_query_results(rows) == ()
+    assert prov._rows_to_topology(rows) == ()
 
 
 def test_region_without_matching_template_skipped():
@@ -115,7 +113,7 @@ def test_region_without_matching_template_skipped():
         ("instance-1", True, 0.0, "us-east-1"),
         ("instance-2", False, 12.5, "us-west-2"),  # skipped
     ]
-    topo = prov._topology_utils._process_global_query_results(rows)
+    topo = prov._rows_to_topology(rows)
     assert len(topo) == 1
     assert topo[0].host == "instance-1.xyz.us-east-1.rds.amazonaws.com"
     assert topo[0].port == 5432
@@ -130,7 +128,7 @@ def test_template_substitution_with_port():
         },
     )
     rows = [("my-instance", True, 0.0, "us-east-1")]
-    topo = prov._topology_utils._process_global_query_results(rows)
+    topo = prov._rows_to_topology(rows)
     assert len(topo) == 1
     assert topo[0].host == "my-instance.xyz.us-east-1.rds.amazonaws.com"
     assert topo[0].port == 6000
@@ -146,7 +144,7 @@ def test_template_substitution_without_port_uses_default_port():
         },
     )
     rows = [("my-instance", True, 0.0, "us-east-1")]
-    topo = prov._topology_utils._process_global_query_results(rows)
+    topo = prov._rows_to_topology(rows)
     assert len(topo) == 1
     assert topo[0].host == "my-instance.xyz.us-east-1.rds.amazonaws.com"
     assert topo[0].port == 5433
@@ -166,7 +164,7 @@ def test_writer_and_reader_roles_assigned_from_is_writer_column():
         ("writer-a", True, 0.0, "us-east-1"),
         ("reader-b", False, 31.0, "us-west-2"),
     ]
-    topo = prov._topology_utils._process_global_query_results(rows)
+    topo = prov._rows_to_topology(rows)
     assert len(topo) == 3
     # Writer first.
     assert topo[0].role == HostRole.WRITER
@@ -188,7 +186,7 @@ def test_short_rows_are_skipped():
         ("legacy-row", "us-east-1", True),  # old 3-col shape: skipped
         ("writer-a", True, 0.0, "us-east-1"),
     ]
-    topo = prov._topology_utils._process_global_query_results(rows)
+    topo = prov._rows_to_topology(rows)
     assert [h.host_id for h in topo] == ["writer-a"]
 
 
@@ -204,7 +202,7 @@ def test_rows_without_writer_return_empty_tuple():
         ("reader-a", False, 10.0, "us-east-1"),
         ("reader-b", False, 20.0, "us-east-1"),
     ]
-    assert prov._topology_utils._process_global_query_results(rows) == ()
+    assert prov._rows_to_topology(rows) == ()
 
 
 # ---- Property-based construction ----------------------------------------
@@ -214,7 +212,7 @@ def test_construction_from_property_parses_patterns():
     """When ``instance_templates_by_region`` is omitted, the provider
     reads ``GLOBAL_CLUSTER_INSTANCE_HOST_PATTERNS`` from props (sync
     ``region:host:port`` format) and parses it. Subsequent
-    row parsing uses that map."""
+    ``_rows_to_topology`` calls use that map."""
     patterns = (
         "us-east-1:?.xyz.us-east-1.rds.amazonaws.com:5432,"
         "us-west-2:?.abc.us-west-2.rds.amazonaws.com:5432"
@@ -226,7 +224,7 @@ def test_construction_from_property_parses_patterns():
         ("instance-1", True, 0.0, "us-east-1"),
         ("instance-2", False, 15.0, "us-west-2"),
     ]
-    topo = prov._topology_utils._process_global_query_results(rows)
+    topo = prov._rows_to_topology(rows)
     assert len(topo) == 2
     assert topo[0].role == HostRole.WRITER
     assert topo[0].host == "instance-1.xyz.us-east-1.rds.amazonaws.com"

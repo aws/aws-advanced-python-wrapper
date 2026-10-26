@@ -17,8 +17,8 @@ from __future__ import annotations
 import threading
 from threading import Thread
 from time import perf_counter_ns
-from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, Optional,
-                    Set, Tuple)
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, FrozenSet,
+                    Optional, Set)
 
 from aws_advanced_python_wrapper.utils.notifications import HostEvent
 from aws_advanced_python_wrapper.utils.utils import Utils
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
     from aws_advanced_python_wrapper.pep249 import Connection
 
+    from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
     from aws_advanced_python_wrapper.utils.properties import Properties
 
 from _weakrefset import WeakSet
@@ -112,83 +113,87 @@ class OpenedConnectionTracker:
                 if not conn_set and host in cls._opened_connections:
                     del cls._opened_connections[host]
 
-    def _tracking_keys(self, host_info: HostInfo) -> Tuple[str, ...]:
-        """The keys ``host_info``'s connections are tracked under.
-
-        An instance endpoint names the instance already, so one key is enough.
-        Anything else may be a custom domain name, which is tracked both under
-        the host id and under the endpoint the caller used.
-        """
-        if self._rds_utils.is_rds_instance(host_info.host):
-            return (host_info.get_host_and_port(),)
-        return tuple(key for key in (host_info.host_id, host_info.get_host_and_port()) if key)
-
-    def populate_opened_connection_set(self, host_info: Optional[HostInfo], conn: Optional[Connection]):
+    def populate_opened_connection_set(self, host_info: HostInfo, conn: Connection):
         """
         Add the given connection to the set of tracked connections.
 
         :param host_info: host information of the given connection.
         :param conn: currently opened connection.
         """
-        if host_info is None or conn is None:
+
+        aliases: FrozenSet[str] = host_info.as_aliases()
+
+        if self._rds_utils.is_rds_instance(host_info.host):
+            self._track_connection(host_info.url, conn)
             return
 
-        keys = self._tracking_keys(host_info)
-        if not keys:
+        instance_endpoint: Optional[str] = next(
+            (alias for alias in aliases if self._rds_utils.is_rds_instance(self._rds_utils.remove_port(alias))), None)
+        if not instance_endpoint:
             logger.debug("OpenedConnectionTracker.UnableToPopulateOpenedConnectionSet")
             return
 
-        for key in keys:
-            self._track_connection(key, conn)
+        instance_endpoint = instance_endpoint if instance_endpoint.endswith("/") else instance_endpoint + "/"
+        self._track_connection(instance_endpoint, conn)
 
-    def invalidate_all_connections(self, host_info: Optional[HostInfo]):
+    def invalidate_all_connections(self, host_info: Optional[HostInfo] = None, host: Optional[FrozenSet[str]] = None):
         """
         Invalidates all opened connections pointing to the same host in a daemon thread.
 
-        :param host_info: the host whose connections should be closed.
+       :param host_info: the :py:class:`HostInfo` object containing the URL of the host.
+       :param host: the set of aliases representing a specific host.
         """
-        if host_info is None:
+
+        if host_info:
+            self.invalidate_all_connections(host=frozenset([host_info.url]))
+            self.invalidate_all_connections(host=host_info.as_aliases())
             return
-        self.invalidate_all_connections_for_keys(
-            host_info.get_host_and_port(), host_info.host, host_info.host_id)
 
-    def invalidate_all_connections_for_keys(self, *keys: Optional[str]):
-        """Invalidate the connections tracked under any of ``keys``.
+        instance_endpoint: Optional[str] = None
+        if host is None:
+            return
 
-        A connection tracked under more than one key is closed once: closing
-        a pool-proxied connection twice would invalidate whatever the pool
-        handed out in between.
-        """
-        present = [key for key in keys if key]
-        seen: Set[int] = set()
-        to_close: list = []
+        for instance in host:
+            if instance is not None and self._rds_utils.is_rds_instance(self._rds_utils.remove_port(instance)):
+                instance_endpoint = instance
+                break
+
+        if not instance_endpoint:
+            return
+
+        instance_endpoint = instance_endpoint if instance_endpoint.endswith("/") else instance_endpoint + "/"
 
         with self._lock:
-            for key in present:
-                connection_set: Optional[WeakSet] = self._opened_connections.get(key)
-                if connection_set is None:
-                    continue
-                for conn in list(connection_set):
-                    if id(conn) not in seen:
-                        seen.add(id(conn))
-                        to_close.append(conn)
+            connection_set: Optional[WeakSet] = self._opened_connections.get(instance_endpoint)
+            if connection_set is not None:
+                connections_list = list(connection_set)
                 connection_set.clear()
+            else:
+                connections_list = None
 
-        if to_close:
-            self._log_connection_set(", ".join(present), to_close)
-            self._invalidate_connections(to_close)
+        if connections_list:
+            self._log_connection_set(instance_endpoint, connections_list)
+            self._invalidate_connections(connections_list)
 
     def remove_connection_tracking(self, host_info: HostInfo, connection: Connection | None):
         if not connection:
             return
 
-        # Every key populate_opened_connection_set used, so a custom-domain
-        # connection is untracked from both of its keys.
+        if self._rds_utils.is_rds_instance(host_info.host):
+            host = host_info.url
+        else:
+            host = next((alias for alias in host_info.as_aliases()
+                         if self._rds_utils.is_rds_instance(self._rds_utils.remove_port(alias))), "")
+
+        if not host:
+            return
+
+        host = host if host.endswith("/") else host + "/"
+
         with self._lock:
-            for key in self._tracking_keys(host_info):
-                connection_set = self._opened_connections.get(key)
-                if connection_set:
-                    connection_set.discard(connection)
+            connection_set = self._opened_connections.get(host)
+            if connection_set:
+                connection_set.discard(connection)
 
     def _track_connection(self, instance_endpoint: str, conn: Connection):
         with self._lock:
@@ -287,23 +292,12 @@ class AuroraConnectionTrackerPlugin(Plugin):
         conn = connect_func()
 
         if conn:
-            routed = self._plugin_service.routed_host_info
-            connection_host_info = routed if routed is not None else host_info
-            url_type = self._rds_utils.identify_rds_type(connection_host_info.host)
-            if Utils.requires_host_identification(url_type):
-                # The endpoint does not name the instance the connection
-                # landed on, so ask the database and track that instead.
-                # Best-effort: a connect must not fail because the host id
-                # query did.
-                try:
-                    identified = self._plugin_service.identify_connection(conn)
-                except Exception:  # noqa: BLE001 - identification is best-effort
-                    identified = None
-                if identified is not None:
-                    connection_host_info = identified
-                    self._plugin_service.routed_host_info = identified
+            url_type: RdsUrlType = self._rds_utils.identify_rds_type(host_info.host)
+            if url_type.is_rds_cluster:
+                host_info.reset_aliases()
+                self._plugin_service.fill_aliases(conn, host_info)
 
-            self._tracker.populate_opened_connection_set(connection_host_info, conn)
+            self._tracker.populate_opened_connection_set(host_info, conn)
             self._tracker.log_opened_connections()
 
         return conn
@@ -365,11 +359,10 @@ class AuroraConnectionTrackerPlugin(Plugin):
             self._need_update_current_writer = False
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        for host, host_changes in changes.items():
-            if HostEvent.CONVERTED_TO_READER in host_changes:
-                # Change keys are urls; tracking keys are not.
-                self._tracker.invalidate_all_connections_for_keys(host.rstrip("/"))
-            if HostEvent.CONVERTED_TO_WRITER in host_changes:
+        for node, node_changes in changes.items():
+            if HostEvent.CONVERTED_TO_READER in node_changes:
+                self._tracker.invalidate_all_connections(host=frozenset([node]))
+            if HostEvent.CONVERTED_TO_WRITER in node_changes:
                 self._need_update_current_writer = True
 
 
