@@ -128,11 +128,11 @@ class AsyncRetryUtil:
                     new_conn = await self._bounded(
                         connect_func(writer), timeout_end_time)
                 except Exception as e:  # noqa: BLE001
-                    plugin_service.set_availability(writer, HostAvailability.UNAVAILABLE)
+                    plugin_service.set_availability(writer.as_aliases(), HostAvailability.UNAVAILABLE)
                     last_error = e
                 else:
                     # Connected -> the host is reachable.
-                    plugin_service.set_availability(writer, HostAvailability.AVAILABLE)
+                    plugin_service.set_availability(writer.as_aliases(), HostAvailability.AVAILABLE)
                     # Roles in the topology may be stale right after a failover
                     # (the demoted old writer can still be labeled WRITER), so
                     # verify with a data-plane query before accepting.
@@ -222,9 +222,11 @@ class AsyncRetryUtil:
                 reader_conn = await self._bounded(
                     connect_func(reader), timeout_end_time)
             except Exception:  # noqa: BLE001 - try the next reader
-                plugin_service.set_availability(reader, HostAvailability.UNAVAILABLE)
+                plugin_service.set_availability(
+                    reader.as_aliases(), HostAvailability.UNAVAILABLE)
                 continue
-            plugin_service.set_availability(reader, HostAvailability.AVAILABLE)
+            plugin_service.set_availability(
+                reader.as_aliases(), HostAvailability.AVAILABLE)
             try:
                 refreshed = await self._bounded(
                     host_list_provider.force_refresh(reader_conn), timeout_end_time)

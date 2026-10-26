@@ -75,9 +75,9 @@ def test_failover(plugin_service_mock, connection_mock, default_properties, defa
     props = default_properties
     current_host = hosts[2]
     success_host = hosts[4]
-    expected = [call(x, HostAvailability.UNAVAILABLE)
+    expected = [call(x.all_aliases, HostAvailability.UNAVAILABLE)
                 if x != success_host
-                else call(x, HostAvailability.AVAILABLE)
+                else call(x.all_aliases, HostAvailability.AVAILABLE)
                 for x in hosts]
 
     exception = Exception("Test Exception")
@@ -170,7 +170,7 @@ def test_get_reader_connection_success(plugin_service_mock, connection_mock, def
     assert result.connection == connection_mock
     assert result.new_host == fast_host
 
-    plugin_service_mock.set_availability.assert_any_call(fast_host, HostAvailability.AVAILABLE)
+    plugin_service_mock.set_availability.assert_any_call(fast_host.all_aliases, HostAvailability.AVAILABLE)
 
 
 def test_get_reader_connection_failure(plugin_service_mock, connection_mock, default_properties, default_hosts):

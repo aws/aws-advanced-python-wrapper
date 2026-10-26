@@ -172,7 +172,7 @@ class FailoverPlugin(Plugin):
                 self._invalidate_current_connection()
                 if self._plugin_service.current_host_info is not None:
                     self._plugin_service.set_availability(
-                        self._plugin_service.current_host_info, HostAvailability.UNAVAILABLE)
+                        self._plugin_service.current_host_info.aliases, HostAvailability.UNAVAILABLE)
 
                 self._pick_new_connection()
                 self._last_exception = ex
@@ -201,6 +201,10 @@ class FailoverPlugin(Plugin):
             if current_host is not None:
                 if self._is_host_still_valid(current_host.url, changes):
                     return
+
+                for alias in current_host.aliases:
+                    if self._is_host_still_valid(alias + '/', changes):
+                        return
 
                 logger.debug("FailoverPlugin.InvalidHost", current_host)
         finally:
@@ -243,7 +247,7 @@ class FailoverPlugin(Plugin):
         :param failed_host: The host with network errors.
         """
         if failed_host is not None:
-            self._plugin_service.set_availability(failed_host, HostAvailability.UNAVAILABLE)
+            self._plugin_service.set_availability(failed_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
         if self._failover_mode == FailoverMode.STRICT_WRITER:
             self._failover_writer()
@@ -270,6 +274,10 @@ class FailoverPlugin(Plugin):
         try:
             logger.info("FailoverPlugin.StartReaderFailover")
 
+            old_aliases = None
+            if self._plugin_service.current_host_info is not None:
+                old_aliases = self._plugin_service.current_host_info.aliases
+
             if failed_host is not None and failed_host.get_raw_availability() != HostAvailability.AVAILABLE:
                 failed_host = None
 
@@ -283,6 +291,9 @@ class FailoverPlugin(Plugin):
                     raise result.exception
                 if result.connection is not None and result.new_host is not None:
                     self._plugin_service.set_current_connection(result.connection, result.new_host)
+
+            if self._plugin_service.current_host_info is not None and old_aliases is not None and len(old_aliases) > 0:
+                self._plugin_service.current_host_info.remove_alias(old_aliases)
 
             self._update_topology(True)
 

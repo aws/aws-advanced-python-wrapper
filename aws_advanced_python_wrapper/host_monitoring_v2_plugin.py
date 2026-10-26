@@ -41,7 +41,6 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryCounter, TelemetryFactory, TelemetryTraceLevel)
-from aws_advanced_python_wrapper.utils.utils import Utils
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -88,17 +87,10 @@ class HostMonitoringV2Plugin(Plugin, CanReleaseResources):
             connect_func: Callable) -> Connection:
         connection = connect_func()
         if connection:
-            # Record which instance a cluster-endpoint connection landed on;
-            # the monitoring host is derived from it.
-            routed = self._plugin_service.routed_host_info
-            connection_host_info = routed if routed is not None else host_info
-            if self._rds_utils.identify_rds_type(connection_host_info.host).is_rds_cluster:
-                try:
-                    identified = self._plugin_service.identify_connection(connection)
-                except Exception:  # noqa: BLE001 - identification is best-effort
-                    identified = None
-                if identified is not None:
-                    self._plugin_service.routed_host_info = identified
+            rds_type = self._rds_utils.identify_rds_type(host_info.host)
+            if rds_type.is_rds_cluster:
+                host_info.reset_aliases()
+                self._plugin_service.fill_aliases(connection, host_info)
         return connection
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
@@ -134,34 +126,34 @@ class HostMonitoringV2Plugin(Plugin, CanReleaseResources):
         return OldConnectionSuggestedAction.NO_OPINION
 
     def _get_monitoring_host_info(self) -> HostInfo:
-        # Held in a local because notify_connection_changed can clear the
-        # field while this method is between its assignment and its return.
-        monitoring_host_info = self._monitoring_host_info
-        if monitoring_host_info is not None:
-            return monitoring_host_info
-        # current_host_info, not routed_host_info: by the time any connection
-        # exists the wrapper has adopted the routed host, and a value still in
-        # that field belongs to a connect in flight, possibly another thread's.
-        monitoring_host_info = self._plugin_service.current_host_info
-        if monitoring_host_info is None:
+        if self._monitoring_host_info is not None:
+            return self._monitoring_host_info
+        current_host_info = self._plugin_service.current_host_info
+        if current_host_info is None:
             raise AwsWrapperError(Messages.get("HostMonitoringV2Plugin.HostInfoNone"))
-        self._monitoring_host_info = monitoring_host_info
-        rds_url_type = self._rds_utils.identify_rds_type(monitoring_host_info.host)
+        self._monitoring_host_info = current_host_info
+        rds_url_type = self._rds_utils.identify_rds_type(self._monitoring_host_info.host)
 
         try:
-            if not Utils.requires_host_identification(rds_url_type):
-                return monitoring_host_info
+            if not rds_url_type.is_rds_cluster:
+                return self._monitoring_host_info
             logger.debug("HostMonitoringV2Plugin.ClusterEndpointHostInfo")
-            identified = self._plugin_service.identify_connection(
-                self._plugin_service.current_connection)
-            if identified is not None:
-                monitoring_host_info = identified
-                self._monitoring_host_info = identified
-        except Exception as e:  # noqa: BLE001 - the host id query failed
-            # Keep the connection's own host and monitor that. Raising here
-            # would fail every monitored call on the connection.
-            logger.debug("HostMonitoringV2Plugin.ErrorIdentifyingConnection", e)
-        return monitoring_host_info
+            current_connection = self._plugin_service.current_connection
+            self._monitoring_host_info = self._plugin_service.identify_connection(current_connection)
+            if self._monitoring_host_info is None:
+                raise AwsWrapperError(
+                    Messages.get_formatted(
+                        "HostMonitoringV2Plugin.UnableToIdentifyConnection",
+                        current_host_info.host,
+                        self._plugin_service.host_list_provider))
+            self._plugin_service.fill_aliases(current_connection, self._monitoring_host_info)
+        except Exception as e:
+            if isinstance(e, AwsWrapperError):
+                raise e
+            message = "HostMonitoringV2Plugin.ErrorIdentifyingConnection"
+            logger.debug(message, e)
+            raise AwsWrapperError(Messages.get_formatted(message, e)) from e
+        return self._monitoring_host_info
 
     def release_resources(self):
         if self._monitor_service is not None:
@@ -341,7 +333,7 @@ class HostMonitorV2:
                 self._update_host_health_status(is_valid, status_check_start_time_ns, status_check_end_time_ns)
 
                 if self._is_unhealthy:
-                    self._plugin_service.set_availability(self._host_info, HostAvailability.UNAVAILABLE)
+                    self._plugin_service.set_availability(self._host_info.as_aliases(), HostAvailability.UNAVAILABLE)
 
                 temp_active_context_weak_refs = []
                 while not self._active_contexts.empty():

@@ -71,18 +71,6 @@ def register_shutdown_hook(hook: Callable[[], Awaitable[None]]) -> None:
     _registered_shutdown_hooks.append(hook)
 
 
-def unregister_shutdown_hook(hook: Callable[[], Awaitable[None]]) -> None:
-    """Drop a hook once the object that registered it has torn itself down.
-
-    The registry is process-global and otherwise only emptied on release, so
-    a caller that registers one hook per instance has to remove it.
-    """
-    try:
-        _registered_shutdown_hooks.remove(hook)
-    except ValueError:
-        pass
-
-
 def clear_shutdown_hooks() -> None:
     """Testing helper: drop all registered hooks without awaiting them."""
     _registered_shutdown_hooks.clear()

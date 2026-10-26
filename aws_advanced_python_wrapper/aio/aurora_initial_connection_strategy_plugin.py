@@ -26,6 +26,10 @@ Async adaptations:
   so auth plugins (IAM, Secrets, Federated, Okta) and connection
   tracker re-apply on the new connection just like a user-driven
   connect.
+* ``initial_connection_host_info`` is set on the plugin service directly:
+  ``AsyncPluginServiceImpl`` implements ``AsyncHostListProviderService``
+  and ``aio/wrapper.py`` passes it as the host list provider service, so
+  the two are the same object.
 """
 
 from __future__ import annotations
@@ -98,6 +102,8 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             props: Properties,
             host_list_provider_service: Any,
             init_host_provider_func: Callable) -> None:
+        # Sync captures the service here; async sets initial_connection_host_info on the plugin
+        # service directly so there is nothing to hold.
         init_host_provider_func()
 
     async def connect(
@@ -133,13 +139,13 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
 
                 if role_to_verify is None:
                     # No verification required.
-                    self._plugin_service.routed_host_info = candidate_host
+                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
                     return candidate_conn
 
                 conn_role = await self._plugin_service.get_host_role(candidate_conn)
                 if conn_role == role_to_verify:
                     # Verification succeeded.
-                    self._plugin_service.routed_host_info = candidate_host
+                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
                     return candidate_conn
 
                 # Verification failed. Retry, unless a reader was requested but the cluster has no readers.
@@ -151,7 +157,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
                         logger.debug(
                             "AuroraInitialConnectionStrategyPlugin.VerifyReaderConfiguredButNoReadersExist",
                             WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name)
-                    self._plugin_service.routed_host_info = candidate_host
+                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
                     return candidate_conn
 
                 logger.debug(
@@ -165,7 +171,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
 
                 if candidate_host is not None:
                     self._plugin_service.set_availability(
-                        candidate_host, HostAvailability.UNAVAILABLE)
+                        candidate_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
                 if self._plugin_service.is_network_exception(error=e):
                     # Retry connection.
@@ -453,6 +459,13 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
 
     def _has_readers(self) -> bool:
         return any(host.role == HostRole.READER for host in self._plugin_service.all_hosts)
+
+    def _set_initial_connection_host_info(
+            self, is_initial_connection: bool, host_info: Optional[HostInfo]):
+        # AsyncPluginServiceImpl implements AsyncHostListProviderService and is passed as the host
+        # list provider service, so this is the same attribute sync writes through that service.
+        if is_initial_connection and host_info is not None:
+            self._plugin_service.initial_connection_host_info = host_info
 
     async def _close_connection(
             self, connection: Optional[Any], driver_dialect: AsyncDriverDialect) -> None:

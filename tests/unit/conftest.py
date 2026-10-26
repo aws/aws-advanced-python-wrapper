@@ -29,10 +29,6 @@ from aws_advanced_python_wrapper.utils import services_container
 
 def pytest_runtest_setup(item):
     services_container.get_storage_service().clear_all()
-    # Monitors are keyed partly by event loop, and each test gets a new
-    # loop whose identity can be recycled, so a monitor from the previous
-    # test would otherwise be handed to this one.
-    services_container.get_monitor_service().stop_all()
     PluginServiceImpl._host_availability_expiring_cache.clear()
     AsyncPluginServiceImpl._host_availability_expiring_cache.clear()
     DatabaseDialectManager._known_endpoint_dialects.clear()

@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from queue import Queue
 from threading import Event, Lock, Thread
 from time import perf_counter_ns
-from typing import Any, Callable, Dict, Optional, Set
+from typing import Any, Callable, Dict, FrozenSet, Optional, Set
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
@@ -47,7 +47,7 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.telemetry.telemetry import (
     TelemetryCounter, TelemetryTraceLevel)
-from aws_advanced_python_wrapper.utils.utils import QueueUtils, Utils
+from aws_advanced_python_wrapper.utils.utils import QueueUtils
 
 logger = Logger(__name__)
 
@@ -98,22 +98,11 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
             connect_func: Callable) -> Connection:
         conn = connect_func()
         if conn:
-            self._record_routed_host(host_info, conn)
+            rds_type = self._rds_utils.identify_rds_type(host_info.host)
+            if rds_type.is_rds_cluster:
+                host_info.reset_aliases()
+                self._plugin_service.fill_aliases(conn, host_info)
         return conn
-
-    def _record_routed_host(self, host_info: HostInfo, conn: Connection):
-        """Record which instance a cluster-endpoint connection landed on, since
-        the monitoring host is derived from it."""
-        routed = self._plugin_service.routed_host_info
-        connection_host_info = routed if routed is not None else host_info
-        if not self._rds_utils.identify_rds_type(connection_host_info.host).is_rds_cluster:
-            return
-        try:
-            identified = self._plugin_service.identify_connection(conn)
-        except Exception:  # noqa: BLE001 - identification is best-effort
-            return
-        if identified is not None:
-            self._plugin_service.routed_host_info = identified
 
     def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
         connection = self._plugin_service.current_connection
@@ -134,6 +123,7 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
             logger.debug("HostMonitoringPlugin.ActivatedMonitoring", method_name)
             monitor_context = self._monitor_service.start_monitoring(
                 connection,
+                self._get_monitoring_host_info().all_aliases,
                 self._get_monitoring_host_info(),
                 self._props,
                 self._failure_detection_time_ms,
@@ -145,23 +135,18 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
             if monitor_context:
                 with self._lock:
                     self._monitor_service.stop_monitoring(monitor_context)
-                    host_unavailable = monitor_context.is_host_unavailable()
+                    if monitor_context.is_host_unavailable():
+                        self._plugin_service.set_availability(
+                            self._get_monitoring_host_info().all_aliases, HostAvailability.UNAVAILABLE)
 
-                # Outside the lock: set_availability dispatches to every
-                # plugin, so holding it here would run arbitrary plugin code
-                # with this connection's monitoring serialised behind it.
-                if host_unavailable:
-                    self._plugin_service.set_availability(
-                        self._get_monitoring_host_info(), HostAvailability.UNAVAILABLE)
-
-                    driver_dialect = self._plugin_service.driver_dialect
-                    if driver_dialect is not None and not driver_dialect.is_closed(connection):
-                        try:
-                            connection.close()
-                        except Exception:
-                            pass
-                        raise AwsWrapperError(
-                            Messages.get_formatted("HostMonitoringPlugin.UnavailableHost", host_info.get_host_and_port()))
+                        driver_dialect = self._plugin_service.driver_dialect
+                        if driver_dialect is not None and not driver_dialect.is_closed(connection):
+                            try:
+                                connection.close()
+                            except Exception:
+                                pass
+                            raise AwsWrapperError(
+                                Messages.get_formatted("HostMonitoringPlugin.UnavailableHost", host_info.as_alias()))
                 logger.debug("HostMonitoringPlugin.MonitoringDeactivated", method_name)
 
         return result
@@ -174,47 +159,44 @@ class HostMonitoringPlugin(Plugin, CanReleaseResources):
         return OldConnectionSuggestedAction.NO_OPINION
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):
-        # Closing a connection drops this plugin's reference to the monitor
-        # service, and a failover worker outliving that close can still reach
-        # this plugin when it publishes availability.
-        if not self._is_connection_initialized or self._monitor_service is None:
+        if not self._is_connection_initialized:
             return
 
         for host, events in changes.items():
             if HostEvent.WENT_DOWN not in events and HostEvent.HOST_DELETED not in events:
-                continue
+                return
 
-            if host == self._get_monitoring_host_info().url:
-                self._monitor_service.stop_monitoring_host(host)
+            monitoring_aliases = self._get_monitoring_host_info().all_aliases
+            if len(monitoring_aliases) == 0:
+                return
+
+            if host in monitoring_aliases:
+                self._monitor_service.stop_monitoring_host(monitoring_aliases)
 
     def _get_monitoring_host_info(self) -> HostInfo:
-        # Held in a local because notify_connection_changed can clear the
-        # field while this method is between its assignment and its return.
-        monitoring_host_info = self._monitoring_host_info
-        if monitoring_host_info is None:
-            # current_host_info, not routed_host_info: by the time any
-            # connection exists the wrapper has adopted the routed host, and
-            # a value still in that field belongs to a connect in flight,
-            # possibly another thread's.
-            monitoring_host_info = self._plugin_service.current_host_info
-            if monitoring_host_info is None:
+        if self._monitoring_host_info is None:
+            current_host_info = self._plugin_service.current_host_info
+            if current_host_info is None:
                 raise AwsWrapperError("HostMonitoringPlugin.HostInfoNone")
-            self._monitoring_host_info = monitoring_host_info
-            rds_url_type = self._rds_utils.identify_rds_type(monitoring_host_info.host)
+            self._monitoring_host_info = current_host_info
+            rds_type = self._rds_utils.identify_rds_type(self._monitoring_host_info.host)
 
             try:
-                if Utils.requires_host_identification(rds_url_type):
+                if rds_type.is_rds_cluster:
                     logger.debug("HostMonitoringPlugin.ClusterEndpointHostInfo")
-                    identified = self._plugin_service.identify_connection(
-                        self._plugin_service.current_connection)
-                    if identified is not None:
-                        monitoring_host_info = identified
-                        self._monitoring_host_info = identified
-            except Exception as e:  # noqa: BLE001 - the host id query failed
-                # Keep the connection's own host and monitor that. Raising
-                # here would fail every monitored call on the connection.
-                logger.debug("HostMonitoringPlugin.ErrorIdentifyingConnection", e)
-        return monitoring_host_info
+                    self._monitoring_host_info = self._plugin_service.identify_connection()
+                    if self._monitoring_host_info is None:
+                        raise AwsWrapperError(
+                            Messages.get_formatted(
+                                "HostMonitoringPlugin.UnableToIdentifyConnection",
+                                current_host_info.host,
+                                self._plugin_service.host_list_provider))
+                    self._plugin_service.fill_aliases(host_info=self._monitoring_host_info)
+            except Exception as e:
+                message = "HostMonitoringPlugin.ErrorIdentifyingConnection"
+                logger.debug(message, e)
+                raise AwsWrapperError(Messages.get_formatted(message, e)) from e
+        return self._monitoring_host_info
 
     def release_resources(self):
         self._monitor_service = None
@@ -602,7 +584,7 @@ class Monitor:
 class HostMonitorService:
     def __init__(self, plugin_service: PluginService):
         self._plugin_service: PluginService = plugin_service
-        self._cached_monitor_host_url: Optional[str] = None
+        self._cached_monitor_aliases: Optional[FrozenSet[str]] = None
         self._cached_monitor: Optional[ReferenceType[Monitor]] = None
 
         telemetry_factory = self._plugin_service.get_telemetry_factory()
@@ -616,23 +598,26 @@ class HostMonitorService:
 
     def start_monitoring(self,
                          conn: Connection,
+                         host_aliases: FrozenSet[str],
                          host_info: HostInfo,
                          props: Properties,
                          failure_detection_time_ms: int,
                          failure_detection_interval_ms: int,
                          failure_detection_count: int) -> MonitoringContext:
-        host_url = host_info.url
+        if not host_aliases:
+            raise AwsWrapperError(Messages.get_formatted("MonitorService.EmptyAliasSet", host_info))
 
         monitor: Optional[Monitor] = None if self._cached_monitor is None else self._cached_monitor()
         if monitor is None \
                 or monitor.is_stopped \
-                or self._cached_monitor_host_url != host_url:
-            monitor = self._monitor_service.run_if_absent(
+                or self._cached_monitor_aliases is None \
+                or self._cached_monitor_aliases != host_aliases:
+            monitor = self._monitor_service.run_if_absent_with_aliases(
                 Monitor,
-                host_url,
+                host_aliases,
                 lambda: Monitor(self._plugin_service, host_info, props))
             self._cached_monitor = ref(monitor)
-            self._cached_monitor_host_url = host_url
+            self._cached_monitor_aliases = host_aliases
 
         context = MonitoringContext(
             monitor, conn, self._plugin_service.driver_dialect, failure_detection_time_ms,
@@ -645,7 +630,9 @@ class HostMonitorService:
         monitor = context.monitor
         monitor.stop_monitoring(context)
 
-    def stop_monitoring_host(self, host_url: str):
-        monitor = self._monitor_service.get(Monitor, host_url)
-        if monitor is not None:
-            monitor.clear_contexts()
+    def stop_monitoring_host(self, host_aliases: FrozenSet):
+        for alias in host_aliases:
+            monitor = self._monitor_service.get(Monitor, alias)
+            if monitor is not None:
+                monitor.clear_contexts()
+                return

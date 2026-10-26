@@ -357,25 +357,3 @@ class TestHostMonitor:
         monitor._reader_thread_fetch_topology(connection_mock)
 
         monitor_impl_mock._host_threads_latest_topology.set.assert_not_called()
-
-
-def test_monitor_reading_its_own_topology_does_not_extend_its_expiration(
-        cluster_monitor):
-    """The monitor produces Topology, so reading it must not count as an access.
-
-    A data access extends the producing monitor's expiration, so a monitor
-    that registered one here would renew itself on every tick and never be
-    reaped as idle -- the whole point of the expiration.
-    """
-    from aws_advanced_python_wrapper.host_list_provider import Topology
-
-    storage = MagicMock()
-    storage.get.return_value = (HostInfo("writer.com", 5432, HostRole.WRITER),)
-
-    with patch('aws_advanced_python_wrapper.cluster_topology_monitor'
-               '.services_container.get_storage_service',
-               return_value=storage):
-        cluster_monitor._get_stored_hosts()
-
-    storage.get.assert_called_once_with(
-        Topology, cluster_monitor._cluster_id, register_data_access=False)

@@ -116,7 +116,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
     def get_result_from_future(self, current_topology: Tuple[HostInfo, ...]) -> WriterFailoverResult:
         writer_host: Optional[HostInfo] = self.get_writer(current_topology)
         if writer_host is not None:
-            self._plugin_service.set_availability(writer_host, HostAvailability.UNAVAILABLE)
+            self._plugin_service.set_availability(writer_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
             executor = ThreadPoolExecutor(thread_name_prefix="WriterFailoverHandlerExecutor")
             try:
@@ -188,7 +188,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
                 else:
                     success = self.is_current_host_writer(latest_topology, initial_writer_host)
 
-            self._plugin_service.set_availability(initial_writer_host, HostAvailability.AVAILABLE)
+            self._plugin_service.set_availability(initial_writer_host.as_aliases(), HostAvailability.AVAILABLE)
             return WriterFailoverResult(success, False, latest_topology, conn if success else None, "TaskA", None)
 
         except Exception as ex:
@@ -208,11 +208,10 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         if latest_writer is None:
             return False
 
-        return (latest_writer.host_id is not None
-                and latest_writer.host_id == initial_writer_host.host_id) \
-            or (latest_writer.get_host_and_port() is not None
-                and latest_writer.get_host_and_port().casefold()
-                == initial_writer_host.get_host_and_port().casefold())
+        latest_writer_all_aliases: frozenset[str] = latest_writer.all_aliases
+        current_aliases: frozenset[str] = initial_writer_host.all_aliases
+
+        return current_aliases is not None and len(current_aliases) > 0 and bool(current_aliases.intersection(latest_writer_all_aliases))
 
     def wait_for_new_writer(self, current_topology: Tuple[HostInfo, ...], current_host: HostInfo) -> WriterFailoverResult:
         """
@@ -318,11 +317,11 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
             if writer_candidate is not None:
                 self._current_connection = \
                     self._plugin_service.force_connect(writer_candidate, self._initial_connection_properties)
-                self._plugin_service.set_availability(writer_candidate, HostAvailability.AVAILABLE)
+                self._plugin_service.set_availability(writer_candidate.as_aliases(), HostAvailability.AVAILABLE)
                 return True
         except Exception:
             if writer_candidate is not None:
-                self._plugin_service.set_availability(writer_candidate, HostAvailability.UNAVAILABLE)
+                self._plugin_service.set_availability(writer_candidate.as_aliases(), HostAvailability.UNAVAILABLE)
 
         return False
 
