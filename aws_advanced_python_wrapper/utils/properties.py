@@ -216,6 +216,81 @@ class WrapperProperties:
         60 * 60 * 24 * 365,
     )
 
+    # KMS encryption plugin. Names and defaults follow the shared specification.
+    ENCRYPTION_KMS_REGION = WrapperProperty(
+        "encryption_kms_region",
+        "AWS region for KMS calls made by the kms_encryption plugin. Falls back to the AWS_REGION, then "
+        "AWS_DEFAULT_REGION environment variable; the connection is rejected if none is set.",
+    )
+    ENCRYPTION_KMS_ENDPOINT = WrapperProperty(
+        "encryption_kms_endpoint", "Endpoint URL override for KMS."
+    )
+    ENCRYPTION_ALLOWED_MASTER_KEY_ARNS = WrapperProperty(
+        "encryption_allowed_master_key_arns",
+        "The KMS master keys the kms_encryption plugin may use, as a comma-separated string or a list. Required by "
+        "the plugin. Each entry must match a key_storage.master_key_arn value exactly; a data key naming any other "
+        "master key, or none, is refused before KMS is called.",
+    )
+    ENCRYPTION_METADATA_SCHEMA = WrapperProperty(
+        "encryption_metadata_schema",
+        "Schema (database, on MySQL) holding the encryption_metadata and key_storage tables.",
+        "encrypt",
+    )
+    ENCRYPTION_METADATA_CACHE_ENABLED = WrapperProperty(
+        "encryption_metadata_cache_enabled",
+        "Cache the kms_encryption metadata in memory instead of querying it per statement.",
+        True,
+    )
+    ENCRYPTION_METADATA_CACHE_EXPIRATION_SEC = WrapperProperty(
+        "encryption_metadata_cache_expiration_sec",
+        "How long cached kms_encryption metadata stays valid, in seconds.",
+        3600.0,
+    )
+    ENCRYPTION_METADATA_CACHE_REFRESH_INTERVAL_SEC = WrapperProperty(
+        "encryption_metadata_cache_refresh_interval_sec",
+        "How often the kms_encryption metadata is refreshed in the background, in seconds. 0 disables it.",
+        300.0,
+    )
+    ENCRYPTION_DATA_KEY_CACHE_ENABLED = WrapperProperty(
+        "encryption_data_key_cache_enabled",
+        "Cache decrypted data keys in memory to avoid a KMS Decrypt call for every encrypted value written or read.",
+        True,
+    )
+    ENCRYPTION_DATA_KEY_CACHE_MAX_SIZE = WrapperProperty(
+        "encryption_data_key_cache_max_size",
+        "Maximum number of decrypted data keys held in memory.",
+        1000,
+    )
+    ENCRYPTION_DATA_KEY_CACHE_EXPIRATION_SEC = WrapperProperty(
+        "encryption_data_key_cache_expiration_sec",
+        "How long a decrypted data key stays cached, in seconds.",
+        300.0,
+    )
+    ENCRYPTION_KEY_MANAGEMENT_MAX_RETRIES = WrapperProperty(
+        "encryption_key_management_max_retries",
+        "Maximum number of retries for throttled or failed KMS calls. Creating a master key is retried only "
+        "when KMS did not act on the request.",
+        3,
+    )
+    ENCRYPTION_KEY_MANAGEMENT_RETRY_BACKOFF_BASE_SEC = WrapperProperty(
+        "encryption_key_management_retry_backoff_base_sec",
+        "Base delay in seconds for the exponential backoff between KMS retries.",
+        0.1,
+    )
+    ENCRYPTION_AUDIT_LOGGING_ENABLED = WrapperProperty(
+        "encryption_audit_logging_enabled",
+        "Log an audit record for every key-management, encryption, and decryption operation "
+        "(used by the kms_encryption plugin).",
+        False,
+    )
+    ENCRYPTION_RETURN_UNVERIFIED_DATA = WrapperProperty(
+        "encryption_return_unverified_data",
+        "Do not enable in production. On read, return a value as stored instead of raising when it cannot be "
+        "confirmed to be this column's encrypted data: too short to be a payload, or a failed HMAC. Intended "
+        "only for reading data written before the column was encrypted (used by the kms_encryption plugin).",
+        False,
+    )
+
     DIALECT = WrapperProperty(
         "wrapper_dialect", "A unique identifier for the supported database dialect."
     )
