@@ -602,11 +602,18 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
         ``[::1]:5432`` split correctly on the LAST colon. Falls back to
         port 5432 when the alias has no colon (or the port part isn't
         numeric).
+
+        The trailing ``/`` is stripped first because host-list-change keys
+        are ``HostInfo.url`` (``host:port/``) while tracking keys are
+        ``host:port``. Without it the port never parses and every
+        invalidation is aimed at port 5432, so a demoted writer on any
+        other port keeps its connections.
         """
-        host_part, sep, port_part = alias.rpartition(":")
+        stripped = alias.rstrip("/")
+        host_part, sep, port_part = stripped.rpartition(":")
         if not sep:
             # No colon -> treat entire alias as host, port defaults.
-            return alias, 5432
+            return stripped, 5432
         try:
             return host_part, int(port_part)
         except ValueError:

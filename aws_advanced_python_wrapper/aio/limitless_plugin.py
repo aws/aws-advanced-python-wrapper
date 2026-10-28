@@ -345,7 +345,7 @@ class AsyncLimitlessRouterMonitor:
                     raise
                 except Exception as e:  # noqa: BLE001 - keep the loop alive
                     logger.debug(
-                        "LimitlessRouterMonitor.errorDuringMonitoringStop",
+                        "LimitlessRouterMonitor.ErrorDuringMonitoringStop",
                         self._host_info.host, e)
                     if telemetry_context is not None:
                         telemetry_context.set_exception(e)

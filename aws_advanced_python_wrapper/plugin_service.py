@@ -207,6 +207,13 @@ class PluginService(ExceptionHandler, Protocol):
 
     @property
     @abstractmethod
+    def is_dialect_confirmed(self) -> bool:
+        """Whether :attr:`database_dialect` is final, confirmed via a live connection probe or user configuration.
+        """
+        ...
+
+    @property
+    @abstractmethod
     def network_bound_methods(self) -> Set[str]:
         ...
 
@@ -352,6 +359,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._driver_dialect_manager = driver_dialect_manager
         self._driver_dialect = driver_dialect
         self._database_dialect = self._dialect_provider.get_dialect(driver_dialect.dialect_code, props)
+        self._is_dialect_confirmed: bool = self._dialect_provider.is_confirmed_dialect()
         self._session_state_service = session_state_service if session_state_service is not None else SessionStateServiceImpl(self, props)
         self._thread_pool = services_container.get_thread_pool(self._executor_name)
 
@@ -514,6 +522,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._database_dialect
 
     @property
+    def is_dialect_confirmed(self) -> bool:
+        return self._is_dialect_confirmed
+
+    @property
     def network_bound_methods(self) -> Set[str]:
         return self._driver_dialect.network_bound_methods
 
@@ -549,11 +561,17 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 self._initial_connection_host_info,
                 connection,
                 self.driver_dialect)
+        self._is_dialect_confirmed = True
 
-        if original_dialect != self._database_dialect:
-            host_list_provider_init = self._database_dialect.get_host_list_provider_supplier(self)
-            self.host_list_provider = host_list_provider_init(self, self._props)
-            self.refresh_host_list(connection)
+        if original_dialect is not self._database_dialect:
+            self._update_host_list_provider(connection)
+
+    def _update_host_list_provider(self, connection: Optional[Connection] = None):
+        """Rebuild the host list provider for the current database dialect.
+        """
+        host_list_provider_init = self._database_dialect.get_host_list_provider_supplier(self)
+        self.host_list_provider = host_list_provider_init(self, self._props)
+        self.refresh_host_list(connection)
 
     def update_driver_dialect(self, connection_provider: ConnectionProvider):
         self._driver_dialect = self._driver_dialect_manager.get_pool_connection_driver_dialect(
