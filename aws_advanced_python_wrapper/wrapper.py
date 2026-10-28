@@ -405,8 +405,13 @@ class AwsWrapperCursor(Cursor):
             *args: Any,
             **kwargs: Any
     ) -> AwsWrapperCursor:
-        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTE,
-                                            lambda: self.target_cursor.execute(*args, **kwargs), *args, **kwargs)
+        # The plugin manager calls the driver with the statement's arguments,
+        # which a plugin may have replaced.
+        result = self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTE,
+                                              lambda *a, **kw: self.target_cursor.execute(*a, **kw), *args, **kwargs)
+        # psycopg returns the driver cursor itself; return this cursor instead,
+        # so a chained fetch goes through the plugins.
+        return self if result is self.target_cursor else result
 
     def executemany(
             self,
@@ -414,7 +419,7 @@ class AwsWrapperCursor(Cursor):
             **kwargs: Any
     ) -> None:
         self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTEMANY,
-                                     lambda: self.target_cursor.executemany(*args, **kwargs),
+                                     lambda *a, **kw: self.target_cursor.executemany(*a, **kw),
                                      *args, **kwargs)
 
     def nextset(self) -> bool:
@@ -434,7 +439,44 @@ class AwsWrapperCursor(Cursor):
                                             lambda: self.target_cursor.fetchall())
 
     def __iter__(self) -> Iterator[Any]:
-        return self.target_cursor.__iter__()
+        # The plugins subscribed to Cursor.__iter__ run once per loop, not once
+        # per row: such a plugin returns an iterator over the driver's (one that
+        # changes each row, say). The driver's iterator still fetches the rows,
+        # so a server-side cursor keeps fetching a page at a time.
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_ITER,
+                                            lambda: iter(self.target_cursor))
+
+    def __next__(self) -> Any:
+        # A loop doesn't call this method: __iter__ returns the driver's iterator.
+        # The plugins subscribed to Cursor.__next__ run for each row. A driver cursor
+        # that is its own iterator (psycopg 3.3 and later) gives the row with its own
+        # next(), so a server-side cursor continues the page a loop read ahead; any
+        # other driver cursor gives it with fetchone.
+        target = self.target_cursor
+        rows = iter(target)
+        if rows is not target:
+            row = self._plugin_manager.execute(target, DbApiMethod.CURSOR_NEXT, lambda: target.fetchone())
+            if row is None:
+                raise StopIteration
+            return row
+        # A row can itself be None (psycopg's scalar_row on a NULL), so the rows end
+        # only when the driver's next() ends them or a plugin returns None without
+        # reading a row. The plugins see the end as None, as from fetchone.
+        read = False
+
+        def next_row() -> Any:
+            nonlocal read
+            try:
+                row = next(rows)
+            except StopIteration:
+                return None
+            read = True
+            return row
+
+        row = self._plugin_manager.execute(target, DbApiMethod.CURSOR_NEXT, next_row)
+        if row is None and not read:
+            raise StopIteration
+        return row
 
     def setinputsizes(self, sizes: Any) -> None:
         return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_SETINPUTSIZES,

@@ -69,6 +69,7 @@ class MySQLDriverDialect(DriverDialect):
         DbApiMethod.CURSOR_CLOSE.method_name,
         DbApiMethod.CURSOR_EXECUTE.method_name,
         DbApiMethod.CURSOR_FETCHONE.method_name,
+        DbApiMethod.CURSOR_NEXT.method_name,
         DbApiMethod.CURSOR_FETCHMANY.method_name,
         DbApiMethod.CURSOR_FETCHALL.method_name
     }
