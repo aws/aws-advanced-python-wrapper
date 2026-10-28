@@ -279,8 +279,8 @@ class WrapperProperties:
     )
     ENCRYPTION_AUDIT_LOGGING_ENABLED = WrapperProperty(
         "encryption_audit_logging_enabled",
-        "Log an audit record for every key-management, encryption, and decryption operation "
-        "(used by the kms_encryption plugin).",
+        "Accepted by the kms_encryption plugin, which writes no audit records; when true, the plugin logs one "
+        "warning per connection saying so.",
         False,
     )
     ENCRYPTION_RETURN_UNVERIFIED_DATA = WrapperProperty(

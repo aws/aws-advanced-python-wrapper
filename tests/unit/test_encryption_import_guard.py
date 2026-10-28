@@ -54,6 +54,7 @@ _CORE_MODULES = [
     "aws_advanced_python_wrapper.sqlalchemy_dialects.pg_async",
     "aws_advanced_python_wrapper.sqlalchemy_dialects.mysql_async",
     "aws_advanced_python_wrapper.django.backends.mysql_connector.base",
+    "aws_advanced_python_wrapper.encryption.kms_encryption_plugin",
 ]
 
 
@@ -117,6 +118,26 @@ def test_sql_analyzer_names_the_extra_when_sqlglot_is_missing():
     """)
     assert result.returncode == 0, result.stderr
     assert "'sqlglot'" in result.stdout
+    assert "aws-advanced-python-wrapper[encryption]" in result.stdout
+
+
+def test_plugin_creation_names_the_extra_when_missing():
+    # The plugin module imports without the extra, so a connection that asks
+    # for the plugin fails when the plugin is created, with the install hint.
+    result = _run("""
+        from unittest.mock import MagicMock
+        from aws_advanced_python_wrapper.encryption.kms_encryption_plugin import KmsEncryptionPluginFactory
+        from aws_advanced_python_wrapper.utils.properties import Properties
+        props = Properties(encryption_kms_region="us-east-1",
+                           encryption_allowed_master_key_arns="arn:aws:kms:us-east-1:123456789012:key/k")
+        try:
+            KmsEncryptionPluginFactory.get_instance(MagicMock(), props)
+        except ImportError as e:
+            print(e)
+        else:
+            raise SystemExit("created without the extra")
+    """)
+    assert result.returncode == 0, result.stderr
     assert "aws-advanced-python-wrapper[encryption]" in result.stdout
 
 
