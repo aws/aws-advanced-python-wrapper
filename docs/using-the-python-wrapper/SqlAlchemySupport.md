@@ -182,10 +182,13 @@ Plugins are configured identically to non-SA usage — via the `plugins` connect
 | [Fastest Response Strategy Plugin](using-plugins/UsingTheFastestResponseStrategyPlugin.md)    | `fastest_response_strategy`               | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Blue/Green Deployment Plugin](using-plugins/UsingTheBlueGreenPlugin.md)                      | `bg`                                      | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Limitless Plugin](using-plugins/UsingTheLimitlessPlugin.md)                                  | `limitless`                               | <span style="color:yellow;font-size:15px">&check;</span> |
+| [KMS Encryption Plugin](using-plugins/UsingTheKmsEncryptionPlugin.md)                         | `kms_encryption`                          | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Read Write Splitting Plugin](using-plugins/UsingTheReadWriteSplittingPlugin.md)              | `read_write_splitting`                    | <span style="color:red;font-size:20px">&cross;</span> |
 | [Simple Read Write Splitting Plugin](using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) | `srw`                                     | <span style="color:red;font-size:20px">&cross;</span> |
 
 Read/write splitting is **not** supported with SQLAlchemy: the plugins switch instances by setting `read_only` on a long-lived connection, and there is currently no routing of SQLAlchemy's `execution_options(...readonly=True)` to the wrapper's `read_only` attribute. For read/write workloads, use SQLAlchemy's own session binding — see the [official SQLAlchemy documentation on the Session API](https://docs.sqlalchemy.org/en/20/orm/session_api.html).
+
+The KMS Encryption Plugin works with synchronous engines only, and its guide's [Using SQLAlchemy and Django](using-plugins/UsingTheKmsEncryptionPlugin.md#using-sqlalchemy-and-django) section gives the column type to declare.
 
 ## Async usage
 

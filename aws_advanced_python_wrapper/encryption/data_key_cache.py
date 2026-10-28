@@ -14,15 +14,15 @@
 
 from __future__ import annotations
 
-import time
 import weakref
-from collections import OrderedDict
 from dataclasses import dataclass
 from threading import Event, Lock, Thread, current_thread
 from typing import List, Optional
 
 from aws_advanced_python_wrapper.encryption.buffers import BytesLike, wipe
 from aws_advanced_python_wrapper.utils.log import Logger
+from aws_advanced_python_wrapper.utils.storage.expiration_tracking_cache import \
+    ExpirationTrackingCache
 
 logger = Logger(__name__)
 
@@ -41,24 +41,14 @@ class DataKeyCacheStats:
         return 100.0 * self.hits / total if total else 0.0
 
 
-class _Entry:
-    __slots__ = ("data_key", "expires_at")
-
-    def __init__(self, data_key: bytearray, expires_at: float):
-        self.data_key = data_key
-        self.expires_at = expires_at
-
-    def __repr__(self) -> str:
-        return f"_Entry(data_key='[REDACTED]', expires_at={self.expires_at!r})"
-
-
 class DataKeyCache:
     """An in-memory cache of plaintext data keys, so reading an encrypted
     column does not need a KMS ``Decrypt`` call per statement.
 
-    The wrapper's shared storage service is not used here, because data keys
-    need a bounded size with oldest-first eviction. Their bytes are zeroed when
-    they leave the cache. Each ``get`` returns a fresh ``bytearray`` copy, so a
+    The keys are held in an ``ExpirationTrackingCache``, which fixes each
+    key's expiry when it is stored; a cache hit does not extend it. This class
+    adds a size bound with oldest-first eviction, and zeroes a key's bytes when
+    it leaves the cache. Each ``get`` returns a fresh ``bytearray`` copy, so a
     caller wiping its copy cannot corrupt the cached one. An expired entry is
     never returned, even before the cleanup thread removes it.
 
@@ -78,7 +68,8 @@ class DataKeyCache:
         self._max_size = max_size
         self._ttl_sec = ttl_sec
         self._enabled = enabled
-        self._entries: OrderedDict[str, _Entry] = OrderedDict()
+        self._entries: ExpirationTrackingCache[str, bytearray] = ExpirationTrackingCache(
+            int(ttl_sec * 1_000_000_000))
         self._lock = Lock()
         self._hits = 0
         self._misses = 0
@@ -100,10 +91,6 @@ class DataKeyCache:
             self._cleanup_thread.start()
 
     @property
-    def enabled(self) -> bool:
-        return self._enabled
-
-    @property
     def cleanup_interval_sec(self) -> float:
         return max(self._ttl_sec / 4, self.MIN_CLEANUP_INTERVAL_SEC)
 
@@ -115,17 +102,14 @@ class DataKeyCache:
         with self._lock:
             if self._closed:
                 return None
-            entry = self._entries.get(key)
-            if entry is None:
-                self._misses += 1
-                return None
-            if entry.expires_at <= time.monotonic():
-                del self._entries[key]
-                wipe(entry.data_key)
+            data_key = self._entries.get(key)
+            if data_key is None:
+                # The store keeps an expired key until it is removed.
+                self._discard(key)
                 self._misses += 1
                 return None
             self._hits += 1
-            return bytearray(entry.data_key)
+            return bytearray(data_key)
 
     def put(self, key: str, data_key: BytesLike) -> None:
         """Store a copy of ``data_key``, evicting the oldest entry when full.
@@ -133,34 +117,28 @@ class DataKeyCache:
         stores nothing."""
         if not self._enabled:
             return
-        entry = _Entry(bytearray(data_key), time.monotonic() + self._ttl_sec)
+        copy = bytearray(data_key)
         with self._lock:
             if self._closed:
-                wipe(entry.data_key)
+                wipe(copy)
                 return
             self._discard(key)
             while len(self._entries) >= self._max_size:
-                _, oldest = self._entries.popitem(last=False)
-                wipe(oldest.data_key)
+                oldest, _ = self._entries.items()[0]
+                self._discard(oldest)
                 self._evictions += 1
-            self._entries[key] = entry
-
-    def remove(self, key: str) -> None:
-        with self._lock:
-            self._discard(key)
-
-    def clear(self) -> None:
-        """Zero and drop every cached data key."""
-        DataKeyCache._wipe_all(self._entries, self._lock)
+            self._entries.put(key, copy)
 
     def remove_expired(self) -> int:
         """Drop every expired entry. Returns the number removed."""
-        now = time.monotonic()
+        removed = 0
         with self._lock:
-            expired = [k for k, e in self._entries.items() if e.expires_at <= now]
-            for k in expired:
-                self._discard(k)
-            return len(expired)
+            for key, _ in self._entries.items():
+                data_key = self._entries.remove_expired_if(key, lambda _: True)
+                if data_key is not None:
+                    wipe(data_key)
+                    removed += 1
+        return removed
 
     def stats(self) -> DataKeyCacheStats:
         with self._lock:
@@ -189,26 +167,21 @@ class DataKeyCache:
 
     def _discard(self, key: str) -> None:
         # Callers hold the lock.
-        entry = self._entries.pop(key, None)
-        if entry is not None:
-            wipe(entry.data_key)
+        data_key = self._entries.remove(key)
+        if data_key is not None:
+            wipe(data_key)
 
     @staticmethod
-    def _wipe_all(entries: OrderedDict[str, _Entry], lock: Lock) -> None:
-        with lock:
-            for entry in entries.values():
-                wipe(entry.data_key)
-            entries.clear()
-
-    @staticmethod
-    def _release(entries: OrderedDict[str, _Entry], lock: Lock, stop: Event,
+    def _release(entries: ExpirationTrackingCache[str, bytearray], lock: Lock, stop: Event,
                  thread_holder: List[Optional[Thread]]) -> None:
         # Runs at close() or when an unclosed cache is collected. Wipe first,
         # so the keys are zeroed whatever happens next. A collection can run
         # on the cleanup thread itself, inside Event.wait while it holds the
         # event's lock, where stop.set() would deadlock; that thread exits on
         # its own, finding the cache gone as soon as wait returns.
-        DataKeyCache._wipe_all(entries, lock)
+        with lock:
+            for data_key in entries.clear():
+                wipe(data_key)
         if thread_holder[0] is not current_thread():
             stop.set()
 
@@ -223,6 +196,6 @@ class DataKeyCache:
                 return
             try:
                 cache.remove_expired()
-            except Exception as e:  # pragma: no cover - defensive
+            except Exception as e:
                 logger.debug("DataKeyCache.CleanupFailed", type(e).__name__)
             del cache

@@ -26,10 +26,14 @@ from aws_advanced_python_wrapper.encryption.sql_analyzer import (AnalysisGap,
                                                                  StatementKind,
                                                                  TableRef,
                                                                  analyze)
-from aws_advanced_python_wrapper.encryption.sql_dialect import MYSQL, PG
 from aws_advanced_python_wrapper.encryption.sql_tokenizer import (ColumnRef,
                                                                   ParamStyle,
                                                                   tokenize)
+from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
+
+PG = PgDriverDialect
+MYSQL = MySQLDriverDialect
 
 
 @pytest.fixture(autouse=True)
@@ -70,14 +74,16 @@ def on(both=(), pg=(), mysql=()):
     """Parametrizes ``dialect, sql``: each of ``both`` on PostgreSQL and on
     MySQL, then each of ``pg`` and ``mysql`` on its own dialect."""
     cases = [(d, s) for s in both for d in (PG, MYSQL)] + [(PG, s) for s in pg] + [(MYSQL, s) for s in mysql]
-    return pytest.mark.parametrize("dialect, sql", cases, ids=[f"{d.name}: {s}" for d, s in cases])
+    return pytest.mark.parametrize("dialect, sql", cases, ids=[f"{d.engine_name}: {s}" for d, s in cases])
 
 
 class TestInsert:
     @BOTH
     def test_columns_pair_with_their_placeholders(self, dialect):
         a = analyze("INSERT INTO users (name, ssn) VALUES (%s, %s)", dialect, P)
-        assert a.kind is StatementKind.INSERT and a.writes and a.complete
+        assert a.kind is StatementKind.INSERT
+        assert a.writes
+        assert a.complete
         assert assigned(a) == [(0, "users.name"), (1, "users.ssn")]
         assert names(a.written_tables) == ["users"]
         assert a.parameter_columns() == {0: ColumnRef("name", "users"), 1: ColumnRef("ssn", "users")}
@@ -121,7 +127,8 @@ class TestInsert:
     @BOTH
     def test_no_column_list(self, dialect):
         a = analyze("INSERT INTO users VALUES (%s, %s)", dialect, P)
-        assert a.writes and a.gap is AnalysisGap.NO_COLUMN_LIST
+        assert a.writes
+        assert a.gap is AnalysisGap.NO_COLUMN_LIST
         assert assigned(a) == []
 
     def test_default_values(self):
@@ -133,7 +140,8 @@ class TestInsert:
         assert a.gap is AnalysisGap.VALUES_FROM_QUERY
         assert assigned(a) == []
         assert compared(a) == [(0, "staging.id")]
-        assert names(a.tables) == ["users", "staging"] and names(a.written_tables) == ["users"]
+        assert names(a.tables) == ["users", "staging"]
+        assert names(a.written_tables) == ["users"]
 
     @BOTH
     def test_row_length_mismatch(self, dialect):
@@ -161,7 +169,7 @@ class TestUpsert:
         assert unbound(a) == ["users.note"]
         assert compared(a) == [(3, "users.age")]
 
-    def test_excluded_copy_of_the_same_column_is_not_a_write(self):
+    def test_excluded_same_column_is_not_write(self):
         a = analyze("INSERT INTO users (ssn) VALUES (%s) ON CONFLICT (id) DO UPDATE SET ssn = EXCLUDED.ssn",
                     PG, P)
         assert unbound(a) == []
@@ -173,7 +181,8 @@ class TestUpsert:
 
     def test_on_conflict_do_nothing(self):
         a = analyze("INSERT INTO users (ssn) VALUES (%s) ON CONFLICT DO NOTHING", PG, P)
-        assert assigned(a) == [(0, "users.ssn")] and a.complete
+        assert assigned(a) == [(0, "users.ssn")]
+        assert a.complete
 
     def test_on_duplicate_key_update(self):
         a = analyze("INSERT INTO users (name, ssn) VALUES (%s, %s) "
@@ -214,7 +223,9 @@ class TestUpdate:
     @BOTH
     def test_set_and_where(self, dialect):
         a = analyze("UPDATE users SET ssn = %s, name = 'x' WHERE id = %s", dialect, P)
-        assert a.kind is StatementKind.UPDATE and a.writes and a.complete
+        assert a.kind is StatementKind.UPDATE
+        assert a.writes
+        assert a.complete
         assert assigned(a) == [(0, "users.ssn")]
         assert unbound(a) == ["users.name"]
         assert compared(a) == [(1, "users.id")]
@@ -244,14 +255,15 @@ class TestUpdate:
 
     def test_mysql_multi_table_comma(self):
         a = analyze("UPDATE users, orders SET users.ssn = %s WHERE users.id = orders.uid", MYSQL, P)
-        assert assigned(a) == [(0, "users.ssn")] and a.complete
+        assert assigned(a) == [(0, "users.ssn")]
+        assert a.complete
 
     def test_mysql_multi_table_unqualified_is_ambiguous(self):
         a = analyze("UPDATE users u JOIN orders o ON o.uid = u.id SET ssn = %s", MYSQL, P)
         assert a.gap is AnalysisGap.AMBIGUOUS_TABLE
         assert assigned(a) == [(0, "ssn")]
 
-    def test_postgresql_from_does_not_add_a_written_table(self):
+    def test_postgresql_from_adds_no_written_table(self):
         a = analyze("UPDATE users SET ssn = %s FROM other o WHERE o.id = users.id AND o.ssn = %s", PG, P)
         assert names(a.written_tables) == ["users"]
         assert assigned(a) == [(0, "users.ssn")]
@@ -276,7 +288,9 @@ class TestOtherWrites:
                     "WHEN MATCHED AND s.flag = %s THEN UPDATE SET ssn = %s "
                     "WHEN MATCHED THEN DELETE "
                     "WHEN NOT MATCHED THEN INSERT (id, ssn) VALUES (%s, s.ssn)", PG, P)
-        assert a.kind is StatementKind.MERGE and a.writes and a.complete
+        assert a.kind is StatementKind.MERGE
+        assert a.writes
+        assert a.complete
         assert assigned(a) == [(1, "users.ssn"), (2, "users.id")]
         assert unbound(a) == ["users.ssn"]
         assert compared(a) == [(0, "src.flag")]
@@ -289,23 +303,30 @@ class TestOtherWrites:
 
     def test_merge_that_only_deletes(self):
         a = analyze("MERGE INTO users u USING src s ON u.id = s.id WHEN MATCHED THEN DELETE", PG)
-        assert a.writes and a.complete and assigned(a) == [] and unbound(a) == []
+        assert a.writes
+        assert a.complete
+        assert assigned(a) == []
+        assert unbound(a) == []
 
     def test_data_modifying_cte(self):
         a = analyze("WITH w AS (INSERT INTO users (ssn) VALUES (%s) RETURNING id) SELECT * FROM w", PG, P)
-        assert a.kind is StatementKind.SELECT and a.writes
+        assert a.kind is StatementKind.SELECT
+        assert a.writes
         assert assigned(a) == [(0, "users.ssn")]
-        assert names(a.tables) == ["users"]  # w is a CTE, not a table
+        # The CTE w is not a table.
+        assert names(a.tables) == ["users"]
 
     def test_update_cte(self):
         a = analyze("WITH w AS (UPDATE users SET ssn = %s WHERE id = %s RETURNING id) SELECT id FROM w", PG, P)
-        assert assigned(a) == [(0, "users.ssn")] and compared(a) == [(1, "users.id")]
+        assert assigned(a) == [(0, "users.ssn")]
+        assert compared(a) == [(1, "users.id")]
 
-    def test_read_only_cte_is_a_read(self):
+    def test_read_only_cte_is_read(self):
         a = analyze("WITH w AS (SELECT ssn FROM users) SELECT ssn FROM w WHERE ssn = %s", PG, P)
         assert not a.writes
         assert names(a.tables) == ["users"]
-        assert compared(a) == [(0, "ssn")]  # a CTE column has no table
+        # A CTE column has no table.
+        assert compared(a) == [(0, "ssn")]
         assert a.result_columns == (ColumnRef("ssn", "users"),)
 
     def test_cte_insert_select(self):
@@ -314,33 +335,61 @@ class TestOtherWrites:
 
     def test_copy_from_names_unbound_columns(self):
         a = analyze("COPY users (name, ssn) FROM STDIN", PG)
-        assert a.kind is StatementKind.COPY_FROM and a.writes and a.complete
+        assert a.kind is StatementKind.COPY_FROM
+        assert a.writes
+        assert a.complete
         assert unbound(a) == ["users.name", "users.ssn"]
 
     def test_copy_from_without_columns(self):
         assert analyze("COPY users FROM STDIN WITH (FORMAT csv)", PG).gap is AnalysisGap.NO_COLUMN_LIST
 
-    def test_copy_to_is_a_read(self):
+    def test_copy_to_is_read(self):
         a = analyze("COPY users TO STDOUT", PG)
-        assert a.kind is StatementKind.COPY_TO and not a.writes
+        assert a.kind is StatementKind.COPY_TO
+        assert not a.writes
         assert names(a.tables) == ["users"]
 
     def test_copy_query_to(self):
         a = analyze("COPY (SELECT ssn FROM users) TO STDOUT", PG)
-        assert not a.writes and names(a.tables) == ["users"]
+        assert not a.writes
+        assert names(a.tables) == ["users"]
+
+    def test_copy_from_options_without_with(self):
+        a = analyze("COPY users (id) FROM STDIN (FORMAT binary)", PG)
+        assert a.kind is StatementKind.COPY_FROM
+        assert a.gap is None
+        assert unbound(a) == ["users.id"]
+
+    def test_copy_query_to_options_without_with(self):
+        a = analyze("COPY (SELECT ssn FROM users) TO STDOUT (FORMAT csv)", PG)
+        assert a.kind is StatementKind.COPY_TO
+        assert not a.writes
+        assert a.gap is None
+
+    @pytest.mark.parametrize("sql", [
+        "COPY (INSERT INTO users (ssn) VALUES ('x') RETURNING id) TO STDOUT",
+        "COPY (UPDATE users SET ssn = 'x' RETURNING id) TO STDOUT",
+    ])
+    def test_copy_of_writing_query_may_write(self, sql):
+        a = analyze(sql, PG)
+        assert a.writes
+        assert a.gap is not None
 
     def test_several_statements_are_all_read(self):
         # The ordinals run across the whole string, so each statement's
         # placeholders still map to the right parameters.
         a = analyze("UPDATE t SET a = %s; INSERT INTO users (name, ssn) VALUES (%s, %s)", MYSQL, P)
-        assert a.kind is StatementKind.UPDATE and a.writes and a.complete
+        assert a.kind is StatementKind.UPDATE
+        assert a.writes
+        assert a.complete
         assert assigned(a) == [(0, "t.a"), (1, "users.name"), (2, "users.ssn")]
         assert a.result_columns is None
 
     @BOTH
     def test_delete(self, dialect):
         a = analyze("DELETE FROM users WHERE ssn = %s", dialect, P)
-        assert a.kind is StatementKind.DELETE and not a.writes
+        assert a.kind is StatementKind.DELETE
+        assert not a.writes
         assert compared(a) == [(0, "users.ssn")]
 
     def test_mysql_multi_table_delete(self):
@@ -362,7 +411,7 @@ class TestComparisons:
                                        (4, "users.ssn"), (5, "users.ssn")]
 
     @BOTH
-    def test_a_sub_selects_only_column_is_paired_with_the_value(self, dialect):
+    def test_sub_select_only_column_paired_with_value(self, dialect):
         # The sub-select's rows hold that column's values, and its column is resolved in the sub-select, not in t.
         a = analyze("SELECT name FROM t WHERE %s IN (SELECT ssn FROM users) AND %s = ANY (SELECT u.dob FROM users u) "
                     "AND %s = SOME (SELECT ssn AS s FROM users) AND %s <> ALL (SELECT ((ssn)) FROM users) "
@@ -390,7 +439,7 @@ class TestComparisons:
         assert not any(u.array for u in a.comparisons)
 
     @BOTH
-    def test_all_or_some_over_anything_but_a_sub_select_of_the_column_is_not_paired(self, dialect):
+    def test_all_or_some_without_column_sub_select_not_paired(self, dialect):
         # The last two compare the value with the elements of an array column, not with the column.
         a = analyze("SELECT name FROM t WHERE %s <> ALL ((SELECT ssn FROM users UNION SELECT ssn FROM archive)) "
                     "AND %s = SOME ((SELECT lower(ssn) FROM users)) "
@@ -427,20 +476,21 @@ class TestComparisons:
                     PG, P)
         assert compared(a) == [(0, "orders.total"), (1, "users.ssn")]
 
-    def test_correlated_qualifier_from_an_outer_query(self):
+    def test_correlated_qualifier_from_outer_query(self):
         a = analyze("SELECT * FROM users u WHERE EXISTS (SELECT 1 FROM orders o WHERE o.uid = u.id AND u.ssn = %s)",
                     PG, P)
         assert compared(a) == [(0, "users.ssn")]
 
-    def test_column_against_column_is_not_a_parameter(self):
+    def test_column_against_column_is_not_parameter(self):
         assert compared(analyze("SELECT * FROM t WHERE a = b", PG)) == []
 
     def test_jsonb_question_mark_operator(self):
         # "?" is an operator on PostgreSQL, not a placeholder.
         a = analyze("SELECT ssn FROM users WHERE data ? 'k' AND id = %s", PG, P)
-        assert a.complete and compared(a) == [(0, "users.id")]
+        assert a.complete
+        assert compared(a) == [(0, "users.id")]
 
-    def test_unknown_qualifier_is_taken_as_a_table(self):
+    def test_unknown_qualifier_taken_as_table(self):
         assert compared(analyze("SELECT * FROM users WHERE other.ssn = %s", PG, P)) == [(0, "other.ssn")]
 
 
@@ -464,7 +514,8 @@ class TestComparisonSafety:
                "SELECT id FROM users WHERE ssn <=> %s"])
     def test_safe_operators(self, dialect, sql):
         flags = safety(sql, dialect)
-        assert flags and all(flags)
+        assert flags
+        assert all(flags)
 
     @on(both=["SELECT id FROM users WHERE ssn <> %s",
               "SELECT id FROM users WHERE %s <> ssn",
@@ -487,17 +538,18 @@ class TestComparisonSafety:
             "SELECT id FROM users WHERE ssn NOT LIKE ANY(%s)"])
     def test_unsafe_operators(self, dialect, sql):
         flags = safety(sql, dialect)
-        assert flags and not any(flags)
+        assert flags
+        assert not any(flags)
 
     @BOTH
-    def test_a_parenthesized_column_is_judged_like_the_column(self, dialect):
+    def test_parenthesized_column_judged_like_column(self, dialect):
         # sqlglot keeps the parentheses as a Paren node around the column.
         assert safety("SELECT id FROM users WHERE (ssn) = %s OR ((ssn)) LIKE %s", dialect) == [True, True]
         assert safety("DELETE FROM users WHERE (ssn) <> %s", dialect) == [False]
         assert safety("DELETE FROM users WHERE %s <> (ssn) OR ((ssn)) NOT LIKE %s", dialect) == [False, False]
 
     @BOTH
-    def test_a_sub_selects_only_column_is_judged_like_the_column(self, dialect):
+    def test_sub_select_only_column_judged_like_column(self, dialect):
         assert safety("SELECT id FROM t WHERE %s IN (SELECT ssn FROM users) OR %s = ANY (SELECT ssn FROM users) "
                       "OR %s = (SELECT ssn FROM users LIMIT 1)", dialect) == [True] * 3
         # = ALL over no rows is true, so only ALL itself makes it unsafe.
@@ -508,7 +560,7 @@ class TestComparisonSafety:
         assert safety("SELECT %s IN (SELECT ssn FROM users) FROM t", dialect) == [False]
 
     @BOTH
-    def test_a_sub_select_in_doubled_parentheses_under_all_or_some_is_judged_like_the_column(self, dialect):
+    def test_all_or_some_doubled_parentheses_sub_select_judged_like_column(self, dialect):
         assert safety("SELECT id FROM t WHERE %s = SOME ((SELECT ssn FROM users)) "
                       "OR %s = some (((select ssn from users)))", dialect) == [True, True]
         unsafe = ["%s <> ALL ((SELECT ssn FROM users))", "%s = ALL ((SELECT ssn FROM users))",
@@ -525,7 +577,7 @@ class TestComparisonSafety:
         assert safety("DELETE FROM orders WHERE uid <> SOME ((SELECT id FROM users WHERE ssn = %s))", dialect) == [False]
 
     @BOTH
-    def test_a_sub_select_with_order_by_or_limit_after_its_parentheses_is_judged_like_the_column(self, dialect):
+    def test_sub_select_order_by_or_limit_after_parentheses_judged_like_column(self, dialect):
         assert safety("SELECT id FROM t WHERE %s = SOME ((SELECT ssn FROM users) LIMIT 5)", dialect) == [True]
         unsafe = ["%s <> ALL ((SELECT ssn FROM users) ORDER BY 1)", "%s <> ALL ((SELECT ssn FROM users) LIMIT 5)",
                   "%s = all ((select ssn from users) order by 1 limit 5)"]
@@ -543,12 +595,14 @@ class TestComparisonSafety:
         assert [safety(f"DELETE FROM orders WHERE {c}", dialect) for c in unsafe] == [[False]] * len(unsafe)
 
     @BOTH
-    def test_not_like_is_unsafe_without_a_not_node(self, dialect):
+    def test_not_like_unsafe_without_not_node(self, dialect):
         sql = "SELECT id FROM users WHERE ssn NOT LIKE %s"
         trees, _ = sql_analyzer._parse(tokenize(sql, dialect, ParamStyle.of(P, dialect)).normalized, dialect)
         # sqlglot sets the LIKE's negate flag rather than adding a NOT node,
         # so only the operator check can see the negation.
-        assert trees and trees[0].find(exp.Not) is None and trees[0].find(exp.Like).args.get("negate")
+        assert trees
+        assert trees[0].find(exp.Not) is None
+        assert trees[0].find(exp.Like).args.get("negate")
         assert safety(sql, dialect) == [False]
 
     @on(both=["SELECT id FROM users WHERE (ssn = %s)",
@@ -606,7 +660,8 @@ class TestComparisonSafety:
                "WITH users AS (SELECT id FROM mydb.users WHERE ssn = %s) SELECT id FROM users"])
     def test_safe_positions(self, dialect, sql):
         flags = safety(sql, dialect)
-        assert flags and all(flags)
+        assert flags
+        assert all(flags)
 
     @on(both=["SELECT id FROM users WHERE NOT ssn = %s",
               "SELECT id FROM users WHERE NOT (ssn = %s OR id = 1)",
@@ -666,7 +721,8 @@ class TestComparisonSafety:
                "UPDATE users u LEFT JOIN orders o ON o.uid = u.id AND u.ssn = %s SET u.note = 'x' WHERE o.uid IS NULL"])
     def test_unsafe_positions(self, dialect, sql):
         flags = safety(sql, dialect)
-        assert flags and not any(flags)
+        assert flags
+        assert not any(flags)
 
     @pytest.mark.parametrize("dialect, sql, column", [
         (PG, "SELECT i.id FROM users u JOIN orders o ON o.uid = u.id{on} RIGHT JOIN items i ON i.oid = o.id{where}",
@@ -703,7 +759,7 @@ class TestComparisonSafety:
             "mysql-parenthesized-under-left", "pg-right-inside-parentheses", "pg-right-inside-a-joined-parenthesis",
             "mysql-right-inside-a-joined-parenthesis", "pg-update-from", "pg-delete-using", "mysql-update",
             "mysql-delete-using", "pg-right-around-nested-parentheses", "mysql-delete-right-around-nested-parentheses"])
-    def test_inner_join_in_a_query_with_an_outer_join_is_unsafe(self, dialect, sql, column):
+    def test_inner_join_with_outer_join_is_unsafe(self, dialect, sql, column):
         # A later RIGHT or FULL join keeps every row of its side when the
         # earlier join matches nothing, and so does a LEFT join around a
         # parenthesized join. A WHERE filters the joined rows.
@@ -721,7 +777,7 @@ class TestComparisonSafety:
              "RIGHT JOIN refs r ON r.iid = items.id)"),
     ], ids=["pg-update-from-derived-table", "pg-delete-using-derived-table", "mysql-update-derived-table",
             "pg-derived-table-in-nested-parentheses"])
-    def test_outer_join_after_a_parenthesized_source_is_seen(self, dialect, sql):
+    def test_outer_join_after_parenthesized_source_is_seen(self, dialect, sql):
         # sqlglot hangs the joins that follow a derived table or a
         # parenthesized join on its Subquery. When the derived table d matches
         # nothing, the sided join there still keeps every row of its other side.
@@ -756,7 +812,7 @@ class TestComparisonSafety:
         (PG, "DELETE FROM orders WHERE EXISTS (SELECT 1 FROM users WHERE ssn = %s WINDOW w AS (ORDER BY COUNT(*)))"),
     ], ids=["pg-jsonb-agg", "mysql-json-arrayagg", "pg-user-defined", "mysql-user-defined", "pg-order-by",
             "mysql-order-by", "pg-distinct-on", "pg-window-clause"])
-    def test_possible_aggregate_in_a_sub_select_is_unsafe(self, dialect, sql):
+    def test_possible_aggregate_in_sub_select_is_unsafe(self, dialect, sql):
         # An aggregate without GROUP BY returns a row for no input row, so the
         # EXISTS holds and every order is deleted. sqlglot reads some built-in
         # aggregates and every user-defined one as a function it doesn't know,
@@ -783,7 +839,7 @@ class TestComparisonSafety:
         assert safety("WITH " + ", ".join(ctes) + " SELECT id FROM c1999", dialect) == [True]
 
     @BOTH
-    def test_assignments_and_annotations_keep_the_default(self, dialect):
+    def test_assignments_and_annotations_keep_default(self, dialect):
         a = analyze("UPDATE users SET ssn = %s WHERE id <> /*@encrypt:users.ssn*/ %s", dialect, P)
         assert [(u.ordinal, u.safe) for u in a.assignments] == [(0, True)]
         assert [(u.ordinal, u.safe) for u in a.annotations] == [(1, True)]
@@ -792,19 +848,21 @@ class TestComparisonSafety:
             == [True, True]
 
     @pytest.mark.timeout(10)
-    def test_comparison_safety_is_time_bounded_in_a_long_or_chain(self):
+    def test_comparison_safety_long_or_chain_is_time_bounded(self):
         # Without the memo, each comparison climbs the rest of the chain: far
         # past the timeout at this length.
         sql = "SELECT id FROM users WHERE " + " OR ".join(["ssn = %s"] * 40000)
         flags = safety(sql, PG)
-        assert len(flags) == 40000 and all(flags)
+        assert len(flags) == 40000
+        assert all(flags)
 
 
 class TestReads:
     @BOTH
     def test_tables_and_result_columns(self, dialect):
         a = analyze("SELECT u.ssn AS s, o.ssn, name, 1 FROM users u JOIN orders o ON o.uid = u.id", dialect)
-        assert a.kind is StatementKind.SELECT and not a.writes
+        assert a.kind is StatementKind.SELECT
+        assert not a.writes
         assert names(a.tables) == ["users", "orders"]
         assert a.result_columns == (ColumnRef("ssn", "users"), ColumnRef("ssn", "orders"), None, None)
 
@@ -880,7 +938,7 @@ class TestReads:
         ("WITH users AS (SELECT addr AS ssn FROM homes) SELECT z.ssn FROM (WITH RECURSIVE c AS (SELECT ssn FROM users), "
          "users AS (SELECT name AS ssn FROM people) SELECT ssn FROM c) z", (None,)),
     ], ids=["forward", "forward_qualified", "forward_in_derived", "backward", "nested_outer", "nested_outer_recursive"])
-    def test_a_cte_sees_only_the_ctes_before_it(self, dialect, sql, expected):
+    def test_cte_sees_only_earlier_ctes(self, dialect, sql, expected):
         assert analyze(sql, dialect).result_columns == expected
 
     @BOTH
@@ -888,7 +946,7 @@ class TestReads:
         "WITH c(ssn, name) AS (SELECT name, ssn FROM users) SELECT c.ssn, c.name FROM c",
         "SELECT x.ssn, x.name FROM (SELECT name, ssn FROM users) AS x(ssn, name)",
     ], ids=["cte", "derived"])
-    def test_a_source_with_a_column_list_stays_unknown(self, dialect, sql):
+    def test_source_with_column_list_stays_unknown(self, dialect, sql):
         # The list renames the columns by position (here c.ssn is users.name),
         # which the trace doesn't follow.
         assert analyze(sql, dialect).result_columns == (None, None)
@@ -898,7 +956,7 @@ class TestReads:
         ("SELECT d.ssn FROM users AS u(a, b) JOIN (SELECT id, ssn FROM archive) d ON d.id = u.a",
          (ColumnRef("ssn", "archive"),)),
     ], ids=["cte_renamed_where_read", "other_source_renamed"])
-    def test_only_a_column_list_on_the_traced_source_matters(self, sql, expected):
+    def test_column_list_only_on_traced_source_matters(self, sql, expected):
         assert analyze(sql, PG).result_columns == expected
 
     def test_returning_list_is_not_traced(self):
@@ -934,7 +992,7 @@ class TestReads:
         assert names(analyze("SELECT ssn FROM users UNION ALL SELECT ssn FROM archive", PG).tables) == [
             "users", "archive"]
 
-    def test_for_update_is_not_a_write(self):
+    def test_for_update_is_not_write(self):
         assert not analyze("SELECT * FROM users WHERE id = %s FOR UPDATE", PG, P).writes
 
 
@@ -960,7 +1018,8 @@ class TestIdentifiers:
 
     def test_mysql_alias_match_is_case_insensitive(self):
         a = analyze("UPDATE users U SET u.ssn = %s WHERE U.id = %s", MYSQL, P)
-        assert assigned(a) == [(0, "users.ssn")] and compared(a) == [(1, "users.id")]
+        assert assigned(a) == [(0, "users.ssn")]
+        assert compared(a) == [(1, "users.id")]
 
     def test_quoted_alias(self):
         a = analyze('SELECT "U".ssn FROM users "U" WHERE "U".id = %s', PG, P)
@@ -977,12 +1036,12 @@ class TestAnnotations:
         a = analyze("UPDATE users u SET note = /*@encrypt:u.ssn*/ %s", PG, P)
         assert [str(u.column) for u in a.annotations] == ["users.ssn"]
 
-    def test_annotations_survive_an_unparseable_statement(self):
+    def test_annotations_survive_unparseable_statement(self):
         a = analyze("INSERT INTO t OVERRIDING SYSTEM VALUE VALUES (/*@encrypt:t.ssn*/ %s)", PG, P)
         assert a.gap is AnalysisGap.UNPARSEABLE
         assert [str(u.column) for u in a.annotations] == ["t.ssn"]
 
-    def test_annotations_survive_an_unsupported_statement(self):
+    def test_annotations_survive_unsupported_statement(self):
         a = analyze("EXPLAIN ANALYZE INSERT INTO t (a) VALUES (/*@encrypt:t.a*/ %s)", PG, P)
         assert [str(u.column) for u in a.annotations] == ["t.a"]
 
@@ -1007,8 +1066,11 @@ class TestNotEstablished:
     ])
     def test_writes_not_established(self, dialect, sql, params, gap):
         a = analyze(sql, dialect, params)
-        assert a.writes and a.gap is gap and not a.complete
-        assert a.assignments == () and a.unbound_writes == ()
+        assert a.writes
+        assert a.gap is gap
+        assert not a.complete
+        assert a.assignments == ()
+        assert a.unbound_writes == ()
 
     @pytest.mark.parametrize("dialect, sql, tables", [
         (PG, "INSERT INTO t (a, b) VALUES (%s, 'x%s')", (TableRef("t"),)),
@@ -1033,25 +1095,54 @@ class TestNotEstablished:
     ], ids=["pg_literal", "pg_identifier_select", "pg_comment", "pg_join", "pg_cte", "pg_prepare", "mysql_literal",
             "mysql_identifier_select", "mysql_comment", "mysql_identifier", "mysql_join", "mysql_qualified_columns",
             "pg_set_then_insert", "pg_create_table_as", "mysql_explain_insert", "mysql_describe_select"])
-    def test_hidden_placeholder_gap_still_lists_the_tables(self, dialect, sql, tables):
+    def test_hidden_placeholder_gap_lists_tables(self, dialect, sql, tables):
         # The tables are what lets a caller refuse such a statement when one
         # of them has encrypted columns; the placeholders still can't be
         # paired with columns, so nothing else is reported.
         a = analyze(sql, dialect, P)
-        assert a.gap is AnalysisGap.HIDDEN_PLACEHOLDER and a.kind is StatementKind.UNKNOWN
-        assert a.tables == tables
-        assert a.assignments == () and a.comparisons == () and a.annotations == () and a.result_columns is None
+        assert a.gap is AnalysisGap.HIDDEN_PLACEHOLDER
+        assert a.kind is StatementKind.UNKNOWN
+        # The parsed tables first, then the other names that could be tables.
+        assert a.tables[:len(tables)] == tables
+        assert a.assignments == ()
+        assert a.comparisons == ()
+        assert a.annotations == ()
+        assert a.result_columns is None
 
-    def test_unparseable_read_is_not_a_write(self):
+    @pytest.mark.parametrize("dialect, sql, gap, tables", [
+        (MYSQL, "UPDATE plain_t /*! JOIN users ON users.id = plain_t.id */ SET users.ssn = %s",
+         AnalysisGap.EXECUTABLE_COMMENT, ["plain_t", "users"]),
+        (MYSQL, "INSERT INTO plain_t (a) VALUES (/*@encrypt:users.ssn*/ %s) /*!50000 */",
+         AnalysisGap.EXECUTABLE_COMMENT, ["plain_t", "users"]),
+        (MYSQL, "UPDATE (`users` u) SET u.ssn = %s", AnalysisGap.UNPARSEABLE, ["users"]),
+        (MYSQL, "DELETE u FROM (users u) WHERE u.ssn = %s", AnalysisGap.UNPARSEABLE, ["users"]),
+        (MYSQL, "INSERT INTO users (name, ssn) VALUES ('a\\', %s)", AnalysisGap.UNPARSEABLE, ["users"]),
+        (PG, 'UPDATE "Users" SET ssn = %s WHERE id = %s,,', AnalysisGap.UNPARSEABLE, ["Users"]),
+        (PG, "SELECT * FROM users WHERE ssn = %s LIMIT 1,,", AnalysisGap.UNPARSEABLE, ["users"]),
+    ], ids=["mysql-comment-join", "mysql-comment-annotation", "mysql-paren-update", "mysql-paren-delete",
+            "mysql-backslash", "pg-quoted", "pg-parse-failure"])
+    def test_unreadable_statement_reports_named_tables(self, dialect, sql, gap, tables):
+        a = analyze(sql, dialect, P)
+        assert a.gap is gap
+        assert set(tables) <= set(names(a.tables))
+
+    def test_driver_error_lists_no_tables(self):
+        a = analyze("INSERT INTO t (a) VALUES (%s, %(x)s)", PG, P)
+        assert a.gap is AnalysisGap.DRIVER_ERROR
+        assert a.tables == ()
+
+    def test_unparseable_read_is_not_write(self):
         a = analyze("SELECT FROM WHERE %s", PG, P)
-        assert a.kind is StatementKind.UNKNOWN and not a.writes
+        assert a.kind is StatementKind.UNKNOWN
+        assert not a.writes
 
     @pytest.mark.parametrize("sql", ["CREATE TABLE t (a int)", "BEGIN", "CALL p(1)", "", "  -- just a comment"])
     def test_statements_that_write_no_column(self, sql):
         a = analyze(sql, PG)
-        assert not a.writes and a.complete
+        assert not a.writes
+        assert a.complete
 
-    def test_placeholder_text_in_the_sql_is_a_mismatch(self):
+    def test_placeholder_text_in_sql_is_mismatch(self):
         # Something that looks like a normalized placeholder must not be
         # taken for one.
         a = analyze("INSERT INTO t (a, b) VALUES (%s, :_kms_p0)", PG, P)
@@ -1062,12 +1153,14 @@ class TestNotEstablished:
             raise RecursionError("too deep")
         monkeypatch.setattr(sql_analyzer.sqlglot, "parse", boom)
         a = sql_analyzer._analysis("INSERT INTO t (a) VALUES (%s)", PG, sql_analyzer.ParamStyle.POSITIONAL)
-        assert a.gap is AnalysisGap.UNPARSEABLE and a.detail == "RecursionError"
+        assert a.gap is AnalysisGap.UNPARSEABLE
+        assert a.detail == "RecursionError"
 
     def test_mysql_without_params_leaves_percent_s(self):
         # Connector/Python sends %s as written when there are no parameters.
         a = analyze("INSERT INTO t (a) VALUES (%s)", MYSQL, ())
-        assert a.placeholders == () and a.gap is AnalysisGap.UNPARSEABLE
+        assert a.placeholders == ()
+        assert a.gap is AnalysisGap.UNPARSEABLE
 
 
 class TestApi:
@@ -1087,7 +1180,8 @@ class TestApi:
         sql = f"INSERT INTO users (name, ssn) VALUES {rows}"
         assert len(sql) > sql_analyzer.CACHEABLE_SQL_LENGTH
         a = analyze(sql, MYSQL, P)
-        assert len(a.assignments) == 4000 and a.assignments[-1].ordinal == 3999
+        assert len(a.assignments) == 4000
+        assert a.assignments[-1].ordinal == 3999
         assert analyze(sql, MYSQL, P) is not a
 
     def test_short_sql_with_many_placeholders_is_not_cached(self):
@@ -1123,7 +1217,7 @@ class TestApi:
         assert analyze(sql, PG, P).gap is AnalysisGap.UNPARSEABLE
         assert analyze(sql, PG, P).gap is None
 
-    def test_deep_nesting_from_a_deep_stack_is_a_gap(self):
+    def test_deep_nesting_from_deep_stack_is_gap(self):
         sql = "UPDATE users SET ssn = " + "(" * 40 + "%s" + ")" * 40
         result = []
 
@@ -1135,7 +1229,8 @@ class TestApi:
         thread = threading.Thread(target=deep, args=(sys.getrecursionlimit() - 200,))
         thread.start()
         thread.join()
-        assert result and result[0].gap is AnalysisGap.UNPARSEABLE
+        assert result
+        assert result[0].gap is AnalysisGap.UNPARSEABLE
 
     def test_type_error_for_non_str(self):
         with pytest.raises(TypeError):
@@ -1165,7 +1260,7 @@ class TestApi:
         (MYSQL, "INSERT INTO t (c) VALUES (%(ssn 123-45-6789)d)", {"a": 1}),
         (PG, "INSERT INTO t (secret_col) VALUES ('top secret', %s", P),
     ])
-    def test_detail_never_quotes_the_sql(self, dialect, sql, params):
+    def test_detail_never_quotes_sql(self, dialect, sql, params):
         a = analyze(sql, dialect, params)
         assert a.gap is not None
         assert a.detail is not None or a.gap is AnalysisGap.UNPARSEABLE
@@ -1176,8 +1271,6 @@ class TestApi:
 class TestReviewRegressions:
     """Regression tests for statements the analysis once got wrong: annotation
     scopes, MySQL syntax, ORM-rendered SQL and statement kinds."""
-
-    # ---- annotations resolve in the placeholder's own scope ----
 
     @pytest.mark.parametrize("dialect, sql, expected", [
         (MYSQL, "UPDATE accounts u SET x = %s WHERE id = 1; UPDATE users u SET ssn = /*@encrypt:u.ssn*/ %s",
@@ -1192,15 +1285,15 @@ class TestReviewRegressions:
         (PG, "SELECT 1 FROM accounts u UNION SELECT 1 FROM users u WHERE u.ssn = /*@encrypt:u.ssn*/ %s",
          {0: "users.ssn"}),
     ])
-    def test_annotation_alias_is_resolved_where_the_placeholder_is(self, dialect, sql, expected):
+    def test_annotation_alias_resolved_at_placeholder(self, dialect, sql, expected):
         a = analyze(sql, dialect, P)
         assert {k: str(v) for k, v in a.parameter_columns().items()} == expected
 
-    def test_bare_annotation_keeps_the_table_the_analysis_found(self):
+    def test_bare_annotation_keeps_found_table(self):
         a = analyze("UPDATE users SET ssn = /*@encrypt:ssn*/ %s", PG, P)
         assert a.parameter_columns() == {0: ColumnRef("ssn", "users")}
 
-    def test_bare_annotation_naming_another_column_takes_the_only_table(self):
+    def test_bare_annotation_other_column_takes_only_table(self):
         a = analyze("INSERT INTO users (note) VALUES (/*@encrypt:ssn*/ %s)", PG, P)
         assert a.parameter_columns() == {0: ColumnRef("ssn", "users")}
 
@@ -1217,8 +1310,6 @@ class TestReviewRegressions:
         assert a.gap is not None
         assert [str(u.column) for u in a.annotations] == ["t.a"]
 
-    # ---- MySQL executable comments run on the server ----
-
     @pytest.mark.parametrize("sql", [
         "INSERT INTO users (/*!80000 ssn, */ name) VALUES (%s /*!80000 , DEFAULT*/)",
         "INSERT INTO users (name, ssn) VALUES (%s, %s) /*! ON DUPLICATE KEY UPDATE ssn = 'plain' */",
@@ -1233,36 +1324,37 @@ class TestReviewRegressions:
     def test_executable_comment_write_keyword_counts(self):
         assert analyze("SELECT 1 /*! ; INSERT INTO t (a) VALUES (1) */", MYSQL).writes
 
-    def test_optimizer_hint_is_an_ordinary_comment(self):
+    def test_optimizer_hint_is_ordinary_comment(self):
         a = analyze("UPDATE /*+ NO_INDEX_MERGE(users) */ users SET ssn = %s", MYSQL, P)
-        assert a.complete and assigned(a) == [(0, "users.ssn")]
+        assert a.complete
+        assert assigned(a) == [(0, "users.ssn")]
 
-    # ---- MySQL charset introducers (Django renders binary values as _binary %s) ----
-
+    # Django renders a binary value as _binary %s.
     def test_binary_introducer_in_insert(self):
         a = analyze("INSERT INTO `Person` (`name`, `ssn`, `note`) VALUES (%s, _binary %s, %s), (%s, _binary %s, %s)",
                     MYSQL, P)
-        assert a.complete and unbound(a) == []
+        assert a.complete
+        assert unbound(a) == []
         assert assigned(a) == [(0, "Person.name"), (1, "Person.ssn"), (2, "Person.note"),
                                (3, "Person.name"), (4, "Person.ssn"), (5, "Person.note")]
         assert [p.introducer for p in a.placeholders] == [None, "_binary", None] * 2
 
     def test_binary_introducer_in_update_and_upsert(self):
         a = analyze("UPDATE `Person` SET `ssn` = _binary %s, `name` = %s WHERE `Person`.`id` = %s", MYSQL, P)
-        assert a.complete and assigned(a) == [(0, "Person.ssn"), (1, "Person.name")]
+        assert a.complete
+        assert assigned(a) == [(0, "Person.ssn"), (1, "Person.name")]
         a = analyze("INSERT INTO `Person` (`ssn`) VALUES (_binary %s) AS new ON DUPLICATE KEY UPDATE `ssn` = new.`ssn`",
                     MYSQL, P)
-        assert a.complete and unbound(a) == []
+        assert a.complete
+        assert unbound(a) == []
 
-    def test_introducer_needs_a_known_charset(self):
+    def test_introducer_needs_known_charset(self):
         # "_x %s" is not an introducer, so the statement reads as written.
         a = analyze("SELECT _x %s", MYSQL, P)
         assert [p.introducer for p in a.placeholders] == [None]
 
     def test_introducer_only_on_mysql(self):
         assert analyze("SELECT _binary %s", PG, P).placeholders[0].introducer is None
-
-    # ---- MySQL row alias with a column list renames by position ----
 
     def test_row_alias_columns_copy_by_position(self):
         a = analyze("INSERT INTO users (name, ssn) VALUES (%s, %s) AS new(n, s) ON DUPLICATE KEY UPDATE ssn = new.s",
@@ -1275,16 +1367,12 @@ class TestReviewRegressions:
                     "ON DUPLICATE KEY UPDATE ssn = new.ssn", MYSQL, P)
         assert unbound(a) == ["users.ssn"]
 
-    # ---- copies from another table ----
-
     @pytest.mark.parametrize("dialect, sql", [
         (MYSQL, "UPDATE users u JOIN orders o ON o.uid = u.id SET u.ssn = o.ssn"),
         (PG, "UPDATE users SET ssn = o.ssn FROM other o WHERE o.id = users.id"),
     ])
-    def test_copy_of_another_tables_column_of_the_same_name_is_unbound(self, dialect, sql):
+    def test_copy_of_other_tables_same_name_column_is_unbound(self, dialect, sql):
         assert unbound(analyze(sql, dialect)) == ["users.ssn"]
-
-    # ---- SQLAlchemy's multi-row ORM insert on PostgreSQL ----
 
     def test_insert_select_from_values_list(self):
         sql = ("INSERT INTO users (name, ssn) SELECT p0::VARCHAR, p1::BYTEA FROM "
@@ -1306,25 +1394,25 @@ class TestReviewRegressions:
     def test_other_insert_selects_are_values_from_query(self, sql):
         assert analyze(sql, PG, P).gap is AnalysisGap.VALUES_FROM_QUERY
 
-    # ---- statements that run a stored statement ----
-
     def test_execute_may_write(self):
         a = analyze("EXECUTE ins_user(%s, %s)", PG, P)
-        assert a.writes and a.gap is AnalysisGap.UNSUPPORTED_STATEMENT
+        assert a.writes
+        assert a.gap is AnalysisGap.UNSUPPORTED_STATEMENT
 
     def test_prepare_body_is_read(self):
         a = analyze("PREPARE ins (text, text) AS INSERT INTO users (name, ssn) VALUES ($1, '123-45-6789')", PG)
-        assert a.kind is StatementKind.INSERT and a.writes
+        assert a.kind is StatementKind.INSERT
+        assert a.writes
         assert a.gap is AnalysisGap.PREPARED_PARAMETERS
         # The literal is reported as an unbound write; $1 is bound by a later
         # EXECUTE.
         assert unbound(a) == ["users.ssn"]
 
-    def test_prepare_of_a_read(self):
+    def test_prepare_of_read(self):
         a = analyze('PREPARE "q" AS SELECT ssn FROM users WHERE id = $1', PG)
-        assert a.kind is StatementKind.SELECT and not a.writes and a.complete
-
-    # ---- DELETE ... USING ----
+        assert a.kind is StatementKind.SELECT
+        assert not a.writes
+        assert a.complete
 
     def test_delete_using_aliases_are_in_scope(self):
         a = analyze("DELETE FROM users USING accounts a WHERE a.uid = users.id AND a.secret = %s RETURNING a.secret",
@@ -1332,15 +1420,11 @@ class TestReviewRegressions:
         assert compared(a) == [(0, "accounts.secret")]
         assert a.result_columns == (ColumnRef("secret", "accounts"),)
 
-    # ---- ALL / SOME ----
-
     @pytest.mark.parametrize("sql", ["SELECT * FROM t WHERE c <> ALL(%s)", "SELECT * FROM t WHERE c = SOME(%s)",
                                      "SELECT * FROM t WHERE c = ANY(%s::text[])"])
     def test_all_some_and_any_are_array_comparisons(self, sql):
         a = analyze(sql, PG, P)
         assert [(u.ordinal, str(u.column), u.array) for u in a.comparisons] == [(0, "t.c", True)]
-
-    # ---- MySQL qualified INSERT column lists ----
 
     @pytest.mark.parametrize("sql, expected", [
         ("INSERT INTO users (users.name, users.ssn) VALUES (%s, %s)", [(0, "users.name"), (1, "users.ssn")]),
@@ -1349,47 +1433,45 @@ class TestReviewRegressions:
     ])
     def test_mysql_qualified_insert_columns(self, sql, expected):
         a = analyze(sql, MYSQL, P)
-        assert a.complete and assigned(a) == expected
+        assert a.complete
+        assert assigned(a) == expected
 
-    # ---- names that are not plain identifiers ----
-
-    def test_subscripted_column_is_not_a_column_name(self):
+    def test_subscripted_column_is_not_column_name(self):
         a = analyze("MERGE INTO t USING s ON 1=1 WHEN NOT MATCHED THEN INSERT (ssn[1]) VALUES (%s)", PG, P)
         assert a.gap is AnalysisGap.UNSUPPORTED_STATEMENT
         assert assigned(a) == []
-
-    # ---- keyword fallback ----
 
     @pytest.mark.parametrize("sql", [
         "SET search_path TO app; WITH w AS (INSERT INTO users (ssn) VALUES (%s) RETURNING id) SELECT * FROM w",
         "SET search_path TO app; COPY users (ssn) FROM STDIN",
     ])
-    def test_unparsed_statement_before_a_write_is_not_complete(self, sql):
+    def test_unparsed_statement_before_write_is_not_complete(self, sql):
         a = analyze(sql, PG, P)
-        assert a.writes and a.gap is AnalysisGap.UNSUPPORTED_STATEMENT
+        assert a.writes
+        assert a.gap is AnalysisGap.UNSUPPORTED_STATEMENT
 
-    # ---- parse-trust guards ----
-
-    def test_placeholder_missing_from_the_parse_is_a_mismatch(self, monkeypatch):
+    def test_placeholder_missing_from_parse_is_mismatch(self, monkeypatch):
         real = sqlglot.parse
         monkeypatch.setattr(sql_analyzer.sqlglot, "parse",
                             lambda _sql, read: real("INSERT INTO users (name, ssn) VALUES (:_kms_p0, 'x')", read=read))
         a = sql_analyzer._analysis("INSERT INTO users (name, ssn) VALUES (%s, %s)", PG, ParamStyle.POSITIONAL)
-        assert a.gap is AnalysisGap.PLACEHOLDER_MISMATCH and a.assignments == ()
+        assert a.gap is AnalysisGap.PLACEHOLDER_MISMATCH
+        assert a.assignments == ()
 
     def test_command_fallback_is_unparseable(self, monkeypatch):
         monkeypatch.setattr(sql_analyzer.sqlglot, "parse", lambda _sql, read: [exp.Command(this="INSERT")])
         a = sql_analyzer._analysis("INSERT INTO users (ssn) VALUES ('x')", PG, ParamStyle.NONE)
-        assert a.writes and a.gap is AnalysisGap.UNPARSEABLE
+        assert a.writes
+        assert a.gap is AnalysisGap.UNPARSEABLE
 
-    def test_unterminated_is_unparseable_even_if_the_parser_accepts_it(self, monkeypatch):
+    def test_unterminated_parsed_sql_is_unparseable(self, monkeypatch):
         real = sqlglot.parse
         monkeypatch.setattr(sql_analyzer.sqlglot, "parse",
                             lambda _sql, read: real("INSERT INTO users (ssn) VALUES (:_kms_p0)", read=read))
         a = sql_analyzer._analysis("INSERT INTO users (ssn) VALUES (%s) /* a /* b */", PG, ParamStyle.POSITIONAL)
-        assert a.writes and a.gap is AnalysisGap.UNPARSEABLE and a.assignments == ()
-
-    # ---- row lengths ----
+        assert a.writes
+        assert a.gap is AnalysisGap.UNPARSEABLE
+        assert a.assignments == ()
 
     @pytest.mark.parametrize("sql", [
         "INSERT INTO users (a) VALUES (%s, %s)",
@@ -1402,19 +1484,16 @@ class TestReviewRegressions:
     def test_several_selects_have_no_result_columns(self):
         assert analyze("SELECT ssn FROM users; SELECT name FROM accounts", PG).result_columns is None
 
-    # ---- performance ----
-
     def test_long_boolean_chain_is_linear(self):
         sql = "SELECT ssn FROM users WHERE " + " OR ".join(["(id = %s AND ssn = %s)"] * 3000)
         a = analyze(sql, PG, P)
-        assert len(a.comparisons) == 6000 and a.comparisons[-1].column == ColumnRef("ssn", "users")
+        assert len(a.comparisons) == 6000
+        assert a.comparisons[-1].column == ColumnRef("ssn", "users")
 
 
 class TestReviewRegressionsRound2:
     """Regression tests: annotations across tables, SQLAlchemy's multi-row
     insert, regex cost, caching and the logging filter."""
-
-    # ---- annotations ----
 
     @pytest.mark.parametrize("sql, expected", [
         ("UPDATE users u SET name = %s WHERE id IN (SELECT uid FROM accounts a WHERE a.x = /*@encrypt:u.ssn*/ %s)",
@@ -1449,11 +1528,9 @@ class TestReviewRegressionsRound2:
         (PG, "INSERT INTO users (name, ssn) SELECT name, /*@encrypt:ssn*/ %s FROM accounts", ColumnRef("ssn", "users")),
         (PG, "UPDATE users SET ssn = (SELECT /*@encrypt:ssn*/ %s FROM accounts)", ColumnRef("ssn", "users")),
     ])
-    def test_bare_annotation_in_a_query_feeding_a_write_names_the_written_table(self, dialect, sql, expected):
+    def test_bare_annotation_in_write_source_names_written_table(self, dialect, sql, expected):
         # The value goes to the write's target, even though the subquery reads another table.
         assert analyze(sql, dialect, P).parameter_columns()[0] == expected
-
-    # ---- SQLAlchemy's multi-row insert ----
 
     def test_insert_select_from_values_maps_select_items_by_name(self):
         a = analyze("INSERT INTO users (name, ssn) SELECT p1, p0 FROM (VALUES (%s, %s)) AS v(p0, p1)", PG, P)
@@ -1464,10 +1541,11 @@ class TestReviewRegressionsRound2:
         "INSERT INTO users (ssn, note) SELECT p0, p0 FROM (VALUES (%s)) AS v(p0)",
         "INSERT INTO users (name, ssn) SELECT v.p0, p0::text FROM (VALUES (%s, %s)) AS v(p0, p1)",
     ])
-    def test_insert_select_from_values_using_a_column_twice_is_not_read(self, sql):
+    def test_insert_select_from_values_column_twice_is_not_read(self, sql):
         # One value would fill two columns, and could be encrypted for only one.
         a = analyze(sql, PG, P)
-        assert a.gap is AnalysisGap.VALUES_FROM_QUERY and a.assignments == ()
+        assert a.gap is AnalysisGap.VALUES_FROM_QUERY
+        assert a.assignments == ()
 
     @pytest.mark.parametrize("sql, gap", [
         ("INSERT INTO users (name, ssn) SELECT p0 FROM (VALUES (%s, %s)) AS v(p0, p1)", AnalysisGap.VALUES_FROM_QUERY),
@@ -1478,8 +1556,6 @@ class TestReviewRegressionsRound2:
     ])
     def test_insert_select_from_values_widths_and_extras(self, sql, gap):
         assert analyze(sql, PG, P).gap is gap
-
-    # ---- regex cost on indented SQL ----
 
     @pytest.mark.timeout(10)
     @pytest.mark.parametrize("dialect, sql", [
@@ -1494,20 +1570,21 @@ class TestReviewRegressionsRound2:
 
     def test_indented_prepare_and_qualified_insert_are_still_read(self):
         a = analyze("\n    PREPARE p (int) /* c */ AS INSERT INTO users (ssn) VALUES ('x')", PG)
-        assert a.gap is AnalysisGap.PREPARED_PARAMETERS and unbound(a) == ["users.ssn"]
+        assert a.gap is AnalysisGap.PREPARED_PARAMETERS
+        assert unbound(a) == ["users.ssn"]
         a = analyze("\n    INSERT INTO users (users.ssn) VALUES (%s)", MYSQL, P)
-        assert a.complete and assigned(a) == [(0, "users.ssn")]
-
-    # ---- MySQL qualified INSERT columns with dotted back-quoted names ----
+        assert a.complete
+        assert assigned(a) == [(0, "users.ssn")]
 
     @pytest.mark.parametrize("sql, expected", [
         ("INSERT INTO users (users.name, `x.ssn`) VALUES (%s, %s)", [(0, "users.name"), (1, "users.x.ssn")]),
         ("INSERT INTO users (users.name, `ssn.v2`) VALUES (%s, %s)", [(0, "users.name"), (1, "users.ssn.v2")]),
         ("INSERT INTO users (`users`.`ssn`, name) VALUES (%s, %s)", [(0, "users.ssn"), (1, "users.name")]),
     ])
-    def test_back_quoted_name_with_a_dot_is_one_name(self, sql, expected):
+    def test_back_quoted_name_with_dot_is_one_name(self, sql, expected):
         a = analyze(sql, MYSQL, P)
-        assert a.complete and assigned(a) == expected
+        assert a.complete
+        assert assigned(a) == expected
 
     def test_qualifier_retry_only_for_inserts(self, monkeypatch):
         calls = []
@@ -1517,8 +1594,6 @@ class TestReviewRegressionsRound2:
         analyze("UPDATE users SET ssn = %s WHERE (", MYSQL, P)
         assert calls == []
 
-    # ---- keyword fallback ----
-
     @pytest.mark.parametrize("dialect, sql", [
         (PG, "SET search_path TO app; PREPARE p AS INSERT INTO users (ssn) VALUES ('123-45-6789')"),
         (PG, "EXPLAIN ANALYZE EXECUTE p(%s)"),
@@ -1526,21 +1601,21 @@ class TestReviewRegressionsRound2:
     ])
     def test_more_statements_that_may_write(self, dialect, sql):
         a = analyze(sql, dialect, P)
-        assert a.writes and a.gap is not None
-
-    # ---- names that are not plain identifiers ----
+        assert a.writes
+        assert a.gap is not None
 
     def test_subscripted_update_target_is_unsupported(self):
         a = analyze("UPDATE users SET ssn[1] = %s", PG, P)
-        assert a.writes and a.gap is AnalysisGap.UNSUPPORTED_STATEMENT and a.assignments == ()
+        assert a.writes
+        assert a.gap is AnalysisGap.UNSUPPORTED_STATEMENT
+        assert a.assignments == ()
 
-    # ---- TABLE is not parsed (sqlglot reads it as an alias) ----
-
+    # sqlglot reads TABLE as an alias.
     def test_table_statement_is_not_parsed(self):
         a = analyze("TABLE users", PG)
-        assert a.kind is StatementKind.SELECT and not a.writes and a.tables == ()
-
-    # ---- scopes ----
+        assert a.kind is StatementKind.SELECT
+        assert not a.writes
+        assert a.tables == ()
 
     def test_nearest_query_memo_does_not_cross_queries(self):
         a = analyze("SELECT * FROM users u WHERE EXISTS "
@@ -1552,14 +1627,12 @@ class TestReviewRegressionsRound2:
         sql = "SELECT ssn FROM users WHERE " + " OR ".join(["(id = %s AND ssn = %s)"] * 12000)
         assert len(analyze(sql, PG, P).comparisons) == 24000
 
-    # ---- caching ----
-
     def test_long_sql_with_few_placeholders_is_not_cached(self):
         sql = "UPDATE users SET ssn = %s WHERE note = '" + "x" * sql_analyzer.CACHEABLE_SQL_LENGTH + "'"
         assert sql.count("%") <= sql_analyzer.CACHEABLE_PERCENT_SIGNS
         assert analyze(sql, PG, P) is not analyze(sql, PG, P)
 
-    def test_recursion_error_wrapped_by_the_tokenizer_is_not_cached(self, monkeypatch):
+    def test_recursion_error_wrapped_by_tokenizer_is_not_cached(self, monkeypatch):
         real = sqlglot.parse
         calls = []
 
@@ -1575,10 +1648,9 @@ class TestReviewRegressionsRound2:
         monkeypatch.setattr(sql_analyzer.sqlglot, "parse", flaky)
         sql = "SELECT a FROM users WHERE ssn = %s"
         first = analyze(sql, PG, P)
-        assert first.gap is AnalysisGap.UNPARSEABLE and first.detail == "RecursionError"
+        assert first.gap is AnalysisGap.UNPARSEABLE
+        assert first.detail == "RecursionError"
         assert analyze(sql, PG, P).gap is None
-
-    # ---- the logging filter is per thread ----
 
     def test_quiet_filter_does_not_silence_other_threads(self, caplog):
         entered, release = threading.Event(), threading.Event()
@@ -1604,10 +1676,9 @@ class TestReviewRegressionsRound3:
     """Regression tests: regexes that fail after a long gap, and which table a
     bare annotation gets."""
 
-    # ---- regexes that fail after a long run of whitespace or comments ----
-
     _BAD_PREPARE = "PREPARE p (int AS INSERT INTO users (ssn) VALUES ($1)"   # unbalanced header
-    _PARTITION = "INSERT INTO users PARTITION (p0) (users.ssn) VALUES (%s)"  # valid MySQL neither read can parse
+    # Valid MySQL neither read can parse.
+    _PARTITION = "INSERT INTO users PARTITION (p0) (users.ssn) VALUES (%s)"
 
     @pytest.mark.timeout(10)
     @pytest.mark.parametrize("dialect, sql, gap", [
@@ -1624,14 +1695,13 @@ class TestReviewRegressionsRound3:
         (MYSQL, "-- c \n" * 40 + "INSERT INTO users SET ssn = %s, note = 'a' 'b' garbage(", AnalysisGap.UNPARSEABLE),
     ], ids=["pg-spaces", "pg-comments", "pg-dash-banner", "pg-dashes", "pg-crlf", "pg-crlf-header", "my-spaces",
             "my-comments", "my-dash-banner", "my-dashed-prose", "my-trailing-space"])
-    def test_a_regex_that_fails_after_a_long_gap_fails_fast(self, dialect, sql, gap):
+    def test_regex_failing_after_long_gap_fails_fast(self, dialect, sql, gap):
         assert analyze(sql, dialect, P).gap is gap
 
-    def test_line_comments_in_a_prepare_header(self):
+    def test_line_comments_in_prepare_header(self):
         a = analyze("-- c\r\n  PREPARE -- x\r\n p (int) -- y \r\n AS INSERT INTO users (ssn) VALUES ('x')", PG)
-        assert a.gap is AnalysisGap.PREPARED_PARAMETERS and unbound(a) == ["users.ssn"]
-
-    # ---- bare annotations: written vs compared values ----
+        assert a.gap is AnalysisGap.PREPARED_PARAMETERS
+        assert unbound(a) == ["users.ssn"]
 
     @pytest.mark.parametrize("dialect, sql, ordinal, expected", [
         # A filter value gets the table it is compared in, even in a statement that writes.
@@ -1661,7 +1731,7 @@ class TestReviewRegressionsRound3:
         (MYSQL, "UPDATE users u JOIN accounts a ON a.uid = u.id "
                 "SET u.note = (SELECT /*@encrypt:ssn*/ %s FROM temp), a.x = 1", 0, ColumnRef("ssn")),
     ])
-    def test_bare_annotation_by_where_the_value_goes(self, dialect, sql, ordinal, expected):
+    def test_bare_annotation_by_value_position(self, dialect, sql, ordinal, expected):
         assert analyze(sql, dialect, P).parameter_columns()[ordinal] == expected
 
     @pytest.mark.parametrize("dialect, sql, expected", [
@@ -1692,7 +1762,7 @@ class TestReviewRegressionsRound3:
         (PG, "INSERT INTO t (a) SELECT s.v FROM (SELECT /*@encrypt:ssn*/ %s AS v) s", ColumnRef("ssn")),
     ], ids=["case-when", "boolean-item", "mysql-if", "simple-case", "set-subquery-item", "set-case-two-sources",
             "case-then", "param-cte-update", "param-cte-insert", "mysql-param-cte", "join-source", "from-source"])
-    def test_bare_annotation_on_a_compared_or_source_value(self, dialect, sql, expected):
+    def test_bare_annotation_on_compared_or_source_value(self, dialect, sql, expected):
         assert analyze(sql, dialect, P).parameter_columns()[0] == expected
 
     @pytest.mark.parametrize("dialect, sql, expected", [
@@ -1736,13 +1806,13 @@ class TestReviewRegressionsRound3:
     ], ids=["then", "else", "mysql-if-true", "in", "between", "regex", "jsonb-contains", "mysql-regexp",
             "mysql-match", "simple-case-operand", "partition-by", "join-source-reads", "from-source-reads",
             "cte-reads", "merge-using-reads", "cross-join-lateral-reads", "comma-lateral-reads", "set-with-from"])
-    def test_bare_annotation_written_tested_or_from_a_source(self, dialect, sql, expected):
+    def test_bare_annotation_written_tested_or_from_source(self, dialect, sql, expected):
         assert analyze(sql, dialect, P).parameter_columns()[0] == expected
 
     # A value tested by any of these operators resolves to the table it is tested against on
     # every supported sqlglot, though the operators are Predicates only from 30.16.
     @pytest.mark.parametrize("op", ["~*", "!~*", "<@", "&&", "?", "?|", "?&", "-|-", "&<", "&>"])
-    def test_bare_annotation_tested_by_an_operator(self, op):
+    def test_bare_annotation_tested_by_operator(self, op):
         sql = f"UPDATE audit SET flag = (SELECT ssn {op} /*@encrypt:ssn*/ %s FROM users LIMIT 1)"
         assert analyze(sql, PG, P).parameter_columns()[0] == ColumnRef("ssn", "users")
 
@@ -1766,7 +1836,7 @@ class TestReviewRegressionsRound3:
         (PG, "MERGE INTO users t USING cards c ON t.id = c.uid "
              "WHEN MATCHED AND starts_with(c.pan, /*@encrypt:pan*/ %s) THEN UPDATE SET flag = true", ColumnRef("pan")),
     ], ids=["where", "mysql-where", "having", "update-from-where", "merge-on", "merge-when-condition"])
-    def test_bare_annotation_in_a_condition_slot(self, dialect, sql, expected):
+    def test_bare_annotation_in_condition_slot(self, dialect, sql, expected):
         assert analyze(sql, dialect, P).parameter_columns()[0] == expected
 
     @pytest.mark.parametrize("sql, ordinal, expected", [
@@ -1790,18 +1860,17 @@ class TestReviewRegressionsRound3:
     def test_bare_annotation_slots(self, sql, ordinal, expected):
         assert analyze(sql, PG, P).parameter_columns()[ordinal] == expected
 
-    # ---- one-dialect gaps ----
-
     def test_replace_with_qualified_columns_is_read(self):
         a = analyze("REPLACE INTO users (users.ssn) VALUES (%s)", MYSQL, P)
-        assert a.complete and assigned(a) == [(0, "users.ssn")]
+        assert a.complete
+        assert assigned(a) == [(0, "users.ssn")]
 
     @BOTH
     def test_table_statement_is_not_parsed_on_either_dialect(self, dialect):
         a = analyze("TABLE users", dialect)
-        assert a.kind is StatementKind.SELECT and not a.writes and a.tables == ()
-
-    # ---- a cyclic exception chain ends ----
+        assert a.kind is StatementKind.SELECT
+        assert not a.writes
+        assert a.tables == ()
 
     @pytest.mark.timeout(10)
     def test_cyclic_exception_chain_does_not_hang(self, monkeypatch):
@@ -1812,4 +1881,68 @@ class TestReviewRegressionsRound3:
 
         monkeypatch.setattr(sql_analyzer.sqlglot, "parse", cyclic)
         a = sql_analyzer._analysis("SELECT 1", PG, ParamStyle.NONE)
-        assert a.gap is AnalysisGap.UNPARSEABLE and a.detail == "ParseError"
+        assert a.gap is AnalysisGap.UNPARSEABLE
+        assert a.detail == "ParseError"
+
+
+def test_unparsed_hidden_placeholder_lists_its_words():
+    a = analyze("INSERT INTO t VALUES ('%s'", PG, P)
+    assert a.gap is AnalysisGap.HIDDEN_PLACEHOLDER
+    assert names(a.tables) == ["insert", "into", "t", "values"]
+
+
+def test_default_values_after_column_list_has_no_column_list():
+    assert analyze("INSERT INTO t (a) DEFAULT VALUES", PG, P).gap is AnalysisGap.NO_COLUMN_LIST
+
+
+def test_upsert_bare_column_assignment_unsupported():
+    a = analyze("INSERT INTO t (a) VALUES (%s) ON DUPLICATE KEY UPDATE a = 1, b", MYSQL, P)
+    assert a.gap is AnalysisGap.UNSUPPORTED_STATEMENT
+
+
+def test_update_row_from_subquery_with_subscript_unsupported():
+    a = analyze("UPDATE t SET (a[1], b) = (SELECT x, y FROM u WHERE z = %s)", PG, P)
+    assert a.gap is AnalysisGap.UNSUPPORTED_STATEMENT
+    assert compared(a) == [(0, "u.z")]
+
+
+@pytest.mark.parametrize("sql", [
+    "PREPARE p AS INSERT INTO t (a) VALUES (CAST($1 AS text))",
+    "PREPARE p AS INSERT INTO t (a) VALUES (($1))",
+    "PREPARE p AS INSERT INTO t (a) VALUES ($1::text)",
+])
+def test_prepare_wrapped_parameter_has_prepared_parameters_gap(sql):
+    assert analyze(sql, PG, P).gap is AnalysisGap.PREPARED_PARAMETERS
+
+
+@pytest.mark.parametrize("dialect, sql", [
+    (PG, "INSERT INTO t (a) VALUES (%s) ON CONFLICT (a) DO UPDATE SET a = other.a"),
+    (PG, "INSERT INTO t (a) VALUES (%s) ON CONFLICT (a) DO UPDATE SET a = t.a"),
+    (MYSQL, "INSERT INTO t (a) VALUES (%s) ON DUPLICATE KEY UPDATE a = o.a"),
+])
+def test_upsert_from_other_row_is_unbound_write(dialect, sql):
+    a = analyze(sql, dialect, P)
+    assert a.gap is None
+    assert unbound(a) == ["t.a"]
+
+
+def test_update_row_from_one_placeholder_is_unbound_write():
+    a = analyze("UPDATE t SET (a, b) = (%s)", PG, P)
+    assert a.gap is None
+    assert unbound(a) == ["t.a", "t.b"]
+
+
+def test_upsert_row_from_one_excluded_column_is_unbound_write():
+    a = analyze("INSERT INTO t (a) VALUES (%s) ON CONFLICT (a) DO UPDATE SET (a, b) = (EXCLUDED.a)", PG, P)
+    assert a.gap is None
+    assert unbound(a) == ["t.a", "t.b"]
+
+
+@pytest.mark.parametrize("dialect, sql", [
+    (PG, "SELECT /*@encrypt:a*/ %s"),
+    (PG, "VALUES (/*@encrypt:a*/ %s)"),
+    (MYSQL, "SELECT /*@encrypt:a*/ %s"),
+])
+def test_annotation_without_written_table_keeps_column(dialect, sql):
+    a = analyze(sql, dialect, P)
+    assert [str(u.column) for u in a.annotations] == ["a"]

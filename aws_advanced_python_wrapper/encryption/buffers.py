@@ -20,12 +20,12 @@ imported without the ``encryption`` extra (``cryptography``) installed.
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Union
 
 BytesLike = Union[bytes, bytearray, memoryview]
 
 
-def wipe(buffer: Any) -> None:
+def wipe(buffer: bytearray) -> None:
     """Overwrite a mutable ``bytearray`` with zeros, in place. Best effort:
     immutable ``bytes`` cannot be zeroed, so hold key material in
     ``bytearray`` where wiping matters. CPython may still leave copies

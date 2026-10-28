@@ -123,7 +123,7 @@ def test_transfer_session_states_with_null_connection(underlying_dialect, sqlalc
         sqlalchemy_dialect.set_read_only(sqlalchemy_mock_conn, False)
 
 
-def test_loop_start_runs_on_the_calling_thread_with_socket_timeout(sqlalchemy_mock_conn):
+def test_loop_start_runs_on_calling_thread_with_socket_timeout(sqlalchemy_mock_conn):
     props = Properties({"socket_timeout": "5"})
     sqlalchemy_dialect = SqlAlchemyDriverDialect(PgDriverDialect(props), props)
     threads = []
@@ -135,7 +135,7 @@ def test_loop_start_runs_on_the_calling_thread_with_socket_timeout(sqlalchemy_mo
 
 
 @pytest.mark.parametrize("method", [DbApiMethod.CURSOR_FETCHONE, DbApiMethod.CURSOR_NEXT], ids=["fetchone", "next"])
-def test_fetch_still_runs_on_the_timeout_worker_with_socket_timeout(method, sqlalchemy_mock_conn):
+def test_fetch_runs_on_timeout_worker_with_socket_timeout(method, sqlalchemy_mock_conn):
     props = Properties({"socket_timeout": "5"})
     sqlalchemy_dialect = SqlAlchemyDriverDialect(PgDriverDialect(props), props)
     threads = []
@@ -143,4 +143,5 @@ def test_fetch_still_runs_on_the_timeout_worker_with_socket_timeout(method, sqla
     sqlalchemy_dialect.execute(
         method.method_name, lambda: threads.append(threading.current_thread()), conn=sqlalchemy_mock_conn)
 
-    assert len(threads) == 1 and threads[0] is not threading.current_thread()
+    assert len(threads) == 1
+    assert threads[0] is not threading.current_thread()

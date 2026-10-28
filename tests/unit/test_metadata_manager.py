@@ -25,8 +25,13 @@ from aws_advanced_python_wrapper.encryption import metadata_manager as module
 from aws_advanced_python_wrapper.encryption.config import EncryptionConfig
 from aws_advanced_python_wrapper.encryption.metadata_manager import \
     MetadataManager
-from aws_advanced_python_wrapper.encryption.sql_dialect import MYSQL, PG
 from aws_advanced_python_wrapper.errors import MetadataError
+from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
+from aws_advanced_python_wrapper.utils.properties import Properties
+
+PG = PgDriverDialect(Properties())
+MYSQL = MySQLDriverDialect(Properties())
 
 ARN = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
 
@@ -62,7 +67,8 @@ class FakeDb:
                 db.executed.append((sql, tuple(params)))
                 if db.error is not None:
                     raise db.error
-                self.description = [(c.upper(),) for c in COLUMNS]  # upper case, as some MySQL versions report
+                # Upper case, as some MySQL versions report.
+                self.description = [(c.upper(),) for c in COLUMNS]
                 rows = db.rows
                 if "WHERE em.table_name" in sql:
                     rows = [r for r in rows if r[0] == params[0] and (len(params) < 2 or r[1] == params[1])]
@@ -104,13 +110,17 @@ def managers():
 
 
 def config(**overrides):
-    values = dict(kms_region="us-east-1", allowed_master_key_arns=frozenset({ARN}),
-                  metadata_cache_refresh_interval_sec=0.0, metadata_cache_expiration_sec=60.0)
+    values = dict(kms_region="us-east-1", allowed_master_key_arns=frozenset({ARN}), kms_endpoint=None,
+                  metadata_schema="encrypt", metadata_cache_enabled=True, metadata_cache_expiration_sec=60.0,
+                  metadata_cache_refresh_interval_sec=0.0, data_key_cache_enabled=True,
+                  data_key_cache_max_size=1000, data_key_cache_expiration_sec=300.0, key_management_max_retries=3,
+                  key_management_retry_backoff_base_sec=0.1, audit_logging_enabled=False,
+                  return_unverified_data=False)
     values.update(overrides)
     return EncryptionConfig(**values)  # type: ignore[arg-type]
 
 
-def test_joined_query_is_a_left_join_on_the_integer_id():
+def test_joined_query_left_joins_on_integer_id():
     db = FakeDb()
     MetadataManager(db, PG, config()).load_metadata()
     sql = db.executed[0][0]
@@ -126,17 +136,21 @@ def test_mysql_uses_plain_equals():
     assert "app_enc.encryption_metadata" in db.executed[0][0]
 
 
-def test_start_loads_snapshot_and_lookups_hit_the_cache(clock):
+def test_start_loads_snapshot_lookups_hit_cache(clock):
     db = FakeDb([row("users", "ssn"), row("users", "dob", 2), row("orders", "card", 3)])
     mm = MetadataManager(db, PG, config())
     mm.start()
-    assert mm.cache_size == 3 and db.opened == 1
+    assert mm.cache_size == 3
+    assert db.opened == 1
     assert mm.is_column_encrypted("users", "ssn")
     assert not mm.is_column_encrypted("users", "name")
     assert not mm.is_column_encrypted(None, "ssn")
     config_ = mm.column_config("users", "dob")
-    assert config_ is not None and config_.key_id == 2 and config_.key_metadata.id == 2
-    assert config_.key_metadata.hmac_key == b"h" * 32 and config_.is_usable
+    assert config_ is not None
+    assert config_.key_id == 2
+    assert config_.key_metadata.id == 2
+    assert config_.key_metadata.hmac_key == b"h" * 32
+    assert config_.is_usable
     assert {c.column_name for c in mm.table_configs("users")} == {"ssn", "dob"}
     assert mm.table_configs("nope") == ()
     assert db.opened == 1
@@ -148,7 +162,8 @@ def test_column_with_missing_key_row_still_reads_as_encrypted(clock):
     mm.start()
     config_ = mm.column_config("users", "ssn")
     assert config_ is not None
-    assert config_.key_id == 7 and config_.key_metadata is None
+    assert config_.key_id == 7
+    assert config_.key_metadata is None
     assert not config_.is_usable
     assert mm.is_column_encrypted("users", "ssn")
 
@@ -164,17 +179,18 @@ def _expired_with_background_refresh(clock, managers, db):
     return mm
 
 
-def test_expired_snapshot_is_reloaded_with_the_background_refresh_on(clock, managers):
+def test_expired_snapshot_reloaded_with_background_refresh(clock, managers):
     db = FakeDb([row("users", "ssn")])
     mm = _expired_with_background_refresh(clock, managers, db)
     assert mm.is_column_encrypted("users", "ssn")
     assert mm.column_config("users", "ssn") is not None
-    assert db.opened == 2  # start() plus one reload, not a query per lookup
+    # Start() plus one reload, not a query per lookup.
+    assert db.opened == 2
     assert "WHERE" not in db.executed[-1][0]
     assert mm._fresh(mm._snapshot) is not None
 
 
-def test_expired_snapshot_reload_sees_a_column_added_since(clock, managers):
+def test_expired_snapshot_reload_sees_added_column(clock, managers):
     # A column encrypted after the snapshot was taken must show up once the
     # snapshot expires; serving the stale snapshot would let a write store
     # plaintext.
@@ -182,7 +198,8 @@ def test_expired_snapshot_reload_sees_a_column_added_since(clock, managers):
     mm = _expired_with_background_refresh(clock, managers, db)
     db.rows = [row("users", "ssn"), row("users", "dob", 2)]
     assert {c.column_name for c in mm.table_configs("users")} == {"ssn", "dob"}
-    assert mm.cache_size == 2  # the reload cached the new column
+    # The reload cached the new column.
+    assert mm.cache_size == 2
     assert mm.is_column_encrypted("users", "dob")
     assert db.opened == 2
 
@@ -195,7 +212,8 @@ def test_expired_snapshot_is_reloaded_when_there_is_no_background_refresh(clock)
     db.rows = [row("users", "ssn"), row("users", "dob", 2)]
     assert {c.column_name for c in mm.table_configs("users")} == {"ssn", "dob"}
     assert mm.is_column_encrypted("users", "dob")
-    assert db.opened == 2  # one reload, then served from the new snapshot
+    # One reload, then served from the new snapshot.
+    assert db.opened == 2
     assert "WHERE" not in db.executed[-1][0]
 
 
@@ -206,20 +224,22 @@ def test_manager_that_was_never_started_always_queries(clock):
     mm = MetadataManager(db, PG, config())
     assert mm.is_column_encrypted("users", "ssn")
     assert mm.is_column_encrypted("users", "ssn")
-    assert db.opened == 2 and not mm.is_cache_loaded
+    assert db.opened == 2
+    assert not mm.is_cache_loaded
 
 
 def test_disabled_cache_always_queries(clock):
     db = FakeDb([row("users", "ssn")])
     mm = MetadataManager(db, PG, config(metadata_cache_enabled=False))
     mm.start()
-    assert db.opened == 0 and not mm.is_cache_loaded
+    assert db.opened == 0
+    assert not mm.is_cache_loaded
     assert mm.is_column_encrypted("users", "ssn")
     assert [c.column_name for c in mm.table_configs("users")] == ["ssn"]
     assert db.opened == 2
 
 
-def test_refresh_replaces_the_snapshot_atomically(clock):
+def test_refresh_replaces_snapshot_atomically(clock):
     db = FakeDb([row("users", "ssn")])
     mm = MetadataManager(db, PG, config())
     mm.start()
@@ -229,7 +249,7 @@ def test_refresh_replaces_the_snapshot_atomically(clock):
     assert mm.is_column_encrypted("users", "dob")
 
 
-def test_failed_refresh_keeps_the_previous_snapshot(clock):
+def test_failed_refresh_keeps_previous_snapshot(clock):
     db = FakeDb([row("users", "ssn")])
     mm = MetadataManager(db, PG, config())
     mm.start()
@@ -271,7 +291,8 @@ def test_background_refresh_thread_runs_and_stops(managers):
     mm.refresh = counting_refresh  # type: ignore[method-assign]
     mm.start()
     thread = mm._refresh_thread
-    assert thread is not None and thread.daemon
+    assert thread is not None
+    assert thread.daemon
     assert refreshed.wait(5)
     mm.close()
     assert not thread.is_alive()
@@ -291,7 +312,8 @@ def test_background_refresh_survives_errors(managers):
             break
         threading.Event().wait(0.01)
     assert len(db.executed) > attempts + 2  # the loop kept trying
-    assert mm._refresh_thread is not None and mm._refresh_thread.is_alive()
+    assert mm._refresh_thread is not None
+    assert mm._refresh_thread.is_alive()
 
 
 class BlockingDb(FakeDb):
@@ -313,7 +335,7 @@ class BlockingDb(FakeDb):
             self.release.wait(5)
 
 
-def test_refresh_finishing_after_close_does_not_repopulate_the_cache(managers):
+def test_refresh_after_close_keeps_cache_empty(managers):
     db = BlockingDb([row("users", "ssn")])
     mm = MetadataManager(db, PG, config())
     managers.append(mm)
@@ -331,7 +353,8 @@ def test_refresh_finishing_after_close_does_not_repopulate_the_cache(managers):
     db.block = False
     opened = db.opened
     assert mm.is_column_encrypted("users", "ssn")
-    assert db.opened == opened + 1 and not mm.is_cache_loaded
+    assert db.opened == opened + 1
+    assert not mm.is_cache_loaded
 
 
 def test_start_after_close_does_nothing():
@@ -339,7 +362,9 @@ def test_start_after_close_does_nothing():
     mm = MetadataManager(db, PG, config(metadata_cache_refresh_interval_sec=0.01))
     mm.close()
     mm.start()
-    assert db.opened == 0 and mm._refresh_thread is None and not mm.is_cache_loaded
+    assert db.opened == 0
+    assert mm._refresh_thread is None
+    assert not mm.is_cache_loaded
 
 
 def test_concurrent_refreshes_cannot_publish_older_data():
@@ -357,11 +382,13 @@ def test_concurrent_refreshes_cannot_publish_older_data():
     second = threading.Thread(target=mm.refresh, daemon=True)
     second.start()
     second.join(0.2)
-    assert second.is_alive()  # waits for the first refresh
+    # Waits for the first refresh.
+    assert second.is_alive()
     db.release.set()
     first.join(5)
     second.join(5)
-    assert not first.is_alive() and not second.is_alive()
+    assert not first.is_alive()
+    assert not second.is_alive()
     assert mm.is_column_encrypted("users", "dob")
     assert not mm.is_column_encrypted("users", "ssn")
 
@@ -386,7 +413,7 @@ def test_unclosed_manager_stops_its_thread_when_collected():
     assert not thread.is_alive()
 
 
-def test_finalizer_does_not_set_the_event_from_the_refresh_thread_itself():
+def test_finalizer_on_refresh_thread_skips_event():
     # On the refresh thread the collection can run inside Event.wait, which
     # holds the event's lock, so stop.set() there would deadlock.
     stop = threading.Event()
@@ -396,7 +423,7 @@ def test_finalizer_does_not_set_the_event_from_the_refresh_thread_itself():
     assert stop.is_set()
 
 
-def test_close_from_the_refresh_thread_does_not_fail(managers):
+def test_close_from_refresh_thread_succeeds(managers):
     # Only the refresh thread reports; start()'s initial refresh runs on the
     # calling thread and must not satisfy the test.
     errors: List[BaseException] = []
@@ -423,7 +450,7 @@ def test_close_from_the_refresh_thread_does_not_fail(managers):
     assert mm._stop.is_set()
 
 
-def test_finalizer_is_given_the_refresh_thread(managers):
+def test_finalizer_gets_refresh_thread(managers):
     # The _finalize test passes the holder by hand; this pins the wiring.
     mm = MetadataManager(FakeDb([row("users", "ssn")]), PG, config(metadata_cache_refresh_interval_sec=60.0))
     managers.append(mm)
@@ -432,7 +459,7 @@ def test_finalizer_is_given_the_refresh_thread(managers):
     assert mm._thread_holder == [mm._refresh_thread]
 
 
-def test_failed_reload_from_table_configs_names_the_table(clock):
+def test_failed_table_configs_reload_names_table(clock):
     db = FakeDb([row("users", "ssn")])
     mm = MetadataManager(db, PG, config(metadata_cache_expiration_sec=10.0))
     mm.start()
@@ -443,24 +470,27 @@ def test_failed_reload_from_table_configs_names_the_table(clock):
     assert (err.value.table_name, err.value.column_name) == ("users", None)
 
 
-def test_snapshot_age_counts_from_the_start_of_the_load(clock, managers):
+def test_snapshot_age_counts_from_load_start(clock, managers):
     # A slow load must not stretch how long its data is trusted.
     class SlowDb(FakeDb):
         @contextmanager
         def connection(self):
             with super().connection() as conn:
                 yield conn
-            clock.now += 5.0  # the load takes 5 s
+            # The load takes 5 s.
+            clock.now += 5.0
 
     db = SlowDb([row("users", "ssn")])
     mm = MetadataManager(db, PG, config(metadata_cache_expiration_sec=10.0,
                                         metadata_cache_refresh_interval_sec=3600.0))
     managers.append(mm)
     mm.start()
-    clock.now += 5.0  # 10 s after the data was read, 5 s after the query returned
+    # 10 s after the data was read, 5 s after the query returned.
+    clock.now += 5.0
     opened = db.opened
     mm.column_config("users", "ssn")
-    assert db.opened == opened + 1  # expired: read from the database
+    # Expired: read from the database.
+    assert db.opened == opened + 1
 
 
 def test_lookups_that_expire_together_share_one_reload(clock):
@@ -471,7 +501,8 @@ def test_lookups_that_expire_together_share_one_reload(clock):
     db.block = True
     first = threading.Thread(target=mm.column_config, args=("users", "ssn"), daemon=True)
     first.start()
-    assert db.entered.wait(5)  # the first lookup's reload is inside its read
+    # The first lookup's reload is inside its read.
+    assert db.entered.wait(5)
     db.block = False
     others = [threading.Thread(target=mm.column_config, args=("users", "ssn"), daemon=True) for _ in range(4)]
     for t in others:
@@ -480,7 +511,8 @@ def test_lookups_that_expire_together_share_one_reload(clock):
     for t in [first] + others:
         t.join(5)
     assert not any(t.is_alive() for t in [first] + others)
-    assert db.opened == 2  # start() plus a single reload
+    # Start() plus a single reload.
+    assert db.opened == 2
 
 
 def test_lookups_queued_when_close_runs_do_not_reload(clock):
@@ -496,17 +528,20 @@ def test_lookups_queued_when_close_runs_do_not_reload(clock):
     queued = threading.Thread(target=mm.column_config, args=("users", "ssn"), daemon=True)
     queued.start()
     queued.join(0.2)
-    assert queued.is_alive()  # waiting for the first reload
+    # Waiting for the first reload.
+    assert queued.is_alive()
     mm.close()
     db.release.set()
     first.join(5)
     queued.join(5)
-    assert not first.is_alive() and not queued.is_alive()
+    assert not first.is_alive()
+    assert not queued.is_alive()
     full_loads = [sql for sql, _ in db.executed if "WHERE" not in sql]
-    assert len(full_loads) == 2  # start() and the first lookup's reload; the queued one only queries its column
+    # Start() and the first lookup's reload; the queued one only queries its column.
+    assert len(full_loads) == 2
 
 
-def test_failed_reload_names_the_lookup(clock):
+def test_failed_reload_names_lookup(clock):
     db = FakeDb([row("users", "ssn")])
     mm = MetadataManager(db, PG, config(metadata_cache_expiration_sec=10.0))
     mm.start()
@@ -516,8 +551,6 @@ def test_failed_reload_names_the_lookup(clock):
         mm.column_config("users", "ssn")
     assert (err.value.table_name, err.value.column_name) == ("users", "ssn")
 
-
-# ---- name matching ----
 
 def test_postgresql_lookups_are_exact(clock):
     # Names are stored as the catalog has them; "Users" and users differ.
@@ -537,14 +570,15 @@ def test_mysql_lookups_ignore_case(clock):
     mm = MetadataManager(db, MYSQL, config())
     mm.start()
     found = mm.column_config("users", "ssn")
-    assert found is not None and (found.table_name, found.column_name) == ("Users", "SSN")
+    assert found is not None
+    assert (found.table_name, found.column_name) == ("Users", "SSN")
     assert mm.is_column_encrypted("USERS", "Ssn")
     assert [c.column_name for c in mm.table_configs("users")] == ["SSN"]
     assert [c.column_name for c in mm.table_configs("USERS")] == ["SSN"]
     assert db.opened == 1  # all from the cache
 
 
-def test_load_metadata_keeps_the_stored_names():
+def test_load_metadata_keeps_stored_names():
     db = FakeDb([row("Users", "SSN")])
     assert list(MetadataManager(db, MYSQL, config()).load_metadata()) == [("Users", "SSN")]
 
@@ -570,8 +604,31 @@ def test_names_that_are_not_text_are_refused(clock, raw):
     assert info.value.__context__ is None
 
 
-def test_names_that_are_not_text_are_refused_on_an_uncached_lookup():
+def test_non_text_names_uncached_lookup_raises():
     db = FakeDb([row("users", 7)])
     mm = MetadataManager(db, PG, config(metadata_cache_enabled=False))
     with pytest.raises(MetadataError, match="column_name"):
         mm.column_config("users", 7)  # type: ignore[arg-type]
+
+
+def test_column_config_without_name_returns_none():
+    db = FakeDb()
+    mm = MetadataManager(db, PG, config())
+    assert mm.column_config(None, "ssn") is None
+    assert mm.column_config("users", None) is None
+    assert db.executed == []
+
+
+def test_table_configs_without_table_returns_empty():
+    db = FakeDb()
+    assert MetadataManager(db, PG, config()).table_configs(None) == ()
+    assert db.executed == []
+
+
+def test_refresh_loop_collected_manager_returns(mocker):
+    stop = mocker.MagicMock()
+    stop.wait.return_value = False
+    collected = weakref.ref(MetadataManager(FakeDb(), PG, config()))
+    assert collected() is None
+    MetadataManager._refresh_loop(collected, stop, 0.0)
+    stop.wait.assert_called_once_with(0.0)

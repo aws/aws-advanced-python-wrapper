@@ -21,22 +21,35 @@ import pytest
 
 from aws_advanced_python_wrapper.encryption import data_key_cache as module
 from aws_advanced_python_wrapper.encryption.data_key_cache import DataKeyCache
+from aws_advanced_python_wrapper.utils.storage import expiration_tracking_cache
+
+NS_PER_SEC = 1_000_000_000
 
 
 class Clock:
     def __init__(self):
-        self.now = 1000.0
+        self.now_ns = 1000 * NS_PER_SEC
 
-    def __call__(self):
-        return self.now
+    def monotonic(self):
+        return self.now_ns / NS_PER_SEC
+
+    def perf_counter_ns(self):
+        return self.now_ns
+
+    def advance(self, sec, ns=0):
+        self.now_ns += round(sec * NS_PER_SEC) + ns
 
 
 @pytest.fixture
 def clock(monkeypatch):
-    # Replace the module's view of `time` only, so no other thread in the
-    # process sees a frozen clock.
+    # Replace the clock that the two cache modules read, not the time module's.
+    # Every ExpirationTrackingCache in the process then sees the frozen clock,
+    # and code that reads the time module keeps the real one. The time patch
+    # also covers a cache that reads time.monotonic, so the TTL tests never
+    # fall back to the real clock.
     c = Clock()
-    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=c))
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=c.monotonic), raising=False)
+    monkeypatch.setattr(expiration_tracking_cache, "perf_counter_ns", c.perf_counter_ns)
     return c
 
 
@@ -44,7 +57,7 @@ def make(max_size=3, ttl=60.0, enabled=True):
     return DataKeyCache(max_size, ttl, enabled, start_cleanup_thread=False)
 
 
-def test_get_returns_a_copy_the_caller_can_wipe(clock):
+def test_get_returns_copy(clock):
     cache = make()
     cache.put("k", b"\x01" * 32)
     first = cache.get("k")
@@ -53,7 +66,7 @@ def test_get_returns_a_copy_the_caller_can_wipe(clock):
     assert cache.get("k") == bytearray(b"\x01" * 32)
 
 
-def test_put_copies_so_the_caller_keeps_ownership(clock):
+def test_put_copies_caller_buffer(clock):
     cache = make()
     key = bytearray(b"\x02" * 32)
     cache.put("k", key)
@@ -64,7 +77,7 @@ def test_put_copies_so_the_caller_keeps_ownership(clock):
 def test_oldest_entry_is_evicted_and_wiped(clock):
     cache = make(max_size=2)
     cache.put("a", b"a" * 4)
-    entry_a = cache._entries["a"].data_key
+    entry_a = dict(cache._entries.items())["a"]
     cache.put("b", b"b" * 4)
     cache.put("c", b"c" * 4)
     assert cache.get("a") is None
@@ -73,11 +86,11 @@ def test_oldest_entry_is_evicted_and_wiped(clock):
     assert cache.stats().evictions == 1
 
 
-def test_replacing_a_key_wipes_the_old_value_and_does_not_evict(clock):
+def test_put_existing_key_wipes_old_value_without_eviction(clock):
     cache = make(max_size=2)
     cache.put("a", b"1111")
     cache.put("b", b"2222")
-    old = cache._entries["a"].data_key
+    old = dict(cache._entries.items())["a"]
     cache.put("a", b"3333")
     assert old == bytearray(4)
     assert cache.get("a") == bytearray(b"3333")
@@ -88,29 +101,36 @@ def test_replacing_a_key_wipes_the_old_value_and_does_not_evict(clock):
 def test_expired_entry_is_never_returned_and_is_wiped(clock):
     cache = make(ttl=10)
     cache.put("k", b"kkkk")
-    stored = cache._entries["k"].data_key
-    clock.now += 9.9
+    stored = dict(cache._entries.items())["k"]
+    clock.advance(9.9)
     assert cache.get("k") is not None
-    clock.now += 0.1
+    clock.advance(0.1, ns=1)
     assert cache.get("k") is None
     assert stored == bytearray(4)
     assert len(cache) == 0
 
 
+def test_get_at_ttl_returns_key(clock):
+    cache = make(ttl=10)
+    cache.put("k", b"kkkk")
+    clock.advance(10)
+    assert cache.get("k") == bytearray(b"kkkk")
+
+
 def test_remove_expired(clock):
     cache = make(ttl=10)
     cache.put("old", b"o")
-    clock.now += 5
+    clock.advance(5)
     cache.put("new", b"n")
-    clock.now += 5
+    clock.advance(5, ns=1)
     assert cache.remove_expired() == 1
     assert cache.get("new") is not None
 
 
-def test_clear_and_close_wipe_everything(clock):
+def test_close_wipes_every_key(clock):
     cache = make()
     cache.put("a", b"aa")
-    stored = cache._entries["a"].data_key
+    stored = dict(cache._entries.items())["a"]
     cache.close()
     assert stored == bytearray(2)
     assert len(cache) == 0
@@ -138,10 +158,11 @@ def test_stats(clock):
 def test_repr_does_not_show_key_material(clock):
     cache = make()
     cache.put("k", b"SECRET")
-    assert "SECRET" not in repr(cache._entries["k"])
+    assert "SECRET" not in repr(cache)
+    assert "SECRET" not in repr(cache._entries)
 
 
-def test_cleanup_interval_has_a_floor():
+def test_cleanup_interval_has_floor():
     assert make(ttl=40).cleanup_interval_sec == DataKeyCache.MIN_CLEANUP_INTERVAL_SEC
     assert make(ttl=400).cleanup_interval_sec == 100.0
 
@@ -150,7 +171,9 @@ def test_cleanup_thread_stops_promptly_on_close():
     cache = DataKeyCache(10, 3600.0)
     try:
         thread = cache._cleanup_thread
-        assert thread is not None and thread.daemon and thread.is_alive()
+        assert thread is not None
+        assert thread.daemon
+        assert thread.is_alive()
         started = time.monotonic()
         cache.close()
         assert not thread.is_alive()
@@ -168,26 +191,28 @@ def test_closed_cache_stores_nothing(clock):
     cache.put("k", key)
     assert cache.get("k") is None
     assert len(cache) == 0
-    assert key == bytearray(b"\x05" * 32)  # the caller's buffer is left alone
+    # The caller's buffer is left alone.
+    assert key == bytearray(b"\x05" * 32)
 
 
-def test_finalizer_wipes_first_and_never_sets_the_event_from_the_cleanup_thread(clock):
+def test_finalizer_on_cleanup_thread_wipes_without_setting_event(clock):
     # A collection on the cleanup thread can run inside Event.wait, which
     # holds the event's lock, so stop.set() there would deadlock. The keys
     # are wiped regardless.
     import threading
     cache = make()
     cache.put("k", b"\x09" * 4)
-    stored = cache._entries["k"].data_key
+    stored = dict(cache._entries.items())["k"]
     stop = threading.Event()
     DataKeyCache._release(cache._entries, cache._lock, stop, [threading.current_thread()])
-    assert stored == bytearray(4) and len(cache) == 0
+    assert stored == bytearray(4)
+    assert len(cache) == 0
     assert not stop.is_set()
     DataKeyCache._release(cache._entries, cache._lock, stop, [None])
     assert stop.is_set()
 
 
-def test_close_on_the_cleanup_thread_stops_it_without_joining_itself():
+def test_close_on_cleanup_thread_does_not_join_itself():
     # There the finalizer leaves the event alone, so close() must set it, and
     # it must not join its own thread.
     import threading
@@ -210,10 +235,10 @@ def test_close_on_the_cleanup_thread_stops_it_without_joining_itself():
     assert cache._stop.is_set()
 
 
-def test_finalizer_wipes_the_keys_even_if_stopping_the_thread_fails(clock):
+def test_finalizer_stop_fails_keys_still_wiped(clock):
     cache = make()
     cache.put("k", b"\x09" * 4)
-    stored = cache._entries["k"].data_key
+    stored = dict(cache._entries.items())["k"]
 
     class BrokenStop:
         def set(self):
@@ -224,7 +249,7 @@ def test_finalizer_wipes_the_keys_even_if_stopping_the_thread_fails(clock):
     assert stored == bytearray(4)
 
 
-def test_a_cache_hit_does_not_protect_an_entry_from_eviction(clock):
+def test_eviction_after_hit_removes_oldest(clock):
     # Eviction is oldest-first by insertion, not least recently used.
     cache = make(max_size=2)
     cache.put("a", b"aaaa")
@@ -235,7 +260,7 @@ def test_a_cache_hit_does_not_protect_an_entry_from_eviction(clock):
     assert cache.get("b") == bytearray(b"bbbb")
 
 
-def test_put_after_close_wipes_the_copy_it_refuses(clock, monkeypatch):
+def test_put_after_close_wipes_copy(clock, monkeypatch):
     wiped = []
     real = module.wipe
     monkeypatch.setattr(module, "wipe", lambda buf: (wiped.append(buf), real(buf)))
@@ -246,7 +271,25 @@ def test_put_after_close_wipes_the_copy_it_refuses(clock, monkeypatch):
     assert wiped == [bytearray(4)]
 
 
-def test_finalizer_is_given_the_cleanup_thread():
+def test_cleanup_loop_logs_failure_and_runs_next_pass(mocker, clock):
+    cache = make()
+    remove_expired = mocker.patch.object(cache, "remove_expired", side_effect=[RuntimeError("boom"), 0])
+    logger = mocker.patch.object(module, "logger")
+    stop = mocker.MagicMock()
+    stop.wait.side_effect = [False, False, True]
+    DataKeyCache._cleanup_loop(weakref.ref(cache), stop, 1.0)
+    logger.debug.assert_called_once_with("DataKeyCache.CleanupFailed", "RuntimeError")
+    assert remove_expired.call_count == 2
+
+
+def test_cleanup_loop_cache_collected_ends(mocker):
+    stop = mocker.MagicMock()
+    stop.wait.return_value = False
+    DataKeyCache._cleanup_loop(mocker.MagicMock(return_value=None), stop, 1.0)
+    assert stop.wait.call_count == 1
+
+
+def test_finalizer_holds_cleanup_thread():
     cache = DataKeyCache(10, 3600.0)
     try:
         assert cache._cleanup_thread is not None
@@ -259,7 +302,7 @@ def test_finalizer_is_given_the_cleanup_thread():
 def test_unclosed_cache_is_wiped_and_its_thread_stops_when_collected():
     cache = DataKeyCache(10, 3600.0)
     cache.put("k", b"\x07" * 32)
-    stored = cache._entries["k"].data_key
+    stored = dict(cache._entries.items())["k"]
     thread = cache._cleanup_thread
     ref = weakref.ref(cache)
     del cache

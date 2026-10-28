@@ -40,7 +40,7 @@ def props(**kwargs) -> Properties:
 
 
 class TestFromProps:
-    def test_defaults_match_the_shared_spec(self):
+    def test_defaults_match_shared_spec(self):
         config = EncryptionConfig.from_props(props())
         assert config.kms_region == "us-east-1"
         assert config.kms_endpoint is None
@@ -82,7 +82,7 @@ class TestFromProps:
         monkeypatch.setenv(env, "eu-west-1")
         assert EncryptionConfig.from_props(props()).kms_region == "us-east-1"
 
-    def test_blank_region_property_falls_back_to_the_environment(self, monkeypatch):
+    def test_blank_region_falls_back_to_environment(self, monkeypatch):
         monkeypatch.setenv("AWS_REGION", "eu-west-1")
         assert EncryptionConfig.from_props(props(encryption_kms_region="   ")).kms_region == "eu-west-1"
 
@@ -123,7 +123,7 @@ class TestFromProps:
         assert config.is_master_key_allowed(ARN)
         assert config.is_master_key_allowed(None)
 
-    def test_non_numeric_value_is_a_config_error_naming_the_property(self):
+    def test_non_numeric_value_raises_naming_property(self):
         with pytest.raises(EncryptionConfigError, match="encryption_data_key_cache_max_size"):
             EncryptionConfig.from_props(props(encryption_data_key_cache_max_size="lots"))
 
@@ -135,12 +135,41 @@ class TestFromProps:
         ("encryption_key_management_max_retries", "-1"),
         ("encryption_key_management_retry_backoff_base_sec", "0"),
     ])
-    def test_out_of_range_values_name_the_property(self, name, value):
+    def test_out_of_range_value_names_property(self, name, value):
         with pytest.raises(EncryptionConfigError, match=name) as err:
             EncryptionConfig.from_props(props(**{name: value}))
         assert ">" in str(err.value).partition("must be")[2]
 
-    def test_config_error_is_an_interface_error(self):
+    def test_fail_on_unmapped_parameter_defaults_on(self):
+        assert EncryptionConfig.from_props(props()).fail_on_unmapped_parameter is True
+        config = EncryptionConfig.from_props(props(encryption_fail_on_unmapped_parameter="false"))
+        assert config.fail_on_unmapped_parameter is False
+
+    @pytest.mark.parametrize("name, attribute", [
+        ("encryption_fail_on_unmapped_parameter", "fail_on_unmapped_parameter"),
+        ("encryption_metadata_cache_enabled", "metadata_cache_enabled"),
+        ("encryption_data_key_cache_enabled", "data_key_cache_enabled"),
+        ("encryption_audit_logging_enabled", "audit_logging_enabled"),
+        ("encryption_return_unverified_data", "return_unverified_data"),
+    ])
+    @pytest.mark.parametrize("value", [2, -1])
+    def test_boolean_integer_other_than_one_is_off(self, name, attribute, value):
+        config = EncryptionConfig.from_props(props(**{name: value}))
+        assert getattr(config, attribute) is False
+
+    @pytest.mark.parametrize("value, expected", [(True, True), (1, True), ("TRUE", True), ("yes", False), ("1", False)])
+    def test_boolean_true_values(self, value, expected):
+        config = EncryptionConfig.from_props(props(encryption_audit_logging_enabled=value))
+        assert config.audit_logging_enabled is expected
+
+    def test_fractional_float_for_integer_refused(self):
+        with pytest.raises(EncryptionConfigError, match="encryption_data_key_cache_max_size"):
+            EncryptionConfig.from_props(props(encryption_data_key_cache_max_size=1.5))
+
+    def test_whole_float_for_integer_accepted(self):
+        assert EncryptionConfig.from_props(props(encryption_data_key_cache_max_size=5.0)).data_key_cache_max_size == 5
+
+    def test_config_error_is_interface_error(self):
         with pytest.raises(InterfaceError):
             EncryptionConfig.from_props(props(encryption_kms_region=None))
 
@@ -164,7 +193,12 @@ class TestAllowList:
         assert not config.is_master_key_allowed(None)
 
     def test_direct_construction_normalizes_too(self):
-        config = EncryptionConfig(kms_region="us-east-1", allowed_master_key_arns=f"{ARN}, ")  # type: ignore[arg-type]
+        config = EncryptionConfig(
+            kms_region="us-east-1", allowed_master_key_arns=f"{ARN}, ",  # type: ignore[arg-type]
+            kms_endpoint=None, metadata_schema="encrypt", metadata_cache_enabled=True,
+            metadata_cache_expiration_sec=3600.0, metadata_cache_refresh_interval_sec=300.0, data_key_cache_enabled=True,
+            data_key_cache_max_size=1000, data_key_cache_expiration_sec=300.0, key_management_max_retries=3,
+            key_management_retry_backoff_base_sec=0.1, audit_logging_enabled=False, return_unverified_data=False)
         assert config.allowed_master_key_arns == frozenset({ARN})
 
 
@@ -245,7 +279,10 @@ class TestModels:
     def test_from_row_normalizes_binary_and_prefix(self):
         row = {"ks_id": "7", "ks_key_id": "u", "ks_hmac_key": memoryview(b"hk"), "ks_key_spec": None}
         km = KeyMetadata.from_row(row, "ks_")
-        assert km.id == 7 and km.key_id == "u" and km.hmac_key == b"hk" and km.key_spec == "AES_256"
+        assert km.id == 7
+        assert km.key_id == "u"
+        assert km.hmac_key == b"hk"
+        assert km.key_spec == "AES_256"
 
 
 def test_data_key_spec_matches_algorithm_key_length():
