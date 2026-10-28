@@ -401,8 +401,13 @@ class AwsWrapperCursor(Cursor):
             *args: Any,
             **kwargs: Any
     ) -> AwsWrapperCursor:
-        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTE,
-                                            lambda: self.target_cursor.execute(*args, **kwargs), *args, **kwargs)
+        # The plugin manager calls the driver with the statement's arguments,
+        # which a plugin may have replaced.
+        result = self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTE,
+                                              lambda *a, **kw: self.target_cursor.execute(*a, **kw), *args, **kwargs)
+        # psycopg returns the driver cursor itself; return this cursor instead,
+        # so a chained fetch goes through the plugins.
+        return self if result is self.target_cursor else result
 
     def executemany(
             self,
@@ -410,7 +415,7 @@ class AwsWrapperCursor(Cursor):
             **kwargs: Any
     ) -> None:
         self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_EXECUTEMANY,
-                                     lambda: self.target_cursor.executemany(*args, **kwargs),
+                                     lambda *a, **kw: self.target_cursor.executemany(*a, **kw),
                                      *args, **kwargs)
 
     def nextset(self) -> bool:
@@ -430,7 +435,12 @@ class AwsWrapperCursor(Cursor):
                                             lambda: self.target_cursor.fetchall())
 
     def __iter__(self) -> Iterator[Any]:
-        return self.target_cursor.__iter__()
+        # The plugins subscribed to Cursor.__next__ run once per loop, not once
+        # per row: such a plugin returns an iterator over the driver's (one that
+        # changes each row, say). The driver's iterator still fetches the rows,
+        # so a server-side cursor keeps fetching a page at a time.
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_NEXT,
+                                            lambda: iter(self.target_cursor))
 
     def setinputsizes(self, sizes: Any) -> None:
         return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_SETINPUTSIZES,

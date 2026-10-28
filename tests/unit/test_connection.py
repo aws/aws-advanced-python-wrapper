@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, List, Set
 from unittest.mock import MagicMock, patch
 
 import psycopg
@@ -23,9 +23,13 @@ import pytest
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
+from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
+from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.plugin import Plugin
 from aws_advanced_python_wrapper.plugin_service import (
-    PluginServiceImpl, PluginServiceManagerContainer)
+    PluginManager, PluginServiceImpl, PluginServiceManagerContainer)
 from aws_advanced_python_wrapper.wrapper import (AwsWrapperConnection,
                                                  AwsWrapperCursor)
 
@@ -177,3 +181,105 @@ def test_connection_prepare_threshold_and_prepared_max_forward():
     wrapper.prepared_max = 100
     assert target.prepare_threshold == 99
     assert target.prepared_max == 100
+
+
+class UpperRowsPlugin(Plugin):
+    """Upper-cases the rows of the methods it subscribes to, and records the methods it handles."""
+
+    def __init__(self, methods: Set[str], calls: List[str]):
+        self._methods = methods
+        self._calls = calls
+
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return self._methods
+
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
+        self._calls.append(method_name)
+        if method_name == DbApiMethod.CURSOR_NEXT.method_name:
+            return (row.upper() for row in execute_func())
+        return execute_func().upper()
+
+
+def _cursor_with_plugins(driver_cursor: MagicMock, plugins: List[Plugin], current_connection: Any = None) -> AwsWrapperCursor:
+    """A wrapper cursor over driver_cursor whose plugin manager runs the given plugins, then DefaultPlugin."""
+    plugin_service = MagicMock()
+    plugin_service.current_connection = driver_cursor.connection if current_connection is None else current_connection
+    plugin_service.driver_dialect.get_connection_from_obj.side_effect = lambda obj: obj.connection
+    plugin_service.driver_dialect.unwrap_connection.side_effect = lambda conn: conn
+    plugin_service.driver_dialect.execute.side_effect = lambda method_name, func, *args, **kwargs: func()
+    container = MagicMock()
+    container.plugin_service = plugin_service
+    manager = PluginManager.__new__(PluginManager)
+    manager._container = container
+    manager._telemetry_factory = MagicMock()
+    manager._telemetry_in_use = False
+    manager._function_cache = [None] * (DbApiMethod.ALL.id + 1)
+    manager._plugins = plugins + [DefaultPlugin(plugin_service, MagicMock())]
+    return AwsWrapperCursor(MagicMock(), plugin_service, manager, driver_cursor)
+
+
+def test_cursor_loop_runs_the_next_subscribers_once_per_loop():
+    calls: List[str] = []
+    driver_cursor = MagicMock()
+    driver_cursor.__iter__.return_value = iter(["a", "b", "c"])
+    cursor = _cursor_with_plugins(driver_cursor, [UpperRowsPlugin({DbApiMethod.CURSOR_NEXT.method_name}, calls)])
+
+    assert [row for row in cursor] == ["A", "B", "C"]
+    assert calls == [DbApiMethod.CURSOR_NEXT.method_name]
+
+
+def test_cursor_loop_without_subscribers_returns_the_driver_iterator():
+    rows = iter(["a", "b"])
+    driver_cursor = MagicMock()
+    driver_cursor.__iter__.return_value = rows
+    cursor = _cursor_with_plugins(driver_cursor, [])
+
+    assert iter(cursor) is rows
+    assert list(cursor) == ["a", "b"]
+
+
+def test_cursor_loop_after_a_break_continues_with_the_next_row():
+    driver_cursor = MagicMock()
+    driver_cursor.__iter__.return_value = iter(["a", "b", "c"])
+    cursor = _cursor_with_plugins(driver_cursor, [UpperRowsPlugin({DbApiMethod.CURSOR_NEXT.method_name}, [])])
+
+    for first in cursor:
+        break
+
+    assert first == "A"
+    assert list(cursor) == ["B", "C"]
+    assert list(cursor) == []
+
+
+def test_cursor_loop_over_a_cursor_of_an_old_connection_raises():
+    # After failover, say: the connection the driver cursor belongs to is no longer the current one.
+    driver_cursor = MagicMock()
+    driver_cursor.__iter__.return_value = iter(["a"])
+    cursor = _cursor_with_plugins(driver_cursor, [], current_connection=MagicMock())
+
+    with pytest.raises(AwsWrapperError):
+        for _ in cursor:
+            pass
+
+
+def test_cursor_execute_returns_the_wrapper_cursor_when_the_driver_returns_its_own():
+    # psycopg's Cursor.execute returns the cursor, so a fetch chained onto it must go through the plugins too.
+    calls: List[str] = []
+    driver_cursor = MagicMock()
+    driver_cursor.execute.return_value = driver_cursor
+    driver_cursor.fetchone.return_value = "row"
+    cursor = _cursor_with_plugins(driver_cursor, [UpperRowsPlugin({DbApiMethod.CURSOR_FETCHONE.method_name}, calls)])
+
+    assert cursor.execute("SELECT 1") is cursor
+    assert cursor.execute("SELECT 1").fetchone() == "ROW"
+    assert calls == [DbApiMethod.CURSOR_FETCHONE.method_name]
+
+
+@pytest.mark.parametrize("driver_result", [None, object()])
+def test_cursor_execute_passes_any_other_driver_result_through(driver_result):
+    # mysql-connector's Cursor.execute returns None.
+    driver_cursor = MagicMock()
+    driver_cursor.execute.return_value = driver_result
+
+    assert _cursor_with_plugins(driver_cursor, []).execute("SELECT 1") is driver_result

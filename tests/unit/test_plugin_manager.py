@@ -14,6 +14,11 @@
 
 from __future__ import annotations
 
+import contextvars
+import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,7 +26,7 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import psycopg
 import pytest
@@ -37,10 +42,14 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin
-from aws_advanced_python_wrapper.plugin_service import PluginManager
+from aws_advanced_python_wrapper.plugin_service import (PluginCallContext,
+                                                        PluginManager,
+                                                        PluginServiceImpl)
+from aws_advanced_python_wrapper.utils.decorators import timeout
 from aws_advanced_python_wrapper.utils.notifications import (
     ConnectionEvent, HostEvent, OldConnectionSuggestedAction)
 from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.wrapper import AwsWrapperCursor
 
 
 class DbApiMethodTest(Enum):
@@ -712,3 +721,366 @@ def test_must_use_pipeline(mocker, container, mock_telemetry_factory):
     manager._function_cache[DbApiMethod.CURSOR_LASTROWID.id] = \
         manager._make_pipeline(DbApiMethod.CURSOR_LASTROWID.method_name)
     assert manager.must_use_pipeline(DbApiMethod.CURSOR_LASTROWID)
+
+
+# A value the call-context tests look for where no argument may appear.
+CALL_CONTEXT_MARKER = "call-context-marker-7f3a"
+
+
+class CallContextPlugin(Plugin):
+    """Records the arguments it is entered with. It can replace the call's arguments, run the rest of the chain more
+    than once, or run something while it handles the call."""
+
+    def __init__(
+            self,
+            plugin_service: PluginServiceImpl,
+            name: str,
+            seen: List[Tuple[str, Tuple[Any, ...], Dict[str, Any]]],
+            replace_with: Optional[Tuple[Tuple[Any, ...], Dict[str, Any]]] = None,
+            runs: int = 1,
+            during: Optional[Callable[[], None]] = None):
+        self._plugin_service = plugin_service
+        self._name = name
+        self._seen = seen
+        self._replace_with = replace_with
+        self._runs = runs
+        self._during = during
+
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return {DbApiMethod.CURSOR_EXECUTE.method_name, DbApiMethod.CURSOR_EXECUTEMANY.method_name}
+
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
+        self._seen.append((self._name, args, kwargs))
+        if self._during is not None:
+            self._during()
+        context = self._plugin_service.current_call_context
+        if self._replace_with is not None and context is not None:
+            context.args, context.kwargs = self._replace_with
+        result = None
+        for _ in range(self._runs):
+            result = execute_func()
+        return result
+
+
+class CallContextObserverPlugin(Plugin):
+    """Records, for each call it handles, the arguments of the call context it reads."""
+
+    def __init__(self, plugin_service: PluginServiceImpl, methods: Set[str], observed: List[Tuple[str, Optional[Tuple[Any, ...]]]]):
+        self._plugin_service = plugin_service
+        self._methods = methods
+        self._observed = observed
+
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return self._methods
+
+    def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
+        context = self._plugin_service.current_call_context
+        self._observed.append((method_name, None if context is None else context.args))
+        return execute_func()
+
+
+def _call_context_service() -> PluginServiceImpl:
+    # current_call_context reads only the calling thread's context, so the service needs no set-up.
+    return PluginServiceImpl.__new__(PluginServiceImpl)
+
+
+def _call_context_manager(mocker, container, mock_telemetry_factory, plugins: List[Plugin]) -> PluginManager:
+    container.plugin_service.driver_dialect.execute.side_effect = \
+        lambda method_name, func, *args, **kwargs: func()
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
+    manager._container = container
+    manager._plugins = plugins + [DefaultPlugin(container.plugin_service, mocker.MagicMock())]
+    manager._telemetry_factory = mock_telemetry_factory
+    manager._telemetry_in_use = False
+    manager._function_cache = [None] * (DbApiMethod.ALL.id + 1)
+    return manager
+
+
+def test_call_context_replacement_reaches_later_plugins_and_the_driver(mocker, container, mock_telemetry_factory, mock_conn):
+    service = _call_context_service()
+    seen: List[Tuple[str, Tuple[Any, ...], Dict[str, Any]]] = []
+    driver_calls = []
+    caller_params = ["plain"]
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory, [
+        CallContextPlugin(service, "before", seen),
+        CallContextPlugin(service, "replacer", seen, replace_with=(("q", ("ENC",)), {"prepare": True})),
+        CallContextPlugin(service, "after", seen)])
+
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE,
+                    lambda *a, **kw: driver_calls.append((a, kw)), "q", caller_params)
+
+    assert seen == [("before", ("q", ["plain"]), {}),
+                    ("replacer", ("q", ["plain"]), {}),
+                    ("after", ("q", ("ENC",)), {"prepare": True})]
+    assert seen[0][1][1] is caller_params
+    assert driver_calls == [(("q", ("ENC",)), {"prepare": True})]
+    assert caller_params == ["plain"]
+
+
+@pytest.mark.parametrize("method_name", ["execute", "executemany"])
+@pytest.mark.parametrize("replacement", [((), {}), (("q", [("ENC",)]), {"prepare": True})])
+def test_cursor_driver_method_receives_the_replacement_as_written(
+        mocker, container, mock_telemetry_factory, mock_cursor, method_name, replacement):
+    # An empty replacement too: the driver then fails on it, instead of receiving the caller's arguments.
+    service = _call_context_service()
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory,
+                                    [CallContextPlugin(service, "replacer", [], replace_with=replacement)])
+    cursor = AwsWrapperCursor(mocker.MagicMock(), container.plugin_service, manager, mock_cursor)
+
+    getattr(cursor, method_name)("q", [("plain",)])
+
+    getattr(mock_cursor, method_name).assert_called_once_with(*replacement[0], **replacement[1])
+
+
+def test_without_a_replacement_the_driver_gets_the_callers_arguments(mocker, container, mock_telemetry_factory, mock_conn):
+    driver_calls = []
+    params = ["v"]
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory, [])
+
+    # Nothing subscribed and not network bound: the call bypasses the pipeline.
+    container.plugin_service.is_network_bound_method.return_value = False
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE,
+                    lambda *a, **kw: driver_calls.append((a, kw)), "q", params, prepare=True)
+    assert container.plugin_service.driver_dialect.execute.call_count == 0
+
+    # Network bound: the call goes through DefaultPlugin.
+    container.plugin_service.is_network_bound_method.return_value = True
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE,
+                    lambda *a, **kw: driver_calls.append((a, kw)), "q", params, prepare=True)
+    assert container.plugin_service.driver_dialect.execute.call_count == 1
+
+    assert driver_calls == [(("q", ["v"]), {"prepare": True})] * 2
+    # The driver gets the caller's own objects, not copies of them.
+    assert all(call[0][1] is params for call in driver_calls)
+
+
+def test_call_context_outer_rerun_starts_from_the_arguments_the_outer_plugin_saw(
+        mocker, container, mock_telemetry_factory, mock_conn):
+    service = _call_context_service()
+    seen: List[Tuple[str, Tuple[Any, ...], Dict[str, Any]]] = []
+    driver_calls = []
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory, [
+        CallContextPlugin(service, "retrier", seen, runs=2),
+        CallContextPlugin(service, "replacer", seen, replace_with=(("q", ("ENC",)), {"prepare": True}))])
+
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, lambda *a, **kw: driver_calls.append(a), "q", ("plain",))
+
+    assert [entry for entry in seen if entry[0] == "replacer"] == [("replacer", ("q", ("plain",)), {})] * 2
+    assert driver_calls == [("q", ("ENC",))] * 2
+
+
+def test_call_context_outer_retry_after_an_error_starts_from_the_arguments_the_outer_plugin_saw(
+        mocker, container, mock_telemetry_factory, mock_conn):
+    # A plugin after the replacer fails once and a plugin before it runs the rest again: the replacement made in the
+    # failed run is undone, so the replacer starts again from the caller's arguments and replaces them once.
+    service = _call_context_service()
+    seen: List[Tuple[str, Tuple[Any, ...], Dict[str, Any]]] = []
+    driver_calls = []
+    failures = [ValueError("inner plugin failed")]
+
+    def fail_once() -> None:
+        if failures:
+            raise failures.pop()
+
+    class RetryPlugin(CallContextPlugin):
+        def execute(self, target: object, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
+            try:
+                return execute_func()
+            except ValueError:
+                return execute_func()
+
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory, [
+        RetryPlugin(service, "retrier", seen),
+        CallContextPlugin(service, "replacer", seen, replace_with=(("q", ("ENC",)), {"prepare": True})),
+        CallContextPlugin(service, "failer", seen, during=fail_once)])
+
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, lambda *a, **kw: driver_calls.append(a), "q", ("plain",))
+
+    assert [entry for entry in seen if entry[0] == "replacer"] == [("replacer", ("q", ("plain",)), {})] * 2
+    assert driver_calls == [("q", ("ENC",))]
+
+
+def test_current_call_context_is_none_outside_a_call_and_after_an_error(mocker, container, mock_telemetry_factory, mock_conn):
+    service = _call_context_service()
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory,
+                                    [CallContextPlugin(service, "replacer", [], replace_with=(("q", ("ENC",)), {}))])
+
+    def failing_driver(*args, **kwargs):
+        raise ValueError("driver failed")
+
+    assert service.current_call_context is None
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, lambda *a, **kw: None, "q", ("plain",))
+    assert service.current_call_context is None
+    with pytest.raises(ValueError):
+        manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, failing_driver, "q", ("plain",))
+    assert service.current_call_context is None
+
+
+def test_only_execute_and_executemany_get_a_call_context(mocker, container, mock_telemetry_factory, mock_conn):
+    service = _call_context_service()
+    observed: List[Tuple[str, Optional[Tuple[Any, ...]]]] = []
+    methods = [DbApiMethod.CURSOR_EXECUTE, DbApiMethod.CURSOR_EXECUTEMANY, DbApiMethod.CURSOR_FETCHONE, DbApiMethod.CURSOR_FETCHMANY]
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory,
+                                    [CallContextObserverPlugin(service, {method.method_name for method in methods}, observed)])
+
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, lambda *a, **kw: None, "q", ("v",))
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTEMANY, lambda *a, **kw: None, "q", [("v",)])
+    manager.execute(mock_conn, DbApiMethod.CURSOR_FETCHONE, lambda: None)
+    manager.execute(mock_conn, DbApiMethod.CURSOR_FETCHMANY, lambda: None, 5)
+
+    assert observed == [(DbApiMethod.CURSOR_EXECUTE.method_name, ("q", ("v",))),
+                        (DbApiMethod.CURSOR_EXECUTEMANY.method_name, ("q", [("v",)])),
+                        (DbApiMethod.CURSOR_FETCHONE.method_name, None),
+                        (DbApiMethod.CURSOR_FETCHMANY.method_name, None)]
+
+
+def test_nested_execute_has_its_own_call_context_and_restores_the_enclosing_one(
+        mocker, container, mock_telemetry_factory, mock_conn):
+    service = _call_context_service()
+    observed: List[Any] = []
+
+    def nested_execute():
+        if observed:
+            return  # only the enclosing call makes a nested one
+        enclosing = service.current_call_context
+        observed.append(("enclosing", None if enclosing is None else enclosing.args))
+        manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE,
+                        lambda *a, **kw: observed.append(("nested", a, service.current_call_context is not enclosing)),
+                        "nested q", ("n",))
+        observed.append(("restored", service.current_call_context is enclosing))
+
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory,
+                                    [CallContextPlugin(service, "nester", [], during=nested_execute)])
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, lambda *a, **kw: None, "q", ("o",))
+
+    assert observed == [("enclosing", ("q", ("o",))), ("nested", ("nested q", ("n",)), True), ("restored", True)]
+
+
+def test_other_method_inside_execute_sees_the_enclosing_call_context(mocker, container, mock_telemetry_factory, mock_conn):
+    service = _call_context_service()
+    observed: List[Tuple[str, Optional[Tuple[Any, ...]]]] = []
+
+    def nested_fetchone():
+        manager.execute(mock_conn, DbApiMethod.CURSOR_FETCHONE, lambda: "row")
+
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory, [
+        CallContextObserverPlugin(service, {DbApiMethod.CURSOR_FETCHONE.method_name}, observed),
+        CallContextPlugin(service, "nester", [], during=nested_fetchone)])
+    manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, lambda *a, **kw: None, "q", ("o",))
+
+    assert observed == [(DbApiMethod.CURSOR_FETCHONE.method_name, ("q", ("o",)))]
+
+
+def test_call_contexts_of_concurrent_threads_are_separate(mocker, container, mock_telemetry_factory, mock_conn):
+    service = _call_context_service()
+    barrier = threading.Barrier(2)
+    mismatches: List[Any] = []
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory, [CallContextPlugin(service, "plugin", [])])
+
+    def driver(*args, **kwargs):
+        # Both threads are inside a call here at the same time.
+        barrier.wait(timeout=5)
+        context = service.current_call_context
+        if context is None or context.args != args:
+            mismatches.append(args)
+
+    def run(sql: str):
+        for _ in range(20):
+            manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, driver, sql, ())
+
+    threads = [threading.Thread(target=run, args=(sql,)) for sql in ("q0", "q1")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert not any(thread.is_alive() for thread in threads)
+    assert mismatches == []
+
+
+def test_late_socket_timeout_worker_sends_the_replacement(mocker, container, mock_telemetry_factory, mock_conn):
+    # With the dialect's pool busy, the driver call is still queued when the statement times out and every
+    # replacement has been undone. When a worker finally runs it, it must still send the replacement.
+    service = _call_context_service()
+    release = threading.Event()
+    sent = []
+
+    def driver(*args, **kwargs):
+        sent.append((args, kwargs))
+
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory,
+                                    [CallContextPlugin(service, "replacer", [], replace_with=(("q", ("ENC",)), {}))])
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(release.wait, 10)  # the only worker is held by an earlier operation that is stuck
+        container.plugin_service.driver_dialect.execute.side_effect = \
+            lambda method_name, func, *args, **kwargs: timeout(pool, 0.05)(func)()
+
+        with pytest.raises(FuturesTimeoutError):
+            manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, driver, "q", ("plain",))
+        assert sent == []
+
+        release.set()
+        # timeout() doesn't cancel a call that is still queued, so the worker runs it now. If timeout() ever cancels it,
+        # nothing is sent. Either way the driver never gets the caller's arguments or the cleared ones.
+
+    assert sent in ([], [(("q", ("ENC",)), {})])
+
+
+def test_socket_timeout_worker_sends_the_replacement(mocker, container, mock_telemetry_factory, mock_conn):
+    # With socket_timeout set, the dialect runs the driver call on a worker thread, which doesn't see this thread's
+    # call context. The worker must still send the replacement.
+    service = _call_context_service()
+    sent = []
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory,
+                                    [CallContextPlugin(service, "replacer", [], replace_with=(("q", ("ENC",)), {}))])
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(lambda: None).result(5)  # start the worker before the call, so it can't inherit the call's context
+        container.plugin_service.driver_dialect.execute.side_effect = \
+            lambda method_name, func, *args, **kwargs: timeout(pool, 5)(func)()
+        manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, lambda *a, **kw: sent.append((a, kw)), "q", ("plain",))
+
+    assert sent == [(("q", ("ENC",)), {})]
+
+
+@pytest.mark.parametrize("fails", [False, True], ids=["returns", "raises"])
+def test_context_copied_during_a_call_holds_no_argument_after_it(mocker, container, mock_telemetry_factory, mock_conn, caplog, fails):
+    caplog.set_level(logging.DEBUG)
+    service = _call_context_service()
+    copies: List[contextvars.Context] = []
+    manager = _call_context_manager(mocker, container, mock_telemetry_factory,
+                                    [CallContextPlugin(service, "copier", [], during=lambda: copies.append(contextvars.copy_context()))])
+
+    driver_error = ValueError("driver failed")
+
+    def driver(*args: Any, **kwargs: Any) -> None:
+        if fails:
+            raise driver_error
+
+    if fails:
+        with pytest.raises(ValueError) as excinfo:
+            manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, driver, "q", (CALL_CONTEXT_MARKER,), params=CALL_CONTEXT_MARKER)
+        # The driver's own error arrives unchanged, with nothing of the call's arguments added to it.
+        assert excinfo.value is driver_error
+        assert excinfo.value.__cause__ is None
+        assert excinfo.value.__context__ is None
+    else:
+        manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, driver, "q", (CALL_CONTEXT_MARKER,), params=CALL_CONTEXT_MARKER)
+
+    copied = copies[0].run(lambda: service.current_call_context)
+    assert copied is not None
+    assert copied.args == ()
+    assert copied.kwargs == {}
+    # The core neither logs nor traces the call's arguments.
+    assert [record for record in caplog.records if CALL_CONTEXT_MARKER in record.getMessage()] == []
+    assert CALL_CONTEXT_MARKER not in str(mock_telemetry_factory.mock_calls)
+
+
+def test_call_context_repr_and_str_show_no_argument():
+    context = PluginCallContext(("q", (CALL_CONTEXT_MARKER,)), {"params": CALL_CONTEXT_MARKER})
+
+    assert CALL_CONTEXT_MARKER not in repr(context)
+    assert CALL_CONTEXT_MARKER not in str(context)
+    assert CALL_CONTEXT_MARKER not in format(context)
