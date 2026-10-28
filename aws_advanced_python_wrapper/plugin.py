@@ -93,6 +93,18 @@ class Plugin(ABC):
         return force_connect_func()
 
     def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
+        """
+        Handles a call to a method this plugin subscribes to, such as `Cursor.execute`. Calling `execute_func` runs the plugins after this one,
+        then the target driver method. To change the arguments of `Cursor.execute` or `Cursor.executemany` for those, assign new ones to the
+        `args` and `kwargs` of :py:attr:`PluginService.current_call_context` before calling `execute_func`.
+
+        :param target: the target driver object the method is called on, such as the driver's cursor or connection.
+        :param method_name: the name of the method, such as `Cursor.execute`.
+        :param execute_func: the function to call to continue the call down the pipeline.
+        :param args: the method's positional arguments, as they are when this plugin's turn comes.
+        :param kwargs: the method's keyword arguments, as they are when this plugin's turn comes.
+        :return: the result of the call, usually the value `execute_func` returns.
+        """
         return execute_func()
 
     def notify_host_list_changed(self, changes: Dict[str, Set[HostEvent]]):

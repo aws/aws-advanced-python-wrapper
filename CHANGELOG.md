@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### :magic_wand: Added
+* Synchronous plugins can replace the arguments that `Cursor.execute` and `Cursor.executemany` pass to the plugins after them and to the target driver, without modifying the caller's objects, by assigning new `args` and `kwargs` to the plugin service's `current_call_context`. See [The Call Context](./docs/development-guide/PluginService.md#the-call-context).
 * The `failover` and `failover_v2` plugins currently rewraps all errors to an AwsWrapperError even when the errors do not trigger failover. Set the `preserve_driver_exception_type` configuration parameter to `True` to re-raise the target driver errors as-is for the failover plugins. Failover errors are unaffected and are still raised as `FailoverSuccessError`, `FailoverFailedError` or `TransactionResolutionUnknownError`. This is useful for ORMs to properly classify the errors. ([Issue #1275](https://github.com/aws/aws-advanced-python-wrapper/issues/1275))
+
+### :bug: Fixed
+* With psycopg, a fetch chained onto `cursor.execute()` (`cursor.execute(query).fetchone()`) skipped every plugin, the failover and host monitoring plugins included, because `execute()` returned the driver's cursor. It now returns the wrapper's cursor, so `isinstance(cursor.execute(query), psycopg.Cursor)` is now `False`.
+* Loops over a cursor (`for row in cursor`) skipped every plugin. A loop now calls the plugins subscribed to `Cursor.__next__`, and those subscribed to every method, such as `execute_time`, once per loop, not once per row. Like `fetchone`, a loop over a cursor whose connection is no longer the current one now raises `AwsWrapperError`.
 
 ## [3.1.0] - 2026-08-24
 ### :magic_wand: Added

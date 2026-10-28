@@ -59,6 +59,10 @@ Plugins can also subscribe to specific [pipelines](./Pipelines.md) by including 
 | [Connection changed notification pipeline](./Pipelines.md#connection-changed-notification-pipeline) |   notify_connection_changed    |
 | [Host list changed notification pipeline](./Pipelines.md#host-list-changed-notification-pipeline)   |    notify_host_list_changed    |                                                                      
 
+A loop over a cursor (`for row in cursor`) calls the plugins subscribed to `Cursor.__next__` once per loop, not once per row. Such a plugin calls `execute_func()` to get the target driver's iterator and returns an iterator over it, for example a generator that changes each row. The driver's iterator fetches the rows after the plugins have returned, so a server-side cursor still fetches a page at a time, and an error raised while fetching a row does not pass through the plugins' `execute` methods. The asynchronous cursor sends each row of a loop through the plugins as `Cursor.fetchone` instead.
+
+With psycopg, `cursor.execute()` returns the wrapper's cursor, so a fetch chained onto it, such as `cursor.execute(query).fetchone()`, goes through the plugins as well.
+
 ### Tips on Creating a Custom Plugin
 
 A custom plugin can subscribe to all Python methods being executed by setting the Plugin's `subscribed_methods` attribute to `{"*"}`. In this case, the plugin will be active in every workflow. We recommend that you be aware of the performance impact of subscribing to all Python methods, especially if your plugin regularly performs demanding tasks for common Python method calls.
@@ -122,6 +126,9 @@ When creating custom plugins, it is important to **avoid** the following bad pra
    - the plugin should always call the pipeline lambdas (i.e. `connect_func: Callable` or `force_connect_func: Callable`)
 4. Running long tasks synchronously:
    - the Python method calls are executed by all subscribed plugins synchronously; if one plugin runs a long task during the execution it blocks the execution for the other plugins
+5. Modifying the arguments a method is called with:
+   - the objects passed to a plugin's `execute` belong to the caller (its query parameters, for example) and must not be changed
+   - to send different arguments to the plugins after it and to the target driver, a plugin assigns new ones to the [call context](./PluginService.md#the-call-context)
 
 See the following examples for more details:
 

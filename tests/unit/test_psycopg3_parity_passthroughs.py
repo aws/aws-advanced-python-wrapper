@@ -258,9 +258,10 @@ def test_sync_wrapper_execute_delegates_with_all_kwargs() -> None:
     target = MagicMock()
     wrapper = _sync_wrapper(target)
     # Route plugin_manager.execute straight to the provided callable so the
-    # underlying cursor work actually runs.
+    # underlying cursor work actually runs. Like the plugin manager, pass the
+    # call's arguments on: the cursor's driver function takes them.
     wrapper._plugin_manager.execute = MagicMock(  # type: ignore[method-assign]
-        side_effect=lambda obj, method, func, *a, **k: func())
+        side_effect=lambda obj, method, func, *a, **k: func(*a, **k))
 
     result = wrapper.execute("SELECT 1", ("p",), prepare=True, binary=True)
 

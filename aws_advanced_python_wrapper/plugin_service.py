@@ -46,8 +46,10 @@ if TYPE_CHECKING:
 from abc import abstractmethod
 from concurrent.futures import TimeoutError
 from contextlib import closing
-from typing import (Any, Callable, Dict, FrozenSet, Optional, Protocol, Set,
-                    Tuple)
+from contextvars import ContextVar
+from functools import partial
+from typing import (Any, Callable, Dict, FrozenSet, Mapping, Optional,
+                    Protocol, Set, Tuple)
 
 from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
     AllowedAndBlockedHosts
@@ -213,6 +215,23 @@ class PluginService(ExceptionHandler, Protocol):
     @property
     @abstractmethod
     def props(self) -> Properties:
+        ...
+
+    @property
+    @abstractmethod
+    def current_call_context(self) -> Optional[PluginCallContext]:
+        """
+        The context of the ``Cursor.execute`` or ``Cursor.executemany`` call this thread is running through the plugins.
+
+        Read it only while handling one of those two methods. Each of those calls has its own context, a call made
+        from inside a plugin included, and the enclosing one is current again once it returns. Other methods get no
+        context of their own, so while one of them runs inside such a call, this still returns the enclosing call's
+        context. ``None`` when no such call is running on this thread.
+
+        The value belongs to the calling thread, not to this connection's plugin service. Another thread sees it only
+        through a copy of this thread's context taken during the call (``contextvars.copy_context()``, or a thread
+        that inherits its creator's context), and such a copy holds no arguments once the call has returned.
+        """
         ...
 
     def is_network_bound_method(self, method_name: str) -> bool:
@@ -521,6 +540,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     def props(self) -> Properties:
         return self._props
 
+    @property
+    def current_call_context(self) -> Optional[PluginCallContext]:
+        return _CURRENT_CALL_CONTEXT.get()
+
     def update_in_transaction(self, is_in_transaction: Optional[bool] = None):
         if is_in_transaction is not None:
             self._is_in_transaction = is_in_transaction
@@ -816,6 +839,34 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return status
 
 
+class PluginCallContext:
+    """The arguments of the ``Cursor.execute`` or ``Cursor.executemany`` call the plugins are handling.
+
+    Each plugin's ``execute`` receives the arguments as they are when its turn comes. A plugin that needs to hand
+    different ones to the plugins after it and to the target driver method assigns a new tuple to ``args`` and a new
+    mapping to ``kwargs`` before it calls its ``execute_func``. Changing either object in place is not allowed, and
+    the caller's own objects must never be modified. The target driver method receives exactly what is assigned, even
+    when it is empty. A replacement lasts until the plugin that made it returns, so a plugin before it that calls its
+    ``execute_func`` again starts from the arguments it saw.
+
+    Reached through :py:attr:`PluginService.current_call_context`.
+    """
+
+    def __init__(self, args: Tuple[Any, ...], kwargs: Mapping[str, Any]):
+        self.args = args
+        self.kwargs = kwargs
+
+
+# The methods whose call gets a PluginCallContext. Their target driver functions (in AwsWrapperCursor) take the
+# context's arguments.
+_CALL_CONTEXT_METHODS: FrozenSet[DbApiMethod] = frozenset({DbApiMethod.CURSOR_EXECUTE, DbApiMethod.CURSOR_EXECUTEMANY})
+
+# The current call's context belongs to the calling thread, not to a plugin service, so it is a ContextVar. Resetting
+# its token in PluginManager.execute makes the enclosing call's context current again after a nested call.
+_CURRENT_CALL_CONTEXT: ContextVar[Optional[PluginCallContext]] = ContextVar(
+    "aws_advanced_python_wrapper_plugin_call_context", default=None)
+
+
 class PluginChainCallableInfo:
     """Container for plugin chain callable and subscription information."""
     def __init__(self, func: Callable, is_subscribed: bool):
@@ -1022,13 +1073,18 @@ class PluginManager(CanReleaseResources):
         if context is not None:
             context.set_attribute("python_call", method.method_name)
 
+        call_context = PluginCallContext(args, kwargs) if method in _CALL_CONTEXT_METHODS else None
+        token = None if call_context is None else _CURRENT_CALL_CONTEXT.set(call_context)
         try:
-            result = self._execute_with_subscribed_plugins(
-                method,
-                # next_plugin_func is defined later in make_pipeline
-                lambda plugin, next_plugin_func: plugin.execute(target, method.method_name, next_plugin_func, *args, **kwargs),
-                target_driver_func,
-                None)
+            if call_context is None:
+                result = self._execute_with_subscribed_plugins(
+                    method,
+                    # next_plugin_func is defined later in make_pipeline
+                    lambda plugin, next_plugin_func: plugin.execute(target, method.method_name, next_plugin_func, *args, **kwargs),
+                    target_driver_func,
+                    None)
+            else:
+                result = self._execute_with_call_context(target, method, target_driver_func, call_context)
             if context is not None:
                 context.set_success(True)
 
@@ -1038,8 +1094,46 @@ class PluginManager(CanReleaseResources):
                 context.set_success(False)
             raise e
         finally:
+            if token is not None:
+                _CURRENT_CALL_CONTEXT.reset(token)
+            if call_context is not None:
+                # A copy of this thread's context taken during the call (one a plugin passes to a thread it starts, say)
+                # still holds this object, so it must not keep the call's arguments once the call has returned.
+                call_context.args, call_context.kwargs = (), {}
             if context is not None:
                 context.close_context()
+
+    def _execute_with_call_context(
+            self, target: Any, method: DbApiMethod, target_driver_func: Callable, call_context: PluginCallContext) -> Any:
+        # The target driver function is always called with the context's arguments, so a replacement reaches the
+        # driver as written: an empty one fails there instead of running the caller's arguments.
+        return self._execute_with_subscribed_plugins(
+            method,
+            lambda plugin, next_plugin_func: PluginManager._execute_plugin(
+                plugin, target, method, next_plugin_func, call_context, target_driver_func),
+            lambda: target_driver_func(*call_context.args, **call_context.kwargs),
+            None)
+
+    @staticmethod
+    def _execute_plugin(
+            plugin: Plugin,
+            target: Any,
+            method: DbApiMethod,
+            next_plugin_func: Callable,
+            call_context: PluginCallContext,
+            target_driver_func: Callable) -> Any:
+        # Each plugin gets the arguments as they are when its turn comes, so a replacement made before it is honoured.
+        # A replacement lasts until the plugin that made it returns: a plugin before it that calls its execute_func
+        # again starts from the arguments it saw, so nothing is replaced twice.
+        args, kwargs = call_context.args, call_context.kwargs
+        if isinstance(plugin, DefaultPlugin):
+            # DefaultPlugin may run the driver call on a socket_timeout worker that starts only after this call has
+            # timed out and every replacement has been undone, so the driver function gets these arguments bound now.
+            next_plugin_func = partial(target_driver_func, *args, **kwargs)
+        try:
+            return plugin.execute(target, method.method_name, next_plugin_func, *args, **kwargs)
+        finally:
+            call_context.args, call_context.kwargs = args, kwargs
 
     def _execute_with_telemetry(self, plugin_name: str, func: Callable):
         context = self._telemetry_factory.open_telemetry_context(plugin_name, TelemetryTraceLevel.NESTED)
