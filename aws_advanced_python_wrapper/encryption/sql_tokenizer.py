@@ -60,10 +60,16 @@ from bisect import bisect_right
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, FrozenSet, List, Optional, Tuple, Union
+from typing import (TYPE_CHECKING, Any, FrozenSet, List, Optional, Tuple, Type,
+                    Union)
+
+from aws_advanced_python_wrapper.errors import (EncryptionPluginError,
+                                                UnsupportedOperationError)
+from aws_advanced_python_wrapper.utils.messages import Messages
 
 if TYPE_CHECKING:
-    from aws_advanced_python_wrapper.encryption.sql_dialect import SqlDialect
+    from aws_advanced_python_wrapper.encryption_driver_dialect import \
+        EncryptionDriverDialect
 
 #: Prefix of the named placeholders written into :attr:`TokenizedSql.normalized`:
 #: ``:_kms_p3`` stands for the placeholder whose ordinal is 3.
@@ -83,18 +89,10 @@ class ParamStyle(Enum):
     NAMED = "named"
 
     @classmethod
-    def of(cls, params: Any, dialect: SqlDialect) -> ParamStyle:
+    def of(cls, params: Any, dialect: Type[EncryptionDriverDialect]) -> ParamStyle:
         """The style the driver for ``dialect`` applies to ``params``, the
         second argument of ``execute``."""
-        if dialect.name == "mysql":
-            # Connector/Python substitutes only for a non-empty dict, list or
-            # tuple.
-            if not params:
-                return cls.NONE
-            if isinstance(params, dict):
-                return cls.NAMED
-            return cls.POSITIONAL if isinstance(params, (list, tuple)) else cls.NONE
-        if params is None:
+        if not dialect.binds_parameters(params):
             return cls.NONE
         return cls.NAMED if isinstance(params, Mapping) else cls.POSITIONAL
 
@@ -102,7 +100,7 @@ class ParamStyle(Enum):
 @dataclass(frozen=True, slots=True)
 class ColumnRef:
     """A column a statement names, with names folded the way the engine folds
-    them (see :meth:`SqlDialect.fold_identifier`)."""
+    them (see :meth:`EncryptionDriverDialect.fold_identifier`)."""
 
     column: str
     #: The table, without any schema; ``None`` when the statement does not say
@@ -153,6 +151,9 @@ class TokenizedSql:
     normalized: str
     #: The first word of each statement, upper-cased.
     leading_words: Tuple[str, ...]
+    #: For each statement, in the order of :attr:`leading_words`, whether it
+    #: is a ``COPY`` whose next token is ``(``, as in ``COPY ( query ) TO``.
+    copy_queries: Tuple[bool, ...]
     #: Which of the keywords that matter for spotting a write (``INSERT``,
     #: ``UPDATE``, ``REPLACE``, ``MERGE``, ``UPSERT``, ``COPY``, ``FROM``,
     #: ``EXECUTE``, ``LOAD``) appear outside literals, comments and
@@ -171,6 +172,12 @@ class TokenizedSql:
     #: ``/*@encrypt:...*/`` comments that annotate no placeholder or can't be
     #: read, as written. A caller may want to warn about them.
     stray_annotations: Tuple[str, ...] = ()
+    #: Each name that could be a table, as written and without duplicates,
+    #: with whether it was quoted: the words outside literals, comments and
+    #: placeholders, the words inside MySQL executable comments, and quoted
+    #: identifiers without their quotes. Only for a statement the analysis
+    #: can't read.
+    names: Tuple[Tuple[str, bool], ...] = ()
 
     @property
     def has_hidden_placeholders(self) -> bool:
@@ -179,78 +186,30 @@ class TokenizedSql:
 
 _KEYWORDS = frozenset({"INSERT", "UPDATE", "REPLACE", "MERGE", "UPSERT", "COPY", "FROM", "EXECUTE", "LOAD"})
 
-# MySQL statement modifiers between the keyword and the table. They change how
-# a statement runs and leave what it writes alone. The structural parser reads
-# "UPDATE LOW_PRIORITY users" as a table named LOW_PRIORITY aliased users, so
-# they are dropped from the normalized copy. All are reserved words except
-# QUICK, which can only follow DELETE.
-_MYSQL_MODIFIERS = {
-    "INSERT": frozenset({"LOW_PRIORITY", "HIGH_PRIORITY", "DELAYED", "IGNORE"}),
-    "REPLACE": frozenset({"LOW_PRIORITY", "DELAYED"}),
-    "UPDATE": frozenset({"LOW_PRIORITY", "IGNORE"}),
-    "DELETE": frozenset({"LOW_PRIORITY", "QUICK", "IGNORE"}),
-}
-
-# ---- lexers ----
-#
-# Alternatives are tried in order at each token boundary. The ``*_end`` groups
-# capture a closing quote, empty when the literal runs to the end of the text.
-
-_PG_TOKEN = re.compile(r"""
-      (?P<line_comment>--[^\n]*)
-    | (?P<block_comment>/\*)
-    | (?P<estring>[Ee]'(?:[^'\\]|\\.|'')*(?P<estring_end>'?))
-    | (?P<string>'(?:[^']|'')*(?P<string_end>'?))
-    | (?P<ident>"(?:[^"]|"")*(?P<ident_end>"?))
-    | (?P<param>\$\d+)
-    | (?P<dollar>\$(?:[^\W\d]\w*)?\$)
-    | (?P<word>[^\W\d][\w$]*)
-    | (?P<number>\d[\w.]*)
-    | (?P<semicolon>;)
-    | (?P<space>\s+)
-    | (?P<other>[^\w\s'"$;/\-]+|.)
-""", re.VERBOSE | re.DOTALL)
-
-_MYSQL_TOKEN = re.compile(r"""
-      (?P<line_comment>(?:\#|--(?=\s|\Z))[^\n]*)
-    | (?P<block_comment>/\*.*?(?P<block_comment_end>\*/|\Z))
-    | (?P<string>'(?:[^'\\]|\\.|'')*(?P<string_end>'?))
-    | (?P<dqstring>"(?:[^"\\]|\\.|"")*(?P<dqstring_end>"?))
-    | (?P<ident>`(?:[^`]|``)*(?P<ident_end>`?))
-    | (?P<word>[^\W\d][\w$]*)
-    | (?P<number>\d[\w.]*)
-    | (?P<semicolon>;)
-    | (?P<space>\s+)
-    | (?P<other>[^\w\s'"`;/\-\#]+|.)
-""", re.VERBOSE | re.DOTALL)
-
 _QUOTED_KINDS = frozenset({"estring", "string", "dqstring", "ident"})
 
 # A block comment that is an annotation: /*@encrypt:<ref>*/, with no space
 # after the opening delimiter. <ref> is dot-separated parts, table.column or a
 # bare column; leading parts (a schema) are ignored. A part is word characters,
-# or a name quoted with the engine's identifier quote. Every [\w.]+ reference
+# or a name quoted with the dialect's identifier quote. Every [\w.]+ reference
 # that ends in a column is accepted, empty parts included: ".c" is the bare
 # column c and "t..c" is t.c. A reference that ends in "." names no column and
 # is reported as stray.
 _ANNOTATION = re.compile(r"/\*@encrypt:(?P<ref>.*?)\*/\Z", re.DOTALL)
-_PG_REF_PART = re.compile(r'(?P<word>\w+)|"(?P<quoted>(?:[^"]|"")+)"')
-_MYSQL_REF_PART = re.compile(r"(?P<word>\w+)|`(?P<quoted>(?:[^`]|``)+)`")
+_REF_PARTS = {
+    '"': re.compile(r'(?P<word>\w+)|"(?P<quoted>(?:[^"]|"")+)"'),
+    "`": re.compile(r"(?P<word>\w+)|`(?P<quoted>(?:[^`]|``)+)`"),
+}
 
-# A MySQL charset introducer (_binary, _utf8mb4, ...) and the space after it,
+# A charset introducer (_binary, _utf8mb4, ...) and the space after it,
 # directly before a placeholder.
 _INTRODUCER = re.compile(r"(?<![\w$])_(?P<charset>[A-Za-z0-9]+)\s*\Z")
-_MYSQL_CHARSETS = frozenset({
-    "armscii8", "ascii", "big5", "binary", "cp1250", "cp1251", "cp1256", "cp1257", "cp850", "cp852", "cp866",
-    "cp932", "dec8", "eucjpms", "euckr", "gb18030", "gb2312", "gbk", "geostd8", "greek", "hebrew", "hp8",
-    "keybcs2", "koi8r", "koi8u", "latin1", "latin2", "latin5", "latin7", "macce", "macroman", "sjis", "swe7",
-    "tis620", "ucs2", "ujis", "utf16", "utf16le", "utf32", "utf8", "utf8mb3", "utf8mb4",
-})
 _WORD = re.compile(r"[^\W\d][\w$]*")
 _COMMENT_DELIMITER = re.compile(r"/\*|\*/")
 
 # The drivers' own placeholder patterns.
-_PSYCOPG_PLACEHOLDER = re.compile(r"%(?:\(([^)]+)\).|.)")  # no DOTALL, as in psycopg
+# No DOTALL, as in psycopg.
+_PSYCOPG_PLACEHOLDER = re.compile(r"%(?:\(([^)]+)\).|.)")
 _MYSQL_POSITIONAL = re.compile(r"%s")
 _MYSQL_NAMED = re.compile(r"%\((?P<key>[^)]+)\)(?P<conv>[diouxXeEfFgGcrs%])")
 
@@ -260,35 +219,39 @@ _FAR = 1 << 62  # past any string offset
 
 @dataclass
 class _Lexed:
-    hidden_spans: List[Tuple[int, int]]  # literals, quoted identifiers, comments; sorted
+    # Literals, quoted identifiers, comments; sorted.
+    hidden_spans: List[Tuple[int, int]]
     block_comments: List[Tuple[int, int]]
     # (UPPER word, start, end); "" stands for any other significant token, so
     # that two words with something between them are not taken as adjacent.
     words: List[Tuple[str, int, int]]
-    separators: List[int]                # offsets of the ";" between statements
+    # Offsets of the ";" between statements.
+    separators: List[int]
     unterminated: bool = False
     executable_comment: bool = False
-    # Words inside MySQL executable comments, which the server runs.
+    # Words inside MySQL executable comments, which the server runs, as written.
     executable_words: List[str] = field(default_factory=list)
+    # Quoted identifiers without their quotes, doubled quotes undone.
+    quoted_names: List[str] = field(default_factory=list)
 
 
-def tokenize(sql: str, dialect: SqlDialect, style: ParamStyle) -> TokenizedSql:
+def tokenize(sql: str, dialect: Type[EncryptionDriverDialect], style: ParamStyle) -> TokenizedSql:
     """Find the placeholders in ``sql`` as the driver for ``dialect`` does when
     given parameters of ``style``.
 
     :raises TypeError: if ``sql`` is not a ``str``.
     """
     if not isinstance(sql, str):
-        raise TypeError(f"sql must be a str, not {type(sql).__name__}")
-    mysql = dialect.name == "mysql"
-    lexed = _lex(sql, _MYSQL_TOKEN if mysql else _PG_TOKEN, mysql=mysql)
+        raise TypeError(Messages.get_formatted("SqlTokenizer.SqlNotStr", type(sql).__name__))
+    lexed = _lex(sql, dialect)
 
     edits: List[_Edit] = []
-    if mysql:
-        placeholders, driver_error = _mysql_placeholders(sql, style, lexed, edits)
-        placeholders = _attach_introducers(sql, lexed, placeholders, edits)
-    else:
+    if dialect.strict_placeholders:
         placeholders, driver_error = _psycopg_placeholders(sql, style, lexed, edits)
+    else:
+        placeholders, driver_error = _mysql_placeholders(sql, style, lexed, edits)
+    if dialect.charset_introducers:
+        placeholders = _attach_introducers(sql, dialect.charset_introducers, lexed, placeholders, edits)
 
     stray: List[str] = []
     if "@encrypt:" in sql:
@@ -297,21 +260,26 @@ def tokenize(sql: str, dialect: SqlDialect, style: ParamStyle) -> TokenizedSql:
     # A word inside a placeholder (the s of %s, a %(name)s key) is not SQL.
     words = _outside(lexed.words, placeholders)
     bounds = _statement_bounds(words, lexed.separators)
-    if mysql:
-        edits.extend(_mysql_rewrites(words, bounds))
+    edits.extend(_modifier_rewrites(words, bounds, dialect.statement_modifiers))
+    edits.extend(_copy_option_rewrites(sql, words, bounds))
 
     keywords = {w for w, _, _ in words if w in _KEYWORDS}
-    keywords.update(w for w in lexed.executable_words if w in _KEYWORDS)
+    keywords.update(w.upper() for w in lexed.executable_words if w.upper() in _KEYWORDS)
+    names = dict.fromkeys((sql[start:end], False) for word, start, end in words if word)
+    names.update(dict.fromkeys((word, False) for word in lexed.executable_words))
+    names.update(dict.fromkeys((name, True) for name in lexed.quoted_names))
     return TokenizedSql(
         style=style,
         placeholders=tuple(placeholders),
         normalized=_apply(sql, edits),
         leading_words=_leading_words(words, bounds),
+        copy_queries=tuple(_copies_query(sql, words[begin:end]) for begin, end in bounds),
         keywords=frozenset(keywords),
         unterminated=lexed.unterminated,
         executable_comment=lexed.executable_comment,
         driver_error=driver_error,
         stray_annotations=tuple(stray),
+        names=tuple(names),
     )
 
 
@@ -324,8 +292,6 @@ def normalized_ordinal(name: Optional[str]) -> Optional[int]:
     return int(digits) if digits.isascii() and digits.isdigit() else None
 
 
-# ---- driver placeholders ----
-#
 # The error texts never quote the SQL: a rejected "%(...)x" sequence can sit
 # inside a literal holding a value.
 
@@ -396,7 +362,7 @@ def _overlaps(spans: List[Tuple[int, int]], start: int, end: int) -> bool:
     return i + 1 < len(spans) and spans[i + 1][0] < end
 
 
-def _attach_introducers(sql: str, lexed: _Lexed, placeholders: List[Placeholder],
+def _attach_introducers(sql: str, charsets: FrozenSet[str], lexed: _Lexed, placeholders: List[Placeholder],
                         edits: List[_Edit]) -> List[Placeholder]:
     # "_binary %s" binds the value as a binary string, which is what a
     # ciphertext is. The parser misreads the pair (as an alias, or not at all),
@@ -409,7 +375,7 @@ def _attach_introducers(sql: str, lexed: _Lexed, placeholders: List[Placeholder]
         if p.hidden:
             continue
         m = _INTRODUCER.search(sql, max(0, p.start - 64), p.start)
-        if m is None or m.group("charset").lower() not in _MYSQL_CHARSETS \
+        if m is None or m.group("charset").lower() not in charsets \
                 or _overlaps(lexed.hidden_spans, m.start(), m.end()):
             continue
         result[i] = replace(p, introducer=f"_{m.group('charset').lower()}")
@@ -417,9 +383,7 @@ def _attach_introducers(sql: str, lexed: _Lexed, placeholders: List[Placeholder]
     return result
 
 
-# ---- annotations ----
-
-def _attach_annotations(sql: str, dialect: SqlDialect, lexed: _Lexed,
+def _attach_annotations(sql: str, dialect: Type[EncryptionDriverDialect], lexed: _Lexed,
                         placeholders: List[Placeholder], stray: List[str]) -> List[Placeholder]:
     by_start = {p.start: i for i, p in enumerate(placeholders)}
     result = list(placeholders)
@@ -439,14 +403,15 @@ def _attach_annotations(sql: str, dialect: SqlDialect, lexed: _Lexed,
     return result
 
 
-def _annotation_ref(text: str, dialect: SqlDialect) -> Optional[ColumnRef]:
-    mysql = dialect.name == "mysql"
-    part_re, quote = (_MYSQL_REF_PART, "`") if mysql else (_PG_REF_PART, '"')
+def _annotation_ref(text: str, dialect: Type[EncryptionDriverDialect]) -> Optional[ColumnRef]:
+    quote = dialect.identifier_quote
+    part_re = _REF_PARTS[quote]
     parts: List[str] = []
     pos = 0
     while pos <= len(text):
         if text.startswith(".", pos) or pos == len(text):
-            parts.append("")  # an empty part, as in ".c" or "t..c"
+            # An empty part, as in ".c" or "t..c".
+            parts.append("")
         else:
             m = part_re.match(text, pos)
             if m is None:
@@ -463,29 +428,34 @@ def _annotation_ref(text: str, dialect: SqlDialect) -> Optional[ColumnRef]:
         return None  # no column ("t.")
     # The metadata has no schema: the table is the nearest named part before
     # the column, and anything before that is ignored.
-    table = next((part for part in reversed(parts[:-1]) if part), None)
-    return ColumnRef(column=parts[-1], table=table)
+    for part in reversed(parts[:-1]):
+        if part:
+            return ColumnRef(column=parts[-1], table=part)
+    return ColumnRef(column=parts[-1], table=None)
 
 
-# ---- lexing ----
-
-def _lex(sql: str, token_re: re.Pattern, mysql: bool) -> _Lexed:
+def _lex(sql: str, dialect: Type[EncryptionDriverDialect]) -> _Lexed:
+    token_re = dialect.sql_token_pattern
+    if token_re is None:
+        raise UnsupportedOperationError(Messages.get_formatted("SqlTokenizer.NoTokenPattern", dialect.__name__))
     lexed = _Lexed([], [], [], [])
     pos, n = 0, len(sql)
     while pos < n:
         m = token_re.match(sql, pos)
-        assert m is not None  # "other" matches any character
+        # The "other" group matches any character.
+        if m is None:
+            raise EncryptionPluginError(Messages.get("SqlTokenizer.NoToken"))
         kind, end = m.lastgroup, m.end()
         if kind == "block_comment":
-            if not mysql:
+            if dialect.nested_block_comments:
                 end = _nested_comment_end(sql, pos)
             elif not m.group("block_comment_end"):
                 lexed.unterminated = True
             if end < 0:
                 end, lexed.unterminated = n, True
-            if mysql and (sql.startswith("/*!", pos) or sql.startswith("/*M!", pos)):
+            if dialect.executable_comments and (sql.startswith("/*!", pos) or sql.startswith("/*M!", pos)):
                 lexed.executable_comment = True
-                lexed.executable_words.extend(w.upper() for w in _WORD.findall(sql, pos, end))
+                lexed.executable_words.extend(_WORD.findall(sql, pos, end))
             lexed.block_comments.append((pos, end))
             lexed.hidden_spans.append((pos, end))
         elif kind == "dollar":
@@ -498,6 +468,9 @@ def _lex(sql: str, token_re: re.Pattern, mysql: bool) -> _Lexed:
         elif kind in _QUOTED_KINDS:
             if not m.group(f"{kind}_end"):
                 lexed.unterminated = True
+            elif kind == "ident":
+                quote = sql[pos]
+                lexed.quoted_names.append(sql[pos + 1:end - 1].replace(quote * 2, quote))
             lexed.hidden_spans.append((pos, end))
         elif kind == "line_comment":
             lexed.hidden_spans.append((pos, end))
@@ -546,14 +519,44 @@ def _statement_bounds(words: List[Tuple[str, int, int]], separators: List[int]) 
 def _leading_words(words: List[Tuple[str, int, int]], bounds: List[Tuple[int, int]]) -> Tuple[str, ...]:
     # A statement's first word, skipping leading punctuation such as "("; ""
     # when it has no word at all.
-    return tuple(next((w for w, _, _ in words[begin:end] if w), "") for begin, end in bounds)
+    return tuple(_first_word(words[begin:end]) for begin, end in bounds)
 
 
-def _mysql_rewrites(words: List[Tuple[str, int, int]], bounds: List[Tuple[int, int]]) -> List[_Edit]:
+def _first_word(words: List[Tuple[str, int, int]]) -> str:
+    for word, _, _ in words:
+        if word:
+            return word
+    return ""
+
+
+def _copies_query(sql: str, words: List[Tuple[str, int, int]]) -> bool:
+    for i, (word, _, _) in enumerate(words):
+        if word:
+            return word == "COPY" and i + 1 < len(words) and sql[words[i + 1][1]] == "("
+    return False
+
+
+def _copy_option_rewrites(sql: str, words: List[Tuple[str, int, int]], bounds: List[Tuple[int, int]]) -> List[_Edit]:
+    # PostgreSQL takes COPY's option list with or without WITH; the parser
+    # reads only the WITH form.
+    edits: List[_Edit] = []
+    for begin, end in bounds:
+        if _first_word(words[begin:end]) != "COPY":
+            continue
+        for (word, _, _), (_, start, _) in zip(words[begin:end - 1], words[begin + 1:end]):
+            if word in ("STDIN", "STDOUT") and sql[start] == "(":
+                edits.append((start, start, "WITH "))
+    return edits
+
+
+def _modifier_rewrites(words: List[Tuple[str, int, int]], bounds: List[Tuple[int, int]],
+                       statement_modifiers: Mapping[str, FrozenSet[str]]) -> List[_Edit]:
+    # The statement modifiers are dropped from the normalized copy, which the
+    # structural parser reads.
     leading = {begin for begin, _ in bounds}
     edits: List[_Edit] = []
     for i, (word, start, end) in enumerate(words):
-        modifiers = _MYSQL_MODIFIERS.get(word)
+        modifiers = statement_modifiers.get(word)
         if modifiers is None:
             continue
         if word == "REPLACE":

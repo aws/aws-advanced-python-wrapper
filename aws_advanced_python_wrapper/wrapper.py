@@ -422,6 +422,12 @@ class AwsWrapperCursor(Cursor):
                                      lambda *a, **kw: self.target_cursor.executemany(*a, **kw),
                                      *args, **kwargs)
 
+    def copy(self, *args: Any, **kwargs: Any) -> Any:
+        # psycopg's copy() returns a context manager, which sends nothing before it is entered.
+        return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_COPY,
+                                            lambda: self.target_cursor.copy(*args, **kwargs),  # type: ignore[attr-defined]
+                                            *args, **kwargs)
+
     def nextset(self) -> bool:
         return self._plugin_manager.execute(self.target_cursor, DbApiMethod.CURSOR_NEXTSET,
                                             lambda: self.target_cursor.nextset())

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import contextvars
+import copy
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -799,7 +800,7 @@ def _call_context_manager(mocker, container, mock_telemetry_factory, plugins: Li
     return manager
 
 
-def test_call_context_replacement_reaches_later_plugins_and_the_driver(mocker, container, mock_telemetry_factory, mock_conn):
+def test_call_context_replacement_reaches_later_plugins_and_driver(mocker, container, mock_telemetry_factory, mock_conn):
     service = _call_context_service()
     seen: List[Tuple[str, Tuple[Any, ...], Dict[str, Any]]] = []
     driver_calls = []
@@ -822,7 +823,7 @@ def test_call_context_replacement_reaches_later_plugins_and_the_driver(mocker, c
 
 @pytest.mark.parametrize("method_name", ["execute", "executemany"])
 @pytest.mark.parametrize("replacement", [((), {}), (("q", [("ENC",)]), {"prepare": True})])
-def test_cursor_driver_method_receives_the_replacement_as_written(
+def test_cursor_driver_method_receives_replacement_as_written(
         mocker, container, mock_telemetry_factory, mock_cursor, method_name, replacement):
     # An empty replacement too: the driver then fails on it, instead of receiving the caller's arguments.
     service = _call_context_service()
@@ -835,7 +836,7 @@ def test_cursor_driver_method_receives_the_replacement_as_written(
     getattr(mock_cursor, method_name).assert_called_once_with(*replacement[0], **replacement[1])
 
 
-def test_without_a_replacement_the_driver_gets_the_callers_arguments(mocker, container, mock_telemetry_factory, mock_conn):
+def test_call_context_without_replacement_passes_caller_arguments(mocker, container, mock_telemetry_factory, mock_conn):
     driver_calls = []
     params = ["v"]
     manager = _call_context_manager(mocker, container, mock_telemetry_factory, [])
@@ -857,7 +858,7 @@ def test_without_a_replacement_the_driver_gets_the_callers_arguments(mocker, con
     assert all(call[0][1] is params for call in driver_calls)
 
 
-def test_call_context_outer_rerun_starts_from_the_arguments_the_outer_plugin_saw(
+def test_call_context_outer_rerun_starts_from_outer_arguments(
         mocker, container, mock_telemetry_factory, mock_conn):
     service = _call_context_service()
     seen: List[Tuple[str, Tuple[Any, ...], Dict[str, Any]]] = []
@@ -872,7 +873,7 @@ def test_call_context_outer_rerun_starts_from_the_arguments_the_outer_plugin_saw
     assert driver_calls == [("q", ("ENC",))] * 2
 
 
-def test_call_context_outer_retry_after_an_error_starts_from_the_arguments_the_outer_plugin_saw(
+def test_call_context_outer_retry_after_error_starts_from_outer_arguments(
         mocker, container, mock_telemetry_factory, mock_conn):
     # A plugin after the replacer fails once and a plugin before it runs the rest again: the replacement made in the
     # failed run is undone, so the replacer starts again from the caller's arguments and replaces them once.
@@ -903,7 +904,7 @@ def test_call_context_outer_retry_after_an_error_starts_from_the_arguments_the_o
     assert driver_calls == [("q", ("ENC",))]
 
 
-def test_current_call_context_is_none_outside_a_call_and_after_an_error(mocker, container, mock_telemetry_factory, mock_conn):
+def test_current_call_context_none_outside_call_and_after_error(mocker, container, mock_telemetry_factory, mock_conn):
     service = _call_context_service()
     manager = _call_context_manager(mocker, container, mock_telemetry_factory,
                                     [CallContextPlugin(service, "replacer", [], replace_with=(("q", ("ENC",)), {}))])
@@ -919,7 +920,7 @@ def test_current_call_context_is_none_outside_a_call_and_after_an_error(mocker, 
     assert service.current_call_context is None
 
 
-def test_only_execute_and_executemany_get_a_call_context(mocker, container, mock_telemetry_factory, mock_conn):
+def test_call_context_only_for_execute_and_executemany(mocker, container, mock_telemetry_factory, mock_conn):
     service = _call_context_service()
     observed: List[Tuple[str, Optional[Tuple[Any, ...]]]] = []
     methods = [DbApiMethod.CURSOR_EXECUTE, DbApiMethod.CURSOR_EXECUTEMANY, DbApiMethod.CURSOR_FETCHONE, DbApiMethod.CURSOR_FETCHMANY]
@@ -937,14 +938,15 @@ def test_only_execute_and_executemany_get_a_call_context(mocker, container, mock
                         (DbApiMethod.CURSOR_FETCHMANY.method_name, None)]
 
 
-def test_nested_execute_has_its_own_call_context_and_restores_the_enclosing_one(
+def test_nested_execute_own_call_context_restores_enclosing(
         mocker, container, mock_telemetry_factory, mock_conn):
     service = _call_context_service()
     observed: List[Any] = []
 
     def nested_execute():
+        # Only the enclosing call makes a nested one.
         if observed:
-            return  # only the enclosing call makes a nested one
+            return
         enclosing = service.current_call_context
         observed.append(("enclosing", None if enclosing is None else enclosing.args))
         manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE,
@@ -959,7 +961,7 @@ def test_nested_execute_has_its_own_call_context_and_restores_the_enclosing_one(
     assert observed == [("enclosing", ("q", ("o",))), ("nested", ("nested q", ("n",)), True), ("restored", True)]
 
 
-def test_other_method_inside_execute_sees_the_enclosing_call_context(mocker, container, mock_telemetry_factory, mock_conn):
+def test_other_method_inside_execute_sees_enclosing_call_context(mocker, container, mock_telemetry_factory, mock_conn):
     service = _call_context_service()
     observed: List[Tuple[str, Optional[Tuple[Any, ...]]]] = []
 
@@ -1001,7 +1003,7 @@ def test_call_contexts_of_concurrent_threads_are_separate(mocker, container, moc
     assert mismatches == []
 
 
-def test_late_socket_timeout_worker_sends_the_replacement(mocker, container, mock_telemetry_factory, mock_conn):
+def test_late_socket_timeout_worker_sends_replacement(mocker, container, mock_telemetry_factory, mock_conn):
     # With the dialect's pool busy, the driver call is still queued when the statement times out and every
     # replacement has been undone. When a worker finally runs it, it must still send the replacement.
     service = _call_context_service()
@@ -1014,7 +1016,8 @@ def test_late_socket_timeout_worker_sends_the_replacement(mocker, container, moc
     manager = _call_context_manager(mocker, container, mock_telemetry_factory,
                                     [CallContextPlugin(service, "replacer", [], replace_with=(("q", ("ENC",)), {}))])
     with ThreadPoolExecutor(max_workers=1) as pool:
-        pool.submit(release.wait, 10)  # the only worker is held by an earlier operation that is stuck
+        # An earlier operation that is stuck holds the only worker.
+        pool.submit(release.wait, 10)
         container.plugin_service.driver_dialect.execute.side_effect = \
             lambda method_name, func, *args, **kwargs: timeout(pool, 0.05)(func)()
 
@@ -1029,7 +1032,7 @@ def test_late_socket_timeout_worker_sends_the_replacement(mocker, container, moc
     assert sent in ([], [(("q", ("ENC",)), {})])
 
 
-def test_socket_timeout_worker_sends_the_replacement(mocker, container, mock_telemetry_factory, mock_conn):
+def test_socket_timeout_worker_sends_replacement(mocker, container, mock_telemetry_factory, mock_conn):
     # With socket_timeout set, the dialect runs the driver call on a worker thread, which doesn't see this thread's
     # call context. The worker must still send the replacement.
     service = _call_context_service()
@@ -1037,7 +1040,8 @@ def test_socket_timeout_worker_sends_the_replacement(mocker, container, mock_tel
     manager = _call_context_manager(mocker, container, mock_telemetry_factory,
                                     [CallContextPlugin(service, "replacer", [], replace_with=(("q", ("ENC",)), {}))])
     with ThreadPoolExecutor(max_workers=1) as pool:
-        pool.submit(lambda: None).result(5)  # start the worker before the call, so it can't inherit the call's context
+        # Start the worker before the call, so it can't inherit the call's context.
+        pool.submit(lambda: None).result(5)
         container.plugin_service.driver_dialect.execute.side_effect = \
             lambda method_name, func, *args, **kwargs: timeout(pool, 5)(func)()
         manager.execute(mock_conn, DbApiMethod.CURSOR_EXECUTE, lambda *a, **kw: sent.append((a, kw)), "q", ("plain",))
@@ -1046,7 +1050,7 @@ def test_socket_timeout_worker_sends_the_replacement(mocker, container, mock_tel
 
 
 @pytest.mark.parametrize("fails", [False, True], ids=["returns", "raises"])
-def test_context_copied_during_a_call_holds_no_argument_after_it(mocker, container, mock_telemetry_factory, mock_conn, caplog, fails):
+def test_context_copied_during_call_holds_no_argument_after_it(mocker, container, mock_telemetry_factory, mock_conn, caplog, fails):
     caplog.set_level(logging.DEBUG)
     service = _call_context_service()
     copies: List[contextvars.Context] = []
@@ -1086,15 +1090,34 @@ def test_call_context_repr_and_str_show_no_argument():
     assert CALL_CONTEXT_MARKER not in format(context)
 
 
-def test_call_context_rejects_an_unknown_attribute():
+def test_call_context_rejects_unknown_attribute():
     context = PluginCallContext((), {})
 
     with pytest.raises(AttributeError):
-        context.kwarg = {}  # a misspelt kwargs fails instead of never reaching the driver
+        # A misspelt kwargs fails instead of never reaching the driver.
+        context.kwarg = {}
 
     context.args, context.kwargs = ("q",), {"params": ()}
     assert context.args == ("q",)
     assert context.kwargs == {"params": ()}
+
+
+def test_call_context_holds_same_arguments():
+    params = ["value"]
+    options = {"flag": True}
+    context = PluginCallContext(("q", params), {"options": options})
+
+    assert context.holds(("q", params), {"options": options}) is True
+    assert context.holds(tuple(context.args), dict(context.kwargs)) is True
+
+
+def test_call_context_holds_rejects_copied_arguments():
+    params = ["value"]
+    options = {"flag": True}
+    context = PluginCallContext(("q", params), {"options": options})
+
+    assert context.holds(copy.deepcopy(context.args), context.kwargs) is False
+    assert context.holds(context.args, copy.deepcopy(context.kwargs)) is False
 
 
 class CMySQLCursor:
@@ -1118,3 +1141,9 @@ def test_execute_against_old_connection_omits_statement_text(mocker, container, 
 
     assert "secret-literal" not in str(e.value)
     assert "'CMySQLCursor'" in str(e.value)
+
+
+def test_db_api_method_ids_are_unique_and_all_is_last():
+    ids = [method.id for method in DbApiMethod]
+    assert len(set(ids)) == len(ids)
+    assert DbApiMethod.ALL.id == max(ids)

@@ -23,17 +23,17 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Optional, Union
 
+from aws_advanced_python_wrapper.utils.messages import Messages
+
 try:
     from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-except ModuleNotFoundError as e:  # pragma: no cover - exercised by the import-guard test
+except ModuleNotFoundError as e:
     # Only a missing package gets the install hint. An installed but broken
     # cryptography raises its own ImportError, which is clearer as it is.
     if (e.name or "").partition(".")[0] != "cryptography":
         raise
-    raise ImportError(
-        "The KMS encryption plugin needs the 'cryptography' package. "
-        "Install it with: pip install 'aws-advanced-python-wrapper[encryption]'") from e
+    raise ImportError(Messages.get("EncryptionService.CryptographyMissing")) from e
 
 from aws_advanced_python_wrapper.encryption import buffers
 from aws_advanced_python_wrapper.encryption.algorithm import \
@@ -52,8 +52,8 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _MICROSECOND = timedelta(microseconds=1)
 _MILLISECOND = timedelta(milliseconds=1)
 # The epoch-millis range a datetime can be read back into.
-_MIN_MILLIS = -((_EPOCH - datetime.min.replace(tzinfo=timezone.utc)) // _MILLISECOND)
-_MAX_MILLIS = (datetime.max.replace(tzinfo=timezone.utc) - _EPOCH) // _MILLISECOND
+_MIN_EPOCH_MS = -((_EPOCH - datetime.min.replace(tzinfo=timezone.utc)) // _MILLISECOND)
+_MAX_EPOCH_MS = (datetime.max.replace(tzinfo=timezone.utc) - _EPOCH) // _MILLISECOND
 
 
 class EncryptionService:
@@ -92,8 +92,6 @@ class EncryptionService:
 
     #: Zero a ``bytearray`` in place; see :func:`buffers.wipe`.
     wipe = staticmethod(buffers.wipe)
-
-    # ---- public API ----
 
     @classmethod
     def encrypt(cls, value: Any, data_key: BytesLike, hmac_key: BytesLike,
@@ -160,8 +158,7 @@ class EncryptionService:
         data = cls._to_bytes(encrypted)
         if len(data) < cls.MIN_ENCRYPTED_LENGTH:
             raise IntegrityCheckError(
-                f"Encrypted data is too short: {len(data)} bytes, "
-                f"expected at least {cls.MIN_ENCRYPTED_LENGTH}",
+                Messages.get_formatted("EncryptionService.DataTooShort", len(data), cls.MIN_ENCRYPTED_LENGTH),
                 algorithm=algorithm,
             )
 
@@ -173,11 +170,7 @@ class EncryptionService:
         expected = data[:cls.HMAC_TAG_LENGTH]
         actual = hmac.new(cls._hmac_key(hmac_key), body, hashlib.sha256).digest()
         if not hmac.compare_digest(expected, actual):
-            raise IntegrityCheckError(
-                "Integrity check failed: the value was modified, was never encrypted, "
-                "or was signed with a different HMAC key",
-                algorithm=algorithm,
-            )
+            raise IntegrityCheckError(Messages.get("EncryptionService.IntegrityCheckFailed"), algorithm=algorithm)
 
         payload = body[cls.KEY_ID_LENGTH:]
         marker = cls._read_marker(payload)
@@ -185,8 +178,6 @@ class EncryptionService:
         # there is no buffer here worth wiping.
         plaintext = cls._unseal(payload, data_key, algorithm, marker)
         return cls._convert_to_target_type(cls.deserialize_value(plaintext, marker), target_type)
-
-    # ---- serialization ----
 
     @classmethod
     def serialize_value(cls, value: Any, marker: Optional[int] = None) -> bytes:
@@ -200,7 +191,7 @@ class EncryptionService:
         if marker is None:
             marker = TypeMarker.from_object(value)
         if not TypeMarker.is_known(marker):
-            raise EncryptionFailedError(f"Unsupported type marker: {marker!r}")
+            raise EncryptionFailedError(Messages.get_formatted("EncryptionService.UnsupportedTypeMarker", marker))
         try:
             return cls._serialize(value, marker)
         except (TypeError, ValueError, AttributeError, ArithmeticError, struct.error):
@@ -211,7 +202,7 @@ class EncryptionService:
             # and decimal.InvalidOperation.
             pass
         raise EncryptionFailedError(
-            f"Cannot write a value of type {type(value).__name__} as {TypeMarker.name_for(marker)}",
+            Messages.get_formatted("EncryptionService.CannotWriteType", type(value).__name__, TypeMarker.name_for(marker)),
             data_type=TypeMarker.name_for(marker))
 
     @classmethod
@@ -233,7 +224,7 @@ class EncryptionService:
         if marker == TypeMarker.BYTE_ARRAY:
             # bytes(7) would be seven zero bytes, so only bytes-like values.
             if not isinstance(value, (bytes, bytearray, memoryview)):
-                raise TypeError("BYTE_ARRAY needs a bytes-like value")
+                raise TypeError(Messages.get("EncryptionService.NeedsBytes"))
             return cls._to_bytes(value)
         if marker == TypeMarker.INTEGER:
             return struct.pack(">i", value)
@@ -245,9 +236,7 @@ class EncryptionService:
             # float or Decimal.
             value = operator.index(value)
             if not (-(2 ** 63) <= value <= 2 ** 63 - 1):
-                raise EncryptionFailedError(
-                    "Integer value exceeds the signed 64-bit range", data_type="LONG"
-                )
+                raise EncryptionFailedError(Messages.get("EncryptionService.LongOutOfRange"), data_type="LONG")
             return struct.pack(">q", value)
         if marker == TypeMarker.DOUBLE:
             return struct.pack(">d", value)
@@ -256,15 +245,14 @@ class EncryptionService:
         if marker == TypeMarker.BOOLEAN:
             # Not truthiness: "false" must not be written as True.
             if not isinstance(value, bool):
-                raise TypeError("BOOLEAN needs a bool")
+                raise TypeError(Messages.get("EncryptionService.NeedsBool"))
             return b"\x01" if value else b"\x00"
         if marker == TypeMarker.BIG_DECIMAL:
             # Plain (non-scientific) notation, so Decimal("1E+2") and
             # Decimal("100") give the same bytes. The scale is kept:
             # Decimal("1.0") is written as "1.0".
             if not value.is_finite():
-                raise EncryptionFailedError(
-                    "Cannot encrypt a non-finite Decimal", data_type="BIG_DECIMAL")
+                raise EncryptionFailedError(Messages.get("EncryptionService.NonFiniteDecimal"), data_type="BIG_DECIMAL")
             return cls._utf8_bytes(format(value, "f"))
         if marker in (TypeMarker.DATE, TypeMarker.TIME, TypeMarker.TIMESTAMP):
             return struct.pack(">q", cls._to_millis(value, TypeMarker.name_for(marker) or ""))
@@ -276,12 +264,11 @@ class EncryptionService:
         if marker == TypeMarker.LOCAL_DATE_TIME:
             if not isinstance(value, datetime):
                 raise EncryptionFailedError(
-                    f"Cannot write a value of type {type(value).__name__} as LOCAL_DATE_TIME",
+                    Messages.get_formatted("EncryptionService.CannotWriteType", type(value).__name__, "LOCAL_DATE_TIME"),
                     data_type="LOCAL_DATE_TIME")
             cls._require_naive(value, "LOCAL_DATE_TIME")
             return cls._utf8_bytes(value.isoformat())
-        raise EncryptionFailedError(  # pragma: no cover - serialize_value checks the marker first
-            f"Unsupported type marker: {marker!r}")
+        raise EncryptionFailedError(Messages.get_formatted("EncryptionService.UnsupportedTypeMarker", marker))
 
     @classmethod
     def deserialize_value(cls, data: bytes, marker: int) -> Any:
@@ -318,14 +305,11 @@ class EncryptionService:
             failed_marker = marker
         else:
             raise DecryptionError(
-                f"Unsupported type marker: {marker!r}", data_type=str(marker)
-            )
+                Messages.get_formatted("EncryptionService.UnsupportedTypeMarker", marker), data_type=str(marker))
         raise TypeConversionError(
-            f"Failed to deserialize {TypeMarker.name_for(failed_marker) or failed_marker}",
+            Messages.get_formatted("EncryptionService.DeserializeFailed", TypeMarker.name_for(failed_marker) or failed_marker),
             data_type=TypeMarker.name_for(failed_marker),
         )
-
-    # ---- AES-GCM ----
 
     @classmethod
     def _seal(cls, plaintext: BytesLike, marker: int, data_key: BytesLike, algorithm: str) -> bytes:
@@ -337,9 +321,9 @@ class EncryptionService:
             # doesn't reach, so key wiping is best effort.
             sealed = AESGCM(data_key).encrypt(iv, plaintext, None)
             return bytes([marker]) + iv + sealed
-        except Exception as e:  # pragma: no cover - cryptography rarely fails here
+        except Exception as e:
             raise EncryptionFailedError(
-                f"Failed to encrypt value: {type(e).__name__}",
+                Messages.get_formatted("EncryptionService.EncryptFailed", type(e).__name__),
                 algorithm=algorithm, data_type=TypeMarker.name_for(marker),
             ) from e
 
@@ -353,11 +337,8 @@ class EncryptionService:
             # The HMAC has already been checked, so a GCM failure here means the
             # data key is wrong rather than the data being corrupt.
             raise DecryptionError(
-                "Failed to decrypt value: the authentication tag does not match this data key",
-                algorithm=algorithm, data_type=TypeMarker.name_for(marker),
+                Messages.get("EncryptionService.TagMismatch"), algorithm=algorithm, data_type=TypeMarker.name_for(marker),
             ) from e
-
-    # ---- helpers ----
 
     @classmethod
     def _convert_to_target_type(cls, value: Any, target_type: Optional[type]) -> Any:
@@ -385,7 +366,7 @@ class EncryptionService:
         # Reached after a caught conversion failure, or when target_type
         # matched no branch above.
         raise TypeConversionError(
-            f"Cannot convert {source_name} to {target_type}",
+            Messages.get_formatted("EncryptionService.CannotConvert", source_name, target_type),
             data_type=str(target_type),
         )
 
@@ -402,22 +383,18 @@ class EncryptionService:
         if not isinstance(data_key, (bytes, bytearray, memoryview)) or len(data_key) != expected:
             got = len(data_key) if isinstance(data_key, (bytes, bytearray, memoryview)) else None
             raise InvalidKeyError(
-                f"Data key must be {expected} bytes for {algorithm}, got {got!r}",
-                algorithm=algorithm,
-            )
+                Messages.get_formatted("EncryptionService.WrongKeyLength", expected, algorithm, got), algorithm=algorithm)
 
     @classmethod
     def _validate_hmac_key(cls, hmac_key: BytesLike) -> None:
-        if not isinstance(hmac_key, (bytes, bytearray, memoryview)) or len(hmac_key) == 0:
-            raise InvalidKeyError("An HMAC key is required to protect encrypted values")
+        if not isinstance(hmac_key, (bytes, bytearray, memoryview)) or not hmac_key:
+            raise InvalidKeyError(Messages.get("EncryptionService.MissingHmacKey"))
 
     @classmethod
     def _validate_key_id(cls, key_id: int) -> None:
         # Packed as an unsigned 32-bit integer. bool is excluded (it is an int subclass).
         if isinstance(key_id, bool) or not isinstance(key_id, int) or not (0 <= key_id <= 0xFFFFFFFF):
-            raise EncryptionFailedError(
-                f"A valid key id is required to tag an encrypted value, got {key_id!r}"
-            )
+            raise EncryptionFailedError(Messages.get_formatted("EncryptionService.InvalidKeyId", key_id))
 
     @staticmethod
     def _require_naive(value: Any, marker_name: str) -> None:
@@ -426,13 +403,13 @@ class EncryptionService:
         # TIMESTAMP instead (see TypeMarker.from_object).
         if isinstance(value, (datetime, time)) and value.utcoffset() is not None:
             raise EncryptionFailedError(
-                f"Cannot write a timezone-aware value as {marker_name}", data_type=marker_name)
+                Messages.get_formatted("EncryptionService.TimezoneAware", marker_name), data_type=marker_name)
 
     @classmethod
     def _expect_length(cls, data: bytes, length: int, marker: int) -> bytes:
         if len(data) != length:
             raise TypeConversionError(
-                f"Expected {length} bytes for {TypeMarker.name_for(marker)}, got {len(data)}",
+                Messages.get_formatted("EncryptionService.WrongValueLength", length, TypeMarker.name_for(marker), len(data)),
                 data_type=TypeMarker.name_for(marker),
             )
         return data
@@ -463,9 +440,7 @@ class EncryptionService:
             # UnicodeEncodeError holds the full plaintext in `.object`; raised
             # below, outside the handler (see the class docstring).
             pass
-        raise EncryptionFailedError(
-            "Cannot encrypt a string with no UTF-8 form", data_type="str"
-        )
+        raise EncryptionFailedError(Messages.get("EncryptionService.NoUtf8Form"), data_type="str")
 
     @classmethod
     def _to_millis(cls, value: Any, marker_name: str) -> int:
@@ -481,22 +456,21 @@ class EncryptionService:
         elif isinstance(value, date):
             dt = datetime(value.year, value.month, value.day, tzinfo=timezone.utc)
         else:
-            raise TypeError(f"{marker_name} needs a date or datetime")
+            raise TypeError(Messages.get_formatted("EncryptionService.NeedsDate", marker_name))
         micros = (dt - _EPOCH) // _MICROSECOND
         millis, remainder = divmod(abs(micros), 1000)
         if remainder >= 500:
             millis += 1
         millis = millis if micros >= 0 else -millis
-        if micros // 1000 == _MAX_MILLIS:
+        if micros // 1000 == _MAX_EPOCH_MS:
             # Rounding up past the last representable millisecond (for example
             # an aware datetime.max, a common "never" value) keeps that
             # millisecond.
-            millis = _MAX_MILLIS
-        if not _MIN_MILLIS <= millis <= _MAX_MILLIS:
+            millis = _MAX_EPOCH_MS
+        if not _MIN_EPOCH_MS <= millis <= _MAX_EPOCH_MS:
             # A UTC offset put the instant outside what a datetime can hold,
             # so it could not be read back.
-            raise EncryptionFailedError(
-                "In UTC, the value is outside the range a datetime can represent", data_type=marker_name)
+            raise EncryptionFailedError(Messages.get("EncryptionService.OutsideDatetimeRange"), data_type=marker_name)
         return millis
 
     @classmethod

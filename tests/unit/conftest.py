@@ -12,6 +12,10 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import threading
+
+import pytest
+
 from aws_advanced_python_wrapper.aio.aurora_connection_tracker import \
     AsyncOpenedConnectionTracker
 from aws_advanced_python_wrapper.aio.minor_plugins import AsyncDeveloperPlugin
@@ -23,8 +27,11 @@ from aws_advanced_python_wrapper.database_dialect import DatabaseDialectManager
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
 from aws_advanced_python_wrapper.exception_handling import ExceptionManager
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
 from aws_advanced_python_wrapper.plugin_service import PluginServiceImpl
 from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 def pytest_runtest_setup(item):
@@ -43,3 +50,24 @@ def pytest_runtest_setup(item):
     DatabaseDialectManager.reset_custom_dialect()
     DriverDialectManager.reset_custom_dialect()
     ExceptionManager.reset_custom_handler()
+
+
+def _wait_then_return(event, value):
+    def wait(*args):
+        event.wait(timeout=1)
+        return value
+    return wait
+
+
+@pytest.fixture
+def wait_then_return():
+    return _wait_then_return
+
+
+@pytest.fixture
+def timeout_dialect(mocker):
+    dialect = PgDriverDialect(Properties({WrapperProperties.SOCKET_TIMEOUT_SEC.name: "0.05"}))
+    event = threading.Event()
+    # The abort ends the cursor call that waits, so no worker is left running.
+    mocker.patch.object(dialect, "abort_connection", side_effect=lambda conn: event.set())
+    return dialect, event

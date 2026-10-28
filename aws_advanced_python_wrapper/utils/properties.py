@@ -281,8 +281,8 @@ class WrapperProperties:
     )
     ENCRYPTION_AUDIT_LOGGING_ENABLED = WrapperProperty(
         "encryption_audit_logging_enabled",
-        "Log an audit record for every key-management, encryption, and decryption operation "
-        "(used by the kms_encryption plugin).",
+        "Accepted by the kms_encryption plugin, which writes no audit records; when True, the plugin logs one "
+        "warning per connection saying so.",
         False,
     )
     ENCRYPTION_RETURN_UNVERIFIED_DATA = WrapperProperty(
@@ -291,6 +291,13 @@ class WrapperProperties:
         "confirmed to be this column's encrypted data: too short to be a payload, or a failed HMAC. Intended "
         "only for reading data written before the column was encrypted (used by the kms_encryption plugin).",
         False,
+    )
+    ENCRYPTION_FAIL_ON_UNMAPPED_PARAMETER = WrapperProperty(
+        "encryption_fail_on_unmapped_parameter",
+        "Refuse a statement with parameters on a table with encrypted columns when the kms_encryption plugin can't pair "
+        "each parameter with its column, such as an INSERT without a column list. False runs it unchanged, with a "
+        "warning when it writes; a COPY the plugin can't parse that can write the table is still refused.",
+        True,
     )
 
     DIALECT = WrapperProperty(

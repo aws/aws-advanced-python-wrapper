@@ -17,7 +17,8 @@ import pytest
 from mysql.connector import MySQLConnection
 from sqlalchemy import PoolProxiedConnection
 
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                QueryTimeoutError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -186,3 +187,80 @@ def test_prepare_connect_info(dialect):
 
     result = dialect.prepare_connect_info(host_info, original_props)
     assert result == expected_props
+
+
+def test_fold_identifier(dialect):
+    assert dialect.fold_identifier("Users", quoted=False) == "users"
+    assert dialect.fold_identifier("Users", quoted=True) == "Users"
+    assert dialect.fold_identifier("ÉTÉ", quoted=False) == "ÉtÉ"
+
+
+def test_metadata_key_keeps_case(dialect):
+    assert dialect.metadata_key("Users") == "Users"
+
+
+def test_upsert_clause(dialect):
+    assert dialect.upsert_clause(["id"], ["name", "age"], ["updated_at = NOW()"]) == \
+        "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, age = EXCLUDED.age, updated_at = NOW()"
+
+
+@pytest.mark.parametrize("row", [(7,), {"id": 7}])
+def test_insert_returning_id(dialect, mocker, row):
+    conn = mocker.MagicMock()
+    cursor = conn.cursor.return_value
+    cursor.fetchone.return_value = row
+    assert dialect.insert_returning_id(conn, "INSERT INTO t (name) VALUES (%s)", ("a",)) == 7
+    cursor.execute.assert_called_once_with("INSERT INTO t (name) VALUES (%s) RETURNING id", ("a",))
+
+
+def test_analyzable_sql_composable(dialect, mocker):
+    cursor = mocker.MagicMock()
+    composed = mocker.MagicMock(spec=psycopg.sql.Composed)
+    composed.as_string.return_value = "SELECT ssn FROM users"
+    assert dialect.analyzable_sql(composed, cursor) == ("SELECT ssn FROM users", None)
+    composed.as_string.assert_called_once_with(cursor)
+
+
+def test_analyzable_sql_bytes(dialect, mocker, mock_conn):
+    mock_conn.info.encoding = "utf-8"
+    cursor = mocker.MagicMock(spec=psycopg.Cursor)
+    cursor.connection = mock_conn
+    assert dialect.analyzable_sql(b"SELECT 1", cursor) == ("SELECT 1", "utf-8")
+    assert dialect.analyzable_sql("SELECT 1", cursor) == ("SELECT 1", None)
+
+
+def test_analyzable_sql_bytes_without_connection(dialect, mocker):
+    assert dialect.analyzable_sql(b"SELECT 1", mocker.MagicMock()) == (None, None)
+
+
+@pytest.mark.parametrize("codec", ["shift_jis_2004", "ascii"])
+def test_analyzable_sql_bytes_codec_mismatch(dialect, mocker, mock_conn, codec):
+    mock_conn.info.encoding = codec
+    cursor = mocker.MagicMock(spec=psycopg.Cursor)
+    cursor.connection = mock_conn
+    assert dialect.analyzable_sql("SELECT 'é'".encode("utf-8"), cursor) == (None, codec)
+
+
+def test_unsupported_row_factory(dialect, mocker):
+    cursor = mocker.MagicMock(spec=psycopg.Cursor)
+    for factory in (psycopg.rows.tuple_row, psycopg.rows.dict_row, psycopg.rows.namedtuple_row):
+        cursor.row_factory = factory
+        assert dialect.unsupported_row_factory(cursor) is None
+
+    cursor.row_factory = psycopg.rows.class_row
+    assert dialect.unsupported_row_factory(cursor) is psycopg.rows.class_row
+    assert dialect.unsupported_row_factory(mocker.MagicMock()) is None
+
+
+def test_insert_returning_id_times_out_with_socket_timeout(mocker, timeout_dialect, wait_then_return):
+    dialect, event = timeout_dialect
+    conn = mocker.MagicMock()
+    conn.cursor.return_value.fetchone.side_effect = wait_then_return(event, (7,))
+    with pytest.raises(QueryTimeoutError):
+        dialect.insert_returning_id(conn, "INSERT INTO t (name) VALUES (%s)", ("a",))
+
+
+@pytest.mark.parametrize("params, binds", [
+    (None, False), ({}, True), ([], True), ((), True), ({"a": 1}, True), ([1], True)])
+def test_binds_parameters_any_parameters(params, binds):
+    assert PgDriverDialect.binds_parameters(params) is binds

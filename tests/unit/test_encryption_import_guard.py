@@ -54,6 +54,7 @@ _CORE_MODULES = [
     "aws_advanced_python_wrapper.sqlalchemy_dialects.pg_async",
     "aws_advanced_python_wrapper.sqlalchemy_dialects.mysql_async",
     "aws_advanced_python_wrapper.django.backends.mysql_connector.base",
+    "aws_advanced_python_wrapper.encryption.kms_encryption_plugin",
 ]
 
 
@@ -81,7 +82,7 @@ def test_imports_without_cryptography_or_sqlglot(module):
 
 
 @pytest.mark.parametrize("module", _CORE_MODULES + _KEY_LAYER_MODULES)
-def test_does_not_load_the_extra_even_when_installed(module):
+def test_import_with_extra_installed_loads_no_extra(module):
     # With the packages available, importing these must still not load them,
     # so users who never encrypt don't pay their import cost.
     result = _run(f"""
@@ -93,12 +94,12 @@ def test_does_not_load_the_extra_even_when_installed(module):
     assert result.returncode == 0, result.stderr
 
 
-def test_encryption_service_names_the_extra_when_cryptography_is_missing():
+def test_encryption_service_without_cryptography_names_extra():
     result = _run("""
         try:
             import aws_advanced_python_wrapper.encryption.encryption_service
         except ImportError as e:
-            print(e)
+            sys.stdout.write(str(e))
         else:
             raise SystemExit("imported without cryptography")
     """)
@@ -106,17 +107,40 @@ def test_encryption_service_names_the_extra_when_cryptography_is_missing():
     assert "aws-advanced-python-wrapper[encryption]" in result.stdout
 
 
-def test_sql_analyzer_names_the_extra_when_sqlglot_is_missing():
+def test_sql_analyzer_without_sqlglot_names_extra():
     result = _run("""
         try:
             import aws_advanced_python_wrapper.encryption.sql_analyzer
         except ImportError as e:
-            print(e)
+            sys.stdout.write(str(e))
         else:
             raise SystemExit("imported without sqlglot")
     """)
     assert result.returncode == 0, result.stderr
     assert "'sqlglot'" in result.stdout
+    assert "aws-advanced-python-wrapper[encryption]" in result.stdout
+
+
+def test_plugin_creation_without_extra_names_extra():
+    # The plugin module imports without the extra, so a connection that asks
+    # for the plugin fails when the plugin is created, with the install hint.
+    result = _run("""
+        from unittest.mock import MagicMock
+        from aws_advanced_python_wrapper.encryption.kms_encryption_plugin import KmsEncryptionPluginFactory
+        from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
+        from aws_advanced_python_wrapper.utils.properties import Properties
+        props = Properties(encryption_kms_region="us-east-1",
+                           encryption_allowed_master_key_arns="arn:aws:kms:us-east-1:123456789012:key/k")
+        service = MagicMock()
+        service.driver_dialect = PgDriverDialect(Properties())
+        try:
+            KmsEncryptionPluginFactory.get_instance(service, props)
+        except ImportError as e:
+            sys.stdout.write(str(e))
+        else:
+            raise SystemExit("created without the extra")
+    """)
+    assert result.returncode == 0, result.stderr
     assert "aws-advanced-python-wrapper[encryption]" in result.stdout
 
 
@@ -144,7 +168,7 @@ def test_a_broken_cryptography_is_not_reported_as_missing(error):
         try:
             import aws_advanced_python_wrapper.encryption.encryption_service
         except ImportError as e:
-            print(e)
+            sys.stdout.write(str(e))
     """)
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stderr
@@ -158,7 +182,7 @@ def test_a_broken_sqlglot_is_not_reported_as_missing():
         try:
             import aws_advanced_python_wrapper.encryption.sql_analyzer
         except ImportError as e:
-            print(e)
+            sys.stdout.write(str(e))
     """)
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stderr

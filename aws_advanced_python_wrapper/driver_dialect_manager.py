@@ -14,7 +14,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Protocol, Union
+from typing import (TYPE_CHECKING, Any, Callable, Dict, Optional, Protocol,
+                    Union)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
@@ -75,21 +76,9 @@ class DriverDialectManager(DriverDialectProvider):
             else:
                 logger.warning("DriverDialectManager.CustomDialectNotSupported")
 
-        result: Optional[str]
         dialect_code: Optional[str] = WrapperProperties.DRIVER_DIALECT.get(props)
         if dialect_code:
-            result = DriverDialectManager.known_dialects_by_code.get(dialect_code)
-            if result is None:
-                raise AwsWrapperError(Messages.get_formatted(
-                    "DriverDialectManager.UnknownDialectCode",
-                    dialect_code))
-            self._log_dialect(dialect_code, result)
-            dialect = Utils.initialize_class(result, props)
-            if dialect is None:
-                raise AwsWrapperError(Messages.get_formatted(
-                    "DriverDialectManager.InitializationError",
-                    dialect_code))
-            return dialect
+            return self._get_dialect_by_code(dialect_code, props)
 
         for key, value in DriverDialectManager.known_dialects_by_code.items():
             dialect = Utils.initialize_class(value, props)
@@ -99,6 +88,41 @@ class DriverDialectManager(DriverDialectProvider):
 
         self._log_dialect(DriverDialectCodes.GENERIC, "generic")
         return DriverDialect(props)
+
+    def get_dialect_for_connection(self, conn: Any, props: Properties) -> Optional[DriverDialect]:
+        """
+        Returns the driver dialect for a connection that the wrapper didn't open.
+        It doesn't use a custom dialect, because that dialect keeps its own properties and ``props`` can't bound its statements.
+
+        :param conn: the driver connection, or an object that holds one.
+        :param props: the properties; their ``wrapper_driver_dialect`` code always wins over detection.
+        :return: the dialect of the ``wrapper_driver_dialect`` code, else the first known dialect that finds
+            a connection in ``conn``, or None.
+        """
+        dialect_code: Optional[str] = WrapperProperties.DRIVER_DIALECT.get(props)
+        if dialect_code:
+            return self._get_dialect_by_code(dialect_code, props)
+
+        for key, value in DriverDialectManager.known_dialects_by_code.items():
+            dialect = Utils.initialize_class(value, props)
+            if dialect is not None and dialect.get_connection_from_obj(conn) is not None:
+                self._log_dialect(key, value)
+                return dialect
+        return None
+
+    def _get_dialect_by_code(self, dialect_code: str, props: Properties) -> DriverDialect:
+        result = DriverDialectManager.known_dialects_by_code.get(dialect_code)
+        if result is None:
+            raise AwsWrapperError(Messages.get_formatted(
+                "DriverDialectManager.UnknownDialectCode",
+                dialect_code))
+        self._log_dialect(dialect_code, result)
+        dialect = Utils.initialize_class(result, props)
+        if dialect is None:
+            raise AwsWrapperError(Messages.get_formatted(
+                "DriverDialectManager.InitializationError",
+                dialect_code))
+        return dialect
 
     @staticmethod
     def _log_dialect(dialect_code: str, driver_dialect: Union[DriverDialect, str]):

@@ -33,11 +33,16 @@ from aws_advanced_python_wrapper.encryption.config import EncryptionConfig
 from aws_advanced_python_wrapper.encryption.data_key_cache import DataKeyCache
 from aws_advanced_python_wrapper.encryption.key_manager import KeyManager
 from aws_advanced_python_wrapper.encryption.models import KeyMetadata, mask_arn
-from aws_advanced_python_wrapper.encryption.sql_dialect import MYSQL, PG
 from aws_advanced_python_wrapper.errors import (InvalidKeyMetadataError,
                                                 KeyManagementError,
                                                 OperationalError,
                                                 UnauthorizedMasterKeyError)
+from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
+from aws_advanced_python_wrapper.utils.properties import Properties
+
+PG = PgDriverDialect(Properties())
+MYSQL = MySQLDriverDialect(Properties())
 
 ARN = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
 OTHER_ARN = "arn:aws:kms:us-east-1:123456789012:key/ffffffff-12ab-34cd-56ef-1234567890ab"
@@ -45,7 +50,7 @@ DATA_KEY = bytes(range(32))
 BLOB = b"kms-ciphertext-blob"
 EDK = base64.b64encode(BLOB).decode()
 # The caller's identity, as KMS names it when it denies a call.
-ROLE_SESSION_ARN = "arn:aws:sts::123456789012:assumed-role/kiro-app-role/kiro-app-session"
+ROLE_SESSION_ARN = "arn:aws:sts::123456789012:assumed-role/test-app-role/test-app-session"
 MASKED_ROLE_SESSION_ARN = "arn:aws:sts:***:***:***"
 
 
@@ -94,8 +99,12 @@ class FakeDb:
 
 
 def config(**overrides) -> EncryptionConfig:
-    values = dict(kms_region="us-east-1", allowed_master_key_arns=frozenset({ARN}),
-                  key_management_retry_backoff_base_sec=0.1)
+    values = dict(kms_region="us-east-1", allowed_master_key_arns=frozenset({ARN}), kms_endpoint=None,
+                  metadata_schema="encrypt", metadata_cache_enabled=True, metadata_cache_expiration_sec=3600.0,
+                  metadata_cache_refresh_interval_sec=300.0, data_key_cache_enabled=True,
+                  data_key_cache_max_size=1000, data_key_cache_expiration_sec=300.0, key_management_max_retries=3,
+                  key_management_retry_backoff_base_sec=0.1, audit_logging_enabled=False,
+                  return_unverified_data=False)
     values.update(overrides)
     return EncryptionConfig(**values)  # type: ignore[arg-type]
 
@@ -146,13 +155,15 @@ class TestDecryptDataKey:
                              {"CiphertextBlob": BLOB, "KeyId": ARN})
         km = manager(client, db)
         first = km.decrypt_data_key(EDK, ARN)
-        assert isinstance(first, bytearray) and first == DATA_KEY
+        assert isinstance(first, bytearray)
+        assert first == DATA_KEY
         # Second call is served from the cache: no further stubbed response.
         first[:] = bytes(32)
         assert km.decrypt_data_key(EDK, ARN) == DATA_KEY
 
     def test_unlisted_master_key_is_refused_before_kms(self, kms, db):
-        client, _ = kms  # no stubbed responses: any KMS call would fail
+        # No stubbed responses: any KMS call would fail.
+        client, _ = kms
         km = manager(client, db)
         with pytest.raises(UnauthorizedMasterKeyError) as err:
             km.decrypt_data_key(EDK, OTHER_ARN)
@@ -160,7 +171,7 @@ class TestDecryptDataKey:
         with pytest.raises(UnauthorizedMasterKeyError):
             km.decrypt_data_key(EDK, None)
 
-    def test_allow_list_is_checked_even_on_a_cache_hit(self, kms, db):
+    def test_allow_list_checked_on_cache_hit(self, kms, db):
         client, _ = kms
         cache = DataKeyCache(10, 60, start_cleanup_thread=False)
         cache.put(KeyManager.data_key_cache_key(EDK), DATA_KEY)
@@ -218,7 +229,7 @@ class TestRetries:
         assert 0.1 <= sleeps[0] <= 0.125
         assert 0.15 <= sleeps[1] <= 0.25
 
-    def test_retries_stop_at_the_configured_maximum(self, kms, db):
+    def test_retries_stop_at_configured_maximum(self, kms, db):
         client, stubber = kms
         for _ in range(3):
             stubber.add_client_error("decrypt", "ServiceUnavailable", http_status_code=503)
@@ -237,8 +248,11 @@ class TestRetries:
         assert not KeyManager._is_retryable(bad)
         assert not KeyManager._is_retryable(ValueError("x"))
 
+    def test_not_processed_check_other_error_returns_false(self):
+        assert KeyManager._is_not_processed(ValueError("x")) is False
+
     @pytest.mark.parametrize("status", [500, 502, 503, 504])
-    def test_any_5xx_is_retryable_even_with_an_unlisted_code(self, status):
+    def test_5xx_with_unlisted_code_is_retryable(self, status):
         # A load balancer or VPC endpoint in front of KMS can answer with a
         # code outside RETRYABLE_ERROR_CODES.
         from botocore.exceptions import ClientError
@@ -261,12 +275,13 @@ class TestRetries:
         # botocore's 60 s defaults would let one blackholed call take minutes.
         assert client.meta.config.connect_timeout == KeyManager.CONNECT_TIMEOUT_SEC
         assert client.meta.config.read_timeout == KeyManager.READ_TIMEOUT_SEC
-        assert client.meta.config.connect_timeout < 60 and client.meta.config.read_timeout < 60
+        assert client.meta.config.connect_timeout < 60
+        assert client.meta.config.read_timeout < 60
 
 
 def _assert_names_no_identifier(text: str) -> None:
-    for identifier in (ARN, ARN.rpartition("/")[2], ROLE_SESSION_ARN, "123456789012", "kiro-app-role",
-                       "kiro-app-session"):
+    for identifier in (ARN, ARN.rpartition("/")[2], ROLE_SESSION_ARN, "123456789012", "test-app-role",
+                       "test-app-session"):
         assert identifier not in text
 
 
@@ -290,7 +305,7 @@ class TestQuotedKmsErrorsAreMasked:
                      "resource-based policies allow access, or a resource-based policy explicitly denies access",
                      id="wrong-region"),
     ])
-    def test_decrypt_failure_masks_the_arns_kms_quotes(self, kms, db, code, text):
+    def test_decrypt_failure_masks_quoted_arns(self, kms, db, code, text):
         client, stubber = kms
         stubber.add_client_error("decrypt", code, service_message=text, http_status_code=400)
         with pytest.raises(KeyManagementError) as err:
@@ -305,7 +320,7 @@ class TestQuotedKmsErrorsAreMasked:
         assert isinstance(err.value.__cause__, ClientError)
         assert text in str(err.value.__cause__)
 
-    def test_decrypt_failure_without_an_arn_quotes_kms_unchanged(self, kms, db):
+    def test_decrypt_failure_without_arn_quotes_kms_unchanged(self, kms, db):
         client, stubber = kms
         stubber.add_client_error("decrypt", "NotFoundException", service_message="Invalid arn us-east-1",
                                  http_status_code=400)
@@ -323,7 +338,7 @@ class TestQuotedKmsErrorsAreMasked:
         pytest.param("ThrottlingException", f"Rate exceeded for {ARN}.", 400, id="throttling"),
         pytest.param("KeyUnavailableException", f"{ARN} is unavailable.", 500, id="key-unavailable"),
     ])
-    def test_retry_record_masks_the_arns_kms_quotes(self, kms, db, caplog, code, text, status):
+    def test_retry_record_masks_quoted_arns(self, kms, db, caplog, code, text, status):
         client, stubber = kms
         stubber.add_client_error("decrypt", code, service_message=text, http_status_code=status)
         stubber.add_response("decrypt", {"Plaintext": DATA_KEY}, {"CiphertextBlob": BLOB, "KeyId": ARN})
@@ -331,10 +346,11 @@ class TestQuotedKmsErrorsAreMasked:
             assert manager(client, db).decrypt_data_key(EDK, ARN) == DATA_KEY
         retries = [m for m in _key_manager_messages(caplog, logging.DEBUG) if "retrying in" in m]
         assert len(retries) == 1
-        assert f"({code})" in retries[0] and mask_arn(ARN) in retries[0]
+        assert f"({code})" in retries[0]
+        assert mask_arn(ARN) in retries[0]
         _assert_names_no_identifier(retries[0])
 
-    def test_validation_warning_masks_the_arns_kms_quotes(self, kms, db, caplog):
+    def test_validation_warning_masks_quoted_arns(self, kms, db, caplog):
         client, stubber = kms
         text = (f"User: {ROLE_SESSION_ARN} is not authorized to perform: kms:DescribeKey on resource: {ARN} "
                 "because no identity-based policy allows the kms:DescribeKey action")
@@ -343,7 +359,8 @@ class TestQuotedKmsErrorsAreMasked:
             assert manager(client, db).is_master_key_valid(ARN) is False
         warnings = _key_manager_messages(caplog, logging.WARNING)
         assert len(warnings) == 1
-        assert "(AccessDeniedException)" in warnings[0] and MASKED_ROLE_SESSION_ARN in warnings[0]
+        assert "(AccessDeniedException)" in warnings[0]
+        assert MASKED_ROLE_SESSION_ARN in warnings[0]
         assert mask_arn(ARN) in warnings[0]
         _assert_names_no_identifier(warnings[0])
 
@@ -351,17 +368,19 @@ class TestQuotedKmsErrorsAreMasked:
 class TestGenerateAndCreate:
     @pytest.mark.parametrize("algorithm, spec", [
         (EncryptionAlgorithm.AES_256_GCM, "AES_256"), (EncryptionAlgorithm.AES_128_GCM, "AES_128")])
-    def test_generate_data_key_sizes_the_key_for_the_algorithm(self, kms, db, algorithm, spec):
+    def test_generate_data_key_sized_for_algorithm(self, kms, db, algorithm, spec):
         client, stubber = kms
         key = DATA_KEY[:EncryptionAlgorithm.key_length(algorithm)]
         stubber.add_response("generate_data_key", {"Plaintext": key, "CiphertextBlob": BLOB},
                              {"KeyId": ARN, "KeySpec": spec})
         generated = manager(client, db).generate_data_key(ARN, algorithm)
-        assert generated.plaintext == key and isinstance(generated.plaintext, bytearray)
+        assert generated.plaintext == key
+        assert isinstance(generated.plaintext, bytearray)
         assert base64.b64decode(generated.encrypted_data_key) == BLOB
         assert len(generated.hmac_key) == 32
         assert generated.key_spec == spec
-        assert "bytearray" not in repr(generated) and str(BLOB) not in repr(generated)
+        assert "bytearray" not in repr(generated)
+        assert str(BLOB) not in repr(generated)
 
     def test_mis_sized_data_key_is_rejected_at_setup(self, kms, db):
         client, stubber = kms
@@ -379,13 +398,14 @@ class TestGenerateAndCreate:
                              {"KeyId": ARN, "KeySpec": "AES_128"})
         with pytest.raises(KeyManagementError):
             manager(client, db).generate_data_key(ARN, EncryptionAlgorithm.AES_128_GCM)
-        assert len(wiped) == 1 and wiped[0] == bytearray(len(DATA_KEY))
+        assert len(wiped) == 1
+        assert wiped[0] == bytearray(len(DATA_KEY))
 
-    def test_generate_is_gated_on_the_allow_list(self, kms, db):
+    def test_generate_gated_on_allow_list(self, kms, db):
         with pytest.raises(UnauthorizedMasterKeyError):
             manager(kms[0], db).generate_data_key(OTHER_ARN)
 
-    def test_create_master_key_is_not_retried_after_an_ambiguous_failure(self, kms, db):
+    def test_create_master_key_ambiguous_failure_not_retried(self, kms, db):
         # After a 5xx the key may already exist; retrying would create a second one.
         client, stubber = kms
         stubber.add_client_error("create_key", "KMSInternalException", http_status_code=500)
@@ -394,7 +414,7 @@ class TestGenerateAndCreate:
             manager(client, db, sleeps=sleeps).create_master_key("d")
         assert sleeps == []
 
-    def test_create_master_key_is_not_retried_on_a_quota_error(self, kms, db):
+    def test_create_master_key_quota_error_not_retried(self, kms, db):
         # LimitExceededException on CreateKey is the key-count quota; retrying
         # only delays the same failure.
         client, stubber = kms
@@ -404,7 +424,7 @@ class TestGenerateAndCreate:
             manager(client, db, sleeps=sleeps).create_master_key("d")
         assert sleeps == []
 
-    def test_create_master_key_retries_a_connection_that_was_never_made(self, kms, db):
+    def test_create_master_key_endpoint_connection_error_retried(self, kms, db):
         client, stubber = kms
         km = manager(client, db)
         calls = []
@@ -419,7 +439,7 @@ class TestGenerateAndCreate:
         assert km.create_master_key("d") == ARN
         assert len(calls) == 2
 
-    def test_create_master_key_retries_a_connect_timeout(self, kms, db):
+    def test_create_master_key_connect_timeout_retried(self, kms, db):
         # ConnectTimeoutError does not derive from EndpointConnectionError, so
         # it needs its own guard.
         from botocore.exceptions import ConnectTimeoutError
@@ -437,7 +457,7 @@ class TestGenerateAndCreate:
         assert km.create_master_key("d") == ARN
         assert len(calls) == 2
 
-    def test_create_master_key_retries_a_429(self, kms, db):
+    def test_create_master_key_429_retried(self, kms, db):
         # A 429 means KMS did not act, whatever error code comes with it.
         client, stubber = kms
         stubber.add_client_error("create_key", "TooManyRequestsException", http_status_code=429)
@@ -487,10 +507,13 @@ class TestKeyStorage:
         db.result = (["id"], [(42,)])
         stored = manager(kms[0], db).store_key_metadata(self._key())
         assert stored.id == 42
-        assert stored.key_id and len(stored.key_id) == 36  # generated UUID
+        assert stored.key_id
+        assert len(stored.key_id) == 36  # generated UUID
         sql, params = db.executed[0]
-        assert sql.startswith("INSERT INTO encrypt.key_storage ") and sql.endswith(" RETURNING id")
-        assert params[4] == b"H" * 32 and params[5] == "AES_256"
+        assert sql.startswith("INSERT INTO encrypt.key_storage ")
+        assert sql.endswith(" RETURNING id")
+        assert params[4] == b"H" * 32
+        assert params[5] == "AES_256"
 
     def test_store_on_mysql_uses_lastrowid_and_keeps_given_uuid(self, kms, db):
         db.lastrowid = 9
@@ -503,7 +526,7 @@ class TestKeyStorage:
             manager(kms[0], db).store_key_metadata(self._key(encrypted_data_key=None))
         assert db.executed == []
 
-    def test_store_failure_does_not_leak_the_hmac_key(self, kms, db):
+    def test_store_failure_hides_hmac_key(self, kms, db):
         secret = b"SECRET-HMAC-" + b"x" * 20
         db.error = RuntimeError(f"syntax error near '{secret!r}'")
         with pytest.raises(KeyManagementError) as err:
@@ -513,7 +536,7 @@ class TestKeyStorage:
         assert err.value.__context__ is None
         assert "RuntimeError" in str(err.value)
 
-    def test_store_failure_reports_the_driver_error_codes(self, kms, db):
+    def test_store_failure_reports_driver_error_codes(self, kms, db):
         # SQLSTATE and errno carry no statement text, so they can be shown.
         class DriverError(Exception):
             sqlstate = "42P01"
@@ -522,10 +545,12 @@ class TestKeyStorage:
         db.error = DriverError("relation key_storage does not exist: 'SECRET-HMAC'")
         with pytest.raises(KeyManagementError) as err:
             manager(kms[0], db).store_key_metadata(self._key())
-        assert "DriverError" in str(err.value) and "sqlstate 42P01" in str(err.value)
-        assert "errno 1146" in str(err.value) and "SECRET" not in str(err.value)
+        assert "DriverError" in str(err.value)
+        assert "sqlstate 42P01" in str(err.value)
+        assert "errno 1146" in str(err.value)
+        assert "SECRET" not in str(err.value)
 
-    def test_store_on_postgres_reads_the_id_from_a_dict_row(self, kms, db):
+    def test_store_on_postgres_reads_id_from_dict_row(self, kms, db):
         class DictCursor(FakeCursor):
             def fetchone(self):
                 return {"id": 42}
@@ -539,7 +564,10 @@ class TestKeyStorage:
                       "CREATED_AT", "LAST_USED_AT"],
                      [(3, "u", "n", ARN, EDK, memoryview(b"hk"), "AES_256", None, None)])
         km = manager(kms[0], db).key_metadata_by_id(3)
-        assert km is not None and km.id == 3 and km.hmac_key == b"hk" and km.master_key_arn == ARN
+        assert km is not None
+        assert km.id == 3
+        assert km.hmac_key == b"hk"
+        assert km.master_key_arn == ARN
         assert "WHERE id OPERATOR(pg_catalog.=) %s" in db.executed[0][0]
         assert db.executed[0][1] == (3,)
 
@@ -561,15 +589,14 @@ class TestKeyStorage:
         assert "last_used_at = CURRENT_TIMESTAMP" in db.executed[0][0]
 
 
-# ---- botocore log filters ----
-
 B64_KEY = base64.b64encode(DATA_KEY).decode()
 # Distinctive fake credentials: easy to search for, and no test signs with the
 # ambient credential chain.
-FAKE_KEY_ID = "KIROUNITFAKEKEYID0001"
-FAKE_SECRET = "kiro-unit-fake-secret-key"
-FAKE_TOKEN = "kiro-unit-fake-session-token"
-UNREACHABLE = "http://127.0.0.1:9"  # never contacted: the canned answer comes first
+FAKE_KEY_ID = "TESTUNITFAKEKEYID0001"
+FAKE_SECRET = "test-unit-fake-secret-key"
+FAKE_TOKEN = "test-unit-fake-session-token"
+# Never contacted: the canned answer comes first.
+UNREACHABLE = "http://127.0.0.1:9"
 KMS_OPERATIONS = ["TrentService.GenerateDataKey", "TrentService.Decrypt"]
 
 
@@ -656,32 +683,48 @@ def _state(name: str):
     return lg.level, list(lg.handlers), lg.propagate, list(lg.filters)
 
 
+def test_key_manager_with_own_client_drops_plaintext_record(caplog):
+    client = _session().client("kms", region_name="us-east-1")
+    _answer_kms(client)
+    with _debug_log(caplog) as records:
+        _run(client, on_thread=False)
+    assert _holding(records, B64_KEY) == []
+    assert len(_records(records, "botocore.parsers", "Response headers: %r")) == 2
+
+
 class TestBotocoreLogFilters:
     @pytest.mark.parametrize("on_thread", [False, True], ids=["caller", "worker"])
-    def test_botocore_logs_kms_secrets_at_debug(self, caplog, on_thread):
+    def test_botocore_logs_kms_secrets_at_debug(self, mocker, caplog, on_thread):
         # The canaries: if botocore changes one of these records, the filter
-        # rules need another look.
+        # rules need another look. The filters count as installed, so the
+        # KeyManager that makes the calls adds none.
+        mocker.patch.object(km_module, "_filters_installed", True)
         client = _session().client("kms", region_name="us-east-1")
         answered, signatures = _answer_kms(client)
         with _debug_log(caplog) as records:
             _run(client, on_thread)
         assert answered == KMS_OPERATIONS
         bodies = _records(records, "botocore.parsers", "Response body:\n%r")
-        assert len(bodies) == 2 and len(_holding(records, B64_KEY)) == 2
-        assert all(isinstance(r.args, tuple) and isinstance(r.args[0], bytes) and b'"Plaintext"' in r.args[0]
-                   for r in bodies)
+        assert len(bodies) == 2
+        assert len(_holding(records, B64_KEY)) == 2
+        assert all(isinstance(r.args, tuple) for r in bodies)
+        assert all(isinstance(r.args[0], bytes) for r in bodies)
+        assert all(b'"Plaintext"' in r.args[0] for r in bodies)
         sent = _records(records, "botocore.endpoint", "Sending http request: %s")
         canonical = _records(records, "botocore.auth", "CanonicalRequest:\n%s")
-        assert len(sent) == 2 and len(canonical) == 2
-        assert all(FAKE_KEY_ID in r.getMessage() and FAKE_TOKEN in r.getMessage() for r in sent)
+        assert len(sent) == 2
+        assert len(canonical) == 2
+        assert all(FAKE_KEY_ID in r.getMessage() for r in sent)
+        assert all(FAKE_TOKEN in r.getMessage() for r in sent)
         assert all(FAKE_TOKEN in r.getMessage() for r in canonical)
         signed = _records(records, "botocore.auth", "Signature:\n%s")
         assert [r.getMessage() for r in signed] == [f"Signature:\n{s}" for s in signatures]
-        assert len(signatures) == 2 and all(len(s) == 64 for s in signatures)
+        assert len(signatures) == 2
+        assert all(len(s) == 64 for s in signatures)
 
     @pytest.mark.parametrize("endpoint", [None, UNREACHABLE], ids=["kms", "endpoint"])
     @pytest.mark.parametrize("on_thread", [False, True], ids=["caller", "worker"])
-    def test_create_kms_client_keeps_data_keys_out_of_the_log(self, caplog, on_thread, endpoint):
+    def test_create_kms_client_drops_data_keys_from_log(self, caplog, on_thread, endpoint):
         client = KeyManager.create_kms_client(_session(), config(kms_endpoint=endpoint))
         answered, signatures = _answer_kms(client)
         with _debug_log(caplog) as records:
@@ -691,11 +734,12 @@ class TestBotocoreLogFilters:
         assert _holding(records, '"Plaintext"') == []
         assert len(_records(records, "botocore.parsers", "Response headers: %r")) == 2
         assert _records(records, "botocore.auth", "Signature:\n%s") == []
-        assert len(signatures) == 2 and all(_holding(records, s) == [] for s in signatures)
+        assert len(signatures) == 2
+        assert all(_holding(records, s) == [] for s in signatures)
 
     @pytest.mark.parametrize("endpoint", [None, UNREACHABLE], ids=["kms", "endpoint"])
     @pytest.mark.parametrize("on_thread", [False, True], ids=["caller", "worker"])
-    def test_create_kms_client_keeps_request_credentials_out_of_the_log(self, caplog, on_thread, endpoint):
+    def test_create_kms_client_drops_request_credentials_from_log(self, caplog, on_thread, endpoint):
         client = KeyManager.create_kms_client(_session(), config(kms_endpoint=endpoint))
         answered, signatures = _answer_kms(client)
         with _debug_log(caplog) as records:
@@ -704,13 +748,15 @@ class TestBotocoreLogFilters:
         for secret in (FAKE_KEY_ID, FAKE_SECRET, FAKE_TOKEN):
             assert _holding(records, secret) == []
         assert _records(records, "botocore.auth", "Signature:\n%s") == []
-        assert len(signatures) == 2 and all(_holding(records, s) == [] for s in signatures)
+        assert len(signatures) == 2
+        assert all(_holding(records, s) == [] for s in signatures)
         # The unsigned record names the KMS target but carries no credential,
         # so it stays: the rule needs both parts.
         making = _records(records, "botocore.endpoint", "Making request for %s with params: %s")
-        assert len(making) == 2 and all("TrentService." in r.getMessage() for r in making)
+        assert len(making) == 2
+        assert all("TrentService." in r.getMessage() for r in making)
 
-    def test_other_services_lose_only_the_signature_record(self, caplog):
+    def test_other_services_lose_only_signature_record(self, caplog):
         session = _session()
         sts = session.client("sts", region_name="us-east-1")
         body = (b'<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><GetCallerIdentityResult>'
@@ -718,7 +764,8 @@ class TestBotocoreLogFilters:
         sts.meta.events.register(
             "before-send.sts.GetCallerIdentity",
             lambda request, **kwargs: AWSResponse(request.url, 200, {"Content-Type": "text/xml"}, _Body(body)))
-        sts.get_caller_identity()  # warm up, so both captures see the same records
+        # Warm up, so both captures see the same records.
+        sts.get_caller_identity()
 
         def capture() -> List[logging.LogRecord]:
             caplog.clear()
@@ -738,9 +785,12 @@ class TestBotocoreLogFilters:
         assert [(r.name, r.msg) for r in with_filters] == expected
         sent = _records(with_filters, "botocore.endpoint", "Sending http request: %s")
         canonical = _records(with_filters, "botocore.auth", "CanonicalRequest:\n%s")
-        assert len(sent) == 1 and FAKE_KEY_ID in sent[0].getMessage() and FAKE_TOKEN in sent[0].getMessage()
+        assert len(sent) == 1
+        assert FAKE_KEY_ID in sent[0].getMessage()
+        assert FAKE_TOKEN in sent[0].getMessage()
         assert "Signature=" in sent[0].getMessage()
-        assert len(canonical) == 1 and FAKE_TOKEN in canonical[0].getMessage()
+        assert len(canonical) == 1
+        assert FAKE_TOKEN in canonical[0].getMessage()
 
     def test_filters_are_installed_once_on_their_loggers_only(self):
         # Pin a level and propagate flag first, so a change the install makes
@@ -796,7 +846,7 @@ class TestBotocoreLogFilters:
         b = threading.Thread(target=km_module._install_botocore_filters, daemon=True)
         a.start()
         try:
-            assert entered.wait(5), "thread A never reached addFilter"
+            assert entered.wait(5)
             b.start()
             b.join(0.2)
         finally:
@@ -827,7 +877,7 @@ class TestBotocoreLogFilterRules:
         ("Response headers: %r", None, True),
         ("%(body)s", ({"body": b'{"Plaintext": "x"}'},), True),
     ])
-    def test_plaintext_filter_drops_only_bytes_carrying_a_plaintext_field(self, msg, args, kept):
+    def test_plaintext_filter_drops_only_bytes_with_plaintext_field(self, msg, args, kept):
         assert km_module._NoKmsPlaintext().filter(_record("botocore.parsers", msg, args)) is kept
 
     @pytest.mark.parametrize("msg, args, kept", [

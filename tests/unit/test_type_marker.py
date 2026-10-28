@@ -28,7 +28,8 @@ class TestFromObject:
         (memoryview(b"x"), TypeMarker.BYTE_ARRAY),
         (True, TypeMarker.BOOLEAN),      # must win over int
         (False, TypeMarker.BOOLEAN),
-        (5, TypeMarker.LONG),            # every Python int but bool -> LONG
+        # Every Python int but bool is LONG.
+        (5, TypeMarker.LONG),
         (5.0, TypeMarker.DOUBLE),
         (Decimal("1.5"), TypeMarker.BIG_DECIMAL),
         (datetime(2020, 1, 1), TypeMarker.LOCAL_DATE_TIME),  # must win over date
