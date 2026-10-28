@@ -41,7 +41,8 @@ from typing import (TYPE_CHECKING, Any, Awaitable, Callable, List, Optional,
 
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.aurora_initial_connection_strategy_plugin import (
-    InstanceSubstitutionStrategy, RoleVerificationSetting)
+    InstanceSubstitutionStrategy, RoleVerificationSetting,
+    _inactive_cluster_writer_role, _inactive_cluster_writer_strategy)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
@@ -116,79 +117,111 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             connect_func: Callable[..., Awaitable[Any]]) -> Any:
         original_host = host_info.host
         url_type: RdsUrlType = self._rds_utils.identify_rds_type(original_host)
-        substitution_strategy = self._get_instance_substitution_strategy(
-            props, url_type, is_initial_connection, original_host)
-        role_to_verify = self._get_role_to_verify(url_type, is_initial_connection, props, original_host)
 
         loop = asyncio.get_running_loop()
         deadline = loop.time() + (self._open_connection_retry_timeout_ns / 1_000_000_000)
+        last_error: Optional[Exception] = None
 
-        while loop.time() < deadline:
+        while True:
+            substitution_strategy = self._get_instance_substitution_strategy(
+                props, url_type, is_initial_connection, original_host)
+            role_to_verify = self._get_role_to_verify(url_type, is_initial_connection, props, original_host)
+
+            if (substitution_strategy is InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE
+                    and role_to_verify is None):
+                # Nothing to substitute and no role to verify, so retrying cannot change the
+                # outcome.
+                conn = await connect_func()
+                self._set_initial_connection_host_info(is_initial_connection, host_info)
+                return conn
+
             candidate_conn: Optional[Any] = None
             candidate_host: Optional[HostInfo] = None
+            attempted: List[HostInfo] = []
 
             try:
                 candidate_host, candidate_conn = await self._open_candidate_connection(
-                    host_info, url_type, substitution_strategy, props, connect_func, driver_dialect)
+                    host_info, url_type, substitution_strategy, props, connect_func, driver_dialect,
+                    attempted)
 
-                if candidate_conn is None:
-                    # _open_candidate_connection always returns a connection on success; if none is
-                    # present the attempt did not yield a usable connection, so retry until the
-                    # timeout is reached.
-                    continue
+                if candidate_conn is not None:
+                    if role_to_verify is None:
+                        # No verification required.
+                        self._set_initial_connection_host_info(is_initial_connection, candidate_host)
+                        return candidate_conn
 
-                if role_to_verify is None:
-                    # No verification required.
-                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
-                    return candidate_conn
+                    conn_role = await self._plugin_service.get_host_role(candidate_conn)
+                    if conn_role == role_to_verify:
+                        # Verification succeeded.
+                        self._set_initial_connection_host_info(is_initial_connection, candidate_host)
+                        return candidate_conn
 
-                conn_role = await self._plugin_service.get_host_role(candidate_conn)
-                if conn_role == role_to_verify:
-                    # Verification succeeded.
-                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
-                    return candidate_conn
+                    # Verification failed. Retry, unless a reader was requested but the cluster
+                    # has no readers.
+                    await self._plugin_service.force_refresh_host_list(candidate_conn)
+                    if role_to_verify == HostRole.READER and self._has_hosts() and not self._has_readers():
+                        # A reader was requested but the cluster has no readers. Simulate the
+                        # reader cluster endpoint logic and return the current (writer) connection.
+                        if self._verify_role_prop_value == RoleVerificationSetting.READER.value:
+                            logger.debug(
+                                "AuroraInitialConnectionStrategyPlugin.VerifyReaderConfiguredButNoReadersExist",
+                                WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name)
+                        self._set_initial_connection_host_info(is_initial_connection, candidate_host)
+                        return candidate_conn
 
-                # Verification failed. Retry, unless a reader was requested but the cluster has no readers.
-                await self._plugin_service.force_refresh_host_list(candidate_conn)
-                if role_to_verify == HostRole.READER and self._has_hosts() and not self._has_readers():
-                    # A reader was requested but the cluster has no readers.
-                    # Simulate the reader cluster endpoint logic and return the current (writer) connection.
-                    if self._verify_role_prop_value == RoleVerificationSetting.READER.value:
-                        logger.debug(
-                            "AuroraInitialConnectionStrategyPlugin.VerifyReaderConfiguredButNoReadersExist",
-                            WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name)
-                    self._set_initial_connection_host_info(is_initial_connection, candidate_host)
-                    return candidate_conn
-
-                logger.debug(
-                    "AuroraInitialConnectionStrategyPlugin.IncorrectRole", candidate_host.host, role_to_verify)
-                await self._close_connection(candidate_conn, driver_dialect)
-                await self._delay(self._retry_delay_ms)
+                    last_error = AwsWrapperError(Messages.get_formatted(
+                        "AuroraInitialConnectionStrategyPlugin.IncorrectRole",
+                        candidate_host.host, role_to_verify.name.lower(), conn_role.name.lower()))
+                    logger.debug(
+                        "AuroraInitialConnectionStrategyPlugin.IncorrectRole",
+                        candidate_host.host, role_to_verify.name.lower(), conn_role.name.lower())
+                    await self._close_connection(candidate_conn, driver_dialect)
             except Exception as e:
                 await self._close_connection(candidate_conn, driver_dialect)
                 if self._plugin_service.is_login_exception(error=e):
                     raise
 
-                if candidate_host is not None:
+                last_error = e
+                # Marked only for a substituted candidate, and only once the candidate is known.
+                failed_host = attempted[-1] if attempted else None
+                if failed_host is not None:
                     self._plugin_service.set_availability(
-                        candidate_host.as_aliases(), HostAvailability.UNAVAILABLE)
+                        failed_host.as_aliases(), HostAvailability.UNAVAILABLE)
 
-                if self._plugin_service.is_network_exception(error=e):
-                    # Retry connection.
-                    continue
-
-                if (self._plugin_service.is_read_only_connection_exception(error=e)
+                retryable = (
+                    self._plugin_service.is_network_exception(error=e)
+                    or (self._plugin_service.is_read_only_connection_exception(error=e)
                         and (role_to_verify == HostRole.WRITER
-                             or substitution_strategy is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER)):
-                    # Retry connection.
-                    continue
+                             or substitution_strategy is InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER)))
+                if not retryable:
+                    raise
 
-                raise
+            # Checked after the attempt rather than before it, so a zero retry budget means
+            # "try once" rather than "never connect at all".
+            if not await self._delay_unless_expired(loop, deadline):
+                break
 
+        timeout_ms = self._open_connection_retry_timeout_ns // 1_000_000
+        if last_error is None:
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.Timeout",
+                timeout_ms, WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name))
         raise AwsWrapperError(Messages.get_formatted(
-            "AuroraInitialConnectionStrategyPlugin.Timeout",
-            self._open_connection_retry_timeout_ns // 1_000_000,
-            WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name))
+            "AuroraInitialConnectionStrategyPlugin.TimeoutWithCause",
+            timeout_ms, WrapperProperties.VERIFY_OPENED_CONNECTION_TYPE.name, str(last_error)))
+
+    async def _delay_unless_expired(self, loop: asyncio.AbstractEventLoop, deadline: float) -> bool:
+        """Sleep the retry interval, reporting whether the retry budget allows another attempt.
+
+        Returns ``False`` once the budget is exhausted. The sleep never overshoots the
+        deadline, so a budget shorter than the retry interval does not stretch the call.
+        """
+        remaining_sec = deadline - loop.time()
+        if remaining_sec <= 0:
+            return False
+
+        await self._delay(min(self._retry_delay_ms, int(remaining_sec * 1000)))
+        return loop.time() < deadline
 
     async def _open_candidate_connection(
             self,
@@ -197,7 +230,8 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             substitution_strategy: InstanceSubstitutionStrategy,
             props: Properties,
             connect_func: Callable[..., Awaitable[Any]],
-            driver_dialect: AsyncDriverDialect) -> Tuple[HostInfo, Optional[Any]]:
+            driver_dialect: AsyncDriverDialect,
+            attempted: Optional[List[HostInfo]] = None) -> Tuple[HostInfo, Optional[Any]]:
         """Opens a candidate connection, returning the host that was connected to and the connection.
 
         If no substitution is needed, the original endpoint is used. Otherwise, an instance host is
@@ -205,6 +239,10 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
         opened via the initial endpoint (which also confirms the dialect and acts as a fallback) and,
         when ``wait_for_initial_topology_ms > 0``, the topology fetch is awaited before re-attempting
         instance selection.
+
+        Each substituted host is appended to ``attempted`` before it is connected to. The caller
+        cannot otherwise learn which host failed, because an exception here means its return value
+        was never unpacked -- which left the caller unable to mark anything unavailable.
         """
         if substitution_strategy is InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE:
             return original_connect_host, await connect_func()
@@ -214,6 +252,8 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             # Topology is already available; connect to the selected instance. Skipping this plugin
             # avoids re-entering the pipeline here, while still letting the auth plugins (IAM,
             # Secrets, Federated, Okta) re-apply on the new connection.
+            if attempted is not None:
+                attempted.append(candidate_host)
             return candidate_host, await self._plugin_service.connect(
                 candidate_host, props, plugin_to_skip=self)
 
@@ -223,13 +263,17 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
         # topology, and it serves as a fallback connection if instance selection or connection fails.
         candidate_conn = await connect_func()
 
-        if self._wait_for_initial_topology_ms <= 0:
-            # Feature disabled. Preserve the previous behavior.
-            await self._plugin_service.force_refresh_host_list(candidate_conn)
-            return original_connect_host, candidate_conn
+        try:
+            if self._wait_for_initial_topology_ms <= 0:
+                # Feature disabled. Preserve the previous behavior.
+                await self._plugin_service.force_refresh_host_list(candidate_conn)
+                return original_connect_host, candidate_conn
 
-        return await self._wait_for_topology_and_connect_to_instance(
-            original_connect_host, url_type, substitution_strategy, props, candidate_conn, driver_dialect)
+            return await self._wait_for_topology_and_connect_to_instance(
+                original_connect_host, url_type, substitution_strategy, props, candidate_conn, driver_dialect)
+        except BaseException:
+            await self._close_connection(candidate_conn, driver_dialect)
+            raise
 
     async def _wait_for_topology_and_connect_to_instance(
             self,
@@ -255,8 +299,11 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
 
         # Unlike sync, this needs no guard: async providers without monitor support fall back to a
         # plain refresh and report whether any topology is held, rather than raising.
+        #
+        # Deliberately does not ask for the writer to be verified. Doing so closes the shared
+        # per-cluster monitoring connection and clears its verified-writer state.
         timeout_sec = self._wait_for_initial_topology_ms / 1000
-        topology_fetched = await self._plugin_service.force_monitoring_refresh_host_list(True, timeout_sec)
+        topology_fetched = await self._plugin_service.force_monitoring_refresh_host_list(False, timeout_sec)
 
         if not topology_fetched:
             logger.debug(
@@ -304,7 +351,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
         if url_type == RdsUrlType.RDS_WRITER_CLUSTER:
             writer = self._get_writer()
             if writer is None or not self._rds_utils.is_rds_instance(writer.host):
-                return InstanceSubstitutionStrategy.DO_NOT_SUBSTITUTE
+                return _inactive_cluster_writer_strategy(props)
 
             if self._rds_utils.is_same_region(writer.host, original_host):
                 return InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER
@@ -313,10 +360,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             # This means the cluster is an Aurora Global Database and the cluster writer endpoint is in a
             # secondary region. In this case the cluster writer endpoint is inactive and doesn't represent
             # the current writer. A user setting decides whether to substitute it with a writer instance URL.
-            inactive_strategy = InstanceSubstitutionStrategy.from_property_value(
-                WrapperProperties.INACTIVE_CLUSTER_WRITER_SUBSTITUTION_ROLE.get(props))
-            return inactive_strategy if inactive_strategy is not None \
-                else InstanceSubstitutionStrategy.SUBSTITUTE_WITH_WRITER
+            return _inactive_cluster_writer_strategy(props)
 
         if url_type == RdsUrlType.RDS_READER_CLUSTER:
             return InstanceSubstitutionStrategy.SUBSTITUTE_WITH_READER
@@ -332,6 +376,14 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             raise AwsWrapperError(Messages.get_formatted(
                 "AuroraInitialConnectionStrategyPlugin.InvalidSettingForInstanceEndpoint",
                 WrapperProperties.ENDPOINT_SUBSTITUTION_ROLE.name))
+
+        if url_type in (RdsUrlType.RDS_PROXY, RdsUrlType.RDS_AURORA_LIMITLESS_DB_SHARD_GROUP):
+            # Substituting an instance host would route connections around the endpoint the
+            # user asked to connect through, losing its pooling, authentication handling and
+            # failover behaviour.
+            raise AwsWrapperError(Messages.get_formatted(
+                "AuroraInitialConnectionStrategyPlugin.InvalidSettingForManagedEndpoint",
+                WrapperProperties.ENDPOINT_SUBSTITUTION_ROLE.name, setting.value))
 
         if not url_type.is_rds_cluster:
             return
@@ -390,9 +442,7 @@ class AsyncAuroraInitialConnectionStrategyPlugin(AsyncPlugin):
             # Writer is not found (topology cache may not be available yet) or the cluster writer endpoint
             # belongs to a different region. In either case, assume the cluster writer endpoint may be
             # inactive and use the corresponding setting.
-            inactive_strategy = InstanceSubstitutionStrategy.from_property_value(
-                WrapperProperties.VERIFY_INACTIVE_CLUSTER_WRITER_CONNECTION_ROLE.get(props))
-            return inactive_strategy.to_target_role() if inactive_strategy is not None else HostRole.WRITER
+            return _inactive_cluster_writer_role(props)
 
         if url_type == RdsUrlType.RDS_READER_CLUSTER:
             return HostRole.READER

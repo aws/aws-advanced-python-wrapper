@@ -386,9 +386,11 @@ def test_network_exception_retries_then_raises():
 
 
 def test_availability_marked_when_verification_fails_after_connecting():
-    """set_availability is reached only when the failure happens after
-    _open_candidate_connection returned a host. When the candidate connect
-    itself throws, candidate_host is still None and the mark is skipped."""
+    """set_availability is reached for any failure against a substituted candidate.
+
+    The candidate is recorded before it is connected to, so a failure in the connect
+    itself is marked too. Relying on the unpacked return value meant an exception from
+    the connect left the host unknown and the mark was silently skipped."""
     reader = _reader_host()
     plugin, svc, driver_dialect = _build(
         all_hosts=(_writer_host(), reader),
@@ -774,3 +776,120 @@ def test_wait_for_initial_topology_defaults_to_zero():
     """get_int returns -1 for an absent property; the plugin normalizes it to 0."""
     plugin, _, _ = _build()
     assert plugin._wait_for_initial_topology_ms == 0
+
+
+# ---- Regression tests for the ported defect fixes -----------------------
+
+
+def test_topology_wait_does_not_ask_the_monitor_to_verify_the_writer():
+    """Verifying the writer closes the shared per-cluster monitoring connection.
+
+    That is right after a failover but not at connect time, when nothing has failed over:
+    under a pool prefill every arriving connection would tear down what the previous one
+    had just established, which is the opposite of what the wait exists to achieve. The
+    role of the returned connection is verified directly on the connection instead.
+    """
+    # The topology is deliberately empty: with an instance already available the plugin
+    # connects straight to it and the wait is never reached.
+    plugin, svc, driver_dialect = _build(
+        all_hosts=(),
+        role=HostRole.WRITER,
+        strategy_pick=None,
+        props_overrides={"wait_for_initial_topology_ms": "5000"},
+    )
+    svc.force_monitoring_refresh_host_list = AsyncMock(  # type: ignore[method-assign]
+        return_value=False)
+
+    async def _connect_func():
+        return MagicMock(name="endpoint_conn")
+
+    async def _run():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=_cluster_host_info(_WRITER_CLUSTER),
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func,
+        )
+
+    asyncio.run(_run())
+
+    svc.force_monitoring_refresh_host_list.assert_awaited_once_with(False, 5.0)
+
+
+def test_zero_retry_budget_still_makes_one_attempt():
+    """A zero budget means "do not retry", not "do not connect".
+
+    The budget is checked after an attempt rather than before one. Checking it first meant
+    any deployment carrying 0 failed every connection without ever calling the driver.
+    """
+    plugin, svc, driver_dialect = _build(
+        all_hosts=(),
+        role=HostRole.READER,
+        props_overrides={
+            "open_connection_retry_timeout_ms": "0",
+            "open_connection_retry_interval_ms": "600000",
+        },
+    )
+
+    calls = 0
+
+    async def _connect_func():
+        nonlocal calls
+        calls += 1
+        return MagicMock(name="endpoint_conn")
+
+    async def _run():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=_cluster_host_info(_WRITER_CLUSTER),
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func,
+        )
+
+    with pytest.raises(AwsWrapperError):
+        asyncio.run(_run())
+
+    assert calls == 1
+
+
+def test_inactive_cluster_writer_none_alone_does_not_deadlock_async():
+    """Declining to substitute must also stop the role being verified.
+
+    Both parameters default to ``writer``, so leaving them independent made the request
+    unsatisfiable and burned the whole retry window on every connection.
+    """
+    remote_writer = HostInfo(
+        host="my-cluster-inst-9.XYZ.eu-west-1.rds.amazonaws.com", port=5432, role=HostRole.WRITER)
+    plugin, svc, driver_dialect = _build(
+        all_hosts=(remote_writer,),
+        role=HostRole.READER,
+        props_overrides={"inactive_cluster_writer_endpoint_substitution_role": "none"},
+    )
+
+    expected = MagicMock(name="endpoint_conn")
+    calls = 0
+
+    async def _connect_func():
+        nonlocal calls
+        calls += 1
+        return expected
+
+    async def _run():
+        return await plugin.connect(
+            target_driver_func=MagicMock(),
+            driver_dialect=driver_dialect,
+            host_info=_cluster_host_info(_WRITER_CLUSTER),
+            props=svc.props,
+            is_initial_connection=True,
+            connect_func=_connect_func,
+        )
+
+    result = asyncio.run(_run())
+
+    assert result is expected
+    assert calls == 1, "the connection must not be retried to the timeout"
+    svc.get_host_role.assert_not_awaited()
