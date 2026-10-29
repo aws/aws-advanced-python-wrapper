@@ -1,0 +1,122 @@
+{
+  "data_key_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "hmac_key_b64": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+  "key_id": 7,
+  "vectors": [
+    {
+      "name": "string",
+      "marker": 1,
+      "ciphertext_b64": "XslAWGOdcN33t9PGj/Ad5P2qduJW98IIcAO9D35GFO8AAAAHAQAAAAAAAAAAAAAAAGbZ2bLaDgxGefOoJST14EmSceFvMA==",
+      "expect": "hello"
+    },
+    {
+      "name": "unicode",
+      "marker": 1,
+      "ciphertext_b64": "r7RX2BhwDQ3/4ji+pOzRQupCqxDM9QEpUhV/L5bNJqIAAAAHAQEBAQEBAQEBAQEBARSig/bBqI7adrHKj2d74NVpKj+1BpQ7PUtA0bg=",
+      "expect": "café-漢字"
+    },
+    {
+      "name": "long",
+      "marker": 3,
+      "ciphertext_b64": "WtKO+JQ/tvljs2m6wN/20mtP0RjxSgOL9OQ+/AtWav4AAAAHAwICAgICAgICAgICApsoGKTIIjWQjDIWKCI17OeKddqJp0Xvgw==",
+      "expect": 1234567890123
+    },
+    {
+      "name": "double",
+      "marker": 4,
+      "ciphertext_b64": "B4A5M6ZEJQZhnd/k0/LgE74ZEkxhxi7r1AiK0AJuwoIAAAAHBAMDAwMDAwMDAwMDA65CHS/7idR4htDh6LqJIRV4KrT1LPgvWg==",
+      "expect": 3.14159
+    },
+    {
+      "name": "bool_t",
+      "marker": 6,
+      "ciphertext_b64": "0QKYtGKWTimUZeF5rFkGpcuwB6mRzUyNm713I+0rYacAAAAHBgQEBAQEBAQEBAQEBGUFno4Yz+nLDktDMtW6jjZK",
+      "expect": true
+    },
+    {
+      "name": "bool_f",
+      "marker": 6,
+      "ciphertext_b64": "Fd2/bfeCseuDMNlQ4wBzKmtZDKAnzpa+be/TPBd7fhMAAAAHBgkJCQkJCQkJCQkJCbOAaSswGIgGR2DJzfBb9MbL",
+      "expect": false
+    },
+    {
+      "name": "bytes",
+      "marker": 14,
+      "ciphertext_b64": "4qouGFi5vlgvx7Rr7VLCeesTvPJgLaBP1ABPORv0V4cAAAAHDgUFBQUFBQUFBQUFBUw32o7IuuK9V+EU923mD2KtAiyc",
+      "expect_b64": "AAEC/w=="
+    },
+    {
+      "name": "decimal",
+      "marker": 7,
+      "ciphertext_b64": "EmpCpu9th4vd3tEf2qu5tGBxSZTnWfm/e7kMV3D/JFMAAAAHBwYGBgYGBgYGBgYGBg1q3r1Mm5um410VyuIP4OFlsM5NmnsY75E6",
+      "expect": "12345.6789"
+    },
+    {
+      "name": "local_date_time_no_seconds",
+      "marker": 13,
+      "ciphertext_b64": "1BOLaYntqR3/P5GfqTTB6HsTEhxZRJgQJJnrcCB3uOwAAAAHDQcHBwcHBwcHBwcHBz1almtCPuXZ9q5HsbBrxa7tcVb6A5KNZFPMDTj2EitF",
+      "expect_datetime_iso": "2007-12-03T10:15:00"
+    },
+    {
+      "name": "local_date_time_nanos",
+      "marker": 13,
+      "ciphertext_b64": "UTa3QSMzLg1ZyYUYUrL4UimhX3cbz6cHc5wjtJIMvkAAAAAHDQgICAgICAgICAgICBhz6OHAtQTb4GQPqbCnQQ3ZJjOBpPBKW3AgPhnEX+JmSXag1k5jcXP4ga5VPw==",
+      "expect_datetime_iso": "2007-12-03T10:15:30.123456"
+    },
+    {
+      "name": "integer",
+      "marker": 2,
+      "ciphertext_b64": "eOjLIF5tb1OCcnBTi+h7nxvFOtVd+NmtCGtZU6IxifYAAAAHAgoKCgoKCgoKCgoKCqkiX7oSxf4sLsV4FSb1y5CTV/oI",
+      "expect": 42
+    },
+    {
+      "name": "float",
+      "marker": 5,
+      "ciphertext_b64": "/ulkKAJhrDor0stkZ16KM2KKCOd3XQk4t+zX/teATxMAAAAHBQsLCwsLCwsLCwsLC5dOEqHZRC4CFhC5avX7u2WdDKWC",
+      "expect": 1.5
+    },
+    {
+      "name": "date",
+      "marker": 8,
+      "ciphertext_b64": "p+uSc2TNIcaP5ruV+NEvf4xjE3RCnApAyQTYDmfn6xEAAAAHCAwMDAwMDAwMDAwMDPSzGmawBxpvykNLvDWPv/5UtW5bmBoPsg==",
+      "expect_date_iso": "2026-08-11"
+    },
+    {
+      "name": "time",
+      "marker": 9,
+      "ciphertext_b64": "EftLwzjMHEUhv76vaVgWILaZtg9goKRutGtb5+KwC9AAAAAHCQ0NDQ0NDQ0NDQ0NDaKnfgiMSltx4lDj1WEzScuM4/WBYNaOwg==",
+      "expect_datetime_iso": "1970-01-01T12:30:45.123000+00:00"
+    },
+    {
+      "name": "timestamp",
+      "marker": 10,
+      "ciphertext_b64": "mfjc/A2m/fQoq1EWSSLklbT6uGR9ZvXKP7ClrrXtW1UAAAAHCg4ODg4ODg4ODg4ODrelf6h+tOq93dfcMl1rsXo8Qm9wX/NIww==",
+      "expect_datetime_iso": "2026-08-11T12:30:45.123000+00:00"
+    },
+    {
+      "name": "local_date",
+      "marker": 11,
+      "ciphertext_b64": "7eeSdnDrnok30SucUVN6pvDCYC6BhA5htaxCRGty5ecAAAAHCw8PDw8PDw8PDw8PD0ckPqE9KQ1scV6pfRRfC+MmsXUEC64BcbUr",
+      "expect_date_iso": "2007-12-03"
+    },
+    {
+      "name": "local_time_no_seconds",
+      "marker": 12,
+      "ciphertext_b64": "bx61rRIToPxvhAq481GeumDtezr7aFFxQrTVpE9vQrMAAAAHDBAQEBAQEBAQEBAQEKjdzfbcFmPEIYNw6BYON9f9PaeG+w==",
+      "expect": "10:15"
+    },
+    {
+      "name": "generic",
+      "marker": 99,
+      "ciphertext_b64": "76Xi1+ZYD8ulCnru9AZ0KW3m/kanQLPF6zCHdyNYMfEAAAAHYxEREREREREREREREfQI/dHfxQZ/gEzVTDKr9oQIYpRGSw==",
+      "expect": "thing"
+    },
+    {
+      "name": "key_id_high_bit",
+      "marker": 1,
+      "key_id": 2147483649,
+      "ciphertext_b64": "mmb5W6w+PE/QCKtTbxqrVJZNpNJVa6vxVPyecF4rg3CAAAABARISEhISEhISEhISErf4IQifpVL7RuZxPZ6Kthpa8Q==",
+      "expect": "hi"
+    }
+  ]
+}
