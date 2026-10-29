@@ -23,6 +23,8 @@ from aws_advanced_python_wrapper.blue_green_plugin import \
     BlueGreenPluginFactory
 from aws_advanced_python_wrapper.custom_endpoint_plugin import \
     CustomEndpointPluginFactory
+from aws_advanced_python_wrapper.encryption.kms_encryption_plugin import \
+    KmsEncryptionPluginFactory
 from aws_advanced_python_wrapper.failover_v2_plugin import \
     FailoverV2PluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
@@ -897,7 +899,8 @@ class PluginManager(CanReleaseResources):
         "okta": OktaAuthPluginFactory,
         "initial_connection": AuroraInitialConnectionStrategyPluginFactory,
         "limitless": LimitlessPluginFactory,
-        "bg": BlueGreenPluginFactory
+        "bg": BlueGreenPluginFactory,
+        "kms_encryption": KmsEncryptionPluginFactory
     }
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
@@ -913,6 +916,7 @@ class PluginManager(CanReleaseResources):
         ReadWriteSplittingPluginFactory: 300,
         SimpleReadWriteSplittingPluginFactory: 310,
         GdbReadWriteSplittingPluginFactory: 320,
+        KmsEncryptionPluginFactory: 390,
         FailoverPluginFactory: 400,
         FailoverV2PluginFactory: 410,
         GdbFailoverPluginFactory: 420,
