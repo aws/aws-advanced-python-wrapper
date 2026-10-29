@@ -23,6 +23,7 @@ why this module exists.
 
 from __future__ import annotations
 
+import string
 from abc import ABC, abstractmethod
 from contextlib import closing
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Sequence
@@ -57,6 +58,22 @@ class SqlDialect(ABC):
     def insert_returning_id(self, conn: Any, sql: str, params: Sequence[Any]) -> int:
         """Run an ``INSERT`` (without ``RETURNING``) and return the generated
         ``id``."""
+        ...
+
+    @abstractmethod
+    def fold_identifier(self, name: str, quoted: bool) -> str:
+        """The name the server resolves an identifier written in SQL to.
+        ``name`` is the identifier without its quotes (doubled quotes undone)
+        and ``quoted`` says whether it was quoted."""
+        ...
+
+    @abstractmethod
+    def metadata_key(self, name: str) -> str:
+        """The form a table or column name is compared in when looking it up
+        in ``encryption_metadata``. Names with the same key share encryption
+        metadata: usually because the engine treats them as the same object,
+        but on MySQL with ``lower_case_table_names=0`` table names that differ
+        only in case share a key too."""
         ...
 
     @staticmethod
@@ -111,6 +128,17 @@ class PgSqlDialect(SqlDialect):
         # A connection opened with a dict-like row factory returns a mapping.
         return int(next(iter(row.values())) if isinstance(row, Mapping) else row[0])
 
+    def fold_identifier(self, name: str, quoted: bool) -> str:
+        # PostgreSQL folds an unquoted identifier to lower case, ASCII letters
+        # only in a multibyte (e.g. UTF-8) database; a quoted one keeps its
+        # case. The result is the name in the system catalog, apart from
+        # PostgreSQL's truncation of names longer than 63 bytes.
+        return name if quoted else name.translate(_ASCII_LOWER)
+
+    def metadata_key(self, name: str) -> str:
+        # Catalog names are case-sensitive: "Users" and users are two tables.
+        return name
+
 
 class MySqlSqlDialect(SqlDialect):
     name = "mysql"
@@ -128,6 +156,24 @@ class MySqlSqlDialect(SqlDialect):
             cursor.execute(sql, params)
             return int(cursor.lastrowid)
 
+    def fold_identifier(self, name: str, quoted: bool) -> str:
+        # MySQL keeps identifiers as written (quoting only allows reserved words
+        # and special characters). Whether it folds table names depends on
+        # lower_case_table_names, which metadata_key allows for by comparing
+        # case-insensitively.
+        return name
+
+    def metadata_key(self, name: str) -> str:
+        # Column names are case-insensitive in MySQL, and table names are too
+        # unless lower_case_table_names=0 on a case-sensitive file system, where
+        # two tables differing only in case would share encryption metadata.
+        # This agrees with the uncached lookup under the default
+        # (case-insensitive) collations; metadata tables created with a _bin or
+        # _cs collation would compare case-sensitively there.
+        return name.lower()
+
+
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 
 PG = PgSqlDialect()
 MYSQL = MySqlSqlDialect()
