@@ -223,10 +223,13 @@ def test_verify_retries_then_falls_back_when_role_mismatches_and_current_usable(
     async def _body() -> None:
         # Asked for a reader, but every probe says WRITER -> exhaust retries.
         svc, dd = _build_plugin_service(role_returns=HostRole.WRITER)
-        # Extra-short timeout to keep the test quick; still exercises >1 loop.
+        # The budget has to outlast one slow attempt by a wide margin: the
+        # retry loop checks a wall-clock deadline, and at a 30ms budget a
+        # scheduling hiccup under the full suite left a single attempt and
+        # failed the await_count assertions below.
         props = _base_props(
             **{
-                WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS.name: "30",
+                WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS.name: "250",
                 WrapperProperties.SRW_CONNECT_RETRY_INTERVAL_MS.name: "5",
             }
         )

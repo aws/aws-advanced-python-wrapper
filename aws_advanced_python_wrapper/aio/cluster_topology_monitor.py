@@ -148,7 +148,7 @@ class AsyncClusterTopologyMonitor:
         self._is_verified_writer_connection: bool = False
         self._verified_writer_conn: Optional[Any] = None
         self._verified_writer_host_info: Optional[HostInfo] = None
-        self._submitted_host_aliases: Set[str] = set()
+        self._submitted_hosts: Set[str] = set()
         self._probe_tasks: Dict[str, asyncio.Task] = {}
         self._writer_found_event: asyncio.Event = asyncio.Event()
 
@@ -375,8 +375,6 @@ class AsyncClusterTopologyMonitor:
             if h.role != want_role:
                 fixed = copy.copy(h)
                 fixed.role = want_role
-                for alias in h.as_aliases():
-                    fixed.add_alias(alias)
                 corrected.append(fixed)
                 changed = True
             else:
@@ -384,8 +382,6 @@ class AsyncClusterTopologyMonitor:
         if not found:
             writer_row = copy.copy(verified)
             writer_row.role = HostRole.WRITER
-            for alias in verified.as_aliases():
-                writer_row.add_alias(alias)
             corrected.append(writer_row)
             changed = True
         if changed:
@@ -429,12 +425,17 @@ class AsyncClusterTopologyMonitor:
                 timeout=interval,
                 return_when=asyncio.FIRST_COMPLETED)
         finally:
-            for waiter in (stop_waiter, tick_waiter):
-                if not waiter.done():
-                    waiter.cancel()
-            await asyncio.gather(
-                stop_waiter, tick_waiter, return_exceptions=True)
-            self._request_tick.clear()
+            # An application that closes its loop without releasing resources
+            # leaves this parked. Cancelling or draining a waiter whose loop is
+            # gone raises, and here that would surface as an unraisable
+            # exception from the garbage collector.
+            if not stop_waiter.get_loop().is_closed():
+                for waiter in (stop_waiter, tick_waiter):
+                    if not waiter.done():
+                        waiter.cancel()
+                await asyncio.gather(
+                    stop_waiter, tick_waiter, return_exceptions=True)
+                self._request_tick.clear()
 
     async def _harvest_verified_writer(self) -> None:
         """Promote the panic-found verified-writer connection to the monitor's
@@ -451,7 +452,7 @@ class AsyncClusterTopologyMonitor:
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self._probe_tasks.clear()
-        self._submitted_host_aliases.clear()
+        self._submitted_hosts.clear()
         if conn is None:
             return
         if self._connection_factory is None:
@@ -480,7 +481,7 @@ class AsyncClusterTopologyMonitor:
 
     def _spawn_panic_probes(self) -> None:
         """Spawn probe tasks for each host in ``last_topology`` not already
-        submitted. Deduped by ``host_info.as_alias()``.
+        submitted. Deduped by ``host_info.get_host_and_port()``.
         """
         # Opportunistic cleanup of finished task refs.
         finished = [k for k, t in self._probe_tasks.items() if t.done()]
@@ -488,15 +489,15 @@ class AsyncClusterTopologyMonitor:
             self._probe_tasks.pop(k, None)
             # Release dedup slot so a retry can happen on a later tick if
             # the earlier probe failed/returned non-writer.
-            self._submitted_host_aliases.discard(k)
+            self._submitted_hosts.discard(k)
 
         for host_info in self._last_topology:
-            alias = host_info.as_alias()
-            if alias in self._submitted_host_aliases:
+            key = host_info.get_host_and_port()
+            if key in self._submitted_hosts:
                 continue
-            self._submitted_host_aliases.add(alias)
+            self._submitted_hosts.add(key)
             task = asyncio.create_task(self._probe_and_report(host_info))
-            self._probe_tasks[alias] = task
+            self._probe_tasks[key] = task
 
     # Aurora PG briefly rejects IAM/PAM auth on instances mid-promotion
     # (the PAM service restarts during the writer-role swap). Mirror the
@@ -833,7 +834,7 @@ class AsyncClusterTopologyMonitor:
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self._probe_tasks.clear()
-        self._submitted_host_aliases.clear()
+        self._submitted_hosts.clear()
         await self._drop_owned_connection()
         if self._verified_writer_conn is not None:
             await self._close_best_effort(self._verified_writer_conn)

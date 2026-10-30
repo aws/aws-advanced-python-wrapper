@@ -574,10 +574,10 @@ def test_notify_converted_to_reader_invalidates_that_host():
     tracker.track(host, conn)
 
     from aws_advanced_python_wrapper.utils.notifications import HostEvent
-    alias = host.as_alias()
 
     async def _run():
-        plugin.notify_host_list_changed({alias: {HostEvent.CONVERTED_TO_READER}})
+        # Change keys are urls, with a trailing slash; tracking keys are not.
+        plugin.notify_host_list_changed({host.url: {HostEvent.CONVERTED_TO_READER}})
         # Give the spawned invalidation task a moment
         await asyncio.sleep(0.01)
 
@@ -620,7 +620,7 @@ def test_notify_ignores_events_that_are_not_converted():
 
     async def _run():
         plugin.notify_host_list_changed(
-            {host.as_alias(): {HostEvent.WENT_DOWN}})
+            {host.url: {HostEvent.WENT_DOWN}})
         await asyncio.sleep(0.01)
 
     asyncio.run(_run())
@@ -685,68 +685,54 @@ def test_notify_host_list_changed_handles_ipv6_alias():
     conn.close.assert_called()
 
 
-def test_notify_host_list_changed_handles_alias_without_port():
-    """An alias with no colon falls back to port 5432 (doesn't raise)."""
+def test_notify_host_list_changed_handles_a_key_without_a_port():
+    """A change key naming no port still reaches the connections tracked
+    under it, since a host with no port keys on the bare host name."""
     plugin, svc, driver_dialect, tracker = _build()
+    conn = _plain_conn("conn")
+    tracker.track(HostInfo(host="host-no-port"), conn)
 
     from aws_advanced_python_wrapper.utils.notifications import HostEvent
 
     async def _run():
-        # Must not raise; _spawn_invalidation schedules via asyncio.create_task
-        # so needs a running loop.
-        plugin.notify_host_list_changed({"host-no-port": {HostEvent.CONVERTED_TO_READER}})
+        plugin.notify_host_list_changed({"host-no-port/": {HostEvent.CONVERTED_TO_READER}})
         await asyncio.sleep(0.01)
 
     asyncio.run(_run())
+    conn.close.assert_called()
 
 
-def test_parse_alias_helper():
-    """Direct helper test: IPv4, IPv6, bare host, invalid port."""
-    from aws_advanced_python_wrapper.aio.aurora_connection_tracker import \
-        AsyncAuroraConnectionTrackerPlugin
-
-    assert AsyncAuroraConnectionTrackerPlugin._parse_alias("h.example:5432") == ("h.example", 5432)
-    assert AsyncAuroraConnectionTrackerPlugin._parse_alias("[::1]:5432") == ("[::1]", 5432)
-    assert AsyncAuroraConnectionTrackerPlugin._parse_alias("h-no-port") == ("h-no-port", 5432)
-    assert AsyncAuroraConnectionTrackerPlugin._parse_alias("h:not-a-port") == ("h", 5432)
-
-
-def test_tracker_keys_by_instance_endpoint_for_cluster_connected_conn():
-    """When tracking via a cluster endpoint HostInfo whose aliases
-    include the instance endpoint, the canonical key is the instance
-    endpoint -- so notify-based invalidation by instance alias finds it."""
+def test_tracker_keys_a_cluster_connected_conn_by_its_host_id():
+    """A cluster endpoint does not name the instance, so the host id is what a
+    later invalidation naming the instance has to match on."""
     tracker = AsyncOpenedConnectionTracker()
-    # Cluster endpoint hostname that is NOT an RDS instance per is_rds_instance,
-    # but aliases include the instance endpoint.
     cluster_host = HostInfo(
         host="mydb.cluster-abc123.us-east-1.rds.amazonaws.com",
         port=5432,
         role=HostRole.WRITER,
+        host_id="myinstance",
     )
-    # Add a known RDS instance alias
-    cluster_host.add_alias("myinstance.abc123.us-east-1.rds.amazonaws.com:5432")
 
     conn = _plain_conn("conn")
     tracker.track(cluster_host, conn)
 
-    # Canonical key is the instance alias, not the cluster host:port
-    assert AsyncOpenedConnectionTracker._canonical_key(cluster_host) == \
-        "myinstance.abc123.us-east-1.rds.amazonaws.com:5432"
+    assert set(AsyncOpenedConnectionTracker._tracking_keys(cluster_host)) == {
+        "myinstance", "mydb.cluster-abc123.us-east-1.rds.amazonaws.com:5432"}
 
-    # invalidate_all via a HostInfo that resolves to the same instance alias
-    # should close the tracked conn
     instance_host = HostInfo(
         host="myinstance.abc123.us-east-1.rds.amazonaws.com",
         port=5432,
+        host_id="myinstance",
     )
     asyncio.run(tracker.invalidate_all(instance_host))
     conn.close.assert_called()
 
 
-def test_tracker_fallback_to_host_port_for_non_rds_host():
-    """Non-RDS hostnames use host:port as the canonical key (no RDS alias found)."""
-    host = HostInfo(host="custom.example.com", port=5432)
-    assert AsyncOpenedConnectionTracker._canonical_key(host) == "custom.example.com:5432"
+def test_tracker_keys_an_instance_endpoint_by_host_and_port_alone():
+    host = HostInfo(host="instance-1.abc123.us-east-1.rds.amazonaws.com", port=5432,
+                    host_id="instance-1")
+    assert AsyncOpenedConnectionTracker._tracking_keys(host) == (
+        "instance-1.abc123.us-east-1.rds.amazonaws.com:5432",)
 
 
 # ---- B2: post-failover settling window ----------------------------------

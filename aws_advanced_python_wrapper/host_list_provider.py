@@ -18,6 +18,7 @@ import uuid
 from abc import ABC, abstractmethod
 from concurrent.futures import TimeoutError
 from contextlib import closing
+from copy import copy
 from dataclasses import dataclass
 from datetime import datetime
 from threading import RLock
@@ -220,7 +221,7 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
             if not conn:
                 # Cannot fetch topology without a connection
                 # Return the original hosts passed to the connect method
-                return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
+                return RdsHostListProvider.FetchTopologyResult(self._copy_initial_hosts(), False)
 
             if not self._plugin_service.is_dialect_confirmed:
                 # The dialect must be confirmed before the a topology monitor is
@@ -235,7 +236,17 @@ class RdsHostListProvider(DynamicHostListProvider, HostListProvider):
         if cached_hosts:
             return RdsHostListProvider.FetchTopologyResult(cached_hosts, True)
         else:
-            return RdsHostListProvider.FetchTopologyResult(self._initial_hosts, False)
+            return RdsHostListProvider.FetchTopologyResult(self._copy_initial_hosts(), False)
+
+    def _copy_initial_hosts(self) -> Topology:
+        """Copies, because the caller publishes these as the host list.
+
+        These are built once and never replaced, so marking a host handed out
+        here would mark it for every later caller. Hosts from a topology query
+        are replaced by each refresh, so they are left shared, which is what
+        makes an availability mark visible across connections.
+        """
+        return tuple(copy(host) for host in self._initial_hosts)
 
     def _get_or_create_monitor(self) -> Optional[ClusterTopologyMonitor]:
         """Get or create monitor - matches Java's getOrCreateMonitor"""
@@ -364,11 +375,16 @@ class ConnectionStringHostListProvider(StaticHostListProvider):
 
     def refresh(self, connection: Optional[Connection] = None) -> Topology:
         self._initialize()
-        return tuple(self._hosts)
+        return self._copy_hosts()
 
     def force_refresh(self, connection: Optional[Connection] = None) -> Topology:
         self._initialize()
-        return tuple(self._hosts)
+        return self._copy_hosts()
+
+    def _copy_hosts(self) -> Topology:
+        """Copies, for the same reason as ``RdsHostListProvider``: this host
+        list is built once."""
+        return tuple(copy(host) for host in self._hosts)
 
     def get_current_topology(self, connection: Connection, initial_host_info: HostInfo) -> Topology:
         self._initialize()
@@ -564,7 +580,6 @@ class TopologyUtils(ABC):
             role=HostRole.WRITER if is_writer else HostRole.READER,
             last_update_time=last_update,
             host_id=host_id)
-        host_info.add_alias(host_id)
         return host_info
 
     def get_writer_id_if_connected(self, connection: Connection, driver_dialect: DriverDialect) -> Optional[str]:
@@ -707,9 +722,10 @@ class MultiAzTopologyUtils(TopologyUtils):
             if host.find(":") > -1:
                 host, port = host.split(":")
 
+        # MySQL reports a numeric id. host_id is compared against the string
+        # host_id_query returns, so store it as a string.
         host_info = HostInfo(
-            host=host, port=port, role=role, availability=HostAvailability.AVAILABLE, weight=0, host_id=id)
-        host_info.add_alias(host)
+            host=host, port=port, role=role, availability=HostAvailability.AVAILABLE, weight=0, host_id=str(id))
         return host_info
 
 

@@ -45,9 +45,7 @@ if TYPE_CHECKING:
 
 from abc import abstractmethod
 from concurrent.futures import TimeoutError
-from contextlib import closing
-from typing import (Any, Callable, Dict, FrozenSet, Optional, Protocol, Set,
-                    Tuple)
+from typing import Any, Callable, Dict, Optional, Protocol, Set, Tuple
 
 from aws_advanced_python_wrapper.allowed_and_blocked_hosts import \
     AllowedAndBlockedHosts
@@ -60,8 +58,7 @@ from aws_advanced_python_wrapper.connect_time_plugin import \
 from aws_advanced_python_wrapper.connection_provider import (
     ConnectionProvider, ConnectionProviderManager)
 from aws_advanced_python_wrapper.database_dialect import (
-    DatabaseDialect, DatabaseDialectManager, DialectUtils,
-    UnknownDatabaseDialect)
+    DatabaseDialect, DatabaseDialectManager, DialectUtils)
 from aws_advanced_python_wrapper.default_plugin import DefaultPlugin
 from aws_advanced_python_wrapper.developer_plugin import DeveloperPluginFactory
 from aws_advanced_python_wrapper.driver_configuration_profiles import \
@@ -94,8 +91,6 @@ from aws_advanced_python_wrapper.simple_read_write_splitting_plugin import \
     SimpleReadWriteSplittingPluginFactory
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsPluginFactory
 from aws_advanced_python_wrapper.utils import services_container
-from aws_advanced_python_wrapper.utils.decorators import \
-    preserve_transaction_status_with_timeout
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
@@ -173,6 +168,30 @@ class PluginService(ExceptionHandler, Protocol):
     @property
     @abstractmethod
     def initial_connection_host_info(self) -> Optional[HostInfo]:
+        ...
+
+    @property
+    @abstractmethod
+    def routed_host_info(self) -> Optional[HostInfo]:
+        """The host a plugin routed the pending connect to, if any.
+
+        A plugin that connects to a host other than the one it was asked for
+        records its choice here, and a plugin that wants to know where the
+        connect went should read it. Do not consume it: connect hooks unwind
+        from the innermost plugin outwards, so a plugin that took the value
+        would hide it from every plugin outside it and from the wrapper, which
+        is what adopts it as the current host.
+        """
+        ...
+
+    @routed_host_info.setter
+    @abstractmethod
+    def routed_host_info(self, value: Optional[HostInfo]):
+        ...
+
+    @abstractmethod
+    def take_routed_host_info(self) -> Optional[HostInfo]:
+        """Return the routed host and clear it. For the wrapper's use."""
         ...
 
     @property
@@ -300,13 +319,14 @@ class PluginService(ExceptionHandler, Protocol):
         """
         ...
 
-    def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
+    def set_availability(self, host_info: HostInfo, availability: HostAvailability):
+        """Mark every host matching ``host_info`` by host id or host name."""
+        ...
+
+    def get_availability(self, host_url: str) -> Optional[HostAvailability]:
         ...
 
     def identify_connection(self, connection: Optional[Connection] = None) -> Optional[HostInfo]:
-        ...
-
-    def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
         ...
 
     def get_connection_provider_manager(self) -> ConnectionProviderManager:
@@ -330,6 +350,7 @@ class PluginService(ExceptionHandler, Protocol):
 
 class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResources):
     _STATUS_CACHE_EXPIRATION_NANO = 60 * 60 * 1_000_000_000  # one hour
+    _HOST_AVAILABILITY_EXPIRATION_NANO = 5 * 60 * 1_000_000_000  # five minutes
     _host_availability_expiring_cache: CacheMap[str, HostAvailability] = CacheMap()
 
     _executor_name: ClassVar[str] = "PluginServiceImplExecutor"
@@ -352,6 +373,7 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         self._current_connection: Optional[Connection] = None
         self._current_host_info: Optional[HostInfo] = None
         self._initial_connection_host_info: Optional[HostInfo] = None
+        self._routed_host_info: Optional[HostInfo] = None
         self._exception_manager: ExceptionManager = ExceptionManager()
         self._is_in_transaction: bool = False
         self._dialect_provider = DatabaseDialectManager(props)
@@ -402,6 +424,11 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
         return self._current_connection
 
     def set_current_connection(self, connection: Optional[Connection], host_info: Optional[HostInfo]):
+        # Whoever set a routed host has been superseded by this call, which
+        # names the host the connection is on. Switches that reuse a cached
+        # connection never run a connect, so this is the only place that
+        # clears the field for them.
+        self._routed_host_info = None
         old_connection = self._current_connection
 
         if self._current_connection is None:
@@ -496,6 +523,19 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
     @initial_connection_host_info.setter
     def initial_connection_host_info(self, value: HostInfo):
         self._initial_connection_host_info = value
+
+    @property
+    def routed_host_info(self) -> Optional[HostInfo]:
+        return self._routed_host_info
+
+    @routed_host_info.setter
+    def routed_host_info(self, value: Optional[HostInfo]):
+        self._routed_host_info = value
+
+    def take_routed_host_info(self) -> Optional[HostInfo]:
+        routed = self._routed_host_info
+        self._routed_host_info = None
+        return routed
 
     @property
     def host_list_provider(self) -> HostListProvider:
@@ -626,17 +666,43 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def connect(self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
+        # The routed host belongs to one connect. Clearing it here stops this
+        # connect's plugins reading the host a previous one landed on.
+        self._routed_host_info = None
         return plugin_manager.connect(
             self._target_func, self._driver_dialect, host_info, props, self.current_connection is None, plugin_to_skip)
 
     def force_connect(
             self, host_info: HostInfo, props: Properties, plugin_to_skip: Optional[Plugin] = None) -> Connection:
         plugin_manager: PluginManager = self._container.plugin_manager
+        self._routed_host_info = None
         return plugin_manager.force_connect(
             self._target_func, self._driver_dialect, host_info, props, self.current_connection is None, plugin_to_skip)
 
-    def set_availability(self, host_aliases: FrozenSet[str], availability: HostAvailability):
-        ...
+    def set_availability(self, host_info: HostInfo, availability: HostAvailability):
+        hosts_to_change = [
+            host for host in self.all_hosts if Utils.matches_host(host_info, host)]
+        if not hosts_to_change:
+            return
+
+        changes: Dict[str, Set[HostEvent]] = {}
+        for host in hosts_to_change:
+            # Through the strategy, not the raw field: a host whose backoff
+            # window has elapsed reads as available again, and marking it down
+            # is a change the plugins should hear about.
+            previous = host.get_availability()
+            host.set_availability(availability)
+            self._host_availability_expiring_cache.put(
+                host.url, availability, PluginServiceImpl._HOST_AVAILABILITY_EXPIRATION_NANO)
+            if previous != availability:
+                event = HostEvent.WENT_UP if availability == HostAvailability.AVAILABLE else HostEvent.WENT_DOWN
+                changes[host.url] = {event, HostEvent.HOST_CHANGED}
+
+        if changes:
+            self._container.plugin_manager.notify_host_list_changed(changes)
+
+    def get_availability(self, host_url: str) -> Optional[HostAvailability]:
+        return PluginServiceImpl._host_availability_expiring_cache.get(host_url)
 
     def identify_connection(self, connection: Optional[Connection] = None) -> Optional[HostInfo]:
         connection = self.current_connection if connection is None else connection
@@ -653,7 +719,10 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 timeout_sec)
 
             if instance_ids is None:
-                raise AwsWrapperError(Messages.get("PluginServiceImpl.ErrorIdentifyConnection"))
+                # Not an error: the connect hooks that identify a host call
+                # this, and a host whose id the database does not report is
+                # simply unidentifiable, not a failed connect.
+                return None
 
             topology = self.host_list_provider.refresh(connection)
             is_force_refresh = False
@@ -664,19 +733,14 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             if topology is None:
                 return None
 
-            instance_name = instance_ids[1]
-            found_host: Optional[HostInfo] = next(
-                (host for host in topology if host.host_id == instance_name),
-                None)
+            found_host: Optional[HostInfo] = Utils.find_host(topology, *instance_ids)
 
             if found_host is None and not is_force_refresh:
                 topology = self.host_list_provider.force_refresh(connection)
                 if topology is None:
                     return None
 
-                found_host = next(
-                    (host for host in topology if host.host_id == instance_name),
-                    None)
+                found_host = Utils.find_host(topology, *instance_ids)
 
             return found_host
         except TimeoutError as e:
@@ -685,43 +749,6 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
             raise e
         except Exception as e:
             raise AwsWrapperError(Messages.get("PluginServiceImpl.ErrorIdentifyConnection")) from e
-
-    def fill_aliases(self, connection: Optional[Connection] = None, host_info: Optional[HostInfo] = None):
-        connection = self.current_connection if connection is None else connection
-        host_info = self.current_host_info if host_info is None else host_info
-        if connection is None or host_info is None:
-            return
-
-        if len(host_info.aliases) > 0:
-            logger.debug("PluginServiceImpl.NonEmptyAliases", host_info.aliases)
-            return
-
-        host_info.add_alias(host_info.as_alias())
-
-        driver_dialect = self._driver_dialect
-        try:
-            timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get(self._props)
-            cursor_execute_func_with_timeout = preserve_transaction_status_with_timeout(
-                self._thread_pool, timeout_sec, driver_dialect, connection)(self._fill_aliases)
-            cursor_execute_func_with_timeout(connection, host_info)
-        except TimeoutError as e:
-            raise QueryTimeoutError(Messages.get("PluginServiceImpl.FillAliasesTimeout")) from e
-        except Exception as e:
-            # log and ignore
-            logger.debug("PluginServiceImpl.FailedToRetrieveHostPort", e)
-
-        host = self.identify_connection(connection)
-        if host:
-            host_info.add_alias(*host.as_aliases())
-
-    def _fill_aliases(self, conn: Connection, host_info: HostInfo) -> bool:
-        with closing(conn.cursor()) as cursor:
-            if not isinstance(self.database_dialect, UnknownDatabaseDialect):
-                cursor.execute(self.database_dialect.host_alias_query)
-                for row in cursor.fetchall():
-                    host_info.add_alias(row[0])
-                return True
-        return False
 
     def is_static_host_list_provider(self) -> bool:
         return self._host_list_provider is StaticHostListProvider

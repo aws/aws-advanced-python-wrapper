@@ -265,18 +265,32 @@ def test_a_reader_gets_copies_not_the_stored_hosts():
     asyncio.run(_run())
 
 
-def test_copies_keep_their_aliases():
-    """HostInfo.__copy__ drops aliases, and aliases are how a live connection
-    is matched back to its topology row."""
-    aliased = HostInfo("writer.example", 5432, HostRole.WRITER, host_id="srv-1")
-    aliased.add_alias("srv-1")
+def test_copies_keep_their_host_id():
+    """host_id is how a live connection is matched back to its topology row."""
+    stored = HostInfo("writer.example", 5432, HostRole.WRITER, host_id="srv-1")
     prov = _aurora()
 
     async def _run():
-        prov._store_topology((aliased,))
+        prov._store_topology((stored,))
         got = await prov.refresh()
-        assert got[0] is not aliased
-        assert "srv-1" in got[0].aliases
+        assert got[0] is not stored
         assert got[0].host_id == "srv-1"
+
+    asyncio.run(_run())
+
+
+def test_copies_keep_their_availability_strategy():
+    """The strategy decides when a host marked unavailable becomes usable
+    again, so a copy that reverted to the no-op default would report it
+    available straight away."""
+    prov = _aurora()
+    strategy = prov._topology_utils._host_availability_strategy
+    stored = HostInfo("writer.example", 5432, HostRole.WRITER, host_id="srv-1",
+                      host_availability_strategy=strategy)
+
+    async def _run():
+        prov._store_topology((stored,))
+        got = await prov.refresh()
+        assert got[0].host_availability_strategy is strategy
 
     asyncio.run(_run())

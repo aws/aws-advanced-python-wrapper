@@ -23,8 +23,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, FrozenSet,
-                    List, Optional, Protocol, Set, Tuple)
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, List,
+                    Optional, Protocol, Set, Tuple)
 
 from aws_advanced_python_wrapper.aio.connection_provider import \
     AsyncConnectionProviderManager
@@ -43,6 +43,7 @@ from aws_advanced_python_wrapper.utils.notifications import (
 from aws_advanced_python_wrapper.utils.properties import (PropertiesUtils,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.storage.cache_map import CacheMap
+from aws_advanced_python_wrapper.utils.utils import Utils
 
 logger = Logger(__name__)
 
@@ -110,7 +111,7 @@ class AsyncPluginService(ExceptionHandler, Protocol):
 
     def set_availability(
             self,
-            host_aliases: FrozenSet[str],
+            host_info: HostInfo,
             availability: HostAvailability) -> None:
         ...
 
@@ -161,6 +162,27 @@ class AsyncPluginService(ExceptionHandler, Protocol):
     def initial_connection_host_info(self, value: Optional[HostInfo]) -> None:
         ...
 
+    @property
+    def routed_host_info(self) -> Optional[HostInfo]:
+        """The host a plugin routed the pending connect to, if any.
+
+        A plugin that connects to a host other than the one it was asked for
+        records its choice here, and a plugin that wants to know where the
+        connect went should read it. Do not consume it: connect hooks unwind
+        from the innermost plugin outwards, so a plugin that took the value
+        would hide it from every plugin outside it and from the wrapper, which
+        is what adopts it as the current host.
+        """
+        ...
+
+    @routed_host_info.setter
+    def routed_host_info(self, value: Optional[HostInfo]) -> None:
+        ...
+
+    def take_routed_host_info(self) -> Optional[HostInfo]:
+        """Return the routed host and clear it. For the wrapper's use."""
+        ...
+
     async def refresh_host_list(
             self,
             connection: Optional[Any] = None) -> None:
@@ -200,18 +222,6 @@ class AsyncPluginService(ExceptionHandler, Protocol):
             self,
             connection: Optional[Any] = None,
             timeout_sec: Optional[float] = None) -> HostRole:
-        ...
-
-    async def fill_aliases(
-            self,
-            connection: Optional[Any] = None,
-            host_info: Optional[HostInfo] = None) -> None:
-        """Populate ``host_info``'s aliases from the connection.
-
-        Adds the host:port alias plus any aliases reported by the database's
-        ``host_alias_query`` and by :meth:`identify_connection`. No-op when the
-        host already has aliases. Mirrors sync ``PluginServiceImpl.fill_aliases``.
-        """
         ...
 
     async def connect(
@@ -406,6 +416,7 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         self._host_list_provider: Optional[AsyncHostListProvider] = None
         self._all_hosts: Tuple[HostInfo, ...] = ()
         self._initial_connection_host_info: Optional[HostInfo] = None
+        self._routed_host_info: Optional[HostInfo] = None
         self._current_host_info: Optional[HostInfo] = host_info
         self._current_connection: Optional[Any] = None
         self._telemetry_factory: Optional[TelemetryFactory] = None
@@ -531,14 +542,32 @@ class AsyncPluginServiceImpl(AsyncPluginService):
 
     def set_availability(
             self,
-            host_aliases: FrozenSet[str],
+            host_info: HostInfo,
             availability: HostAvailability) -> None:
-        for alias in host_aliases:
+        hosts_to_change = [
+            host for host in self._all_hosts if Utils.matches_host(host_info, host)]
+        if not hosts_to_change:
+            return
+
+        changes: Dict[str, Set[HostEvent]] = {}
+        for host in hosts_to_change:
+            # Through the strategy, not the raw field: a host whose backoff
+            # window has elapsed reads as available again, and marking it down
+            # is a change the plugins should hear about.
+            previous = host.get_availability()
+            host.set_availability(availability)
             AsyncPluginServiceImpl._host_availability_expiring_cache.put(
-                alias,
+                host.url,
                 availability,
                 AsyncPluginServiceImpl._HOST_AVAILABILITY_EXPIRATION_NANO,
             )
+            if previous != availability:
+                event = (HostEvent.WENT_UP if availability == HostAvailability.AVAILABLE
+                         else HostEvent.WENT_DOWN)
+                changes[host.url] = {event, HostEvent.HOST_CHANGED}
+
+        if changes and self._plugin_manager is not None:
+            self._plugin_manager.notify_host_list_changed(changes)
 
     def get_availability(self, host_url: str) -> Optional[HostAvailability]:
         return AsyncPluginServiceImpl._host_availability_expiring_cache.get(host_url)
@@ -797,21 +826,19 @@ class AsyncPluginServiceImpl(AsyncPluginService):
 
         from aws_advanced_python_wrapper.aio.dialect_utils import \
             AsyncDialectUtils
-        instance_id = await AsyncDialectUtils.get_instance_id(
+        instance_ids = await AsyncDialectUtils.get_instance_id(
             conn,
             self._driver_dialect,
             self._database_dialect.host_id_query,
         )
-        if instance_id is None:
+        if instance_ids is None:
             return None
 
         topology = await self._host_list_provider.refresh(conn)
-        found = next(
-            (h for h in topology if h.host_id == instance_id), None)
+        found = Utils.find_host(topology, *instance_ids)
         if found is None:
             topology = await self._host_list_provider.force_refresh(conn)
-            found = next(
-                (h for h in topology if h.host_id == instance_id), None)
+            found = Utils.find_host(topology, *instance_ids)
         return found
 
     @property
@@ -850,6 +877,19 @@ class AsyncPluginServiceImpl(AsyncPluginService):
     @initial_connection_host_info.setter
     def initial_connection_host_info(self, value: Optional[HostInfo]) -> None:
         self._initial_connection_host_info = value
+
+    @property
+    def routed_host_info(self) -> Optional[HostInfo]:
+        return self._routed_host_info
+
+    @routed_host_info.setter
+    def routed_host_info(self, value: Optional[HostInfo]) -> None:
+        self._routed_host_info = value
+
+    def take_routed_host_info(self) -> Optional[HostInfo]:
+        routed = self._routed_host_info
+        self._routed_host_info = None
+        return routed
 
     async def refresh_host_list(
             self,
@@ -1048,64 +1088,6 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             timeout_sec=timeout_sec,
         )
 
-    async def fill_aliases(
-            self,
-            connection: Optional[Any] = None,
-            host_info: Optional[HostInfo] = None) -> None:
-        """Populate ``host_info``'s aliases -- port of sync
-        ``PluginServiceImpl.fill_aliases`` (plugin_service.py:671-706).
-
-        Adds the ``host:port`` alias, then any aliases the database reports via
-        ``host_alias_query``, then the aliases of the host that
-        :meth:`identify_connection` resolves the connection to. No-op when the
-        host already carries aliases (idempotent).
-        """
-        connection = self._current_connection if connection is None else connection
-        host_info = self.current_host_info if host_info is None else host_info
-        if connection is None or host_info is None:
-            return
-
-        if len(host_info.aliases) > 0:
-            logger.debug("PluginServiceImpl.NonEmptyAliases", host_info.aliases)
-            return
-
-        host_info.add_alias(host_info.as_alias())
-
-        aux_timeout_sec = WrapperProperties.AUXILIARY_QUERY_TIMEOUT_SEC.get_float(
-            self._props)
-        try:
-            await asyncio.wait_for(
-                self._fill_aliases_from_query(connection, host_info),
-                timeout=aux_timeout_sec)
-        except asyncio.TimeoutError as e:
-            from aws_advanced_python_wrapper.errors import QueryTimeoutError
-            raise QueryTimeoutError(
-                Messages.get("PluginServiceImpl.FillAliasesTimeout")) from e
-        except Exception as e:  # noqa: BLE001 - alias query is best-effort
-            logger.debug("PluginServiceImpl.FailedToRetrieveHostPort", e)
-
-        host = await self.identify_connection(connection)
-        if host:
-            host_info.add_alias(*host.as_aliases())
-
-    async def _fill_aliases_from_query(
-            self, connection: Any, host_info: HostInfo) -> None:
-        dialect = self._database_dialect
-        if dialect is None:
-            return
-        from aws_advanced_python_wrapper.database_dialect import \
-            UnknownDatabaseDialect
-        if isinstance(dialect, UnknownDatabaseDialect):
-            return
-        alias_query = dialect.host_alias_query
-        if not alias_query:
-            return
-        async with connection.cursor() as cur:
-            await cur.execute(alias_query)
-            for row in await cur.fetchall():
-                if row:
-                    host_info.add_alias(row[0])
-
     async def connect(
             self,
             host_info: HostInfo,
@@ -1124,6 +1106,9 @@ class AsyncPluginServiceImpl(AsyncPluginService):
                 "AsyncPluginService.connect requires target_driver_func "
                 "to be set; AsyncAwsWrapperConnection.connect normally "
                 "wires this.")
+        # The routed host belongs to one connect. Clearing it here stops this
+        # connect's plugins reading the host a previous one landed on.
+        self._routed_host_info = None
         return await self._plugin_manager.connect(
             target_driver_func=self._target_driver_func,
             driver_dialect=self._driver_dialect,
@@ -1160,6 +1145,7 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             raise AwsWrapperError(
                 "AsyncPluginService.force_connect requires target_driver_func "
                 "to be set; AsyncAwsWrapperConnection.connect normally wires this.")
+        self._routed_host_info = None
         return await self._plugin_manager.force_connect(
             target_driver_func=self._target_driver_func,
             driver_dialect=self._driver_dialect,
@@ -1207,6 +1193,11 @@ class AsyncPluginServiceImpl(AsyncPluginService):
             self,
             connection: Any,
             host_info: HostInfo) -> None:
+        # Whoever set a routed host has been superseded by this call, which
+        # names the host the connection is on. Switches that reuse a cached
+        # connection never run a connect, so this is the only place that
+        # clears the field for them.
+        self._routed_host_info = None
         prev = self._current_connection
 
         if prev is None:
