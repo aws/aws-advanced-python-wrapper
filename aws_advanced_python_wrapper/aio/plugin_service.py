@@ -716,6 +716,10 @@ class AsyncPluginServiceImpl(AsyncPluginService):
     # driver dialect, provider service, monitor factory) comes from this
     # plugin service and is identical either way.
     #
+    # They live on the provider's topology utils, which is where the
+    # dialect's SQL and port landed; only the static provider has no utils
+    # at all.
+    #
     # Kept in step with the suppliers by
     # test_provider_identity_covers_every_dialect_supplied_argument, which
     # fails if a supplier gains an argument this list does not name.
@@ -732,11 +736,12 @@ class AsyncPluginServiceImpl(AsyncPluginService):
         """What makes a provider the right one for a dialect.
 
         ``getattr`` with a default rather than direct access: the static
-        (no-topology) provider carries no topology query or port, and only
-        the Multi-AZ provider carries the writer/host-id queries.
+        (no-topology) provider has no topology utils, and only the Multi-AZ
+        utils carry the writer/host-id queries.
         """
+        utils = getattr(provider, "_topology_utils", None)
         return (type(provider),) + tuple(
-            getattr(provider, attr, None)
+            getattr(utils, attr, None)
             for attr in AsyncPluginServiceImpl._PROVIDER_DIALECT_ATTRS)
 
     async def _update_host_list_provider(self, connection: Any) -> None:
