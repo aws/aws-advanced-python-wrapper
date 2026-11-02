@@ -39,7 +39,8 @@ from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Optional, Set,
 from aws_advanced_python_wrapper.aio.plugin import AsyncPlugin
 from aws_advanced_python_wrapper.aws_credentials_manager import \
     AwsCredentialsManager
-from aws_advanced_python_wrapper.aws_secrets_manager_plugin import Secret
+from aws_advanced_python_wrapper.aws_secrets_manager_plugin import (
+    Secret, _get_secret_value)
 from aws_advanced_python_wrapper.errors import AwsConnectError, AwsWrapperError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils import services_container
@@ -626,7 +627,7 @@ class AsyncAwsSecretsManagerPlugin(AsyncAuthPluginBase):
         session = AwsCredentialsManager.get_session(host_info, props, region)
         client = AwsCredentialsManager.get_client(
             "secretsmanager", session, host_info.host, region, endpoint)
-        resp = client.get_secret_value(SecretId=secret_id)
+        resp = _get_secret_value(client, secret_id)
         secret_str = resp.get("SecretString")
         if not secret_str:
             return {}

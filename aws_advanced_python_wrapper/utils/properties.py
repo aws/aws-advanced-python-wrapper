@@ -21,6 +21,9 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 
 
 class Properties(Dict[str, Any]):
+    def __repr__(self) -> str:
+        return dict.__repr__(PropertiesUtils.mask_properties(self))
+
     def put_if_absent(self, key: str, value: Any):
         if self.get(key) is None:
             self[key] = value

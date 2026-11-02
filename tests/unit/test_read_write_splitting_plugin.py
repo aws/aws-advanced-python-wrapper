@@ -795,3 +795,23 @@ def test_get_verified_connection_sql_exception_retry_srw(srw_plugin, plugin_serv
 
     assert plugin_service_mock.connect.call_count == 2
     assert srw_plugin._reader_connection == reader_conn_mock
+
+
+class CMySQLCursor:
+    """Stands in for a mysql-connector cursor, whose str() quotes the start of its last statement with the values."""
+
+    def __str__(self) -> str:
+        return "CMySQLCursor: SELECT 'secret-literal'"
+
+
+@pytest.mark.parametrize("plugin_fixture", ["read_write_splitting_plugin", "srw_plugin"])
+def test_execute_against_old_connection_omits_statement_text(
+        request, plugin_service_mock, driver_dialect_mock, new_writer_conn_mock, plugin_fixture):
+    plugin = request.getfixturevalue(plugin_fixture)
+    driver_dialect_mock.unwrap_connection.return_value = new_writer_conn_mock
+
+    with pytest.raises(AwsWrapperError) as e:
+        plugin.execute(CMySQLCursor(), "Cursor.execute", lambda: None)
+
+    assert "secret-literal" not in str(e.value)
+    assert "'CMySQLCursor'" in str(e.value)
