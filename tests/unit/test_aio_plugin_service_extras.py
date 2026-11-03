@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
+    AsyncClusterTopologyMonitor
 from aws_advanced_python_wrapper.aio.default_plugin import AsyncDefaultPlugin
 from aws_advanced_python_wrapper.aio.driver_dialect.base import \
     AsyncDriverDialect
@@ -16,6 +18,7 @@ from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
@@ -1017,8 +1020,8 @@ def test_update_database_dialect_rebuilds_provider_on_dialect_change():
         assert isinstance(provider, AsyncAuroraHostListProvider)
         # The replacement carries the MySQL topology SQL and port, not the
         # provider ctor's PostgreSQL defaults.
-        assert provider._topology_query == AuroraMysqlDialect().topology_query
-        assert provider._default_port == 3306
+        assert provider._topology_utils._topology_query == AuroraMysqlDialect().topology_query
+        assert provider._topology_utils._default_port == 3306
 
     asyncio.run(_run())
 
@@ -1265,18 +1268,19 @@ def test_host_list_provider_is_replaced_when_the_topology_sql_differs():
         provider = svc.host_list_provider
         assert provider is not existing
         assert type(provider) is type(existing)
-        assert provider._topology_query == AuroraMysqlDialect().topology_query
-        assert provider._default_port == 3306
+        assert provider._topology_utils._topology_query == AuroraMysqlDialect().topology_query
+        assert provider._topology_utils._default_port == 3306
 
     asyncio.run(_run())
 
 
-def test_replacing_the_provider_does_not_stop_the_outgoing_one():
-    """The outgoing provider is left alone, which is only safe because it has
-    nothing to stop: its monitor is built on the first refresh, and a provider
-    built from an unconfirmed dialect refuses to refresh. Awaiting its stop
-    would instead close a monitor connection on the path that needed a dialect
-    upgrade."""
+def test_replacing_the_provider_leaves_the_cluster_topology_monitor_running():
+    """The monitor is keyed by cluster id, which defaults to "1", and one
+    monitor serves every provider on that key, so stopping it reaches every
+    live connection on the cluster rather than this one. Nothing needs
+    stopping either: no monitor is built until the dialect is confirmed, so
+    the outgoing provider never had one, and a monitor at that key belongs to
+    another connection that resolved the same endpoint to the same dialect."""
     from aws_advanced_python_wrapper.database_dialect import (
         AuroraMysqlDialect, MultiAzClusterMysqlDialect)
 
@@ -1287,13 +1291,24 @@ def test_replacing_the_provider_does_not_stop_the_outgoing_one():
     svc.host_list_provider = existing
     svc.force_refresh_host_list = AsyncMock()
 
+    # Stand in for another connection's provider, which owns the shared
+    # monitor under the same cluster key.
+    other = MultiAzClusterMysqlDialect().get_async_host_list_provider_supplier()(svc, props)
+
     svc.database_dialect = MultiAzClusterMysqlDialect()
 
     async def _run():
-        await svc._update_host_list_provider(MagicMock(name="conn"))
-        existing.stop.assert_not_awaited()
-        assert existing._monitor is None
-        assert svc.host_list_provider is not existing
+        monitor = other._get_or_create_monitor()
+        assert monitor is not None
+        try:
+            await svc._update_host_list_provider(MagicMock(name="conn"))
+            existing.stop.assert_not_awaited()
+            assert services_container.get_monitor_service().get(
+                AsyncClusterTopologyMonitor, other._storage_key()) is monitor
+        finally:
+            services_container.get_monitor_service().stop_and_remove(
+                AsyncClusterTopologyMonitor, other._storage_key())
+            await monitor.aclose()
 
     asyncio.run(_run())
 
@@ -1312,7 +1327,8 @@ def test_no_topology_monitor_is_built_before_the_dialect_is_confirmed():
     async def _run():
         assert svc.is_dialect_confirmed is False
         await provider.force_refresh(MagicMock(name="conn"))
-        assert provider._monitor is None
+        assert services_container.get_monitor_service().get(
+            AsyncClusterTopologyMonitor, provider._storage_key()) is None
 
     asyncio.run(_run())
 
@@ -1482,7 +1498,7 @@ def test_unconfirmed_dialect_reports_the_seed_host_without_querying():
     conn = MagicMock(name="conn")
     conn.cursor = MagicMock(return_value=cursor)
 
-    seed = provider._seed_topology()[0]
+    seed = provider._topology_utils.initial_host_info
 
     async def _run():
         for topology in (await provider.refresh(conn),
@@ -1490,8 +1506,7 @@ def test_unconfirmed_dialect_reports_the_seed_host_without_querying():
             assert [(h.host, h.port) for h in topology] == [(seed.host, seed.port)]
         # The gate is the point: no SQL ran and no monitor was built.
         cursor.execute.assert_not_awaited()
-        assert provider._topology_cache is None
-        assert provider._monitor is None
+        assert provider._get_stored_topology() is None
 
         # And the gate tracks the service flag rather than latching. The
         # open direction is asserted on the predicate, not on downstream
