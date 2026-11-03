@@ -12,7 +12,6 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import copy
 from typing import Any, Dict, Optional, Type, TypeVar
 from urllib.parse import unquote
 
@@ -939,7 +938,7 @@ class PropertiesUtils:
 
     @staticmethod
     def create_filtered_properties(props: Properties, prefix: str) -> Properties:
-        monitoring_properties = copy.deepcopy(props)
+        monitoring_properties = Properties(props)
         for property_key in list(monitoring_properties.keys()):
             if property_key.startswith(prefix):
                 monitoring_properties[

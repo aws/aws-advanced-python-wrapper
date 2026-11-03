@@ -157,7 +157,7 @@ class FailoverV2Plugin(Plugin):
                 if not self._should_exception_trigger_connection_switch(e):
                     raise e
 
-                self._plugin_service.set_availability(host_info.as_aliases(), HostAvailability.UNAVAILABLE)
+                self._plugin_service.set_availability(host_info, HostAvailability.UNAVAILABLE)
 
                 try:
                     self._failover()
@@ -199,7 +199,7 @@ class FailoverV2Plugin(Plugin):
                 (self._should_exception_trigger_connection_switch(original_exception))):
             self._invalidate_current_connection()
             self._plugin_service.set_availability(
-                self._plugin_service.current_host_info.as_aliases(), HostAvailability.UNAVAILABLE)
+                self._plugin_service.current_host_info, HostAvailability.UNAVAILABLE)
             self._pick_new_connection()
             self._last_exception_dealt_with = original_exception
 

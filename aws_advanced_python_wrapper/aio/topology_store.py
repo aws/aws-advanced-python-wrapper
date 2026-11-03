@@ -29,7 +29,6 @@ import weakref
 from typing import Optional, Tuple
 from uuid import uuid4
 
-from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.hostinfo import Topology as StoredTopology
 from aws_advanced_python_wrapper.utils import services_container
 
@@ -98,22 +97,7 @@ def get_topology(
     stored = services_container.get_storage_service().get(StoredTopology, key)
     if stored is None:
         return None
-    return tuple(_copy_host(host) for host in stored)
-
-
-def _copy_host(host: HostInfo) -> HostInfo:
-    """Copy a host, restoring what ``HostInfo.__copy__`` drops.
-
-    It carries neither the aliases, which match a live connection back to its
-    topology row, nor the availability strategy, which decides when a host
-    marked unavailable becomes usable again.
-    """
-    clone = copy.copy(host)
-    clone.host_availability_strategy = host.host_availability_strategy
-    aliases = host.aliases
-    if aliases:
-        clone.add_alias(*aliases)
-    return clone
+    return tuple(copy.copy(host) for host in stored)
 
 
 def put_topology(key: Optional[TopologyKey], topology: StoredTopology) -> None:

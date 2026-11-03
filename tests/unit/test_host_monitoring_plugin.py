@@ -38,6 +38,8 @@ def mock_plugin_service(mocker, mock_driver_dialect, mock_conn, host_info):
     service_mock = mocker.MagicMock()
     service_mock.current_connection = mock_conn
     service_mock.current_host_info = host_info
+    # A MagicMock attribute would stand in for a routed host.
+    service_mock.routed_host_info = None
     type(service_mock).driver_dialect = mocker.PropertyMock(return_value=mock_driver_dialect)
     return service_mock
 
@@ -157,45 +159,78 @@ def test_execute_cleanup__connection_not_closed(
 
 
 def test_connect(mocker, plugin, host_info, props, mock_conn, mock_plugin_service):
+    """A cluster endpoint does not name the instance the connection landed on,
+    so the instance is identified and recorded as the routed host."""
     mock_connect_func = mocker.MagicMock()
     mock_connect_func.return_value = mock_conn
+    identified = HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", host_id="instance-1")
+    mock_plugin_service.identify_connection.return_value = identified
 
     connection = plugin.connect(
         mocker.MagicMock(), mocker.MagicMock(), host_info, props, True, mock_connect_func)
-    mock_plugin_service.fill_aliases.assert_called_once()
+
+    mock_plugin_service.identify_connection.assert_called_once()
+    assert mock_plugin_service.routed_host_info is identified
     assert mock_conn == connection
 
 
 @pytest.mark.parametrize(
     "host_events",
-    [{"instance-1.xyz.us-east-2.rds.amazonaws.com": {HostEvent.HOST_DELETED}},
-     {"instance-1.xyz.us-east-2.rds.amazonaws.com": {HostEvent.WENT_DOWN}}])
+    [{"instance-1.xyz.us-east-2.rds.amazonaws.com/": {HostEvent.HOST_DELETED}},
+     {"instance-1.xyz.us-east-2.rds.amazonaws.com/": {HostEvent.WENT_DOWN}}])
 def test_notify_host_list_changed(
         mocker, plugin, host_info, props, mock_conn, mock_plugin_service, mock_monitor_service, host_events):
-    mock_host_info = mocker.MagicMock()
-    mock_host_info.host = "instance-1.xyz.us-east-2.rds.amazonaws.com"
-    aliases = frozenset({"instance-1.xyz.us-east-2.rds.amazonaws.com", "alias1", "alias2"})
-    mock_host_info.all_aliases = aliases
+    monitored = HostInfo("instance-1.xyz.us-east-2.rds.amazonaws.com", host_id="instance-1")
     plugin._is_connection_initialized = True
+    plugin._monitoring_host_info = monitored
 
-    mock_plugin_service.current_host_info = mock_host_info
+    mock_plugin_service.current_host_info = monitored
     plugin.notify_host_list_changed(host_events)
-    mock_monitor_service.stop_monitoring_host.assert_called_with(aliases)
+    mock_monitor_service.stop_monitoring_host.assert_called_with(monitored.url)
 
 
-def test_get_monitoring_host_info_errors(mocker, plugin, mock_plugin_service):
+def test_notify_host_list_changed_examines_every_entry(
+        mocker, plugin, mock_plugin_service, mock_monitor_service):
+    """set_availability publishes one entry per matched host, so stopping at
+    the first host with no relevant event drops the rest."""
+    monitored = HostInfo("instance-2.xyz.us-east-2.rds.amazonaws.com", host_id="instance-2")
+    plugin._is_connection_initialized = True
+    plugin._monitoring_host_info = monitored
+    mock_plugin_service.current_host_info = monitored
+
+    plugin.notify_host_list_changed({
+        "instance-1.xyz.us-east-2.rds.amazonaws.com/": {HostEvent.HOST_CHANGED},
+        monitored.url: {HostEvent.WENT_DOWN},
+    })
+
+    mock_monitor_service.stop_monitoring_host.assert_called_once_with(monitored.url)
+
+
+def test_notify_host_list_changed_after_release_resources(
+        mocker, plugin, mock_plugin_service, mock_monitor_service):
+    """A failover worker thread outlives its connection, so it can mark a host
+    unavailable after this plugin has dropped its monitor service reference."""
+    monitored = HostInfo("instance-3.xyz.us-east-2.rds.amazonaws.com", host_id="instance-3")
+    plugin._is_connection_initialized = True
+    plugin._monitoring_host_info = monitored
+    mock_plugin_service.current_host_info = monitored
+
+    plugin.release_resources()
+    plugin.notify_host_list_changed({monitored.url: {HostEvent.WENT_DOWN}})
+
+    mock_monitor_service.stop_monitoring_host.assert_not_called()
+
+
+def test_get_monitoring_host_info_keeps_the_host_when_identification_fails(
+        mocker, plugin, mock_plugin_service, host_info):
+    """A localhost, IP or custom-domain host cannot be identified. Failing here
+    would fail every monitored call on a host that is perfectly monitorable."""
     mock_plugin_service.identify_connection.return_value = None
+    assert plugin._get_monitoring_host_info() is host_info
 
-    with pytest.raises(AwsWrapperError):
-        plugin._get_monitoring_host_info()
-
-    expected_exception = Error()
-    mock_plugin_service.identify_connection.return_value = mocker.MagicMock()
-    mock_plugin_service.identify_connection.side_effect = expected_exception
-    with pytest.raises(AwsWrapperError) as exc_info:
-        plugin._get_monitoring_host_info()
-
-    assert expected_exception == exc_info.value.__cause__
+    plugin._monitoring_host_info = None
+    mock_plugin_service.identify_connection.side_effect = Error()
+    assert plugin._get_monitoring_host_info() is host_info
 
 
 def test_release_resources(plugin, mock_monitor_service):

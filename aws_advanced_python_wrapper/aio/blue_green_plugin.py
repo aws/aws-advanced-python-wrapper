@@ -400,7 +400,6 @@ class SubstituteConnectRouting(BaseRouting, ConnectRouting):
             rerouted_host_info = copy(self._substitute_host_info)
             rerouted_host_info.host_id = iam_host.host_id
             rerouted_host_info.availability = HostAvailability.AVAILABLE
-            rerouted_host_info.add_alias(iam_host.host)
 
             rerouted_props = copy(props)
             WrapperProperties.IAM_HOST.set(rerouted_props, iam_host.host)

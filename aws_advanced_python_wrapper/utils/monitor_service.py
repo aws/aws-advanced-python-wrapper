@@ -17,8 +17,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from time import perf_counter_ns
-from typing import (Any, Callable, Dict, FrozenSet, Optional, Protocol,
-                    runtime_checkable)
+from typing import Any, Callable, Dict, Optional, Protocol, runtime_checkable
 
 from aws_advanced_python_wrapper.utils.events import (DataAccessEvent,
                                                       EventBase,
@@ -110,14 +109,6 @@ class MonitorService(EventSubscriber):
             factory: Callable[[], Any]) -> Any:
         container = self._get_or_create_container(monitor_type)
         return container.cache.compute_if_absent(key, lambda _: factory())
-
-    def run_if_absent_with_aliases(
-            self,
-            monitor_type: type,
-            aliases: FrozenSet[str],
-            factory: Callable[[], Any]) -> Any:
-        container = self._get_or_create_container(monitor_type)
-        return container.cache.get_or_create_for_aliases(aliases, factory)
 
     def detach(self, monitor_type: type, monitor: Any) -> None:
         container = self._monitor_caches.get(monitor_type)
