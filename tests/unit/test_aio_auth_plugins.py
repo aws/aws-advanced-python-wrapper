@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -814,6 +816,32 @@ def test_secrets_plugin_resolve_credentials_returns_was_cached_flag():
         _, _, was2 = asyncio.run(plugin._resolve_credentials(host, props))
     assert was1 is False
     assert was2 is True
+
+
+def test_secrets_plugin_drops_botocore_response_body_log(caplog):
+    props = Properties({
+        "host": "h", "port": "5432",
+        "secrets_manager_secret_id": "my-secret",
+        "secrets_manager_region": "us-east-1",
+    })
+    plugin = AsyncAwsSecretsManagerPlugin(_svc(props), props)
+    secret_json = '{"username": "u", "password": "async-secret-pw"}'
+
+    def _get_secret_value(**kwargs):
+        # What botocore's ResponseParser.parse logs for every response.
+        body = json.dumps({"ARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-AbCdEf",
+                           "Name": "my-secret", "SecretString": secret_json})
+        logging.getLogger("botocore.parsers").debug("Response body:\n%r", body.encode())
+        return {"SecretString": secret_json}
+
+    session_patch, client_patch = _patch_secrets_client(secret_json)
+    caplog.set_level(logging.DEBUG)
+    with session_patch, client_patch as get_client:
+        get_client.return_value.get_secret_value.side_effect = _get_secret_value
+        asyncio.run(plugin._resolve_credentials(HostInfo(host="h", port=5432), props))
+
+    get_client.return_value.get_secret_value.assert_called_once()
+    assert "async-secret-pw" not in caplog.text
 
 
 # ---- Telemetry counters ------------------------------------------------

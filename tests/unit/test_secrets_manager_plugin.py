@@ -14,6 +14,9 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -308,3 +311,47 @@ def test_connect_with_different_secret_keys(
     mock_func.assert_called_once()
     assert _TEST_USERNAME == test_properties.get("user")
     assert _TEST_PASSWORD == test_properties.get("password")
+
+
+def test_connect_drops_botocore_response_body_log(
+        caplog, mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
+    def _get_secret_value(**kwargs):
+        # What botocore's ResponseParser.parse logs for every response.
+        body = json.dumps({"ARN": "arn:aws:secretsmanager:us-east-2:123456789012:secret:secretId-AbCdEf",
+                           "Name": _TEST_SECRET_ID, "SecretString": _VALID_SECRET_STRING["SecretString"]})
+        logging.getLogger("botocore.parsers").debug("Response body:\n%r", body.encode())
+        return _VALID_SECRET_STRING
+
+    mock_client.get_secret_value.side_effect = _get_secret_value
+    caplog.set_level(logging.DEBUG)
+
+    AwsSecretsManagerPlugin(mock_plugin_service, test_properties, mock_session).connect(
+        mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
+
+    assert _TEST_PASSWORD == test_properties.get("password")
+    assert _TEST_PASSWORD not in caplog.text
+
+
+def test_connect_keeps_other_botocore_parsers_logs(
+        caplog, mocker, mock_plugin_service, mock_session, mock_func, mock_client, test_properties):
+    parsers_logger = logging.getLogger("botocore.parsers")
+
+    def _other_thread_log():
+        parsers_logger.debug("Response body:\n%r", b'{"Name":"app","SecretString":"{\\"password\\":\\"other-thread-pw\\"}"}')
+
+    def _get_secret_value(**kwargs):
+        other = threading.Thread(target=_other_thread_log)
+        other.start()
+        other.join()
+        return _VALID_SECRET_STRING
+
+    mock_client.get_secret_value.side_effect = _get_secret_value
+    caplog.set_level(logging.DEBUG)
+
+    AwsSecretsManagerPlugin(mock_plugin_service, test_properties, mock_session).connect(
+        mocker.MagicMock(), mocker.MagicMock(), _TEST_HOST_INFO, test_properties, True, mock_func)
+    parsers_logger.debug("Response body:\n%r", b'{"Name":"app","SecretString":"{\\"password\\":\\"after-fetch-pw\\"}"}')
+
+    assert _TEST_PASSWORD == test_properties.get("password")
+    assert "other-thread-pw" in caplog.text
+    assert "after-fetch-pw" in caplog.text

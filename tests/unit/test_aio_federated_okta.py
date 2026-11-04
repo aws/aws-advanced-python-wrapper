@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,6 +31,7 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.iam_utils import TokenInfo
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -856,3 +858,40 @@ def test_okta_code_binds_okta_regardless_of_idp_name():
     plugin = _OktaAuthFactory().get_instance(
         _FactoryMockService(), Properties())
     assert isinstance(plugin, AsyncOktaAuthPlugin)
+
+
+def test_federated_plugin_debug_log_omits_cached_token(caplog):
+    async def _body() -> None:
+        props = _federated_props()
+        plugin = AsyncFederatedAuthPlugin(_svc(props), props)
+
+        async def _cf() -> object:
+            return MagicMock()
+
+        with patch.object(
+                AsyncFederatedAuthPlugin, "_fetch_saml_assertion",
+                new=AsyncMock(return_value=_FAKE_SAML),
+        ), patch.object(
+                AsyncFederatedAuthPlugin, "_sts_assume_role_with_saml_blocking",
+                return_value=_FAKE_CREDS,
+        ), patch.object(
+                AsyncFederatedAuthPlugin, "_generate_rds_token_blocking",
+                return_value="fake-rds-token",
+        ), patch.object(Logger, "debug", autospec=True, side_effect=Logger.debug) as debug:
+            for _ in range(2):
+                await plugin.connect(
+                    target_driver_func=lambda: None,
+                    driver_dialect=MagicMock(),
+                    host_info=HostInfo("instance-1.abc123.us-east-1.rds.amazonaws.com", 5432),
+                    props=Properties(dict(props)),
+                    is_initial_connection=True,
+                    connect_func=_cf,
+                )
+        assert not [c for c in debug.call_args_list if any("fake-rds-token" in str(a) for a in c.args)]
+
+    caplog.set_level(logging.DEBUG)
+    asyncio.run(_body())
+
+    assert "Used cached authentication token" in caplog.text
+    assert "fake-rds-token" not in caplog.text
+    assert "token = {}" not in caplog.text

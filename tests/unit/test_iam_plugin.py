@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 import pytest
@@ -26,6 +27,7 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.iam_utils import TokenInfo
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 
@@ -405,3 +407,25 @@ def test_invalid_iam_host(host, mocker, mock_plugin_service, mock_session, mock_
             props=test_props,
             is_initial_connection=False,
             connect_func=mock_func)
+
+
+@pytest.mark.parametrize("cached", [True, False], ids=["cached", "fresh"])
+def test_connect_debug_log_omits_token(cached, caplog, mocker, mock_plugin_service, mock_func, mock_dialect):
+    if cached:
+        services_container.get_storage_service().put(
+            TokenInfo, _PG_CACHE_KEY, TokenInfo(_TEST_TOKEN, datetime.now() + timedelta(minutes=5)))
+    caplog.set_level(logging.DEBUG)
+    debug = mocker.spy(Logger, "debug")
+
+    IamAuthPlugin(mock_plugin_service).connect(
+        target_driver_func=mocker.MagicMock(),
+        driver_dialect=mock_dialect,
+        host_info=_PG_HOST_INFO,
+        props=Properties({"user": "postgresqlUser"}),
+        is_initial_connection=False,
+        connect_func=mock_func)
+
+    assert ("Used cached IAM token" if cached else "Generated new authentication token") in caplog.text
+    assert (_TEST_TOKEN if cached else _GENERATED_TOKEN) not in caplog.text
+    assert "token = {}" not in caplog.text
+    assert not [c for c in debug.call_args_list if any((_TEST_TOKEN if cached else _GENERATED_TOKEN) in str(a) for a in c.args)]
