@@ -327,13 +327,21 @@ class AsyncAuroraConnectionTrackerPlugin(AsyncPlugin):
             # missed invalidation entirely). Ground truth is a live is_reader
             # probe of THIS connection: if it says WRITER, pin the
             # connection's own host over whatever topology claimed.
+            #
+            # ``host_info`` is the host the connection landed on, resolved by
+            # _identify_connection_host, NOT plugin_service.current_host_info:
+            # this runs inside the connect pipeline, before the wrapper takes
+            # the routed host (aio/wrapper.py take_routed_host_info), so the
+            # service still reports the endpoint the caller dialled. Pinning
+            # a cluster endpoint there made the first execute compare it with
+            # the topology writer (an instance), read that as a writer change
+            # and invalidate the connection about to run its statement
+            # (#1276).
             role = await self._plugin_service.get_host_role(conn)
             if role == HostRole.WRITER:
-                host = self._plugin_service.current_host_info
-                if host is not None and (
-                        self._current_writer is None
-                        or not self._same_host(host, self._current_writer)):
-                    self._current_writer = host
+                if (self._current_writer is None
+                        or not self._same_host(host_info, self._current_writer)):
+                    self._current_writer = host_info
         except Exception:  # noqa: BLE001 - writer pinning is best-effort
             pass
 
