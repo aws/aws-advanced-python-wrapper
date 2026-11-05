@@ -52,10 +52,16 @@ requests = "^2.33.1"
 #   pip install "aws-advanced-python-wrapper[encryption]"
 # The import is lazy as well: nothing on the core import path imports it.
 cryptography = { version = ">=42.0.0", optional = true }
+# The plugin's SQL analysis (which bind parameter fills which column) parses
+# statements with this pure-Python parser. Also only in the `encryption` extra
+# and imported lazily. Capped below the next major: its expression tree changes
+# shape between majors, and the analysis walks that tree. The floor is the
+# oldest release the analysis tests pass on.
+sqlglot = { version = ">=30.14.0,<31.0.0", optional = true }
 
 [tool.poetry.extras]
 # `pip install "aws-advanced-python-wrapper[encryption]"` to use the KMS Encryption plugin.
-encryption = ["cryptography"]
+encryption = ["cryptography", "sqlglot"]
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.20.2"
@@ -76,6 +82,7 @@ types_aws_xray_sdk = "^2.13.0"
 # Non-optional in the dev group so the encryption unit tests run without needing
 # to install the `encryption` extra explicitly.
 cryptography = ">=42.0.0"
+sqlglot = ">=30.14.0,<31.0.0"
 
 [tool.poetry.group.test.dependencies]
 boto3 = "^1.42.95"
