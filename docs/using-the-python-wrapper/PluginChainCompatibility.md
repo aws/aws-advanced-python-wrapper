@@ -15,6 +15,7 @@ a chain you haven't used before.
 | Plugin              | Requires                          | Why |
 |---------------------|-----------------------------------|-----|
 | `read_write_splitting` | `failover_v2` (not `failover`) | `failover_v2` starts the cluster topology monitor on the **initial** connect. With plain `failover`, the host list stays at `{writer-only}` until a later failover signal fires, and `conn.read_only = True` flips silently fall back to the writer rather than splitting to a reader. |
+| `kms_encryption` | to run before `failover`, `failover_v2` and `gdb_failover` (the default order while `auto_sort_wrapper_plugin_order` is on) | Listed after a failover plugin with auto-sort off, the errors it raises from `execute()` and the fetch methods reach the application wrapped in the failover plugin's `AwsWrapperError` instead of their own classes. With the failover plugin's `preserve_driver_exception_type` on, they keep their own classes. |
 
 ## Driver-specific incompatibilities
 
