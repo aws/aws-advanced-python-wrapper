@@ -40,7 +40,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -65,6 +67,7 @@ public class TestEnvironment implements AutoCloseable {
   private static final String TEST_CONTAINER_NAME = "test-container";
   private static final String TELEMETRY_XRAY_CONTAINER_NAME = "xray-daemon";
   private static final String TELEMETRY_OTLP_CONTAINER_NAME = "otlp-daemon";
+  private static final String LOCALSTACK_CONTAINER_NAME = "localstack";
   private static final String PROXIED_DOMAIN_NAME_SUFFIX = ".proxied";
   protected static final int PROXY_CONTROL_PORT = 8474;
   protected static final int PROXY_PORT = 8666;
@@ -95,6 +98,7 @@ public class TestEnvironment implements AutoCloseable {
   private ArrayList<ToxiproxyContainer> proxyContainers;
   private GenericContainer<?> telemetryXRayContainer;
   private GenericContainer<?> telemetryOtlpContainer;
+  private GenericContainer<?> localStackContainer;
 
   private String runnerIP;
 
@@ -132,6 +136,15 @@ public class TestEnvironment implements AutoCloseable {
         if (request.getFeatures().contains(TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT)) {
           throw new UnsupportedOperationException(
               TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT.toString());
+        }
+
+        if (request.getFeatures().contains(TestEnvironmentFeatures.KMS_LOCALSTACK)) {
+          env.localStackContainer =
+              new ContainerHelper().createLocalStackContainer(env.network, LOCALSTACK_CONTAINER_NAME);
+          env.localStackContainer.start();
+        } else if (request.getFeatures().contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)) {
+          // The real-key lane; TestEnvironmentProvider has checked KMS_KEY_ARN and KMS_REGION.
+          initAwsCredentials(env);
         }
 
         break;
@@ -437,7 +450,9 @@ public class TestEnvironment implements AutoCloseable {
                   DATABASE_CONTAINER_NAME_PREFIX + i,
                   env.info.getDatabaseInfo().getDefaultDbName(),
                   env.info.getDatabaseInfo().getUsername(),
-                  env.info.getDatabaseInfo().getPassword()));
+                  env.info.getDatabaseInfo().getPassword(),
+                  env.info.getRequest().getFeatures()
+                      .contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)));
           env.databaseContainers.get(0).start();
 
           env.info
@@ -1069,6 +1084,22 @@ public class TestEnvironment implements AutoCloseable {
           .withEnv("AWS_SESSION_TOKEN", env.awsSessionToken);
     }
 
+    // After the credentials block, so the LocalStack dummy keys win.
+    final Set<TestEnvironmentFeatures> features = env.info.getRequest().getFeatures();
+    if (features.contains(TestEnvironmentFeatures.KMS_LOCALSTACK)) {
+      env.testContainer
+          .withEnv("KMS_ENDPOINT_URL", "http://" + LOCALSTACK_CONTAINER_NAME + ":4566")
+          .withEnv("KMS_REGION", "us-east-1")
+          .withEnv("AWS_ACCESS_KEY_ID", "test")
+          .withEnv("AWS_SECRET_ACCESS_KEY", "test");
+    } else if (features.contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)) {
+      env.testContainer
+          .withEnv("KMS_KEY_ARN", config.kmsKeyArn)
+          .withEnv("KMS_REGION", config.kmsRegion)
+          .withEnv("KMS_DECRYPT_ONLY_ROLE_ARN", Objects.toString(config.kmsDecryptOnlyRoleArn, ""))
+          .withEnv("KMS_MANUAL_TESTS", Objects.toString(config.kmsManualTests, ""));
+    }
+
     env.testContainer.start();
   }
 
@@ -1277,6 +1308,11 @@ public class TestEnvironment implements AutoCloseable {
     if (this.testContainer != null) {
       this.testContainer.stop();
       this.testContainer = null;
+    }
+
+    if (this.localStackContainer != null) {
+      this.localStackContainer.stop();
+      this.localStackContainer = null;
     }
 
     if (this.proxyContainers != null) {

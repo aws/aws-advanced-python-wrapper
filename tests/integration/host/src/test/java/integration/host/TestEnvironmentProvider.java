@@ -23,6 +23,7 @@ import integration.GenericTypedParameterResolver;
 import integration.TargetPythonVersion;
 import integration.TestEnvironmentFeatures;
 import integration.TestEnvironmentRequest;
+import integration.util.StringUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -90,6 +91,9 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
       if (deployment == DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE && config.excludeMultiAzInstance) {
         continue;
       }
+      final boolean kmsLocalstack = config.testKmsEncryptionOnly
+          && deployment == DatabaseEngineDeployment.DOCKER
+          && !config.excludeKmsLocalstack;
 
       for (DatabaseEngine engine : DatabaseEngine.values()) {
         if (engine == DatabaseEngine.PG && config.excludePgEngine) {
@@ -183,9 +187,11 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                             targetPythonVersion,
                             TestEnvironmentFeatures.NETWORK_OUTAGES_ENABLED,
                             engine == DatabaseEngine.PG ? TestEnvironmentFeatures.ABORT_CONNECTION_SUPPORTED : null,
+                            // A KMS-only Docker environment without LocalStack calls real KMS, so it needs credentials.
                             deployment == DatabaseEngineDeployment.DOCKER
                                 && config.excludeTracesTelemetry
                                 && config.excludeMetricsTelemetry
+                                && (!config.testKmsEncryptionOnly || kmsLocalstack)
                                 ? null
                                 : TestEnvironmentFeatures.AWS_CREDENTIALS_ENABLED,
                             deployment == DatabaseEngineDeployment.DOCKER || config.excludeFailover
@@ -205,11 +211,25 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
                             config.testAutoscalingOnly ? TestEnvironmentFeatures.RUN_AUTOSCALING_TESTS_ONLY : null,
                             config.excludeTracesTelemetry ? null : TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED,
                             config.excludeMetricsTelemetry ? null : TestEnvironmentFeatures.TELEMETRY_METRICS_ENABLED,
-                            withBlueGreenFeature ? TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT : null)));
+                            withBlueGreenFeature ? TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT : null,
+                            config.testKmsEncryptionOnly ? TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY : null,
+                            kmsLocalstack ? TestEnvironmentFeatures.KMS_LOCALSTACK : null)));
               }
             }
           }
         }
+      }
+    }
+
+    // Fail before any environment starts, so a KMS Aurora run never creates a cluster without a key.
+    for (EnvPreCreateInfo preCreateInfo : preCreateInfos) {
+      final Set<TestEnvironmentFeatures> features = preCreateInfo.request.getFeatures();
+      if (features.contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)
+          && !features.contains(TestEnvironmentFeatures.KMS_LOCALSTACK)
+          && (StringUtils.isNullOrEmpty(config.kmsKeyArn) || StringUtils.isNullOrEmpty(config.kmsRegion))) {
+        throw new RuntimeException(
+            "Environment variables KMS_KEY_ARN and KMS_REGION are required to run the KMS encryption tests "
+                + "without LocalStack: " + preCreateInfo.request.getDisplayName());
       }
     }
 

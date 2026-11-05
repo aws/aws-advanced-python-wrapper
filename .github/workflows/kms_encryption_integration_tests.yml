@@ -1,0 +1,248 @@
+name: KMS Encryption Integration Tests
+
+# The LocalStack job needs no AWS account and no secrets, so it also runs on pull requests from forks.
+# The real-key and Aurora jobs read the key ARN, its region and the roles from repository variables,
+# which an administrator sets up once; CI never creates or changes KMS keys.
+
+on:
+  pull_request:
+    paths:
+      - 'aws_advanced_python_wrapper/**'
+      - 'tests/integration/**'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - '.github/workflows/kms_encryption_integration_tests.yml'
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: 'Which KMS environment to run'
+        type: choice
+        options: [ localstack, real-kms, aurora ]
+        default: localstack
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.lane }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  kms-localstack:
+    name: Run KMS Encryption Tests with LocalStack
+    if: github.event_name != 'workflow_dispatch' || inputs.lane == 'localstack'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { engine: pg, skip: mysql }
+          - { engine: mysql, skip: pg }
+
+    steps:
+      - name: 'Clone repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: 'Set up JDK 8'
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
+        with:
+          distribution: 'corretto'
+          java-version: 8
+
+      - name: 'Set up Python 3.12'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install poetry
+        shell: bash
+        run: |
+          pipx install poetry==1.8.2
+          poetry config virtualenvs.prefer-active-python true
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: 'Run the KMS tests on Docker with LocalStack'
+        run: |
+          DB_PASSWORD="$(openssl rand -hex 16)"
+          echo "::add-mask::${DB_PASSWORD}"
+          export DB_PASSWORD DB_USERNAME=test_user DB_DATABASE_NAME=test_db
+          ./gradlew --no-parallel --no-daemon test-kms-encryption-docker \
+            -Dexclude-${{ matrix.skip }}-engine=true -Dexclude-${{ matrix.skip }}-driver=true
+
+      # pytest exits 0 when every test is skipped, so count the KMS test cases that ran.
+      - name: 'Fail when no KMS test ran'
+        run: |
+          python3 -c 'import glob,sys,xml.etree.ElementTree as E; c=[t for f in glob.glob("tests/integration/container/reports/*.xml") for t in E.parse(f).iter("testcase") if "kms_encryption" in t.get("classname","") and t.find("skipped") is None]; print("KMS tests run:", len(c)); sys.exit(0 if c else 1)'
+
+      - name: 'Archive results'
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: kms-localstack-${{ matrix.engine }}
+          path: ./tests/integration/container/reports
+          retention-days: 5
+
+  kms-real-key:
+    name: Run KMS Encryption Tests with a real KMS key
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.lane == 'real-kms'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      id-token: write   # This is required for requesting the JWT
+      contents: read    # This is required for actions/checkout
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { engine: pg, skip: mysql }
+          - { engine: mysql, skip: pg }
+
+    steps:
+      - name: 'Clone repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: 'Set up JDK 8'
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
+        with:
+          distribution: 'corretto'
+          java-version: 8
+
+      - name: 'Set up Python 3.12'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install poetry
+        shell: bash
+        run: |
+          pipx install poetry==1.8.2
+          poetry config virtualenvs.prefer-active-python true
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: 'Configure AWS Credentials'
+        uses: aws-actions/configure-aws-credentials@d979d5b3a71173a29b74b5b88418bfda9437d885  # v6
+        with:
+          role-to-assume: ${{ vars.KMS_IT_ROLE_ARN }}
+          role-session-name: python_kms_integration_tests
+          role-duration-seconds: 3600
+          aws-region: ${{ vars.KMS_REGION }}
+
+      - name: 'Run the KMS tests on Docker with a real KMS key'
+        run: |
+          DB_PASSWORD="$(openssl rand -hex 16)"
+          echo "::add-mask::${DB_PASSWORD}"
+          export DB_PASSWORD DB_USERNAME=test_user DB_DATABASE_NAME=test_db
+          ./gradlew --no-parallel --no-daemon test-kms-encryption-docker-kms \
+            -Dexclude-${{ matrix.skip }}-engine=true -Dexclude-${{ matrix.skip }}-driver=true
+        env:
+          KMS_KEY_ARN: ${{ vars.KMS_KEY_ARN }}
+          KMS_REGION: ${{ vars.KMS_REGION }}
+          KMS_DECRYPT_ONLY_ROLE_ARN: ${{ vars.KMS_DECRYPT_ONLY_ROLE_ARN }}
+
+      - name: 'Fail when no KMS test ran'
+        run: |
+          python3 -c 'import glob,sys,xml.etree.ElementTree as E; c=[t for f in glob.glob("tests/integration/container/reports/*.xml") for t in E.parse(f).iter("testcase") if "kms_encryption" in t.get("classname","") and t.find("skipped") is None]; print("KMS tests run:", len(c)); sys.exit(0 if c else 1)'
+
+      - name: 'Archive results'
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: kms-real-key-${{ matrix.engine }}
+          path: ./tests/integration/container/reports
+          retention-days: 5
+
+  kms-aurora:
+    name: Run KMS Encryption Tests on Aurora
+    if: inputs.lane == 'aurora'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      id-token: write   # This is required for requesting the JWT
+      contents: read    # This is required for actions/checkout
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { engine: pg, skip: mysql }
+          - { engine: mysql, skip: pg }
+    concurrency:
+      group: kms-aurora-${{ matrix.engine }}
+      cancel-in-progress: false
+    env:
+      # The harness doesn't delete its cluster when a run is cancelled, so the last step deletes this one by name.
+      RDS_DB_NAME: kms-it-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.engine }}
+
+    steps:
+      - name: 'Clone repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: 'Set up JDK 8'
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
+        with:
+          distribution: 'corretto'
+          java-version: 8
+
+      - name: 'Set up Python 3.12'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install poetry
+        shell: bash
+        run: |
+          pipx install poetry==1.8.2
+          poetry config virtualenvs.prefer-active-python true
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: 'Configure AWS Credentials'
+        uses: aws-actions/configure-aws-credentials@d979d5b3a71173a29b74b5b88418bfda9437d885  # v6
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_DEPLOY_ROLE }}
+          role-session-name: python_integration_tests
+          role-duration-seconds: 21600
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: 'Run the KMS tests on Aurora'
+        run: |
+          DB_PASSWORD="$(openssl rand -hex 16)"
+          echo "::add-mask::${DB_PASSWORD}"
+          export DB_PASSWORD DB_USERNAME=test_user DB_DATABASE_NAME=test_db
+          ./gradlew --no-parallel --no-daemon test-kms-encryption-aurora \
+            -Dexclude-${{ matrix.skip }}-engine=true -Dexclude-${{ matrix.skip }}-driver=true
+        env:
+          NUM_INSTANCES: 2
+          RDS_DB_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          KMS_KEY_ARN: ${{ vars.KMS_KEY_ARN }}
+          KMS_REGION: ${{ vars.KMS_REGION }}
+
+      - name: 'Fail when no KMS test ran'
+        run: |
+          python3 -c 'import glob,sys,xml.etree.ElementTree as E; c=[t for f in glob.glob("tests/integration/container/reports/*.xml") for t in E.parse(f).iter("testcase") if "kms_encryption" in t.get("classname","") and t.find("skipped") is None]; print("KMS tests run:", len(c)); sys.exit(0 if c else 1)'
+
+      - name: 'Archive results'
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: kms-aurora-${{ matrix.engine }}
+          path: ./tests/integration/container/reports
+          retention-days: 5
+
+      # Deletes the cluster named RDS_DB_NAME and its member instances, never clusters matched by a name prefix.
+      - name: 'Delete the cluster of this run'
+        if: always()
+        run: |
+          instances="$(aws rds describe-db-clusters --db-cluster-identifier "${RDS_DB_NAME}" \
+            --query 'DBClusters[0].DBClusterMembers[].DBInstanceIdentifier' --output text 2>/dev/null)" || exit 0
+          for instance in ${instances}; do
+            aws rds delete-db-instance --db-instance-identifier "${instance}" --skip-final-snapshot > /dev/null || true
+          done
+          aws rds delete-db-cluster --db-cluster-identifier "${RDS_DB_NAME}" --skip-final-snapshot > /dev/null || true

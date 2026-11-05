@@ -344,6 +344,8 @@ The trigger checks a new value against the column's current HMAC key, and rotati
 Three controls decide how much the encryption protects: which KMS keys the application can use, who can write the metadata schema, and who can change the trigger. The first three steps cover them, and the fourth covers what none of them stops.
 
 - **KMS keys.** The plugin takes a column's master key from its `key_storage` row, not from its own settings, so the allow-list and the application's IAM policy keep a changed row from pointing it at another key. List every master key the columns use in `encryption_allowed_master_key_arns`, in the form `key_storage.master_key_arn` holds. The plugin refuses any other key before calling KMS (`UnauthorizedMasterKeyError`), on reads and writes alike, and `encryption_return_unverified_data` doesn't change that. Add a new master key before rotating a column onto it, and keep the old one listed, with `kms:Decrypt` allowed, while values written under it remain. Give the application's credentials only `kms:Decrypt`, on those key ARNs, never `"Resource": "*"`, and use a separate key per environment. Run `KeyManagementUtility`, which also calls `kms:GenerateDataKey`, `kms:CreateKey`, `kms:CreateAlias` and `kms:DescribeKey`, under a separate administrative credential. Don't add a `kms:ViaService` condition to these policies. It matches only requests an AWS service makes on your behalf, and the plugin calls KMS directly, so every `Decrypt` would be denied.
+  Store key ARNs, not alias ARNs, in `key_storage` and in `encryption_allowed_master_key_arns`.
+  Repointing an alias makes every value under the old key unreadable.
 
   ```json
   {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "kms:Decrypt",
