@@ -23,6 +23,8 @@ import com.github.dockerjava.api.command.ExecCreateCmd;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.exception.DockerException;
+import com.github.dockerjava.api.model.HostConfig;
+import com.github.dockerjava.api.model.Ports;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import integration.DebugEnv;
 import integration.TestInstanceInfo;
@@ -59,6 +61,37 @@ public class ContainerHelper {
 
   private static final String XRAY_TELEMETRY_IMAGE_NAME = "amazon/aws-xray-daemon";
   private static final String OTLP_TELEMETRY_IMAGE_NAME = "amazon/aws-otel-collector";
+
+  private static final String LOOPBACK_HOST_IP = "127.0.0.1";
+
+  /**
+   * Publishes the container's ports on 127.0.0.1 only.
+   *
+   * <p>Testcontainers publishes each port with no host IP, so Docker and Podman listen on every
+   * interface. That exposes the databases, the unauthenticated Toxiproxy API (which can open proxies
+   * to any host) and, under DEBUG_ENV=VSCODE, debugpy to anyone on the same network. The harness only
+   * connects to these ports from this host; containers reach each other through the Docker network.
+   */
+  public static <C extends GenericContainer<?>> C publishOnLoopbackOnly(C container) {
+    container.withCreateContainerCmdModifier(cmd -> {
+      HostConfig hostConfig = cmd.getHostConfig();
+      if (hostConfig == null || hostConfig.getPortBindings() == null) {
+        return;
+      }
+      Ports loopbackBindings = new Ports();
+      hostConfig.getPortBindings().getBindings().forEach((exposedPort, bindings) -> {
+        if (bindings == null || bindings.length == 0) {
+          loopbackBindings.bind(exposedPort, Ports.Binding.bindIp(LOOPBACK_HOST_IP));
+          return;
+        }
+        for (Ports.Binding binding : bindings) {
+          loopbackBindings.bind(exposedPort, new Ports.Binding(LOOPBACK_HOST_IP, binding.getHostPortSpec()));
+        }
+      });
+      hostConfig.withPortBindings(loopbackBindings);
+    });
+    return container;
+  }
 
   public void runTest(GenericContainer<?> container, String testFolder, String primaryInfo, TestEnvironmentConfiguration config)
       throws IOException, InterruptedException {
@@ -132,7 +165,7 @@ public class ContainerHelper {
       Network network,
       String networkAlias) {
 
-    return new FixedExposedPortContainer<>(
+    return publishOnLoopbackOnly(new FixedExposedPortContainer<>(
         new ImageFromDockerfile("xray-daemon", true)
             .withDockerfileFromBuilder(
                 builder -> builder
@@ -147,7 +180,7 @@ public class ContainerHelper {
         .withExposedPort(2000)
         .waitingFor(Wait.forLogMessage(".*Starting proxy http server on 0.0.0.0:2000.*", 1))
         .withNetworkAliases(networkAlias)
-        .withNetwork(network);
+        .withNetwork(network));
   }
 
   // This container supports traces and metrics to AWS CloudWatch/XRay
@@ -155,7 +188,7 @@ public class ContainerHelper {
       Network network,
       String networkAlias) {
 
-    return new FixedExposedPortContainer<>(DockerImageName.parse(OTLP_TELEMETRY_IMAGE_NAME))
+    return publishOnLoopbackOnly(new FixedExposedPortContainer<>(DockerImageName.parse(OTLP_TELEMETRY_IMAGE_NAME))
         .withExposedPort(2000)
         .withExposedPort(1777)
         .withExposedPort(4317)
@@ -165,7 +198,7 @@ public class ContainerHelper {
         .withNetwork(network)
         .withCopyFileToContainer(
             MountableFile.forHostPath("./src/test/resources/otel-config.yaml"),
-            "/etc/otel-config.yaml");
+            "/etc/otel-config.yaml"));
 
   }
 
@@ -233,7 +266,7 @@ public class ContainerHelper {
                   ).build()));
     }
 
-    return container
+    return publishOnLoopbackOnly(container)
         .withFileSystemBind("../../../aws_advanced_python_wrapper", "/app/aws_advanced_python_wrapper", BindMode.READ_ONLY)
         .withFileSystemBind("../../../README.md", "/app/README.md", BindMode.READ_ONLY)
         .withFileSystemBind("../../../pyproject.toml", "/app/pyproject.toml", BindMode.READ_ONLY)
@@ -303,7 +336,7 @@ public class ContainerHelper {
   public MySQLContainer<?> createMysqlContainer(
       Network network, String networkAlias, String testDbName, String username, String password) {
 
-    return new MySQLContainer<>(MYSQL_CONTAINER_IMAGE_NAME)
+    return publishOnLoopbackOnly(new MySQLContainer<>(MYSQL_CONTAINER_IMAGE_NAME))
         .withNetwork(network)
         .withNetworkAliases(networkAlias)
         .withDatabaseName(testDbName)
@@ -326,7 +359,7 @@ public class ContainerHelper {
   public PostgreSQLContainer<?> createPostgresContainer(
       Network network, String networkAlias, String testDbName, String username, String password) {
 
-    return new PostgreSQLContainer<>(POSTGRES_CONTAINER_IMAGE_NAME)
+    return publishOnLoopbackOnly(new PostgreSQLContainer<>(POSTGRES_CONTAINER_IMAGE_NAME))
         .withNetwork(network)
         .withNetworkAliases(networkAlias)
         .withDatabaseName(testDbName)
@@ -341,7 +374,7 @@ public class ContainerHelper {
       String hostname,
       int port) throws IOException {
     final ToxiproxyContainer container =
-        new ToxiproxyContainer(TOXIPROXY_IMAGE)
+        publishOnLoopbackOnly(new ToxiproxyContainer(TOXIPROXY_IMAGE))
             .withNetwork(network)
             .withNetworkAliases(networkAlias, networkUrl);
     container.start();
@@ -362,7 +395,7 @@ public class ContainerHelper {
 
   public ToxiproxyContainer createProxyContainer(
       final Network network, TestInstanceInfo instance, String proxyDomainNameSuffix) {
-    return new ToxiproxyContainer(TOXIPROXY_IMAGE)
+    return publishOnLoopbackOnly(new ToxiproxyContainer(TOXIPROXY_IMAGE))
         .withNetwork(network)
         .withNetworkAliases(
             "proxy-instance-" + instance.getInstanceId(),
