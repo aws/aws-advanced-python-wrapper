@@ -54,6 +54,10 @@ public class TestEnvironmentConfiguration {
       Boolean.parseBoolean(System.getProperty("exclude-secrets-manager", "false"));
   public boolean testAutoscalingOnly =
       Boolean.parseBoolean(System.getProperty("test-autoscaling", "false"));
+  public boolean testKmsEncryptionOnly =
+      Boolean.parseBoolean(System.getProperty("test-kms-encryption", "false"));
+  public boolean excludeKmsLocalstack =
+      Boolean.parseBoolean(System.getProperty("exclude-kms-localstack", "false"));
 
   public boolean excludeInstances1 =
       Boolean.parseBoolean(System.getProperty("exclude-instances-1", "false"));
@@ -112,6 +116,11 @@ public class TestEnvironmentConfiguration {
   public String awsSessionToken = System.getenv("AWS_SESSION_TOKEN");
 
   public String iamUser = System.getenv("IAM_USER");
+
+  public String kmsKeyArn = System.getenv("KMS_KEY_ARN");
+  public String kmsRegion = System.getenv("KMS_REGION");
+  public String kmsDecryptOnlyRoleArn = System.getenv("KMS_DECRYPT_ONLY_ROLE_ARN");
+  public String kmsManualTests = System.getenv("KMS_MANUAL_TESTS");
 
   final String numInstancesVar = System.getenv("NUM_INSTANCES");
   final Integer numInstances = numInstancesVar == null ? null : Integer.parseInt(numInstancesVar);

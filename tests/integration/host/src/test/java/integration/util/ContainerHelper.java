@@ -60,6 +60,11 @@ public class ContainerHelper {
   private static final String XRAY_TELEMETRY_IMAGE_NAME = "amazon/aws-xray-daemon";
   private static final String OTLP_TELEMETRY_IMAGE_NAME = "amazon/aws-otel-collector";
 
+  // LocalStack 3.8.1 community (tag 3), which needs no auth token. Pinned by digest alone: Testcontainers
+  // rejects a reference that has both a tag and a digest.
+  private static final String LOCALSTACK_IMAGE = "public.ecr.aws/localstack/localstack@sha256:"
+      + "b279c01f4cfb8f985a482e4014cabc1e2697b9d7a6c8c8db2e40f4d9f93687c7";
+
   public void runTest(GenericContainer<?> container, String testFolder, String primaryInfo, TestEnvironmentConfiguration config)
       throws IOException, InterruptedException {
     System.out.println("==== Container console feed ==== >>>>");
@@ -71,8 +76,10 @@ public class ContainerHelper {
 
     String reportSetting = String.format(
         "--html=./tests/integration/container/reports/%s.html", primaryInfo);
+    String junitReportSetting = String.format(
+        "--junitxml=./tests/integration/container/reports/%s.xml", primaryInfo);
     Long exitCode = execInContainer(container, consumer,
-        "poetry", "run", "pytest", "-vvvvv", reportSetting, "-k", config.testFilter,
+        "poetry", "run", "pytest", "-vvvvv", reportSetting, junitReportSetting, "-k", config.testFilter,
         "--timeout=600", "--tb=long", "--timeout-method=thread", "-p", "no:logging",
         "--capture=tee-sys",testFolder);
 
@@ -324,14 +331,37 @@ public class ContainerHelper {
   }
 
   public PostgreSQLContainer<?> createPostgresContainer(
-      Network network, String networkAlias, String testDbName, String username, String password) {
+      Network network,
+      String networkAlias,
+      String testDbName,
+      String username,
+      String password,
+      boolean logStatements) {
 
-    return new PostgreSQLContainer<>(POSTGRES_CONTAINER_IMAGE_NAME)
+    final PostgreSQLContainer<?> container = new PostgreSQLContainer<>(POSTGRES_CONTAINER_IMAGE_NAME)
         .withNetwork(network)
         .withNetworkAliases(networkAlias)
         .withDatabaseName(testDbName)
         .withUsername(username)
         .withPassword(password);
+    if (logStatements) {
+      // The logging collector writes the server log to a file that tests read over SQL. It also takes the
+      // "ready to accept connections" lines that the default wait strategy reads from the container output,
+      // so wait until the server accepts TCP connections; the server that initializes the database accepts none.
+      container
+          .withCommand("postgres", "-c", "fsync=off", "-c", "logging_collector=on", "-c", "log_statement=all")
+          .waitingFor(Wait.forSuccessfulCommand("pg_isready -h 127.0.0.1 -p 5432"));
+    }
+    return container;
+  }
+
+  // No exposed port: only containers on the test network reach LocalStack.
+  public GenericContainer<?> createLocalStackContainer(Network network, String networkAlias) {
+    return new GenericContainer<>(DockerImageName.parse(LOCALSTACK_IMAGE))
+        .withNetwork(network)
+        .withNetworkAliases(networkAlias)
+        .withEnv("SERVICES", "kms")
+        .waitingFor(Wait.forLogMessage(".*Ready\\.\\s*", 1));
   }
 
   public ToxiproxyContainer createAndStartProxyContainer(

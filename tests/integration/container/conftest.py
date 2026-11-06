@@ -44,6 +44,7 @@ from typing import List
 import boto3
 import pytest
 
+from .utils import kms_encryption_helper
 from .utils.connection_utils import ConnectionUtils
 from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.proxy_helper import ProxyHelper
@@ -98,6 +99,7 @@ def pytest_runtest_setup(item):
         test_name = item.callspec.id
     else:
         TestEnvironment.get_current().set_current_driver(None)
+        test_name = item.name
 
     logger.info("Starting test preparation for: " + test_name)
 
@@ -192,13 +194,26 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("test_driver", allowed_drivers)
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "kms_encryption: a KMS Encryption Plugin test")
+    # Makes the KMS fixtures available to every module.
+    config.pluginmanager.register(kms_encryption_helper, "kms_encryption_helper")
+
+
 def pytest_collection_modifyitems(config, items):
     features = TestEnvironment.get_current().get_features()
     skip_async_files = TestEnvironmentFeatures.SKIP_ASYNC_DRIVER_TESTS in features
     async_file_skip = pytest.mark.skip(
         reason="async test excluded by SKIP_ASYNC_DRIVER_TESTS env feature")
+    kms_only = TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY in features
+    not_kms_skip = pytest.mark.skip(
+        reason="not a kms_encryption test, excluded by RUN_KMS_ENCRYPTION_TESTS_ONLY env feature")
 
     for item in items:
+        if kms_only and item.get_closest_marker("kms_encryption") is None:
+            item.add_marker(not_kms_skip)
+            continue
+
         is_async_file = "_async.py" in str(item.fspath)
 
         # (1) Legacy guard: when async drivers are disabled entirely, skip every

@@ -434,6 +434,55 @@ tasks.register<Test>("test-autoscaling") {
     }
 }
 
+val kmsCommon = mapOf(
+    "test-kms-encryption" to "true",
+    "exclude-multi-az-cluster" to "true",
+    "exclude-multi-az-instance" to "true",
+    "exclude-bg" to "true",
+    "exclude-performance" to "true",
+    "exclude-async-drivers" to "true",
+    "exclude-traces-telemetry" to "true",
+    "exclude-metrics-telemetry" to "true",
+    "exclude-python-3-10" to "true",
+    "exclude-python-3-11" to "true",
+    "exclude-python-3-13" to "true",
+    "exclude-python-3-14" to "true",
+)
+
+tasks.register<Test>("test-kms-encryption-docker") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        kmsCommon.forEach { (k, v) -> systemProperty(k, v) }
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-secrets-manager", "true")
+    }
+}
+
+tasks.register<Test>("test-kms-encryption-docker-kms") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        kmsCommon.forEach { (k, v) -> systemProperty(k, v) }
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-kms-localstack", "true")
+    }
+}
+
+tasks.register<Test>("test-kms-encryption-aurora") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        kmsCommon.forEach { (k, v) -> systemProperty(k, v) }
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-kms-localstack", "true")
+        systemProperty("exclude-instances-1", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+    }
+}
+
 tasks.register<Test>("test-pg-aurora-performance") {
     group = "verification"
     filter.includeTestsMatching("integration.host.TestRunner.runTests")

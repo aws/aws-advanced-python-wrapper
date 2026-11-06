@@ -1,0 +1,27 @@
+# The compose lane of the KMS encryption tests: the harness's database images and server flags, and LocalStack's KMS.
+# Every port is published on 127.0.0.1 only, and the credentials come from variables; run it through run.sh.
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres:latest
+    environment:
+      POSTGRES_USER: ${DB_USER:?export DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?export DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:?export DB_NAME}
+    command: ["postgres", "-c", "fsync=off", "-c", "logging_collector=on", "-c", "log_statement=all"]
+    ports: ["127.0.0.1:${PG_PORT:-59210}:5432"]
+  mysql:
+    image: public.ecr.aws/docker/library/mysql:lts
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?export DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:?export DB_NAME}
+      MYSQL_USER: ${DB_USER:?export DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?export DB_PASSWORD}
+    command: ["--local_infile=1", "--max_allowed_packet=40M", "--max-connections=2048",
+              "--log_bin_trust_function_creators=1", "--character-set-server=utf8mb4",
+              "--collation-server=utf8mb4_0900_as_cs", "--log-error-verbosity=3"]
+    ports: ["127.0.0.1:${MYSQL_PORT:-59211}:3306"]
+  localstack:
+    image: public.ecr.aws/localstack/localstack:3@sha256:b279c01f4cfb8f985a482e4014cabc1e2697b9d7a6c8c8db2e40f4d9f93687c7
+    environment:
+      SERVICES: kms
+    ports: ["127.0.0.1:${KMS_PORT:-59212}:4566"]

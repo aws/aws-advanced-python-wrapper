@@ -66,7 +66,10 @@ unset FILTER  # Done testing the IAM tests, unset FILTER
 
 ## Running async integration tests
 
-The wrapper ships async counterparts to every sync integration test file. Async tests exercise `AsyncAwsWrapperConnection` (raw) and `create_async_engine` with the wrapper's dialects (`postgresql+aws_wrapper_psycopg` — shared with sync via `get_async_dialect_cls`; `mysql+aws_wrapper_aiomysql`). They are invoked via dedicated Gradle tasks, independent of the sync tasks:
+The wrapper ships an async counterpart for each sync test file at the top level of `tests/integration/container`, except the KMS Encryption Plugin's files, because the plugin is sync only.
+The `sqlalchemy/` and `django/` folders have no async counterparts.
+Async tests exercise `AsyncAwsWrapperConnection` (raw) and `create_async_engine` with the wrapper's dialects: `postgresql+aws_wrapper_psycopg`, shared with sync through `get_async_dialect_cls`, and `mysql+aws_wrapper_aiomysql`.
+They run through their own Gradle tasks, separate from the sync tasks:
 
 | Deployment | Engine | Sync task | Async task |
 |---|---|---|---|
@@ -84,6 +87,29 @@ Async tests do not introduce any new pytest dependencies — they follow the rep
 1. **Security-group allowlist is not managed automatically when `REUSE_RDS_DB=true`.** The harness skips IP authorization in reuse mode. Ensure the test runner's outbound IP is already in the target cluster's security group(s) before invoking any Gradle task; the first failure mode otherwise is connection refused / network unreachable.
 2. **Cold-start latency.** Serverless v2 can take 30–60 seconds to scale from 0 ACUs on the first connection. Warm the cluster with a trivial query (`SELECT 1`) before running timing-sensitive tests so that warmup cost isn't charged against a test's 600-second timeout.
 3. **Topology-gated tests skip environmentally.** Multi-instance tests (failover, some read/write splitting assertions) need ≥2 instances to execute; they skip on single-writer topologies. Blue/Green and Global Database tests require specific engine versions / cluster configurations. Tests skipped under these conditions are environmental, not regressions — they are equivalent to the sync suite's existing behavior under the same cluster topology.
+
+## Running the KMS encryption tests
+
+The KMS Encryption Plugin's tests are the `test_kms_encryption_*.py` files in `tests/integration/container`, plus `sqlalchemy/test_sqlalchemy_kms_encryption.py` and `django/test_django_kms_encryption.py`.
+Each environment has its own Gradle task.
+
+| Task | Databases | KMS | AWS credentials |
+|---|---|---|---|
+| `test-kms-encryption-docker` | Docker | LocalStack | None |
+| `test-kms-encryption-docker-kms` | Docker | A real key | Limited to the test key |
+| `test-kms-encryption-aurora` | Aurora | A real key | As for the Aurora tasks |
+
+The LocalStack task runs every module except `test_kms_encryption_real_kms.py`, which runs only on the real-key Docker task, and `test_kms_encryption_aurora.py`, which runs only on the Aurora task.
+The LocalStack task needs no AWS account.
+The harness gives the test container dummy credentials and passes LocalStack's address to the tests as `KMS_ENDPOINT_URL`.
+The KMS tests skip outside these tasks, and fail inside them when the endpoint or the key is missing.
+The real-key tasks read the key ARN from `KMS_KEY_ARN`, its region from `KMS_REGION`, and the ARN of a role that may only decrypt from `KMS_DECRYPT_ONLY_ROLE_ARN`.
+Use full key ARNs, not aliases.
+The tests create keys only in LocalStack, so an administrator creates the real test key, once.
+A key costs $1 a month, and a key scheduled for deletion waits 7 to 30 days before AWS deletes it.
+Give the test credentials only `kms:GenerateDataKey`, `kms:Decrypt` and `kms:DescribeKey` on the test key, and `sts:AssumeRole` on the decrypt-only role.
+Reports keep failure output, which can include the database password, so use throwaway database passwords and keep reports private.
+To run the same tests against local servers and LocalStack without the harness, use `tests/integration/kms_local/run.sh`.
 
 ## Debugging Aurora Integration Tests - Pycharm
 
@@ -144,12 +170,14 @@ Async tests do not introduce any new pytest dependencies — they follow the rep
 | `RDS_DB_NAME`             | Yes      | The database identifier for your Aurora or RDS cluster. Must be a unique value to avoid conflicting with existing clusters.                                                                                      | `db-identifier`                              |
 | `RDS_DB_DOMAIN`           | No       | The existing database connection suffix. Use this variable to run against an existing database.                                                                                                                  | `XYZ.us-east-2.rds.amazonaws.com`            |
 | `IAM_USER`                | No       | User within the database that is identified with AWSAuthenticationPlugin. This is used for AWS IAM Authentication and is optional                                                                                | `example_user_name`                          |
-| `AWS_ACCESS_KEY_ID`       | Yes      | An AWS access key associated with an IAM user or role with RDS permissions.                                                                                                                                      | `ASIAIOSFODNN7EXAMPLE`                       |
-| `AWS_SECRET_ACCESS_KEY`   | Yes      | The secret key associated with the provided AWS_ACCESS_KEY_ID.                                                                                                                                                   | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`   |
+| `AWS_ACCESS_KEY_ID`       | Aurora and RDS only | An AWS access key associated with an IAM user or role with RDS permissions.                                                                                                                                      | `ASIAIOSFODNN7EXAMPLE`                       |
+| `AWS_SECRET_ACCESS_KEY`   | Aurora and RDS only | The secret key associated with the provided AWS_ACCESS_KEY_ID.                                                                                                                                                   | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`   |
 | `AWS_SESSION_TOKEN`       | No       | AWS Session Token for CLI, SDK, & API access. This value is for MFA credentials only. See: [temporary AWS credentials](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html). | `AQoDYXdzEJr...<remainder of session token>` |                                          |
 | `REUSE_RDS_DB`            | Yes      | Set to true if you would like to use an existing cluster for your tests.                                                                                                                                         | `false`                                      |
 | `RDS_DB_REGION`           | Yes      | The database region.                                                                                                                                                                                             | `us-east-2`                                  |
 | `DEBUG_ENV`               | No       | The IDE you will be using to debug the tests, values are either `PYCHARM` or `VSCODE`                                                                                                                            | `PYCHARM`                                    |
+
+Docker tasks don't read the AWS credential variables, except the KMS task that uses a real key (see [Running the KMS encryption tests](#running-the-kms-encryption-tests)).
 
 ## Managing Environment Variables
 
@@ -236,6 +264,6 @@ can also be useful.
 
 ## Viewing test results
 
-The test results can be viewed in the test report generated at
-`tests/integration/container/reports/integration_tests.html`. The logs can be viewed from the console where you executed
-the tests or by clicking `show details` on a given test in the test report.
+Each run writes its test report to `tests/integration/container/reports/<environment>.html`, with a JUnit XML report, `<environment>.xml`, beside it.
+`<environment>` names the deployment, the engine, the number of instances and the Python version.
+The logs are in the console where you ran the tests, and under `show details` for each test in the report.
