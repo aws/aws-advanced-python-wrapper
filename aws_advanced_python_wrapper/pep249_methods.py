@@ -61,19 +61,20 @@ class DbApiMethod(Enum):
     CURSOR_CONNECTION = (28, "Cursor.connection", False)
     CURSOR_ROWNUMBER = (29, "Cursor.rownumber", False)
     CURSOR_NEXT = (30, "Cursor.__next__", False)
-    CURSOR_LASTROWID = (31, "Cursor.lastrowid", False)
+    CURSOR_ITER = (31, "Cursor.__iter__", False)
+    CURSOR_LASTROWID = (32, "Cursor.lastrowid", False)
 
     # AWS Advanced Python Wrapper Methods for the execution pipelines.
-    CONNECT = (32, "connect", True)
-    FORCE_CONNECT = (33, "force_connect", True)
-    INIT_HOST_PROVIDER = (34, "init_host_provider", True)
-    NOTIFY_CONNECTION_CHANGED = (35, "notify_connection_changed", True)
-    NOTIFY_HOST_LIST_CHANGED = (36, "notify_host_list_changed", True)
-    GET_HOST_INFO_BY_STRATEGY = (37, "get_host_info_by_strategy", True)
-    ACCEPTS_STRATEGY = (38, "accepts_strategy", True)
+    CONNECT = (33, "connect", True)
+    FORCE_CONNECT = (34, "force_connect", True)
+    INIT_HOST_PROVIDER = (35, "init_host_provider", True)
+    NOTIFY_CONNECTION_CHANGED = (36, "notify_connection_changed", True)
+    NOTIFY_HOST_LIST_CHANGED = (37, "notify_host_list_changed", True)
+    GET_HOST_INFO_BY_STRATEGY = (38, "get_host_info_by_strategy", True)
+    ACCEPTS_STRATEGY = (39, "accepts_strategy", True)
 
     # Special marker for all methods
-    ALL = (39, "*", False)
+    ALL = (40, "*", False)
 
     def __init__(self, id: int, method_name: str, always_use_pipeline: bool):
         self.id = id

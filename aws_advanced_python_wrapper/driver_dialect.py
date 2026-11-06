@@ -131,7 +131,9 @@ class DriverDialect(ABC):
             exec_timeout: Optional[float] = None,
             conn: Optional[Connection] = None,
             **kwargs: Any) -> Cursor:
-        if DbApiMethod.ALL.method_name not in self.network_bound_methods and method_name not in self.network_bound_methods:
+        # Cursor.__iter__ only creates the driver's iterator; the rows are fetched outside this call.
+        if method_name == DbApiMethod.CURSOR_ITER.method_name or (
+                DbApiMethod.ALL.method_name not in self.network_bound_methods and method_name not in self.network_bound_methods):
             return exec_func()
 
         if exec_timeout is None:

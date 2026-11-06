@@ -12,11 +12,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import threading
+
 import pytest
 import sqlalchemy
 
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
 from aws_advanced_python_wrapper.sqlalchemy_driver_dialect import \
     SqlAlchemyDriverDialect
 from aws_advanced_python_wrapper.utils.properties import Properties
@@ -117,3 +121,26 @@ def test_transfer_session_states_with_null_connection(underlying_dialect, sqlalc
     sqlalchemy_dialect = SqlAlchemyDriverDialect(underlying_dialect, Properties())
     with pytest.raises(AwsWrapperError):
         sqlalchemy_dialect.set_read_only(sqlalchemy_mock_conn, False)
+
+
+def test_loop_start_runs_on_the_calling_thread_with_socket_timeout(sqlalchemy_mock_conn):
+    props = Properties({"socket_timeout": "5"})
+    sqlalchemy_dialect = SqlAlchemyDriverDialect(PgDriverDialect(props), props)
+    threads = []
+
+    sqlalchemy_dialect.execute(
+        DbApiMethod.CURSOR_ITER.method_name, lambda: threads.append(threading.current_thread()), conn=sqlalchemy_mock_conn)
+
+    assert threads == [threading.current_thread()]
+
+
+@pytest.mark.parametrize("method", [DbApiMethod.CURSOR_FETCHONE, DbApiMethod.CURSOR_NEXT], ids=["fetchone", "next"])
+def test_fetch_still_runs_on_the_timeout_worker_with_socket_timeout(method, sqlalchemy_mock_conn):
+    props = Properties({"socket_timeout": "5"})
+    sqlalchemy_dialect = SqlAlchemyDriverDialect(PgDriverDialect(props), props)
+    threads = []
+
+    sqlalchemy_dialect.execute(
+        method.method_name, lambda: threads.append(threading.current_thread()), conn=sqlalchemy_mock_conn)
+
+    assert len(threads) == 1 and threads[0] is not threading.current_thread()
