@@ -25,21 +25,24 @@ timeouts, provider machinery, monitor) live in
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any, Optional, Tuple
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from aws_advanced_python_wrapper.aio.blue_green_plugin import (
     AsyncBlueGreenPlugin, AsyncBlueGreenStatusProvider, BlueGreenPhase,
     BlueGreenRole, BlueGreenStatus, ConnectRouting, PassThroughConnectRouting,
-    RejectConnectRouting, SubstituteConnectRouting)
+    RejectConnectRouting, SubstituteConnectRouting,
+    SuspendUntilCorrespondingHostFoundConnectRouting)
 from aws_advanced_python_wrapper.aio.plugin_factory import PLUGIN_FACTORIES
 from aws_advanced_python_wrapper.database_dialect import BlueGreenDialect
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
-from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 
 
 @pytest.fixture(autouse=True)
@@ -299,12 +302,61 @@ def test_execute_passes_through_when_host_not_in_bg():
     execute_func.assert_awaited_once()
 
 
-def test_substitute_connect_routing_is_match_by_url():
-    """Endpoint matching mirrors sync BaseRouting.is_match (host_info.url)."""
+def test_substitute_connect_routing_is_match_by_host_and_port():
+    """An endpoint of host and port matches the host with that name and port, and not another host."""
     routing = SubstituteConnectRouting(
-        HostInfo("10.0.0.1", 5432), "h:5432/", BlueGreenRole.SOURCE)
+        HostInfo("10.0.0.1", 5432), "h:5432", BlueGreenRole.SOURCE)
     assert routing.is_match(HostInfo("h", 5432), BlueGreenRole.SOURCE) is True
     assert routing.is_match(HostInfo("other", 5432), BlueGreenRole.SOURCE) is False
+
+
+@pytest.mark.parametrize("plugin_code", ["federated_auth", "okta"])
+def test_substitute_connect_routing_to_an_ip_sets_the_iam_host_for_federated_and_okta_auth(plugin_code):
+    """The ADFS and Okta plugins get an IAM token for the host they connect to and reject an IP, so a connect
+    substituted by an IP sets the IAM host for them as it does for the IAM plugin."""
+    plugin = MagicMock()
+    plugin.plugin_service.connect = AsyncMock()
+    routing = SubstituteConnectRouting(
+        HostInfo("10.0.0.1", 5432), "h:5432", BlueGreenRole.SOURCE, (HostInfo("h-green", 5432),))
+
+    _run(routing.apply(
+        plugin, HostInfo("h", 5432), Properties({"plugins": f"bg,{plugin_code}"}), True, AsyncMock()))
+
+    rerouted_props = plugin.plugin_service.connect.call_args.args[1]
+    assert WrapperProperties.IAM_HOST.get(rerouted_props) == "h-green"
+
+
+def _corresponding_hosts() -> ConcurrentDict[str, Tuple[HostInfo, Optional[HostInfo]]]:
+    corresponding_hosts: ConcurrentDict[str, Tuple[HostInfo, Optional[HostInfo]]] = ConcurrentDict()
+    corresponding_hosts.put_all({"h": (HostInfo("h", 5432), HostInfo("h-green", 5432))})
+    return corresponding_hosts
+
+
+def test_suspend_until_corresponding_host_found_does_not_wait_for_a_known_host_given_in_upper_case():
+    """The corresponding hosts are keyed by lower-case host name, so a host given in upper case whose
+    corresponding host is already known continues at once."""
+    plugin = MagicMock()
+    plugin.plugin_service.get_status.return_value = BlueGreenStatus(
+        "1", BlueGreenPhase.POST, corresponding_hosts=_corresponding_hosts())
+    props = Properties({WrapperProperties.BG_CONNECT_TIMEOUT_MS.name: 500})
+    routing = SuspendUntilCorrespondingHostFoundConnectRouting("h:5432", BlueGreenRole.SOURCE, "1")
+
+    with patch.object(routing, "delay", wraps=routing.delay) as delay:
+        assert _run(routing.apply(plugin, HostInfo("H", 5432), props, True, AsyncMock())) is None
+    delay.assert_not_called()
+
+
+def test_suspend_until_corresponding_host_found_continues_when_a_host_given_in_upper_case_is_found():
+    """A host given in upper case continues once a later status has its corresponding host, instead of waiting
+    out bg_connect_timeout_ms."""
+    found = BlueGreenStatus("1", BlueGreenPhase.POST, corresponding_hosts=_corresponding_hosts())
+    statuses = iter([BlueGreenStatus("1", BlueGreenPhase.POST)])
+    plugin = MagicMock()
+    plugin.plugin_service.get_status.side_effect = lambda *args: next(statuses, found)
+    props = Properties({WrapperProperties.BG_CONNECT_TIMEOUT_MS.name: 500})
+    routing = SuspendUntilCorrespondingHostFoundConnectRouting("h:5432", BlueGreenRole.SOURCE, "1")
+
+    assert _run(routing.apply(plugin, HostInfo("H", 5432), props, True, AsyncMock())) is None
 
 
 def test_factory_produces_async_blue_green_plugin():

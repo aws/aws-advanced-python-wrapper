@@ -169,7 +169,6 @@ def _post() -> BlueGreenStatus:
 
 
 @pytest.mark.timeout(20)
-@pytest.mark.xfail(strict=True, reason="#1352: C1 sync execute keeps spinning on the IN_PROGRESS routing after the phase moves on")
 def test_suspended_execute_returns_after_switchover_moves_past_in_progress():
     """An execute suspended during IN_PROGRESS runs and returns its result soon after the status moves to POST."""
     published: List[Any] = [_in_progress()]
@@ -184,7 +183,6 @@ def test_suspended_execute_returns_after_switchover_moves_past_in_progress():
 
 
 @pytest.mark.timeout(20)
-@pytest.mark.xfail(strict=True, reason="#1352: C2 sync connect keeps spinning on the IN_PROGRESS routing after the phase moves on")
 def test_suspended_connect_ends_after_switchover_moves_past_in_progress():
     """A connect to a green host suspended during IN_PROGRESS fails with the reject routing's error soon after the
     status moves to POST, which rejects new connections to green hosts."""
@@ -212,7 +210,6 @@ def test_suspended_connect_ends_after_switchover_moves_past_in_progress():
 
 
 @pytest.mark.timeout(20)
-@pytest.mark.xfail(strict=True, reason="#1352: C3 bg_connect_timeout_ms doesn't bound the sync execute loop")
 def test_suspended_execute_with_short_connect_timeout_ends_after_switchover():
     """With bg_connect_timeout_ms=500, an execute suspended during IN_PROGRESS returns its result or raises a
     timeout error within 3 s of the status moving to POST, long after that timeout has passed."""

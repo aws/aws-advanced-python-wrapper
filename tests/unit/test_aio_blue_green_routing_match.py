@@ -52,7 +52,6 @@ def no_status_monitors(monkeypatch):
     AsyncBlueGreenPlugin._reset_for_tests()
 
 
-@pytest.mark.xfail(strict=True, reason="#1352: C6 async routings never match the host, host:port, ip or ip:port they name")
 def test_async_routings_match_the_endpoints_the_status_provider_builds():
     """Each async routing built with an endpoint of the form the status provider uses matches a host with that
     name and port, so the routing applies to connections and calls on that host."""
@@ -95,7 +94,6 @@ def test_async_routings_do_not_match_another_host_port_or_role():
 # If a routing returns no connection, the connect loop tries again for as long as the status stays the same,
 # which here is for ever; the timeout ends such a call.
 @pytest.mark.timeout(20)
-@pytest.mark.xfail(strict=True, reason="#1352: C6 async connect during POST goes to the blue name, not the green IP")
 def test_async_connect_during_post_goes_to_the_green_ip():
     """During POST, a new async connection to the blue host and port is opened to the green host's IP address that
     the substitute routing names, instead of to the blue name, which DNS may still resolve to blue."""

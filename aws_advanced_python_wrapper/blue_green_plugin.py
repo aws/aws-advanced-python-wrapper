@@ -39,9 +39,11 @@ from typing import Any, Callable, ClassVar, Dict, Optional, Set, Tuple
 
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 UnsupportedOperationError)
+from aws_advanced_python_wrapper.federated_plugin import FederatedAuthPlugin
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.iam_plugin import IamAuthPlugin
+from aws_advanced_python_wrapper.okta_plugin import OktaAuthPlugin
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils import services_container
@@ -315,7 +317,7 @@ class BaseRouting:
         if host_info is None:
             return False
 
-        return self._endpoint == host_info.url.lower() and (self._bg_role is None or self._bg_role == bg_role)
+        return self._endpoint == host_info.get_host_and_port().lower() and (self._bg_role is None or self._bg_role == bg_role)
 
     def __str__(self):
         endpoint_str = "None" if self._endpoint is None else f"'{self._endpoint}'"
@@ -390,7 +392,7 @@ class SubstituteConnectRouting(BaseRouting, ConnectRouting):
         if not SubstituteConnectRouting._rds_utils.is_ip(self._substitute_host_info.host):
             return plugin_service.connect(self._substitute_host_info, props, plugin)
 
-        is_iam_in_use = plugin_service.is_plugin_in_use(IamAuthPlugin)
+        is_iam_in_use = any(plugin_service.is_plugin_in_use(p) for p in (IamAuthPlugin, FederatedAuthPlugin, OktaAuthPlugin))
         if not is_iam_in_use:
             return plugin_service.connect(self._substitute_host_info, props, plugin)
 
@@ -507,7 +509,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
             SuspendUntilCorrespondingHostFoundConnectRouting._TELEMETRY_SWITCHOVER, TelemetryTraceLevel.NESTED)
 
         bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
-        corresponding_pair = None if bg_status is None else bg_status.corresponding_hosts.get(host_info.host)
+        corresponding_pair = None if bg_status is None else bg_status.corresponding_hosts.get(host_info.host.lower())
 
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
         start_time_sec = time.time()
@@ -522,7 +524,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
                 self.delay(
                     SuspendUntilCorrespondingHostFoundConnectRouting._SLEEP_TIME_MS, bg_status, plugin_service, self._bg_id)
                 bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
-                corresponding_pair = None if bg_status is None else bg_status.corresponding_hosts.get(host_info.host)
+                corresponding_pair = None if bg_status is None else bg_status.corresponding_hosts.get(host_info.host.lower())
 
             if bg_status is None or bg_status.phase == BlueGreenPhase.COMPLETED:
                 logger.debug(
@@ -684,13 +686,21 @@ class BlueGreenPlugin(Plugin):
                 if conn is not None:
                     break
 
+                # Re-select against the LATEST published status: a suspend/wait
+                # routing returns None once switchover moves past its phase, so
+                # the current routing table (not the stale captured one) decides
+                # what happens next. Falls through to connect_func when the
+                # latest status no longer matches.
                 latest_status = self._plugin_service.get_status(BlueGreenStatus, self._bg_id)
                 if latest_status is None:
                     self._end_time_ns.set(perf_counter_ns())
                     return self._open_direct_connection(connect_func, is_initial_connection)
 
-                routing = \
-                    next((r for r in self._bg_status.connect_routings if r.is_match(host_info, bg_role)), None)
+                self._bg_status = latest_status
+                bg_role = latest_status.get_role(host_info)
+                if bg_role is None:
+                    break
+                routing = next((r for r in latest_status.connect_routings if r.is_match(host_info, bg_role)), None)
 
             self._end_time_ns.set(perf_counter_ns())
             if conn is None:
@@ -761,8 +771,11 @@ class BlueGreenPlugin(Plugin):
                     self._end_time_ns.set(perf_counter_ns())
                     return execute_func()
 
-                routing = \
-                    next((r for r in self._bg_status.execute_routings if r.is_match(host_info, bg_role)), None)
+                self._bg_status = latest_status
+                bg_role = None if host_info is None else latest_status.get_role(host_info)
+                if bg_role is None:
+                    break
+                routing = next((r for r in latest_status.execute_routings if r.is_match(host_info, bg_role)), None)
 
             self._end_time_ns.set(perf_counter_ns())
             if result_container.is_present():
