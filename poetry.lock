@@ -3184,14 +3184,14 @@ requests = "*"
 
 [[package]]
 name = "types-aws-xray-sdk"
-version = "2.15.0.20260518"
+version = "2.16.0.20261104"
 description = "Typing stubs for aws-xray-sdk"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "types_aws_xray_sdk-2.15.0.20260518-py3-none-any.whl", hash = "sha256:919cb882fe4b65e3261838d05431ce60be6b245b76b30588aff940ee1a7ef492"},
-    {file = "types_aws_xray_sdk-2.15.0.20260518.tar.gz", hash = "sha256:cab6bb8cf1169bd0cb4fb80e6ab4f04a4335268f087d3284e521cc0085209022"},
+    {file = "types_aws_xray_sdk-2.16.0.20261104-py3-none-any.whl", hash = "sha256:b3b2c26d42d009e4bcb7fc2bd190f7fd50eb248538fce9d6725dc97b36715d0c"},
+    {file = "types_aws_xray_sdk-2.16.0.20261104.tar.gz", hash = "sha256:956606f860efb67a0436237b60cb8a99be4f080b7b730d277393975960083515"},
 ]
 
 [[package]]
