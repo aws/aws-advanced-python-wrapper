@@ -299,12 +299,17 @@ def test_execute_passes_through_when_host_not_in_bg():
     execute_func.assert_awaited_once()
 
 
-def test_substitute_connect_routing_is_match_by_url():
-    """Endpoint matching mirrors sync BaseRouting.is_match (host_info.url)."""
+def test_substitute_connect_routing_is_match_by_host_and_port():
+    """Endpoint matching mirrors sync BaseRouting.is_match: routing endpoints
+    are "host" or "host:port", compared against host_info.get_host_and_port()."""
     routing = SubstituteConnectRouting(
-        HostInfo("10.0.0.1", 5432), "h:5432/", BlueGreenRole.SOURCE)
+        HostInfo("10.0.0.1", 5432), "h:5432", BlueGreenRole.SOURCE)
     assert routing.is_match(HostInfo("h", 5432), BlueGreenRole.SOURCE) is True
     assert routing.is_match(HostInfo("other", 5432), BlueGreenRole.SOURCE) is False
+
+    host_only = SubstituteConnectRouting(
+        HostInfo("10.0.0.1", 5432), "h", BlueGreenRole.SOURCE)
+    assert host_only.is_match(HostInfo("h"), BlueGreenRole.SOURCE) is True
 
 
 def test_factory_produces_async_blue_green_plugin():
