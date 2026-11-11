@@ -355,6 +355,19 @@ class WrapperProperties:
         5_000,
     )
 
+    # ConnectionLifetimePlugin
+    CONNECTION_LIFETIME_MS = WrapperProperty(
+        "connection_lifetime_ms",
+        """Maximum lifetime of a physical connection, in milliseconds. Required by the connection_lifetime
+        plugin, and must be at least 1.""",
+    )
+    CONNECTION_LIFETIME_ACTION = WrapperProperty(
+        "connection_lifetime_action",
+        """Action to take once a physical connection reaches its configured lifetime. Supported values are
+        'close' and 'reconnect'.""",
+        "reconnect",
+    )
+
     # Host Availability Strategy
     DEFAULT_HOST_AVAILABILITY_STRATEGY = WrapperProperty(
         "default_host_availability_strategy",

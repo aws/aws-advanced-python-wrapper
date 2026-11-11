@@ -16,6 +16,12 @@ a chain you haven't used before.
 |---------------------|-----------------------------------|-----|
 | `read_write_splitting` | `failover_v2` (not `failover`) | `failover_v2` starts the cluster topology monitor on the **initial** connect. With plain `failover`, the host list stays at `{writer-only}` until a later failover signal fires, and `conn.read_only = True` flips silently fall back to the writer rather than splitting to a reader. |
 
+## Host-selection interactions
+
+| Plugin                | Interacts with                                  | Why |
+|-----------------------|-------------------------------------------------|-----|
+| `connection_lifetime` | `read_write_splitting`, `srw`, `gdb_rw`, `failover`, `failover_v2` | With `connection_lifetime_action=reconnect` the replacement connection always goes to the host the application originally supplied, never to the reader a splitting plugin switched to or the writer a failover landed on. An expired reader connection therefore returns to the original endpoint. Use `connection_lifetime_action=close` if the application should pick its own host again. |
+
 ## Driver-specific incompatibilities
 
 | Plugin                       | Incompatible with                              | Why |

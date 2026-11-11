@@ -102,8 +102,12 @@ class AwsWrapperMySQLConnectorDialect(
         # through to upstream's e.errno probe and raised AttributeError out of
         # SA's unguarded is_disconnect call. See
         # sqlalchemy_dialects/_exception_handling.py.
-        from aws_advanced_python_wrapper.errors import (FailoverError,
-                                                        FailoverFailedError)
+        from aws_advanced_python_wrapper.errors import (
+            ConnectionLifetimeError, ConnectionLifetimeSuccessError,
+            FailoverError, FailoverFailedError)
+
+        if isinstance(e, ConnectionLifetimeError):
+            return not isinstance(e, ConnectionLifetimeSuccessError)
 
         # Catch the whole FailoverError family (FailoverSuccessError,
         # FailoverFailedError, AND TransactionResolutionUnknownError) before the

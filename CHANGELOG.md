@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### :magic_wand: Added
+* The `connection_lifetime` plugin, bounding how long a physical connection is used. Once `connection_lifetime_ms` has elapsed, the next network-bound call either closes the connection or reconnects through the host the application originally supplied, depending on `connection_lifetime_action`. Expiration is deferred while a transaction is open, and reports through `ConnectionLifetimeSuccessError`, `ConnectionLifetimeExpiredError` or `ConnectionLifetimeFailedError` so a connection pool can tell a usable connection from a dead one. Available in both the synchronous and asynchronous wrapper. See [Connection Lifetime Plugin](./docs/using-the-python-wrapper/using-plugins/UsingTheConnectionLifetimePlugin.md).
 * The `failover` and `failover_v2` plugins currently rewraps all errors to an AwsWrapperError even when the errors do not trigger failover. Set the `preserve_driver_exception_type` configuration parameter to `True` to re-raise the target driver errors as-is for the failover plugins. Failover errors are unaffected and are still raised as `FailoverSuccessError`, `FailoverFailedError` or `TransactionResolutionUnknownError`. This is useful for ORMs to properly classify the errors. ([Issue #1275](https://github.com/aws/aws-advanced-python-wrapper/issues/1275))
 
 ## [3.1.0] - 2026-08-24

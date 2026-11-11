@@ -182,6 +182,7 @@ Plugins are configured identically to non-SA usage — via the `plugins` connect
 | [Fastest Response Strategy Plugin](using-plugins/UsingTheFastestResponseStrategyPlugin.md)    | `fastest_response_strategy`               | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Blue/Green Deployment Plugin](using-plugins/UsingTheBlueGreenPlugin.md)                      | `bg`                                      | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Limitless Plugin](using-plugins/UsingTheLimitlessPlugin.md)                                  | `limitless`                               | <span style="color:yellow;font-size:15px">&check;</span> |
+| [Connection Lifetime Plugin](using-plugins/UsingTheConnectionLifetimePlugin.md)                | `connection_lifetime`                     | <span style="color:yellow;font-size:15px">&check;</span> |
 | [Read Write Splitting Plugin](using-plugins/UsingTheReadWriteSplittingPlugin.md)              | `read_write_splitting`                    | <span style="color:red;font-size:20px">&cross;</span> |
 | [Simple Read Write Splitting Plugin](using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md) | `srw`                                     | <span style="color:red;font-size:20px">&cross;</span> |
 
