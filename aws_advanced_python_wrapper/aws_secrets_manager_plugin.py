@@ -14,11 +14,13 @@
 
 from __future__ import annotations
 
+import logging
+import threading
 from datetime import timedelta
 from json import JSONDecodeError, loads
 from re import search
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Callable, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Optional, Set, Tuple
 
 from botocore.exceptions import ClientError, EndpointConnectionError
 
@@ -45,6 +47,22 @@ from aws_advanced_python_wrapper.utils.telemetry.telemetry import \
     TelemetryTraceLevel
 
 logger = Logger(__name__)
+_secret_fetch = threading.local()
+
+
+def _outside_secret_fetch(record: logging.LogRecord) -> bool:
+    return not getattr(_secret_fetch, "active", False)
+
+
+def _get_secret_value(client: Any, secret_id: str) -> Any:
+    # botocore.parsers logs every response body at DEBUG, and this one holds the secret.
+    # The filter stays on the logger: addFilter skips a repeat, and removing it could race another thread's fetch.
+    logging.getLogger("botocore.parsers").addFilter(_outside_secret_fetch)
+    _secret_fetch.active = True
+    try:
+        return client.get_secret_value(SecretId=secret_id)
+    finally:
+        _secret_fetch.active = False
 
 
 class Secret:
@@ -200,9 +218,7 @@ class AwsSecretsManagerPlugin(Plugin):
         session = AwsCredentialsManager.get_session(host_info, props, self._secret_key[1])
         client = AwsCredentialsManager.get_client("secretsmanager", session, host_info.host, self._secret_key[1], self._secret_key[2])
 
-        secret = client.get_secret_value(
-            SecretId=self._secret_key[0],
-        )
+        secret = _get_secret_value(client, self._secret_key[0])
 
         return loads(secret.get("SecretString"), object_hook=lambda d: SimpleNamespace(**d))
 

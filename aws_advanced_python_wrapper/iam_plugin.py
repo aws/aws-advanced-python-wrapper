@@ -109,7 +109,7 @@ class IamAuthPlugin(Plugin):
         token_info = self._storage_service.get(TokenInfo, cache_key)
 
         if token_info is not None and not token_info.is_expired():
-            logger.debug("IamAuthPlugin.UseCachedIamToken", token_info.token)
+            logger.debug("IamAuthPlugin.UseCachedIamToken")
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
             token_expiry = datetime.now() + timedelta(seconds=token_expiration_sec)

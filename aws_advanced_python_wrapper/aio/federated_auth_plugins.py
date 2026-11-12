@@ -264,7 +264,7 @@ class AsyncFederatedAuthPlugin(AsyncAuthPluginBase, _RdsTokenMixin):
         # 1. Token cache check before the expensive SAML round-trip.
         cached = await self._cached_rds_token(host, int(port), db_user, region)
         if cached is not None:
-            logger.debug("FederatedAuthPlugin.UseCachedToken", cached)
+            logger.debug("FederatedAuthPlugin.UseCachedToken")
             return db_user, cached, True
 
         # Cache miss -> generate a fresh RDS IAM token. Emit the counter here

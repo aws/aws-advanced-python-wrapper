@@ -116,7 +116,7 @@ class FederatedAuthPlugin(Plugin):
         token_host_info = deepcopy(host_info)
         token_host_info.host = host
         if token_info is not None and not token_info.is_expired():
-            logger.debug("FederatedAuthPlugin.UseCachedToken", token_info.token)
+            logger.debug("FederatedAuthPlugin.UseCachedToken")
             self._plugin_service.driver_dialect.set_password(props, token_info.token)
         else:
             self._update_authentication_token(token_host_info, props, user, region, cache_key, credentials)

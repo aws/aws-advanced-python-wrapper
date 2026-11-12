@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import traceback
+
 import pytest
 
 from aws_advanced_python_wrapper.errors import AwsWrapperError
@@ -196,3 +198,29 @@ def test_get_bool(expected, props):
     wrapper_prop = WrapperProperty("test_prop", "Test property")
     result = wrapper_prop.get_bool(props)
     assert result == expected
+
+
+def test_properties_repr_masks_secrets():
+    props = Properties({"user": "test-user", "password": "props-secret-pw", "ssl_key_passwd": "props-secret-passwd"})
+
+    for text in (repr(props), str(props), f"{props}"):
+        assert "props-secret-pw" not in text
+        assert "props-secret-passwd" not in text
+        assert "'user': 'test-user'" in text
+        assert "'password': '***'" in text
+    assert props["password"] == "props-secret-pw"
+    assert dict(props)["ssl_key_passwd"] == "props-secret-passwd"
+
+
+def test_traceback_locals_mask_properties_password():
+    def _connect(props: Properties) -> None:
+        raise ValueError("connect failed")
+
+    # Built outside the raising line, so the traceback's source lines don't quote the password.
+    props = Properties({"user": "test-user", "password": "props-secret-pw"})
+    with pytest.raises(ValueError) as e:
+        _connect(props)
+    text = "".join(traceback.TracebackException.from_exception(e.value, capture_locals=True).format())
+
+    assert "props = {'user': 'test-user', 'password': '***'}" in text
+    assert "props-secret-pw" not in text
