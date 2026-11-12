@@ -28,22 +28,28 @@ import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.iam.IamClient;
 import software.amazon.awssdk.services.kms.KmsClient;
+import software.amazon.awssdk.services.kms.model.AlreadyExistsException;
 import software.amazon.awssdk.services.kms.model.CreateKeyResponse;
+import software.amazon.awssdk.services.kms.model.KeyMetadata;
 import software.amazon.awssdk.services.kms.model.KeySpec;
+import software.amazon.awssdk.services.kms.model.KeyState;
 import software.amazon.awssdk.services.kms.model.KeyUsageType;
+import software.amazon.awssdk.services.kms.model.NotFoundException;
 import software.amazon.awssdk.services.kms.model.Tag;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.StsException;
 
 /**
- * Makes the KMS test resources for a real-key run that has no KMS_KEY_ARN: a key and, for the Docker task, a role
- * that may only decrypt with it. Removes them on {@link #close()}, which runs at the end of the JUnit run and from a
- * shutdown hook, and touches only what this instance made.
+ * Finds or makes the KMS test resources for a real-key run that has no KMS_KEY_ARN: the key that a KMS alias names,
+ * made together with the alias when the alias is missing and kept for later runs, and, for the Docker task, a role
+ * that may only decrypt with it. Removes the role on {@link #close()}, which runs at the end of the JUnit run and from
+ * a shutdown hook, and touches only what this instance made.
  */
 public class KmsTestUtility implements ExtensionContext.Store.CloseableResource {
 
   public static final String KEY_MARKER = "aws-advanced-python-wrapper test KMS key";
   public static final String ROLE_PREFIX = "aws-advanced-python-wrapper-test-decrypt-only-";
+  public static final String KEY_ALIAS = "alias/aws-advanced-python-wrapper/integration-tests";
 
   private static final Logger LOGGER = Logger.getLogger(KmsTestUtility.class.getName());
   private static final String TAG_KEY = "aws-advanced-python-wrapper";
@@ -57,6 +63,7 @@ public class KmsTestUtility implements ExtensionContext.Store.CloseableResource 
 
   private volatile String keyId;
   private volatile String keyArn;
+  private volatile String unnamedKeyId;
   private volatile String roleName;
   private volatile String roleArn;
   private volatile boolean rolePolicyPut;
@@ -70,12 +77,15 @@ public class KmsTestUtility implements ExtensionContext.Store.CloseableResource 
   }
 
   /**
-   * Makes a key tagged and described with {@link #KEY_MARKER} and, when asked, a role named with
-   * {@link #ROLE_PREFIX} that may only decrypt with it and that the caller can assume. A failure removes what was
-   * made before it is thrown.
+   * Uses the key that the alias names when it is enabled, a symmetric encryption key, and tagged and described with
+   * {@link #KEY_MARKER}, and refuses any other key; when the alias is missing, makes such a key and then the alias,
+   * and keeps both. When asked, also makes a role named with {@link #ROLE_PREFIX} that may only decrypt with the key
+   * and that the caller can assume. A failure removes the role, and a key made here that no alias names, before it
+   * is thrown.
    */
   public static KmsTestUtility create(
       String region,
+      String keyAlias,
       String awsAccessKeyId,
       String awsSecretAccessKey,
       String awsSessionToken,
@@ -108,16 +118,109 @@ public class KmsTestUtility implements ExtensionContext.Store.CloseableResource 
 
       Runtime.getRuntime().addShutdownHook(new Thread(utility::close));
 
-      step = "CreateKey";
-      final CreateKeyResponse key = utility.kmsClient.createKey(
-          builder -> builder
-              .keySpec(KeySpec.SYMMETRIC_DEFAULT)
-              .keyUsage(KeyUsageType.ENCRYPT_DECRYPT)
-              .description(KEY_MARKER + " made " + Instant.now())
-              .tags(Tag.builder().tagKey(TAG_KEY).tagValue(TAG_VALUE).build()));
-      utility.keyId = key.keyMetadata().keyId();
-      utility.keyArn = key.keyMetadata().arn();
-      LOGGER.finer("Made KMS test key " + utility.keyId + " in " + utility.getRegion());
+      step = "DescribeKey";
+      KeyMetadata found = utility.describeAlias(keyAlias);
+      if (found == null) {
+        // Under the lock close() takes, so a shutdown hook removes either nothing or a key that no alias names.
+        synchronized (utility) {
+          if (utility.closed) {
+            throw new RuntimeException("Cancelled before the KMS test key was made.");
+          }
+          step = "CreateKey";
+          final CreateKeyResponse key = utility.kmsClient.createKey(
+              builder -> builder
+                  .keySpec(KeySpec.SYMMETRIC_DEFAULT)
+                  .keyUsage(KeyUsageType.ENCRYPT_DECRYPT)
+                  .description(KEY_MARKER + " made " + Instant.now())
+                  .tags(Tag.builder().tagKey(TAG_KEY).tagValue(TAG_VALUE).build()));
+          final String newKeyId = key.keyMetadata().keyId();
+          utility.keyId = newKeyId;
+          utility.keyArn = key.keyMetadata().arn();
+          utility.unnamedKeyId = newKeyId;
+
+          // KMS can refuse an alias for a key it doesn't find yet.
+          step = "CreateAlias";
+          final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+          try {
+            while (true) {
+              try {
+                utility.kmsClient.createAlias(builder -> builder.aliasName(keyAlias).targetKeyId(newKeyId));
+                break;
+              } catch (NotFoundException e) {
+                if (System.nanoTime() > deadline) {
+                  throw new RuntimeException(
+                      "KMS didn't find the new key for the alias " + keyAlias + " within 30 seconds; run again.");
+                }
+              }
+              try {
+                Thread.sleep(2000);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while making the alias " + keyAlias + ".");
+              }
+            }
+          } catch (AlreadyExistsException e) {
+            step = "DescribeKey";
+            // AlreadyExists means the alias exists; KMS can take seconds to show it, also when it names this key.
+            KeyMetadata winner = utility.describeAlias(keyAlias);
+            final long visibleBy = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (winner == null && System.nanoTime() <= visibleBy) {
+              try {
+                Thread.sleep(2000);
+              } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while making the alias " + keyAlias + ".");
+              }
+              winner = utility.describeAlias(keyAlias);
+            }
+            if (winner == null || !newKeyId.equals(winner.keyId())) {
+              LOGGER.finer("Another run made " + keyAlias + " first");
+              utility.scheduleUnnamedKeyDeletion();
+              utility.keyId = null;
+              utility.keyArn = null;
+              if (winner == null) {
+                throw new RuntimeException("KMS alias " + keyAlias + " in " + utility.getRegion()
+                    + " was made by another run and isn't visible yet, or was removed since: run again.");
+              }
+              found = winner;
+            }
+          }
+          if (found == null) {
+            // The alias names this key, also when an SDK retry of CreateAlias found its first attempt's alias.
+            utility.unnamedKeyId = null;
+            LOGGER.finer("Made KMS test key " + newKeyId + " and alias " + keyAlias + " in " + utility.getRegion());
+          }
+        }
+      }
+      if (found != null) {
+        final String reason;
+        if (found.keyState() != KeyState.ENABLED) {
+          reason = "in state " + found.keyStateAsString();
+        } else if (found.keySpec() != KeySpec.SYMMETRIC_DEFAULT) {
+          reason = "of spec " + found.keySpecAsString() + ", not SYMMETRIC_DEFAULT";
+        } else if (found.keyUsage() != KeyUsageType.ENCRYPT_DECRYPT) {
+          reason = "for " + found.keyUsageAsString() + ", not ENCRYPT_DECRYPT";
+        } else if (found.description() == null || !found.description().startsWith(KEY_MARKER)) {
+          reason = "whose description doesn't start with \"" + KEY_MARKER + "\"";
+        } else {
+          step = "ListResourceTags";
+          final String foundKeyId = found.keyId();
+          boolean tagged = false;
+          for (Tag tag : utility.kmsClient.listResourceTags(builder -> builder.keyId(foundKeyId)).tags()) {
+            tagged |= TAG_KEY.equals(tag.tagKey()) && TAG_VALUE.equals(tag.tagValue());
+          }
+          reason = tagged ? null : "without the tag " + TAG_KEY + "=" + TAG_VALUE;
+        }
+        if (reason != null) {
+          throw new RuntimeException("KMS alias " + keyAlias + " in " + utility.getRegion() + " names a key " + reason
+              + ": set KMS_KEY_ALIAS to another alias, or, with KMS_KEY_ALIAS unset, KMS_KEY_ARN and KMS_REGION, "
+              + "and for the Docker task KMS_DECRYPT_ONLY_ROLE_ARN, to use a key directly, or remove the alias if "
+              + "its owner agrees.");
+        }
+        utility.keyId = found.keyId();
+        utility.keyArn = found.arn();
+        LOGGER.finer("Using KMS test key " + utility.keyId + " named by " + keyAlias + " in " + utility.getRegion());
+      }
 
       if (withDecryptOnlyRole) {
         step = "CreateRole";
@@ -177,10 +280,11 @@ public class KmsTestUtility implements ExtensionContext.Store.CloseableResource 
       // The SDK's message can name the caller's ARN, so only the step and the error code are kept.
       utility.close();
       throw new RuntimeException(
-          "Couldn't make the KMS test resources: " + step + ": " + e.awsErrorDetails().errorCode()
+          "Couldn't find or make the KMS test resources for " + keyAlias + " in " + utility.getRegion() + ": " + step
+              + ": " + e.awsErrorDetails().errorCode()
               + ". Grant what \"Running the KMS encryption tests\" in docs/development-guide/IntegrationTests.md "
-              + "lists, or set KMS_KEY_ARN and KMS_REGION, and for the Docker task KMS_DECRYPT_ONLY_ROLE_ARN, "
-              + "to use an existing key.");
+              + "lists, or, with KMS_KEY_ALIAS unset, set KMS_KEY_ARN and KMS_REGION, and for the Docker task "
+              + "KMS_DECRYPT_ONLY_ROLE_ARN, to use an existing key.");
     } catch (RuntimeException e) {
       utility.close();
       throw e;
@@ -201,7 +305,8 @@ public class KmsTestUtility implements ExtensionContext.Store.CloseableResource 
   }
 
   /**
-   * Removes the role, then schedules the key for deletion in 7 days. Runs once; later calls do nothing.
+   * Removes the role, then schedules a key this instance made that no alias names for deletion in 7 days; never the
+   * key an alias names. Runs once; later calls do nothing.
    */
   @Override
   public synchronized void close() {
@@ -225,14 +330,30 @@ public class KmsTestUtility implements ExtensionContext.Store.CloseableResource 
         warnLeftover("role " + this.roleName, e);
       }
     }
-    if (this.keyId != null) {
+    scheduleUnnamedKeyDeletion();
+  }
+
+  /**
+   * Returns the metadata of the key that the alias names, or null when the alias doesn't exist.
+   */
+  private KeyMetadata describeAlias(String alias) {
+    try {
+      return this.kmsClient.describeKey(builder -> builder.keyId(alias)).keyMetadata();
+    } catch (NotFoundException e) {
+      return null;
+    }
+  }
+
+  private void scheduleUnnamedKeyDeletion() {
+    if (this.unnamedKeyId != null) {
       try {
         this.kmsClient.scheduleKeyDeletion(
-            builder -> builder.keyId(this.keyId).pendingWindowInDays(7));
-        LOGGER.finer("Scheduled KMS test key " + this.keyId + " for deletion in 7 days");
+            builder -> builder.keyId(this.unnamedKeyId).pendingWindowInDays(7));
+        LOGGER.finer("Scheduled KMS test key " + this.unnamedKeyId + " for deletion in 7 days");
       } catch (RuntimeException e) {
-        warnLeftover("KMS test key " + this.keyId, e);
+        warnLeftover("KMS test key " + this.unnamedKeyId, e);
       }
+      this.unnamedKeyId = null;
     }
   }
 

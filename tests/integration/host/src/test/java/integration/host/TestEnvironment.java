@@ -145,7 +145,7 @@ public class TestEnvironment implements AutoCloseable {
               new ContainerHelper().createLocalStackContainer(env.network, LOCALSTACK_CONTAINER_NAME);
           env.localStackContainer.start();
         } else if (request.getFeatures().contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)) {
-          // The real-key lane: the key is KMS_KEY_ARN or the one TestEnvironmentProvider made.
+          // The real-key lane: the key is KMS_KEY_ARN or the one TestEnvironmentProvider found or made.
           initAwsCredentials(env);
         }
 

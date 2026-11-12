@@ -224,7 +224,7 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
     }
 
     // Before any environment starts, so a KMS Aurora run never creates a cluster without a key: a real-key run
-    // uses KMS_KEY_ARN, or the harness makes a key (and for Docker a decrypt-only role) once per JVM.
+    // uses KMS_KEY_ARN, or the harness finds or makes the key (and for Docker makes a decrypt-only role) once per JVM.
     boolean realKey = false;
     boolean dockerRealKey = false;
     for (EnvPreCreateInfo preCreateInfo : preCreateInfos) {
@@ -239,10 +239,19 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
       if (StringUtils.isNullOrEmpty(config.kmsRegion)) {
         throw new RuntimeException("Environment variable KMS_REGION is required with KMS_KEY_ARN.");
       }
+      if (!StringUtils.isNullOrEmpty(config.kmsKeyAlias)) {
+        throw new RuntimeException("KMS_KEY_ALIAS is set with KMS_KEY_ARN: unset one; with KMS_KEY_ARN the harness "
+            + "looks nothing up and makes nothing.");
+      }
     } else if (realKey) {
       if (dockerRealKey && !StringUtils.isNullOrEmpty(config.kmsDecryptOnlyRoleArn)) {
         throw new RuntimeException("KMS_DECRYPT_ONLY_ROLE_ARN is set without KMS_KEY_ARN: set KMS_KEY_ARN and "
-            + "KMS_REGION too, or unset it and the harness makes both.");
+            + "KMS_REGION too, or unset it and the harness finds or makes the key and makes the role.");
+      }
+      if (!StringUtils.isNullOrEmpty(config.kmsKeyAlias)
+          && (!config.kmsKeyAlias.matches("alias/[A-Za-z0-9/_-]+") || config.kmsKeyAlias.startsWith("alias/aws/"))) {
+        throw new RuntimeException("KMS_KEY_ALIAS must be alias/ followed by letters, digits, /, _ or -, and not "
+            + "start with alias/aws/.");
       }
       if (StringUtils.isNullOrEmpty(config.awsAccessKeyId)) {
         throw new RuntimeException("Environment variable AWS_ACCESS_KEY_ID is required.");
@@ -253,11 +262,15 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
       final String region = !StringUtils.isNullOrEmpty(config.kmsRegion)
           ? config.kmsRegion
           : !StringUtils.isNullOrEmpty(config.rdsDbRegion) ? config.rdsDbRegion : "us-east-2";
+      final String keyAlias = !StringUtils.isNullOrEmpty(config.kmsKeyAlias)
+          ? config.kmsKeyAlias
+          : KmsTestUtility.KEY_ALIAS;
       final boolean withDecryptOnlyRole = dockerRealKey;
       kmsTestUtility = context.getRoot().getStore(ExtensionContext.Namespace.GLOBAL).getOrComputeIfAbsent(
           KmsTestUtility.class,
           key -> KmsTestUtility.create(
-              region, config.awsAccessKeyId, config.awsSecretAccessKey, config.awsSessionToken, withDecryptOnlyRole),
+              region, keyAlias, config.awsAccessKeyId, config.awsSecretAccessKey, config.awsSessionToken,
+              withDecryptOnlyRole),
           KmsTestUtility.class);
     }
 

@@ -15,7 +15,7 @@
 """The KMS Encryption Plugin against a real KMS key, which LocalStack can't stand in for.
 
 LocalStack ignores KeySpec and IAM, and has neither CloudTrail nor STS session expiry.
-The key is ``KMS_KEY_ARN``: an administrator's key, or one the Gradle harness makes for the run and schedules for deletion at its end;
+The key is ``KMS_KEY_ARN``: an administrator's key, or the one the Gradle harness finds or makes under its KMS alias and keeps for later runs;
 these tests never create, change or delete a key or a role.
 Setup runs on the credentials the module starts with (the CI or maintainer role).
 The Decrypt-only role (``KMS_DECRYPT_ONLY_ROLE_ARN``) is assumed inside the tests, narrowed where a test needs it by an

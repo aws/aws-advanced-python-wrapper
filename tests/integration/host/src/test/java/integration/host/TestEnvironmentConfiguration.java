@@ -118,6 +118,7 @@ public class TestEnvironmentConfiguration {
   public String iamUser = System.getenv("IAM_USER");
 
   public String kmsKeyArn = System.getenv("KMS_KEY_ARN");
+  public String kmsKeyAlias = System.getenv("KMS_KEY_ALIAS");
   public String kmsRegion = System.getenv("KMS_REGION");
   public String kmsDecryptOnlyRoleArn = System.getenv("KMS_DECRYPT_ONLY_ROLE_ARN");
   public String kmsManualTests = System.getenv("KMS_MANUAL_TESTS");
