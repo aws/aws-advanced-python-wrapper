@@ -32,6 +32,7 @@ import integration.TestTelemetryInfo;
 import integration.host.TestEnvironmentProvider.EnvPreCreateInfo;
 import integration.util.AuroraTestUtility;
 import integration.util.ContainerHelper;
+import integration.util.KmsTestUtility;
 import integration.util.StringUtils;
 import java.io.IOException;
 import java.net.UnknownHostException;
@@ -76,6 +77,7 @@ public class TestEnvironment implements AutoCloseable {
   private static final boolean USE_OTLP_CONTAINER_FOR_TRACES = true;
 
   private static final AtomicInteger ipAddressUsageRefCount = new AtomicInteger(0);
+  private static volatile boolean ipRuleAddedByThisJvm;
 
   private final TestEnvironmentInfo info =
       new TestEnvironmentInfo(); // only this info is passed to test container
@@ -143,7 +145,7 @@ public class TestEnvironment implements AutoCloseable {
               new ContainerHelper().createLocalStackContainer(env.network, LOCALSTACK_CONTAINER_NAME);
           env.localStackContainer.start();
         } else if (request.getFeatures().contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)) {
-          // The real-key lane; TestEnvironmentProvider has checked KMS_KEY_ARN and KMS_REGION.
+          // The real-key lane: the key is KMS_KEY_ARN or the one TestEnvironmentProvider made.
           initAwsCredentials(env);
         }
 
@@ -561,6 +563,9 @@ public class TestEnvironment implements AutoCloseable {
         if (clusterExists) {
           throw new RuntimeException("Can't pick up a cluster name.");
         }
+      } else if (env.auroraUtil.doesClusterExist(env.rdsDbName)) {
+        throw new RuntimeException("Cluster " + env.rdsDbName + " already exists: set REUSE_RDS_DB=true to use it, "
+            + "or set RDS_DB_NAME to a new name.");
       }
 
       try {
@@ -796,7 +801,7 @@ public class TestEnvironment implements AutoCloseable {
     } catch (UnknownHostException e) {
       throw new RuntimeException(e);
     }
-    env.auroraUtil.ec2AuthorizeIP(env.runnerIP);
+    ipRuleAddedByThisJvm = env.auroraUtil.ec2AuthorizeIP(env.runnerIP);
     LOGGER.finest(String.format("Test runner IP %s authorized. Usage count: %d",
         env.runnerIP, ipAddressUsageRefCount.get()));
   }
@@ -811,10 +816,13 @@ public class TestEnvironment implements AutoCloseable {
         }
       }
 
-      if (!env.reuseDb) {
+      if (!env.reuseDb && ipRuleAddedByThisJvm) {
         env.auroraUtil.ec2DeauthorizesIP(env.runnerIP);
+        ipRuleAddedByThisJvm = false;
         LOGGER.finest(String.format("Test runner IP %s de-authorized. Usage count: %d",
             env.runnerIP, ipAddressUsageRefCount.get()));
+      } else if (!env.reuseDb) {
+        LOGGER.finest("The rule for the runner's IP existed before this run, so it is kept.");
       } else {
         LOGGER.finest("The IP address usage count hit 0, but the REUSE_RDS_DB was set to true, so IP "
                 + "de-authorization was skipped.");
@@ -1093,10 +1101,12 @@ public class TestEnvironment implements AutoCloseable {
           .withEnv("AWS_ACCESS_KEY_ID", "test")
           .withEnv("AWS_SECRET_ACCESS_KEY", "test");
     } else if (features.contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)) {
+      final KmsTestUtility madeKms = TestEnvironmentProvider.kmsTestUtility;
       env.testContainer
-          .withEnv("KMS_KEY_ARN", config.kmsKeyArn)
-          .withEnv("KMS_REGION", config.kmsRegion)
-          .withEnv("KMS_DECRYPT_ONLY_ROLE_ARN", Objects.toString(config.kmsDecryptOnlyRoleArn, ""))
+          .withEnv("KMS_KEY_ARN", madeKms != null ? madeKms.getKeyArn() : config.kmsKeyArn)
+          .withEnv("KMS_REGION", madeKms != null ? madeKms.getRegion() : config.kmsRegion)
+          .withEnv("KMS_DECRYPT_ONLY_ROLE_ARN", Objects.toString(
+              madeKms != null ? madeKms.getDecryptOnlyRoleArn() : config.kmsDecryptOnlyRoleArn, ""))
           .withEnv("KMS_MANUAL_TESTS", Objects.toString(config.kmsManualTests, ""));
     }
 

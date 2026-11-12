@@ -136,6 +136,7 @@ jobs:
 
       - name: 'Run the KMS tests on Docker with a real KMS key'
         run: |
+          test -n "${KMS_KEY_ARN}" || { echo "::error::Set the KMS_KEY_ARN repository variable: CI uses the administrator's key and never makes one."; exit 1; }
           DB_PASSWORD="$(openssl rand -hex 16)"
           echo "::add-mask::${DB_PASSWORD}"
           export DB_PASSWORD DB_USERNAME=test_user DB_DATABASE_NAME=test_db
@@ -213,6 +214,7 @@ jobs:
 
       - name: 'Run the KMS tests on Aurora'
         run: |
+          test -n "${KMS_KEY_ARN}" || { echo "::error::Set the KMS_KEY_ARN repository variable: CI uses the administrator's key and never makes one."; exit 1; }
           DB_PASSWORD="$(openssl rand -hex 16)"
           echo "::add-mask::${DB_PASSWORD}"
           export DB_PASSWORD DB_USERNAME=test_user DB_DATABASE_NAME=test_db

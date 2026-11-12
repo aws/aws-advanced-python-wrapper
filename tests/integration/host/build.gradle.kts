@@ -28,6 +28,9 @@ dependencies {
     testImplementation("software.amazon.awssdk:rds:2.30.10")
     testImplementation("software.amazon.awssdk:ec2:2.30.10")
     testImplementation("software.amazon.awssdk:secretsmanager:2.30.10")
+    testImplementation("software.amazon.awssdk:kms:2.30.10")
+    testImplementation("software.amazon.awssdk:iam:2.30.10")
+    testImplementation("software.amazon.awssdk:sts:2.30.10")
     // Note: all org.testcontainers dependencies should have the same version
     testImplementation("org.testcontainers:testcontainers:2.0.3")
     testImplementation("org.testcontainers:testcontainers-mysql:2.0.3")

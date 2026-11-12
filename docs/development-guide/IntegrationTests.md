@@ -96,18 +96,43 @@ Each environment has its own Gradle task.
 | Task | Databases | KMS | AWS credentials |
 |---|---|---|---|
 | `test-kms-encryption-docker` | Docker | LocalStack | None |
-| `test-kms-encryption-docker-kms` | Docker | A real key | Limited to the test key |
-| `test-kms-encryption-aurora` | Aurora | A real key | As for the Aurora tasks |
+| `test-kms-encryption-docker-kms` | Docker | A real key | Required, see below |
+| `test-kms-encryption-aurora` | Aurora | A real key | As for the Aurora tasks, plus KMS, see below |
 
 The LocalStack task runs every module except `test_kms_encryption_real_kms.py`, which runs only on the real-key Docker task, and `test_kms_encryption_aurora.py`, which runs only on the Aurora task.
 The LocalStack task needs no AWS account.
 The harness gives the test container dummy credentials and passes LocalStack's address to the tests as `KMS_ENDPOINT_URL`.
 The KMS tests skip outside these tasks, and fail inside them when the endpoint or the key is missing.
-The real-key tasks read the key ARN from `KMS_KEY_ARN`, its region from `KMS_REGION`, and the ARN of a role that may only decrypt from `KMS_DECRYPT_ONLY_ROLE_ARN`.
+When `KMS_KEY_ARN` is unset, the harness makes a test key for the run, and for the Docker task also a role that may only decrypt with it, and removes what it made when the run ends.
+The harness makes the key in `KMS_REGION`, or else `RDS_DB_REGION`, or else `us-east-2`.
+To use an existing key instead, set `KMS_KEY_ARN` and `KMS_REGION`, and for the Docker task the ARN of a role that may only decrypt in `KMS_DECRYPT_ONLY_ROLE_ARN`; the harness then makes nothing, as in CI.
+For the Docker task, setting `KMS_DECRYPT_ONLY_ROLE_ARN` without `KMS_KEY_ARN` fails the run before anything is made.
 Use full key ARNs, not aliases.
-The tests create keys only in LocalStack, so an administrator creates the real test key, once.
-A key costs $1 a month, and a key scheduled for deletion waits 7 to 30 days before AWS deletes it.
-Give the test credentials only `kms:GenerateDataKey`, `kms:Decrypt` and `kms:DescribeKey` on the test key, and `sts:AssumeRole` on the decrypt-only role.
+The test modules create keys only in LocalStack; on AWS the key is the harness's or yours.
+The harness schedules its key for deletion with the 7-day minimum, so each run leaves a key pending deletion for 7 days.
+A key costs $1 a month, prorated by the hour, until it is scheduled for deletion; a key pending deletion costs nothing, and AWS deletes it after 7 to 30 days.
+To make and remove its resources, the harness needs `kms:CreateKey` and `kms:TagResource` with the tag `aws-advanced-python-wrapper=integration-tests`, and `kms:ScheduleKeyDeletion` on keys with that tag.
+For the Docker task it also needs `iam:CreateRole`, `iam:PutRolePolicy`, `iam:DeleteRolePolicy`, `iam:DeleteRole` and `sts:AssumeRole` on roles named `aws-advanced-python-wrapper-test-decrypt-only-*`, and, when the credentials are a role session, `iam:GetRole` on the session's own role.
+A permission scoped by that tag can take up to five minutes to cover a new key, so with such permissions a run's first KMS calls on its key can be refused, and a run shorter than that can leave its key enabled for the search below.
+A Docker run is likely to take less than five minutes, and an Aurora run with `REUSE_RDS_DB=true` makes its first KMS calls within that time, so for those runs grant the test container's KMS actions and the harness's `kms:ScheduleKeyDeletion` on `arn:aws:kms:<region>:<account>:key/*` in an account set aside for testing, rather than by tag.
+The harness refuses root and federated-user credentials for the Docker task, because they can't assume a role.
+The test container gets the same credentials, and uses `kms:GenerateDataKey`, `kms:Decrypt` and `kms:DescribeKey` on the test key and `sts:AssumeRole` on the decrypt-only role.
+With `iam:PutRolePolicy` and `sts:AssumeRole` on those roles, the caller, and the test container that holds its credentials, can give such a role any permission and use it, so grant them only in an account set aside for testing.
+In a shared account, use an existing key and role, as CI does.
+Run the Docker task with a principal limited to these actions, and the Aurora task with these KMS actions plus what the Aurora tasks need, not an administrator.
+With an existing key, give the test credentials only `kms:GenerateDataKey`, `kms:Decrypt` and `kms:DescribeKey` on the test key, and `sts:AssumeRole` on the decrypt-only role.
+The harness removes what it made with the credentials it started with, so use credentials that outlast the run.
+A cancelled run tries to remove them before its JVM exits.
+A killed JVM, a cancel while the harness is still making them, or a clean-up call that fails, for example because the credentials expired during a long run, can leave a key or a role behind; a failed call logs a warning that names the key id or the role name.
+To find what is left in a region, run `aws resourcegroupstaggingapi get-resources --resource-type-filters kms:key --tag-filters Key=aws-advanced-python-wrapper,Values=integration-tests --query "ResourceTagMappingList[].ResourceARN" --region <region>` and `aws iam list-roles --query "Roles[?starts_with(RoleName, 'aws-advanced-python-wrapper-test-decrypt-only-')].[RoleName,CreateDate]"`.
+The searches also need `tag:GetResources` and `iam:ListRoles`, and the check below `kms:DescribeKey`, which the harness's own actions don't include.
+For each key, `aws kms describe-key --key-id <key-arn> --query "KeyMetadata.[KeyState,Description]" --region <region>` shows whether it is already `PendingDeletion`, and its description, which starts with `aws-advanced-python-wrapper test KMS key` and gives the time it was made.
+Remove only what was made before the oldest run still going in the account started, because a run uses what it made until it ends.
+Delete a role with `aws iam delete-role-policy --role-name <name> --policy-name decrypt-only`, which fails with `NoSuchEntity` if the run stopped before it added the policy, and then `aws iam delete-role --role-name <name>`.
+Schedule each key that isn't `PendingDeletion` for deletion with `aws kms schedule-key-deletion --key-id <key-arn> --pending-window-in-days 7 --region <region>`.
+A cancelled or killed Aurora run, or one whose setup failed (for example because `RDS_DB_NAME` names an existing cluster), can also leave an all-traffic rule for the runner's IP in the `default` security group, described `Test run at <time>`; later runs keep a rule they didn't add, so remove it with `aws ec2 revoke-security-group-ingress --group-name default --protocol -1 --cidr <ip>/32 --region <region>`.
+Check first that `aws ec2 describe-security-groups --group-names default --query "SecurityGroups[0].IpPermissions[?IpProtocol=='-1'].IpRanges[] | [?Description && starts_with(Description, 'Test run at')].[CidrIp,Description]" --region <region>` lists the rule with a time before the oldest run still going started, because in a shared account someone may have added a rule for the same IP by hand, and remove it only when no Aurora test run from that IP is still going, because such runs share the rule.
+A cancelled or killed Aurora run also leaves its cluster, named `RDS_DB_NAME`, or `test-pg-` or `test-mysql-` and a random suffix when that is unset; delete each instance that `aws rds describe-db-clusters --db-cluster-identifier <name> --query "DBClusters[0].DBClusterMembers[].DBInstanceIdentifier" --region <region>` lists with `aws rds delete-db-instance --db-instance-identifier <instance> --skip-final-snapshot --region <region>`, and then the cluster with `aws rds delete-db-cluster --db-cluster-identifier <name> --skip-final-snapshot --region <region>`.
 Reports keep failure output, which can include the database password, so use throwaway database passwords and keep reports private.
 To run the same tests against local servers and LocalStack without the harness, use `tests/integration/kms_local/run.sh`.
 

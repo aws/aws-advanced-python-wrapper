@@ -504,7 +504,7 @@ def kms_settings() -> Iterator[KmsSettings]:
 
 @pytest.fixture(scope="module")
 def kms_master_key_arn(request: pytest.FixtureRequest, kms_settings: KmsSettings) -> str:
-    """The module's KMS key: on LocalStack a new key per module, on real KMS the administrator's key."""
+    """The module's KMS key: on LocalStack a new key per module, on real KMS ``KMS_KEY_ARN`` (an administrator's or the harness's)."""
     if kms_settings.key_arn is not None:
         return kms_settings.key_arn
     created = kms_client(kms_settings).create_key(Description=f"kms container test {request.module.__name__}")

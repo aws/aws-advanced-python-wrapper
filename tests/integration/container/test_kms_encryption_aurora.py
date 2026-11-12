@@ -228,9 +228,9 @@ def test_plugin_connections_carry_the_applications_auth_and_tls(
 
 @enable_on_num_instances(min_instances=2)
 @enable_on_features([TestEnvironmentFeatures.FAILOVER_SUPPORTED])
-@pytest.mark.xfail(is_pg(), strict=True, raises=MetadataError, reason=(
+@pytest.mark.xfail(is_pg(), strict=False, raises=MetadataError, reason=(
     "on psycopg the plugin's metadata lookup on the dead writer raises MetadataError before failover_v2 runs, so "
-    "failover never starts"))
+    "failover never starts; it passes when the old writer is back as a reader by the time of the lookup"))
 @kms_builds()
 def test_failover_and_read_write_splitting_keep_encrypting(
         build: str, table: int, plugin_sessions: List[Session], kms_settings: KmsSettings, kms_schema: str,

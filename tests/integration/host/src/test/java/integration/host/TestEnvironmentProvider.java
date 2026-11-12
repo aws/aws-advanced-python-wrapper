@@ -23,6 +23,7 @@ import integration.GenericTypedParameterResolver;
 import integration.TargetPythonVersion;
 import integration.TestEnvironmentFeatures;
 import integration.TestEnvironmentRequest;
+import integration.util.KmsTestUtility;
 import integration.util.StringUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,6 +42,7 @@ import org.junit.jupiter.api.extension.TestTemplateInvocationContextProvider;
 public class TestEnvironmentProvider implements TestTemplateInvocationContextProvider {
 
   static final ArrayList<EnvPreCreateInfo> preCreateInfos = new ArrayList<>();
+  static KmsTestUtility kmsTestUtility;
   private static final Logger LOGGER = Logger.getLogger(TestEnvironmentProvider.class.getName());
 
   @Override
@@ -221,16 +223,42 @@ public class TestEnvironmentProvider implements TestTemplateInvocationContextPro
       }
     }
 
-    // Fail before any environment starts, so a KMS Aurora run never creates a cluster without a key.
+    // Before any environment starts, so a KMS Aurora run never creates a cluster without a key: a real-key run
+    // uses KMS_KEY_ARN, or the harness makes a key (and for Docker a decrypt-only role) once per JVM.
+    boolean realKey = false;
+    boolean dockerRealKey = false;
     for (EnvPreCreateInfo preCreateInfo : preCreateInfos) {
       final Set<TestEnvironmentFeatures> features = preCreateInfo.request.getFeatures();
       if (features.contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)
-          && !features.contains(TestEnvironmentFeatures.KMS_LOCALSTACK)
-          && (StringUtils.isNullOrEmpty(config.kmsKeyArn) || StringUtils.isNullOrEmpty(config.kmsRegion))) {
-        throw new RuntimeException(
-            "Environment variables KMS_KEY_ARN and KMS_REGION are required to run the KMS encryption tests "
-                + "without LocalStack: " + preCreateInfo.request.getDisplayName());
+          && !features.contains(TestEnvironmentFeatures.KMS_LOCALSTACK)) {
+        realKey = true;
+        dockerRealKey |= preCreateInfo.request.getDatabaseEngineDeployment() == DatabaseEngineDeployment.DOCKER;
       }
+    }
+    if (realKey && !StringUtils.isNullOrEmpty(config.kmsKeyArn)) {
+      if (StringUtils.isNullOrEmpty(config.kmsRegion)) {
+        throw new RuntimeException("Environment variable KMS_REGION is required with KMS_KEY_ARN.");
+      }
+    } else if (realKey) {
+      if (dockerRealKey && !StringUtils.isNullOrEmpty(config.kmsDecryptOnlyRoleArn)) {
+        throw new RuntimeException("KMS_DECRYPT_ONLY_ROLE_ARN is set without KMS_KEY_ARN: set KMS_KEY_ARN and "
+            + "KMS_REGION too, or unset it and the harness makes both.");
+      }
+      if (StringUtils.isNullOrEmpty(config.awsAccessKeyId)) {
+        throw new RuntimeException("Environment variable AWS_ACCESS_KEY_ID is required.");
+      }
+      if (StringUtils.isNullOrEmpty(config.awsSecretAccessKey)) {
+        throw new RuntimeException("Environment variable AWS_SECRET_ACCESS_KEY is required.");
+      }
+      final String region = !StringUtils.isNullOrEmpty(config.kmsRegion)
+          ? config.kmsRegion
+          : !StringUtils.isNullOrEmpty(config.rdsDbRegion) ? config.rdsDbRegion : "us-east-2";
+      final boolean withDecryptOnlyRole = dockerRealKey;
+      kmsTestUtility = context.getRoot().getStore(ExtensionContext.Namespace.GLOBAL).getOrComputeIfAbsent(
+          KmsTestUtility.class,
+          key -> KmsTestUtility.create(
+              region, config.awsAccessKeyId, config.awsSecretAccessKey, config.awsSessionToken, withDecryptOnlyRole),
+          KmsTestUtility.class);
     }
 
     int index = 1;
