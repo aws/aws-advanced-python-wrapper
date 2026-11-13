@@ -12,11 +12,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""``cryptography`` is an optional extra (``encryption``). The wrapper must
-import without it, and only the module that encrypts may need it.
+"""``cryptography`` and ``sqlglot`` are installed only with the optional
+``encryption`` extra. The wrapper must import without them; only the module
+that encrypts needs ``cryptography`` and only the SQL analyzer needs
+``sqlglot``.
 
-Each check runs in a fresh interpreter, most with ``cryptography`` blocked,
-since the test environment always has it installed."""
+Each check runs in a fresh interpreter, most with both packages blocked,
+since the test environment always has them installed."""
 
 import subprocess
 import sys
@@ -29,7 +31,7 @@ _BLOCKER = textwrap.dedent("""
 
     class _Block:
         def find_spec(self, name, path=None, target=None):
-            if name == "cryptography" or name.startswith("cryptography."):
+            if name.partition(".")[0] in ("cryptography", "sqlglot"):
                 raise ModuleNotFoundError(f"No module named {name!r}", name=name)
             return None
 
@@ -63,11 +65,14 @@ _KEY_LAYER_MODULES = [
     "aws_advanced_python_wrapper.encryption.key_manager",
     "aws_advanced_python_wrapper.encryption.metadata_manager",
     "aws_advanced_python_wrapper.encryption.key_management_utility",
+    # Placeholder scanning is dependency-free; only the structural parse
+    # needs sqlglot.
+    "aws_advanced_python_wrapper.encryption.sql_tokenizer",
 ]
 
 
 @pytest.mark.parametrize("module", _CORE_MODULES + _KEY_LAYER_MODULES)
-def test_imports_without_cryptography(module):
+def test_imports_without_cryptography_or_sqlglot(module):
     result = _run(f"""
         import importlib
         importlib.import_module({module!r})
@@ -76,13 +81,14 @@ def test_imports_without_cryptography(module):
 
 
 @pytest.mark.parametrize("module", _CORE_MODULES + _KEY_LAYER_MODULES)
-def test_does_not_load_cryptography_even_when_installed(module):
-    # With cryptography available, importing these must still not load it,
-    # so users who never encrypt don't pay its import cost.
+def test_does_not_load_the_extra_even_when_installed(module):
+    # With the packages available, importing these must still not load them,
+    # so users who never encrypt don't pay their import cost.
     result = _run(f"""
         import importlib
         importlib.import_module({module!r})
         assert "cryptography" not in sys.modules, "cryptography was imported"
+        assert "sqlglot" not in sys.modules, "sqlglot was imported"
     """, block=False)
     assert result.returncode == 0, result.stderr
 
@@ -97,6 +103,20 @@ def test_encryption_service_names_the_extra_when_cryptography_is_missing():
             raise SystemExit("imported without cryptography")
     """)
     assert result.returncode == 0, result.stderr
+    assert "aws-advanced-python-wrapper[encryption]" in result.stdout
+
+
+def test_sql_analyzer_names_the_extra_when_sqlglot_is_missing():
+    result = _run("""
+        try:
+            import aws_advanced_python_wrapper.encryption.sql_analyzer
+        except ImportError as e:
+            print(e)
+        else:
+            raise SystemExit("imported without sqlglot")
+    """)
+    assert result.returncode == 0, result.stderr
+    assert "'sqlglot'" in result.stdout
     assert "aws-advanced-python-wrapper[encryption]" in result.stdout
 
 
@@ -130,3 +150,17 @@ def test_a_broken_cryptography_is_not_reported_as_missing(error):
     assert result.returncode == 0, result.stderr
     assert "aws-advanced-python-wrapper[encryption]" not in result.stdout
     assert ("DLL load failed" in result.stdout) or ("_cffi_backend" in result.stdout)
+
+
+def test_a_broken_sqlglot_is_not_reported_as_missing():
+    code = _BROKEN.replace('"cryptography"', '"sqlglot"').format(
+        error='ModuleNotFoundError("No module named \'sqlglotc\'", name="sqlglotc")') + textwrap.dedent("""
+        try:
+            import aws_advanced_python_wrapper.encryption.sql_analyzer
+        except ImportError as e:
+            print(e)
+    """)
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stderr
+    assert "aws-advanced-python-wrapper[encryption]" not in result.stdout
+    assert "sqlglotc" in result.stdout
