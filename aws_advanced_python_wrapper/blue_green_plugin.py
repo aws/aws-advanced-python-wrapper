@@ -315,7 +315,9 @@ class BaseRouting:
         if host_info is None:
             return False
 
-        return self._endpoint == host_info.url.lower() and (self._bg_role is None or self._bg_role == bg_role)
+        # Routing endpoints are "host" or "host:port"; host_info.url has a trailing "/" and would never match.
+        return (self._endpoint == host_info.get_host_and_port().lower()
+                and (self._bg_role is None or self._bg_role == bg_role))
 
     def __str__(self):
         endpoint_str = "None" if self._endpoint is None else f"'{self._endpoint}'"
@@ -689,8 +691,13 @@ class BlueGreenPlugin(Plugin):
                     self._end_time_ns.set(perf_counter_ns())
                     return self._open_direct_connection(connect_func, is_initial_connection)
 
-                routing = \
-                    next((r for r in self._bg_status.connect_routings if r.is_match(host_info, bg_role)), None)
+                # Re-select against the latest status, not the one captured before the loop: once the
+                # switchover moves on, the old routing keeps returning None and would be picked forever.
+                self._bg_status = latest_status
+                bg_role = latest_status.get_role(host_info)
+                if bg_role is None:
+                    break
+                routing = next((r for r in latest_status.connect_routings if r.is_match(host_info, bg_role)), None)
 
             self._end_time_ns.set(perf_counter_ns())
             if conn is None:
@@ -761,8 +768,11 @@ class BlueGreenPlugin(Plugin):
                     self._end_time_ns.set(perf_counter_ns())
                     return execute_func()
 
-                routing = \
-                    next((r for r in self._bg_status.execute_routings if r.is_match(host_info, bg_role)), None)
+                self._bg_status = latest_status
+                bg_role = None if host_info is None else latest_status.get_role(host_info)
+                if bg_role is None:
+                    break
+                routing = next((r for r in latest_status.execute_routings if r.is_match(host_info, bg_role)), None)
 
             self._end_time_ns.set(perf_counter_ns())
             if result_container.is_present():

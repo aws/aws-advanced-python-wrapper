@@ -318,7 +318,9 @@ class BaseRouting:
         if host_info is None:
             return False
 
-        return self._endpoint == host_info.url.lower() and (self._bg_role is None or self._bg_role == bg_role)
+        # Routing endpoints are "host" or "host:port"; host_info.url has a trailing "/" and would never match.
+        return (self._endpoint == host_info.get_host_and_port().lower()
+                and (self._bg_role is None or self._bg_role == bg_role))
 
     def __str__(self) -> str:
         endpoint_str = "None" if self._endpoint is None else f"'{self._endpoint}'"
