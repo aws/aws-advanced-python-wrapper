@@ -86,7 +86,7 @@ logger = Logger(__name__)
 # Plugin codes (see aio/plugin_factory.py) whose presence implies IAM token
 # authentication is active, gating the SubstituteConnectRouting IAM-host
 # rerouting. Approximation of sync's plugin_service.is_plugin_in_use.
-_IAM_PLUGIN_CODES: frozenset = frozenset({"iam"})
+_AUTH_PLUGIN_CODES: frozenset = frozenset({"iam", "federated_auth", "okta"})
 
 
 # ---- Enums -----------------------------------------------------------
@@ -318,7 +318,7 @@ class BaseRouting:
         if host_info is None:
             return False
 
-        return self._endpoint == host_info.url.lower() and (self._bg_role is None or self._bg_role == bg_role)
+        return self._endpoint == host_info.get_host_and_port().lower() and (self._bg_role is None or self._bg_role == bg_role)
 
     def __str__(self) -> str:
         endpoint_str = "None" if self._endpoint is None else f"'{self._endpoint}'"
@@ -501,7 +501,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
             SuspendUntilCorrespondingHostFoundConnectRouting._TELEMETRY_SWITCHOVER, TelemetryTraceLevel.NESTED)
 
         bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
-        corresponding_pair = None if bg_status is None else bg_status.corresponding_hosts.get(host_info.host)
+        corresponding_pair = None if bg_status is None else bg_status.corresponding_hosts.get(host_info.host.lower())
 
         timeout_ms = WrapperProperties.BG_CONNECT_TIMEOUT_MS.get_int(props)
         loop = asyncio.get_running_loop()
@@ -517,7 +517,7 @@ class SuspendUntilCorrespondingHostFoundConnectRouting(BaseRouting, ConnectRouti
                 await self.delay(
                     SuspendUntilCorrespondingHostFoundConnectRouting._SLEEP_TIME_MS, bg_status, plugin_service, self._bg_id)
                 bg_status = plugin_service.get_status(BlueGreenStatus, self._bg_id)
-                corresponding_pair = None if bg_status is None else bg_status.corresponding_hosts.get(host_info.host)
+                corresponding_pair = None if bg_status is None else bg_status.corresponding_hosts.get(host_info.host.lower())
 
             if bg_status is None or bg_status.phase == BlueGreenPhase.COMPLETED:
                 logger.debug(
@@ -616,7 +616,7 @@ def _is_iam_in_use(props: Properties) -> bool:
     if not plugins:
         return False
     codes = {code.strip() for code in str(plugins).split(",")}
-    return bool(codes & _IAM_PLUGIN_CODES)
+    return bool(codes & _AUTH_PLUGIN_CODES)
 
 
 # ---- Plugin ----------------------------------------------------------
