@@ -912,6 +912,10 @@ public class AuroraTestUtility {
   }
 
   public String getAuroraParameterGroupFamily(String engine, String engineVersion) {
+    final String family = queryParameterGroupFamily(engine, engineVersion);
+    if (!StringUtils.isNullOrEmpty(family)) {
+      return family;
+    }
     switch (engine) {
       case "aurora-postgresql":
         return "aurora-postgresql16";
@@ -922,6 +926,29 @@ public class AuroraTestUtility {
         return "aurora-mysql5.7";
       default:
         throw new UnsupportedOperationException(engine);
+    }
+  }
+
+  /**
+   * Asks RDS for the parameter group family of an engine version, or returns null when the version is
+   * empty or the family cannot be determined.
+   */
+  private @Nullable String queryParameterGroupFamily(String engine, String engineVersion) {
+    if (StringUtils.isNullOrEmpty(engineVersion)) {
+      return null;
+    }
+    try {
+      final DescribeDbEngineVersionsResponse response = rdsClient.describeDBEngineVersions(
+          DescribeDbEngineVersionsRequest.builder().engine(engine).engineVersion(engineVersion).build());
+      return response.dbEngineVersions().stream()
+          .map(DBEngineVersion::dbParameterGroupFamily)
+          .filter(family -> !StringUtils.isNullOrEmpty(family))
+          .findFirst()
+          .orElse(null);
+    } catch (Exception ex) {
+      LOGGER.finest(String.format(
+          "Could not query the parameter group family of %s %s: %s", engine, engineVersion, ex.getMessage()));
+      return null;
     }
   }
 
@@ -1247,7 +1274,7 @@ public class AuroraTestUtility {
       return;
     }
 
-    waitUntilBlueGreenDeploymentHasRightState(blueGreenId, "available", "switchover_completed");
+    waitUntilBlueGreenDeploymentHasRightState(blueGreenId, "available", "switchover_completed", "switchover_failed");
 
     DeleteBlueGreenDeploymentResponse response = rdsClient.deleteBlueGreenDeployment(
         DeleteBlueGreenDeploymentRequest.builder()
