@@ -591,6 +591,11 @@ public class TestEnvironment implements AutoCloseable {
         env.auroraUtil.deleteCluster(env.rdsDbName, env.info.getRequest().getDatabaseEngineDeployment(), false);
         LOGGER.finer("Deleted cluster " + env.rdsDbName);
 
+        // Teardown never runs after a failed create, so the custom parameter group made for it goes here.
+        if (!StringUtils.isNullOrEmpty(env.info.getClusterParameterGroupName())) {
+          env.deleteCustomClusterParameterGroup(env.info.getClusterParameterGroupName());
+        }
+
         throw new RuntimeException(e);
       }
     }
@@ -1353,6 +1358,20 @@ public class TestEnvironment implements AutoCloseable {
 
         if (blueGreenDeployment == null) {
           return;
+        }
+
+        // Settle an in-flight switchover: the status read below picks the cluster to delete. A deployment still
+        // switching after 15 minutes still stops the clean-up in deleteBlueGreenDeployment, as in JDBC.
+        try {
+          auroraUtil.waitUntilBlueGreenDeploymentHasRightState(
+              this.info.getBlueGreenDeploymentId(), "available", "switchover_completed", "switchover_failed");
+        } catch (RuntimeException e) {
+          LOGGER.finest("BGD did not settle: " + e.getMessage());
+        }
+        final BlueGreenDeployment settledDeployment =
+            auroraUtil.getBlueGreenDeployment(this.info.getBlueGreenDeploymentId());
+        if (settledDeployment != null) {
+          blueGreenDeployment = settledDeployment;
         }
 
         auroraUtil.deleteBlueGreenDeployment(this.info.getBlueGreenDeploymentId(), true);
