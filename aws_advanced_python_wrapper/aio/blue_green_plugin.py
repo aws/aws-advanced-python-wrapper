@@ -86,7 +86,7 @@ logger = Logger(__name__)
 # Plugin codes (see aio/plugin_factory.py) whose presence implies IAM token
 # authentication is active, gating the SubstituteConnectRouting IAM-host
 # rerouting. Approximation of sync's plugin_service.is_plugin_in_use.
-_IAM_TOKEN_AUTH_PLUGIN_CODES: frozenset = frozenset({"iam", "federated_auth", "okta"})
+_AUTH_PLUGIN_CODES: frozenset = frozenset({"iam", "federated_auth", "okta"})
 
 
 # ---- Enums -----------------------------------------------------------
@@ -616,7 +616,7 @@ def _is_iam_in_use(props: Properties) -> bool:
     if not plugins:
         return False
     codes = {code.strip() for code in str(plugins).split(",")}
-    return bool(codes & _IAM_TOKEN_AUTH_PLUGIN_CODES)
+    return bool(codes & _AUTH_PLUGIN_CODES)
 
 
 # ---- Plugin ----------------------------------------------------------
