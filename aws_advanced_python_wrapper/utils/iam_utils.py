@@ -102,7 +102,7 @@ class IamAuthUtils:
 
             client.close()
 
-            logger.debug("IamAuthUtils.GeneratedNewAuthToken", token)
+            logger.debug("IamAuthUtils.GeneratedNewAuthToken")
             return token
         except Exception as ex:
             if context is not None:

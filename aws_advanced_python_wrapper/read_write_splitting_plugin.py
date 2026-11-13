@@ -124,7 +124,7 @@ class AbstractReadWriteSplittingPlugin(Plugin):
 
         if conn is not None and conn != current_conn:
             msg = Messages.get_formatted(
-                "PluginManager.MethodInvokedAgainstOldConnection", target
+                "PluginManager.MethodInvokedAgainstOldConnection", type(target).__name__
             )
             raise AwsWrapperError(msg)
 

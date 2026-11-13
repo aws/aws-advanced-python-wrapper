@@ -1111,7 +1111,7 @@ class PluginManager(CanReleaseResources):
         current_conn: Optional[Connection] = driver_dialect.unwrap_connection(plugin_service.current_connection)
 
         if method not in [DbApiMethod.CONNECTION_CLOSE, DbApiMethod.CURSOR_CLOSE] and conn is not None and conn != current_conn:
-            raise AwsWrapperError(Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", target))
+            raise AwsWrapperError(Messages.get_formatted("PluginManager.MethodInvokedAgainstOldConnection", type(target).__name__))
 
         if conn is None and method in [DbApiMethod.CONNECTION_CLOSE, DbApiMethod.CURSOR_CLOSE]:
             return None

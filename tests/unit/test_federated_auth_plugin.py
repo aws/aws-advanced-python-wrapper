@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 import pytest
@@ -26,6 +27,7 @@ from aws_advanced_python_wrapper.federated_plugin import FederatedAuthPlugin
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.iam_plugin import TokenInfo
 from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -243,3 +245,29 @@ def test_connect_with_specified_iam_host_port_region(mocker,
 
     assert WrapperProperties.USER.get(properties) == "specifiedUser"
     mock_dialect.set_password.assert_called_with(properties, _TEST_TOKEN)
+
+
+@pytest.mark.parametrize("cached", [True, False], ids=["cached", "fresh"])
+def test_connect_debug_log_omits_token(
+        cached, caplog, mocker, mock_plugin_service, mock_func, mock_client, mock_dialect, mock_credentials_provider_factory):
+    mock_client.generate_db_auth_token.return_value = _GENERATED_TOKEN
+    if cached:
+        services_container.get_storage_service().put(
+            TokenInfo, _PG_CACHE_KEY, TokenInfo(_TEST_TOKEN, datetime.now() + timedelta(minutes=5)))
+    props: Properties = Properties({"plugins": "federated_auth", "idp_username": "user", "idp_password": "password"})
+    WrapperProperties.DB_USER.set(props, _DB_USER)
+    caplog.set_level(logging.DEBUG)
+    debug = mocker.spy(Logger, "debug")
+
+    FederatedAuthPlugin(mock_plugin_service, mock_credentials_provider_factory).connect(
+        target_driver_func=mocker.MagicMock(),
+        driver_dialect=mock_dialect,
+        host_info=_PG_HOST_INFO,
+        props=props,
+        is_initial_connection=False,
+        connect_func=mock_func)
+
+    assert ("Used cached authentication token" if cached else "Generated new authentication token") in caplog.text
+    assert (_TEST_TOKEN if cached else _GENERATED_TOKEN) not in caplog.text
+    assert "token = {}" not in caplog.text
+    assert not [c for c in debug.call_args_list if any((_TEST_TOKEN if cached else _GENERATED_TOKEN) in str(a) for a in c.args)]

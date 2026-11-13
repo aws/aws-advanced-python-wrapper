@@ -1095,3 +1095,26 @@ def test_call_context_rejects_an_unknown_attribute():
     context.args, context.kwargs = ("q",), {"params": ()}
     assert context.args == ("q",)
     assert context.kwargs == {"params": ()}
+
+
+class CMySQLCursor:
+    """Stands in for a mysql-connector cursor, whose str() quotes the start of its last statement with the values."""
+
+    def __str__(self) -> str:
+        return "CMySQLCursor: SELECT 'secret-literal'"
+
+
+def test_execute_against_old_connection_omits_statement_text(mocker, container, mock_plugin_service, mock_driver_dialect):
+    mocker.patch.object(PluginManager, "__init__", lambda w, x, y, z: None)
+    manager = PluginManager(mocker.MagicMock(), mocker.MagicMock(), mocker.MagicMock())
+    container.plugin_service = mock_plugin_service
+    mock_plugin_service.driver_dialect = mock_driver_dialect
+    mock_driver_dialect.get_connection_from_obj.return_value = mocker.MagicMock()
+    mock_driver_dialect.unwrap_connection.return_value = mocker.MagicMock()
+    manager._container = container
+
+    with pytest.raises(AwsWrapperError) as e:
+        manager.execute(CMySQLCursor(), DbApiMethod.CURSOR_EXECUTE, mocker.MagicMock())
+
+    assert "secret-literal" not in str(e.value)
+    assert "'CMySQLCursor'" in str(e.value)
