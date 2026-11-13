@@ -258,6 +258,7 @@ def test_build_async_plugins_covers_all_registered_plugins():
             # SRW endpoints are required at construction time.
             "srw_read_endpoint": "reader.example.com",
             "srw_write_endpoint": "writer.example.com",
+            "connection_lifetime_ms": "60000",
         })
         # Use Aurora-capable hlp so failover / rws / custom_endpoint
         # don't error.

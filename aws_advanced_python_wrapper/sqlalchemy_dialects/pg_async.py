@@ -154,8 +154,12 @@ class AwsWrapperPGPsycopgAsyncDialect(
         #   - FailoverFailedError → True (no usable connection).
         # Complements _AsyncDriverErrorNormalizeMixin for the
         # cursor-creation path that runs before do_execute.
-        from aws_advanced_python_wrapper.errors import (FailoverError,
-                                                        FailoverFailedError)
+        from aws_advanced_python_wrapper.errors import (
+            ConnectionLifetimeError, ConnectionLifetimeSuccessError,
+            FailoverError, FailoverFailedError)
+
+        if isinstance(e, ConnectionLifetimeError):
+            return not isinstance(e, ConnectionLifetimeSuccessError)
 
         # Catch the whole FailoverError family -- including
         # TransactionResolutionUnknownError -- before upstream probes
