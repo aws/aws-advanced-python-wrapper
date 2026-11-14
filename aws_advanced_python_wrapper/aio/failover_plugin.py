@@ -65,6 +65,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
         DbApiMethod.INIT_HOST_PROVIDER.method_name,
         DbApiMethod.CONNECT.method_name,
         DbApiMethod.FORCE_CONNECT.method_name,
+        DbApiMethod.CONNECTION_CURSOR.method_name,
         DbApiMethod.CURSOR_EXECUTE.method_name,
         DbApiMethod.CURSOR_EXECUTEMANY.method_name,
         DbApiMethod.CURSOR_FETCHONE.method_name,
@@ -80,7 +81,7 @@ class AsyncFailoverPlugin(AsyncPlugin):
             host_list_provider: AsyncHostListProvider,
             props: Properties) -> None:
         self._plugin_service = plugin_service
-        self._host_list_provider = host_list_provider
+        self._factory_host_list_provider = host_list_provider
         self._props = props
         # Shared writer-failover convergence helper (also reused by the GDB
         # failover subclass). See AsyncRetryUtil.get_writer_connection.
@@ -131,6 +132,14 @@ class AsyncFailoverPlugin(AsyncPlugin):
     def _determine_mode(props: Properties) -> FailoverMode:
         mode = get_failover_mode(props)
         return mode if mode is not None else FailoverMode.STRICT_WRITER
+
+    @property
+    def _host_list_provider(self) -> AsyncHostListProvider:
+        # The service replaces its provider once the dialect is confirmed
+        # (_update_host_list_provider), so read it at call time, as sync does.
+        # The factory's provider only serves a service that has none.
+        current = self._plugin_service.host_list_provider
+        return current if current is not None else self._factory_host_list_provider
 
     @property
     def subscribed_methods(self) -> Set[str]:
@@ -555,8 +564,6 @@ class AsyncFailoverPlugin(AsyncPlugin):
                     new_conn = await self._within_deadline(
                         self._open_connection(candidate, driver_dialect), deadline)
                 except Exception as e:  # noqa: BLE001
-                    self._plugin_service.set_availability(
-                        candidate, HostAvailability.UNAVAILABLE)
                     last_error = e
                     if candidate in remaining:
                         remaining.remove(candidate)

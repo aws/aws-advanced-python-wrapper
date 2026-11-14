@@ -76,6 +76,8 @@ def _make_plugin(*, home_region="us-east-1", host=_W_EAST, overrides=None,
 
     hlp = MagicMock()
     hlp.force_refresh = AsyncMock(return_value=tuple(all_hosts))
+    # The plugin refreshes through the service's provider.
+    svc.host_list_provider = hlp
 
     plugin = AsyncGdbFailoverPlugin(svc, hlp, props)
     return plugin, svc, hlp, conn
