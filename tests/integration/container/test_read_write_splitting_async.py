@@ -872,11 +872,11 @@ class TestReadWriteSplittingAsync:
                 {"plugins": plugin_value, "connect_timeout": 30, "autocommit": True}
             )
             port = (
-                test_environment.get_info().get_database_info().get_cluster_endpoint_port()
+                test_environment.get_info().get_database_info().get_instance_endpoint_port()
             )
-            writer_endpoint = conn_utils.writer_cluster_host
+            writer_endpoint = conn_utils.writer_host
 
-            # Set both endpoints to writer (incorrect reader endpoint)
+            # Set both endpoints to the writer instance (incorrect reader endpoint)
             WrapperProperties.SRW_WRITE_ENDPOINT.set(props, f"{writer_endpoint}:{port}")
             WrapperProperties.SRW_READ_ENDPOINT.set(props, f"{writer_endpoint}:{port}")
 
@@ -905,7 +905,13 @@ class TestReadWriteSplittingAsync:
         asyncio.run(inner())
 
     def test_autocommit_state_preserved_across_connection_switches_async(
-        self, test_driver: TestDriver, props, conn_utils, rds_utils, plugin_config
+        self,
+        test_environment: TestEnvironment,
+        test_driver: TestDriver,
+        props,
+        conn_utils,
+        rds_utils,
+        plugin_config,
     ):
         plugin_name, _ = plugin_config
         if plugin_name != "srw":
@@ -915,6 +921,11 @@ class TestReadWriteSplittingAsync:
 
         async def inner():
             WrapperProperties.SRW_VERIFY_NEW_CONNECTIONS.set(props, "False")
+            port = test_environment.get_info().get_database_info().get_instance_endpoint_port()
+            # The cluster endpoints may route to the wrong instance, and with verification off
+            # srw won't check; the conftest moves the writer first, so the second instance is a reader.
+            WrapperProperties.SRW_WRITE_ENDPOINT.set(props, f"{conn_utils.writer_host}:{port}")
+            WrapperProperties.SRW_READ_ENDPOINT.set(props, f"{test_environment.get_instances()[1].get_host()}:{port}")
             conn = await connect_async(
                 test_driver=test_driver,
                 connect_params=conn_utils.get_connect_params(),

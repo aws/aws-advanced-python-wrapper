@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Optional
 
 from aws_xray_sdk.core import xray_recorder
 
+from aws_advanced_python_wrapper.aio.plugin_service import \
+    AsyncPluginServiceImpl
 from aws_advanced_python_wrapper.connection_provider import \
     ConnectionProviderManager
 from aws_advanced_python_wrapper.custom_endpoint_plugin import \
@@ -169,6 +171,7 @@ def pytest_runtest_setup(item):
         RdsUtils.clear_cache()
         services_container.release_resources()
         PluginServiceImpl._host_availability_expiring_cache.clear()
+        AsyncPluginServiceImpl._host_availability_expiring_cache.clear()
         DatabaseDialectManager._known_endpoint_dialects.clear()
         CustomEndpointMonitor._custom_endpoint_info_cache.clear()
 
