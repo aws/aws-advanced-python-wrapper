@@ -14,6 +14,7 @@
 
 import pytest
 
+from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
 us_east_region_cluster = "database-test-name.cluster-XYZ.us-east-2.rds.amazonaws.com"
@@ -55,6 +56,13 @@ us_iso_east_region_custom_domain = "custom-test-name.cluster-custom-XYZ.rds.us-i
 us_iso_east_region_limitless_db_shard_group = "database-test-name.shardgrp-XYZ.rds.us-iso-east-1.c2s.ic.gov"
 
 global_db_writer_cluster = "global-cluster-test-name.global-XYZ.global.rds.amazonaws.com"
+
+cluster_group_writer = "test-postgres-group.rw-c7qgg0siobwq.db-cluster-group.us-east-1.rds.amazonaws.com"
+cluster_group_reader = "test-postgres-group.ro-c7qgg0siobwq.db-cluster-group.us-east-1.rds.amazonaws.com"
+data_group_writer = "database-test-name.XYZ.data-group.us-east-2.rds.amazonaws.com"
+data_group_reader = "database-test-name.ro-XYZ.data-group.us-east-2.rds.amazonaws.com"
+data_group_writer_uppercase = "DATABASE-TEST-NAME.XYZ.data-group.us-east-2.rds.amazonaws.com"
+data_group_reader_uppercase = "DATABASE-TEST-NAME.ro-XYZ.data-group.us-east-2.rds.amazonaws.com"
 
 
 @pytest.mark.parametrize("test_value", [
@@ -359,3 +367,112 @@ def test_get_instance_id(host: str, expected_id: str):
 def test_get_cluster_id(expected, test_value):
     target = RdsUtils()
     assert target.get_cluster_id(test_value) == expected
+
+
+@pytest.mark.parametrize("expected, test_value", [
+    (RdsUrlType.RDS_CLUSTER_GROUP_WRITER, cluster_group_writer),
+    (RdsUrlType.RDS_CLUSTER_GROUP_READER, cluster_group_reader),
+    (RdsUrlType.RDS_DATA_GROUP_WRITER, data_group_writer),
+    (RdsUrlType.RDS_DATA_GROUP_READER, data_group_reader),
+    (RdsUrlType.RDS_DATA_GROUP_WRITER, data_group_writer_uppercase),
+    (RdsUrlType.RDS_DATA_GROUP_READER, data_group_reader_uppercase),
+    (RdsUrlType.RDS_INSTANCE, us_east_region_instance),
+    (RdsUrlType.RDS_WRITER_CLUSTER, us_east_region_cluster),
+    (RdsUrlType.RDS_READER_CLUSTER, us_east_region_cluster_read_only),
+])
+def test_identify_rds_type_group_endpoints(expected, test_value):
+    target = RdsUtils()
+    assert target.identify_rds_type(test_value) == expected
+
+
+@pytest.mark.parametrize("test_value", [
+    data_group_writer,
+    data_group_writer_uppercase,
+])
+def test_is_data_group_writer_dns(test_value):
+    target = RdsUtils()
+    assert target.is_data_group_writer_dns(test_value) is True
+
+
+@pytest.mark.parametrize("test_value", [
+    data_group_reader,
+    data_group_reader_uppercase,
+    cluster_group_writer,
+    cluster_group_reader,
+    us_east_region_instance,
+    us_east_region_cluster,
+    us_east_region_cluster_read_only,
+    us_east_region_proxy,
+    us_east_region_custom_domain,
+])
+def test_is_not_data_group_writer_dns(test_value):
+    target = RdsUtils()
+    assert target.is_data_group_writer_dns(test_value) is False
+
+
+@pytest.mark.parametrize("test_value", [
+    data_group_reader,
+    data_group_reader_uppercase,
+])
+def test_is_data_group_reader_dns(test_value):
+    target = RdsUtils()
+    assert target.is_data_group_reader_dns(test_value) is True
+
+
+@pytest.mark.parametrize("test_value", [
+    data_group_writer,
+    data_group_writer_uppercase,
+    cluster_group_writer,
+    cluster_group_reader,
+    us_east_region_instance,
+    us_east_region_cluster,
+    us_east_region_cluster_read_only,
+])
+def test_is_not_data_group_reader_dns(test_value):
+    target = RdsUtils()
+    assert target.is_data_group_reader_dns(test_value) is False
+
+
+@pytest.mark.parametrize("test_value", [
+    data_group_writer,
+    data_group_reader,
+])
+def test_is_not_cluster_group_dns(test_value):
+    target = RdsUtils()
+    assert target.is_cluster_group_writer_dns(test_value) is False
+    assert target.is_cluster_group_reader_dns(test_value) is False
+
+
+def test_cluster_group_dns():
+    target = RdsUtils()
+    assert target.is_cluster_group_writer_dns(cluster_group_writer) is True
+    assert target.is_cluster_group_reader_dns(cluster_group_writer) is False
+    assert target.is_cluster_group_reader_dns(cluster_group_reader) is True
+    assert target.is_cluster_group_writer_dns(cluster_group_reader) is False
+
+
+@pytest.mark.parametrize("test_value", [
+    data_group_writer,
+    data_group_reader,
+    data_group_writer_uppercase,
+    data_group_reader_uppercase,
+])
+def test_data_group_dns_properties(test_value):
+    target = RdsUtils()
+    assert target.is_rds_dns(test_value) is True
+    assert target.is_rds_instance(test_value) is False
+    assert target.is_rds_cluster_dns(test_value) is False
+    assert target.is_writer_cluster_dns(test_value) is False
+    assert target.is_reader_cluster_dns(test_value) is False
+    assert target.get_rds_region(test_value) == "us-east-2"
+    assert target.get_cluster_id(test_value) == test_value.split(".")[0]
+    assert target.get_instance_id(test_value) is None
+
+
+@pytest.mark.parametrize("expected, test_value", [
+    ("?.XYZ.data-group.us-east-2.rds.amazonaws.com", data_group_writer),
+    ("?.XYZ.data-group.us-east-2.rds.amazonaws.com", data_group_reader),
+])
+def test_get_data_group_instance_host_pattern(expected, test_value):
+    target = RdsUtils()
+    assert target.get_rds_instance_host_pattern(test_value) == expected

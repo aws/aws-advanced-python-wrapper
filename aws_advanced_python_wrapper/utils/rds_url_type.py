@@ -38,4 +38,6 @@ class RdsUrlType(Enum):
     RDS_GLOBAL_WRITER_CLUSTER = True, True, False,
     RDS_CLUSTER_GROUP_WRITER = True, False, True,
     RDS_CLUSTER_GROUP_READER = True, False, True,
+    RDS_DATA_GROUP_WRITER = True, False, True,
+    RDS_DATA_GROUP_READER = True, False, True,
     OTHER = False, False, False,
