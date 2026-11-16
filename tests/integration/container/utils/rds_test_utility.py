@@ -175,8 +175,8 @@ class RdsTestUtility:
 
         self.failover_cluster(cluster_id, target_id)
         remaining_attempts = 5
-        while not self.writer_changed(initial_writer_id, cluster_id, 300):
-            # if writer is not changed, try triggering failover again
+        while not (self.writer_changed(initial_writer_id, cluster_id, 300) and self._wait_until_initial_writer_is_reader(initial_writer_id)):
+            # if writer is not changed, or Aurora put the initial writer back, try triggering failover again
             remaining_attempts -= 1
             if remaining_attempts == 0:
                 raise Exception(Messages.get("RdsTestUtility.FailoverRequestNotSuccessful"))
@@ -292,6 +292,45 @@ class RdsTestUtility:
             sleep(3)
             current_writer_id = self.get_cluster_writer_instance_id(cluster_id)
         return initial_writer_id != current_writer_id
+
+    def _wait_until_initial_writer_is_reader(self, initial_writer_id: str) -> bool:
+        """Wait until the initial writer has restarted and answers as a reader.
+
+        Returns False if it still answers as the writer a minute after its first
+        writer reading: Aurora can put the original instance back in the writer role.
+        Returns True at once off Aurora; fails the test after 300 s.
+        """
+        env = TestEnvironment.get_current()
+        if DatabaseEngineDeployment.AURORA != env.get_deployment():
+            return True
+
+        engine = env.get_engine()
+        instance_info = env.get_database_info().get_instance(initial_writer_id)
+        first_writer_reading: Optional[float] = None
+        start_time = timeit.default_timer()
+        while (timeit.default_timer() - start_time) < 300:  # 5 min
+            try:
+                conn = self._open_connection(instance_info)
+                try:
+                    role = self.query_host_role(conn, engine)
+                finally:
+                    conn.close()
+            except Exception:
+                # The initial writer restarts as a reader after the failover; keep polling.
+                sleep(1)
+                continue
+
+            if role == HostRole.READER:
+                return True
+            now = timeit.default_timer()
+            if first_writer_reading is None:
+                first_writer_reading = now
+            elif now - first_writer_reading >= 60:  # 1 min
+                self.logger.debug(f"Initial writer {initial_writer_id} is still the writer")
+                return False
+            sleep(1)
+
+        pytest.fail(f"Initial writer {initial_writer_id} did not answer as a reader in 300 s")
 
     def assert_first_query_throws(
             self,
