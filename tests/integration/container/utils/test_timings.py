@@ -90,6 +90,24 @@ INITIAL_WRITER_POLL_INTERVAL_SEC: float = 1
 CLUSTER_STATUS_TIMEOUT_SEC: float = 600
 INSTANCE_UP_TIMEOUT_SEC: float = 300
 
+# ───── RDS events on a failed test ────────────────────────────────────
+# When a test fails on an Aurora or Multi-AZ DB cluster, the conftest logs
+# the cluster's and its instances' RDS events from this far back, to show
+# whether RDS restarted or failed over an instance around the failure. It covers one
+# failover helper call plus the test's own work. Each RDS API call gets a
+# short timeout and one attempt, the lookup stops at the first failed call,
+# and it reads no more sources once its budget is spent, so it adds well
+# under a minute to the failed test.
+RDS_EVENTS_LOOKBACK_SEC: float = 900
+RDS_EVENTS_CALL_TIMEOUT_SEC: float = 5
+RDS_EVENTS_BUDGET_SEC: float = 20
+
+# ───── Rerun after a cluster outage ───────────────────────────────────
+# On Aurora and Multi-AZ DB clusters, a test that failed because the
+# cluster stopped accepting connections is run once more after this delay,
+# so the instances can come back first.
+CLUSTER_OUTAGE_RERUN_DELAY_SEC: float = 60
+
 # ───── Long-running failover-during-transaction test ───────────────────
 # ``test_writer_fail_within_transaction_start_transaction`` exercises a
 # rare-but-realistic pathology: a writer instance failing mid-transaction

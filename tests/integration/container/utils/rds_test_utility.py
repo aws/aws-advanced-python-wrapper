@@ -16,23 +16,31 @@ from __future__ import annotations
 
 from contextlib import closing
 from threading import Thread
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional, cast
 
 import botocore.exceptions
 
 from tests.integration.container.utils.proxy_helper import ProxyHelper
 
 if TYPE_CHECKING:
+    from botocore.config import Config
+
     from aws_advanced_python_wrapper.pep249 import Connection
     from .test_database_info import TestDatabaseInfo
 
+import asyncio
+import re
 import socket
 import timeit
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from time import perf_counter_ns, sleep
 
 import boto3
+import psycopg
+import psycopg.errors
 import pytest
+from mysql.connector.errors import \
+    ConnectionTimeoutError as MySQLConnectionTimeoutError
 
 from aws_advanced_python_wrapper.driver_info import DriverInfo
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
@@ -52,17 +60,39 @@ from .test_driver import TestDriver
 from .test_environment import TestEnvironment
 from .test_instance_info import TestInstanceInfo
 
+# Aurora or the network stopped accepting connections: the failover helper ran out of time, or a
+# connect timed out. The conftest reruns a test that fails this way once.
+_HELPER_OUTAGE_PATTERNS = (
+    re.compile(r"did not finish within"),
+    re.compile(r"did not accept a connection"),
+)
+_CONNECT_TIMEOUT_PATTERNS = (
+    re.compile(r"Can't connect to MySQL server.*timed out"),
+    re.compile(r"connection timeout expired"),
+)
+# A full server can come from leaked connections, so it is not an outage
+_NOT_CLUSTER_OUTAGE_PATTERN = re.compile(
+    r"[Tt]oo many (connections|clients)|remaining connection slots are reserved")
+# The driver errors a connect timeout surfaces as
+_CONNECT_TIMEOUT_ERRORS = (MySQLConnectionTimeoutError, psycopg.OperationalError)
+# What a connect timeout is raised from. Anything else in the chain, such as an assertion whose cleanup then
+# failed to connect, or a query the test ran, is the test's own failure.
+_CONNECT_TIMEOUT_CAUSES = (OSError, asyncio.TimeoutError, MySQLConnectionTimeoutError, psycopg.errors.ConnectionTimeout)
+
 
 class RdsTestUtility:
     logger = Logger(__name__)
+    # Set when a test requests a failover, so that a connect timeout after it is not rerun as an outage
+    failover_requested: ClassVar[bool] = False
 
     _client: Any
+    _last_connect_error: Optional[str] = None
 
-    def __init__(self, region: str, endpoint: Optional[str] = None):
+    def __init__(self, region: str, endpoint: Optional[str] = None, config: Optional[Config] = None):
         if endpoint:
-            self._client = boto3.client(service_name='rds', region_name=region, endpoint_url=endpoint)
+            self._client = boto3.client(service_name='rds', region_name=region, endpoint_url=endpoint, config=config)
         else:
-            self._client = boto3.client(service_name='rds', region_name=region)
+            self._client = boto3.client(service_name='rds', region_name=region, config=config)
 
     @staticmethod
     def get_utility() -> RdsTestUtility:
@@ -150,6 +180,65 @@ class RdsTestUtility:
             cluster_info = self.get_db_cluster(cluster_id)
             status = cluster_info.get("Status")
 
+    def get_recent_events(
+            self, cluster_id: str, instance_ids: List[str], lookback_sec: float, budget_sec: float) -> List[Dict[str, Any]]:
+        """Read the RDS events of a cluster and its instances.
+
+        :param cluster_id: the cluster's identifier.
+        :param instance_ids: the identifiers of the cluster's instances.
+        :param lookback_sec: how far back to read, in seconds.
+        :param budget_sec: how long to keep reading, in seconds. Sources not read by then are skipped.
+        :return: the events read, oldest first.
+        """
+        stop_time = timeit.default_timer() + budget_sec
+        start_time = datetime.now(timezone.utc) - timedelta(seconds=lookback_sec)
+        sources = [("db-cluster", cluster_id)] + [("db-instance", instance_id) for instance_id in instance_ids]
+        paginator = self._client.get_paginator("describe_events")
+        events: List[Dict[str, Any]] = []
+        for source_type, source_id in sources:
+            if timeit.default_timer() >= stop_time:
+                break
+            for page in paginator.paginate(SourceType=source_type, SourceIdentifier=source_id, StartTime=start_time):
+                events.extend(page.get("Events", []))
+        return sorted(events, key=lambda event: event.get("Date", datetime.min.replace(tzinfo=timezone.utc)))
+
+    @staticmethod
+    def is_cluster_outage(error: Optional[BaseException], after_failover: bool = False) -> bool:
+        """Tell whether a test failed because the cluster stopped accepting connections.
+
+        :param error: the exception the test failed with, or None.
+        :param after_failover: whether the test requested a failover before it failed. A connect
+            timeout is then not an outage, because the wrapper may have connected to the old writer.
+        :return: True if the exception itself is the failover helper running out of time or, before
+            any failover, a connect that timed out, and every exception it was raised from or while
+            handling is part of a connect timeout.
+        """
+        if error is None:
+            return False
+
+        message = f"{type(error).__name__}: {error}"
+        if _NOT_CLUSTER_OUTAGE_PATTERN.search(message):
+            return False
+        if isinstance(error, pytest.fail.Exception):
+            outage = any(pattern.search(message) for pattern in _HELPER_OUTAGE_PATTERNS)
+        elif after_failover or not isinstance(error, _CONNECT_TIMEOUT_ERRORS):
+            outage = False
+        else:
+            outage = any(pattern.search(message) for pattern in _CONNECT_TIMEOUT_PATTERNS)
+        if not outage:
+            return False
+
+        chain: List[BaseException] = []
+        pending: List[BaseException] = [error]
+        while pending:
+            current = pending.pop()
+            if any(current is seen for seen in chain):
+                continue
+            chain.append(current)
+            pending.extend(linked for linked in (current.__cause__, current.__context__) if linked is not None)
+        # Every exception the outermost one was raised from or while handling must be part of a connect timeout
+        return all(isinstance(exception, _CONNECT_TIMEOUT_CAUSES) for exception in chain[1:])
+
     def get_db_cluster(self, cluster_id: str) -> Any:
         response: Any = self._client.describe_db_clusters(DBClusterIdentifier=cluster_id)
         clusters = response.get("DBClusters")
@@ -168,6 +257,7 @@ class RdsTestUtility:
 
         start = perf_counter_ns()
         deadline = timeit.default_timer() + FAILOVER_DEADLINE_SEC
+        self._last_connect_error = None
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_db_name()
 
@@ -183,7 +273,9 @@ class RdsTestUtility:
         while True:
             remaining_sec = deadline - timeit.default_timer()
             if remaining_sec <= 0:
-                pytest.fail(f"Failover from {initial_writer_id} did not finish within {FAILOVER_DEADLINE_SEC} s")
+                # The conftest reruns a test that fails with this message once
+                pytest.fail(f"Failover from {initial_writer_id} did not finish within {FAILOVER_DEADLINE_SEC} s. "
+                            f"Last connect error: {self._last_connect_error}")
 
             if self.writer_changed(initial_writer_id, cluster_id, min(WRITER_CHANGE_TIMEOUT_SEC, remaining_sec)):
                 if not self._initial_writer_kept_writer_role(initial_writer_id, deadline):
@@ -231,6 +323,7 @@ class RdsTestUtility:
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_db_name()
 
+        RdsTestUtility.failover_requested = True
         self.wait_until_cluster_has_desired_status(cluster_id, "available", timeout_sec)
 
         remaining_attempts = 10
@@ -305,6 +398,7 @@ class RdsTestUtility:
                     conn.close()
             except Exception as ex:
                 # Aurora may briefly reject connections mid-failover; keep polling.
+                self._last_connect_error = f"{type(ex).__name__}: {ex}"
                 self.logger.debug("writer_changed SQL probe failed: " + str(ex))
             if data_plane_changed:
                 try:
@@ -374,6 +468,7 @@ class RdsTestUtility:
             finally:
                 conn.close()
         except Exception as e:
+            self._last_connect_error = f"{type(e).__name__}: {e}"
             self.logger.debug(f"Instance {instance_id} did not answer: {e}")
             return None
 
@@ -632,7 +727,7 @@ class RdsTestUtility:
         database_info: TestDatabaseInfo = TestEnvironment.get_current().get_database_info()
         for i in instances:
             instance_info: TestInstanceInfo = database_info.get_instance(i)
-            success: bool = False
+            last_error: Optional[Exception] = None
             stop_time = timeit.default_timer() + INSTANCE_UP_TIMEOUT_SEC
             if deadline is not None:
                 stop_time = min(stop_time, deadline)
@@ -641,13 +736,16 @@ class RdsTestUtility:
                 try:
                     conn = self._open_connection(instance_info)
                     conn.close()
-                    success = True
+                    last_error = None
                     break
-                except Exception:
+                except Exception as e:
+                    last_error = e
                     if timeit.default_timer() >= stop_time:
                         break
                     sleep(1)
-            assert success, f"Instance {i} did not accept a connection"
+            if last_error is not None:
+                # The conftest reruns a test that fails with this message once
+                pytest.fail(f"Instance {i} did not accept a connection: {type(last_error).__name__}: {last_error}")
 
     @staticmethod
     def create_user(conn, username, password):

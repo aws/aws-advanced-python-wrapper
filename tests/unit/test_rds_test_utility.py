@@ -15,10 +15,19 @@
 from __future__ import annotations
 
 import datetime
+import socket
 
+import psycopg
+import psycopg.errors
 import pytest
+from mysql.connector.errors import \
+    ConnectionTimeoutError as MySQLConnectionTimeoutError
+from mysql.connector.errors import InterfaceError, OperationalError
 
 import tests.integration.container.utils.rds_test_utility as rds_test_utility
+from aws_advanced_python_wrapper.errors import (AwsConnectError,
+                                                FailoverFailedError,
+                                                ReadWriteSplittingError)
 from aws_advanced_python_wrapper.hostinfo import HostRole
 from tests.integration.container.utils.database_engine import DatabaseEngine
 from tests.integration.container.utils.database_engine_deployment import \
@@ -141,11 +150,12 @@ def test_failover_no_new_writer_fails_at_deadline(utility, clock):
     target.writer_changed.side_effect = _no_new_writer
     target._open_connection.side_effect = ConnectionRefusedError("unreachable")
 
-    with pytest.raises(pytest.fail.Exception, match="instance-1"):
+    with pytest.raises(pytest.fail.Exception, match="ConnectionRefusedError: unreachable") as excinfo:
         target.failover_cluster_and_wait_until_writer_changed("instance-1", "cluster")
 
     assert target.failover_cluster.call_count == 1
     assert clock[0] - _START_SEC <= FAILOVER_DEADLINE_SEC
+    assert rds_test_utility.RdsTestUtility.is_cluster_outage(excinfo.value, after_failover=True) is True
 
 
 def test_failover_writer_unchanged_reissued(utility, clock):
@@ -186,10 +196,11 @@ def test_make_sure_instances_up_tries_once_after_deadline(utility, clock):
     target, _ = utility
     target._open_connection.side_effect = ConnectionRefusedError("starting up")
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(pytest.fail.Exception, match="instance-2") as excinfo:
         rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2"], clock[0] - 1)
 
     assert target._open_connection.call_count == 1
+    assert rds_test_utility.RdsTestUtility.is_cluster_outage(excinfo.value, after_failover=True) is True
 
 
 def test_failover_reissues_at_most_max_times(utility):
@@ -350,3 +361,168 @@ def test_failover_initial_writer_restart_rechecks_new_writer(utility, clock, moc
 
     assert target.writer_changed.call_count == 2
     assert target.failover_cluster.call_count == 1
+
+
+def test_get_recent_events_merges_sources_oldest_first(utility):
+    target, _ = utility
+    paginator = target._client.get_paginator.return_value
+    paginator.paginate.side_effect = [
+        [{"Events": [{"Date": datetime.datetime(2026, 1, 1, 0, 2), "SourceIdentifier": "cluster", "Message": "second"}]}],
+        [{"Events": [{"Date": datetime.datetime(2026, 1, 1, 0, 1), "SourceIdentifier": "instance-1", "Message": "first"}]}],
+        [{"Events": []}],
+    ]
+
+    events = target.get_recent_events("cluster", ["instance-1", "instance-2"], 900, 20)
+
+    assert [event["Message"] for event in events] == ["first", "second"]
+    target._client.get_paginator.assert_called_once_with("describe_events")
+    requests = [call.kwargs for call in paginator.paginate.call_args_list]
+    assert [request["SourceType"] for request in requests] == ["db-cluster", "db-instance", "db-instance"]
+    assert [request["SourceIdentifier"] for request in requests] == ["cluster", "instance-1", "instance-2"]
+    expected_start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=900)
+    assert abs((requests[0]["StartTime"] - expected_start).total_seconds()) < 60
+
+
+def _raised_from(error, cause):
+    error.__cause__ = cause
+    return error
+
+
+def _raised_while_handling(error, context):
+    error.__context__ = context
+    return error
+
+
+_MYSQL_CONNECT_TIMEOUT = "2003: Can't connect to MySQL server on 'instance-1:3306' (timed out)"
+_PG_CONNECT_TIMEOUT = "connection timeout expired"
+
+
+@pytest.mark.parametrize("error, after_failover, expected", [
+    pytest.param(MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT), False, True, id="mysql_connect_timeout"),
+    pytest.param(psycopg.OperationalError(_PG_CONNECT_TIMEOUT), False, True, id="pg_connect_timeout"),
+    pytest.param(
+        pytest.fail.Exception("Failover from instance-1 did not finish within 420 s. Last connect error: None"),
+        True, True, id="helper_deadline"),
+    pytest.param(
+        _raised_from(MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT), socket.timeout("timed out")),
+        False, True, id="connect_timeout_from_socket_timeout"),
+    pytest.param(
+        pytest.fail.Exception("Instance instance-2 did not accept a connection: OperationalError: timeout"),
+        True, True, id="instance_down"),
+    pytest.param(None, False, False, id="no_error"),
+    pytest.param(MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT), True, False, id="connect_timeout_after_failover"),
+    pytest.param(
+        pytest.fail.Exception("Instance instance-2 did not accept a connection: OperationalError: too many connections"),
+        True, False, id="instance_full"),
+    pytest.param(
+        InterfaceError("2003: Can't connect to MySQL server on 'instance-1:3306' (111 Connection refused)"),
+        False, False, id="mysql_refused"),
+    pytest.param(
+        OperationalError("2013: Lost connection to MySQL server during query (timed out)"), False, False, id="mysql_lost"),
+    pytest.param(
+        psycopg.OperationalError('connection failed: connection to server at "1.2.3.4", port 5432 failed: Connection refused'),
+        False, False, id="pg_refused"),
+    pytest.param(psycopg.OperationalError("FATAL:  the database system is starting up"), False, False, id="pg_starting_up"),
+    pytest.param(
+        _raised_from(FailoverFailedError("writer failover failed"), MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT)),
+        False, False, id="failover_failed"),
+    pytest.param(
+        _raised_from(AwsConnectError("connect failed"), psycopg.OperationalError(_PG_CONNECT_TIMEOUT)),
+        False, False, id="wrapper_connect_error"),
+    pytest.param(
+        _raised_from(ReadWriteSplittingError("switch failed"), MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT)),
+        False, False, id="read_write_splitting_error"),
+    pytest.param(
+        _raised_while_handling(
+            ReferenceError("weakly-referenced object no longer exists"),
+            _raised_from(FailoverFailedError("writer failover failed"), MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT))),
+        False, False, id="with_exit_hides_failover_failed"),
+    pytest.param(
+        _raised_while_handling(KeyError("writer"), MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT)),
+        False, False, id="key_error_in_except"),
+    pytest.param(
+        _raised_while_handling(
+            RuntimeError("dictionary changed size during iteration"), psycopg.OperationalError(_PG_CONNECT_TIMEOUT)),
+        False, False, id="runtime_error_in_except"),
+    pytest.param(
+        _raised_while_handling(AssertionError("wrong writer"), psycopg.OperationalError(_PG_CONNECT_TIMEOUT)),
+        False, False, id="assert_in_except"),
+    pytest.param(AssertionError("assert 'instance-1' != 'instance-1'"), False, False, id="wrong_writer"),
+    pytest.param(
+        AssertionError("Instance instance-2 did not accept a connection"), False, False, id="helper_text_in_assert"),
+    pytest.param(
+        _raised_while_handling(MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT), FailoverFailedError("failover failed")),
+        False, False, id="connect_timeout_while_failover_failed"),
+    pytest.param(
+        _raised_from(psycopg.OperationalError(_PG_CONNECT_TIMEOUT), AwsConnectError("connect failed")),
+        False, False, id="connect_timeout_from_wrapper_error"),
+    pytest.param(
+        _raised_while_handling(MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT), AssertionError("wrong writer")),
+        False, False, id="cleanup_timeout_after_assert"),
+    pytest.param(
+        _raised_while_handling(psycopg.OperationalError(_PG_CONNECT_TIMEOUT), psycopg.ProgrammingError("bad query")),
+        False, False, id="cleanup_timeout_after_driver_error"),
+    pytest.param(AwsConnectError(_MYSQL_CONNECT_TIMEOUT), False, False, id="wrapper_error_with_timeout_text"),
+    pytest.param(FailoverFailedError(_PG_CONNECT_TIMEOUT), False, False, id="failover_error_with_timeout_text"),
+    pytest.param(
+        pytest.fail.Exception("Failover from instance-1 did not finish within 420 s. "
+                              "Last connect error: OperationalError: FATAL: sorry, too many clients already"),
+        True, False, id="helper_deadline_server_full"),
+    pytest.param(
+        pytest.fail.Exception("Instance instance-2 did not accept a connection: OperationalError: FATAL: "
+                              "remaining connection slots are reserved for roles with privileges of the rds_reserved role"),
+        True, False, id="instance_down_slots_reserved"),
+    pytest.param(
+        _raised_from(psycopg.OperationalError(_PG_CONNECT_TIMEOUT),
+                     psycopg.OperationalError("FATAL: remaining connection slots are reserved for non-replication "
+                                              "superuser connections")),
+        False, False, id="connect_timeout_from_slots_reserved"),
+    pytest.param(
+        _raised_while_handling(psycopg.OperationalError(_PG_CONNECT_TIMEOUT), psycopg.errors.QueryCanceled("canceled")),
+        False, False, id="cleanup_timeout_after_query_canceled"),
+    pytest.param(
+        _raised_while_handling(
+            MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT), OperationalError("MySQL Connection not available")),
+        False, False, id="cleanup_timeout_after_connection_not_available"),
+    pytest.param(
+        _raised_while_handling(
+            MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT),
+            _raised_while_handling(socket.timeout("timed out"), AssertionError("wrong writer"))),
+        False, False, id="assert_two_links_down"),
+])
+def test_is_cluster_outage(error, after_failover, expected):
+    assert rds_test_utility.RdsTestUtility.is_cluster_outage(error, after_failover) is expected
+
+
+def test_get_recent_events_stops_at_budget(utility, clock):
+    target, _ = utility
+    paginator = target._client.get_paginator.return_value
+
+    def _slow_pages(**kwargs):
+        clock[0] += 15
+        return [{"Events": []}]
+
+    paginator.paginate.side_effect = _slow_pages
+
+    target.get_recent_events("cluster", ["instance-1", "instance-2"], 900, 20)
+
+    assert paginator.paginate.call_count == 2
+
+
+def test_failover_cluster_marks_failover_requested(utility, mocker):
+    target, _ = utility
+    target._client.failover_db_cluster.return_value = {"DBCluster": {}, "ResponseMetadata": {"HTTPStatusCode": 200}}
+    mocker.patch.object(rds_test_utility.RdsTestUtility, "failover_requested", False)
+
+    rds_test_utility.RdsTestUtility.failover_cluster(target, "cluster", None, 100)
+
+    assert rds_test_utility.RdsTestUtility.failover_requested is True
+
+
+def test_make_sure_instances_up_after_one_refusal(utility, mocker):
+    target, _ = utility
+    target._open_connection.side_effect = [ConnectionRefusedError("starting up"), mocker.MagicMock()]
+
+    rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2"])
+
+    assert target._open_connection.call_count == 2

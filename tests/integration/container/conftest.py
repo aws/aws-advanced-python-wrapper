@@ -41,10 +41,13 @@ if TYPE_CHECKING:
 import socket
 import timeit
 from time import sleep
-from typing import List
+from typing import ClassVar, List
 
 import boto3
 import pytest
+import pytest_timeout  # type: ignore[import-untyped]
+from botocore.config import Config
+from pytest_html import extras as html_extras  # type: ignore[import-untyped]
 
 from .utils.connection_utils import ConnectionUtils
 from .utils.database_engine_deployment import DatabaseEngineDeployment
@@ -52,8 +55,19 @@ from .utils.proxy_helper import ProxyHelper
 from .utils.rds_test_utility import RdsTestUtility
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
+from .utils.test_timings import (CLUSTER_OUTAGE_RERUN_DELAY_SEC,
+                                 RDS_EVENTS_BUDGET_SEC,
+                                 RDS_EVENTS_CALL_TIMEOUT_SEC,
+                                 RDS_EVENTS_LOOKBACK_SEC)
 
 logger = Logger(__name__)
+
+_CLUSTER_DEPLOYMENTS = (DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER)
+# During a long outage every test fails, so cap the reruns for the whole session
+_MAX_CLUSTER_OUTAGE_RERUNS = 5
+_NO_RERUN_MODULE_PREFIXES = (
+    "test_autoscaling", "test_blue_green_deployment", "test_failover_performance",
+    "test_read_write_splitting_performance")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -102,6 +116,13 @@ def pytest_runtest_setup(item):
         TestEnvironment.get_current().set_current_driver(None)
 
     logger.info("Starting test preparation for: " + test_name)
+
+    _Attempt.failed_other_than_outage = False
+    ProxyHelper.connectivity_disabled = False
+    RdsTestUtility.failover_requested = False
+    # pytest-timeout cancels its timer when an attempt fails, so a rerun needs a new one
+    if getattr(item, "execution_count", 1) > 1:
+        _set_timeout_timer(item)
 
     segment: Optional[Segment] = None
     if TestEnvironmentFeatures.TELEMETRY_TRACES_ENABLED in TestEnvironment.get_current().get_features():
@@ -234,6 +255,98 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.skip(
                 reason=f"{kind} driver {driver.value} not applicable to "
                        f"{file_kind} test file"))
+
+    # On Aurora and Multi-AZ DB clusters, run a test once more when it failed because the cluster stopped
+    # accepting connections. Autoscaling and blue/green tests change the cluster, and performance tests
+    # would measure a different run, so they are not rerun.
+    if TestEnvironment.get_current().get_deployment() in _CLUSTER_DEPLOYMENTS:
+        config.option.max_suite_reruns = _MAX_CLUSTER_OUTAGE_RERUNS
+        rerun_on_outage = pytest.mark.flaky(
+            reruns=1, reruns_delay=CLUSTER_OUTAGE_RERUN_DELAY_SEC, condition=_rerun_after_cluster_outage)
+        for item in items:
+            if not item.path.name.startswith(_NO_RERUN_MODULE_PREFIXES):
+                item.add_marker(rerun_on_outage)
+
+
+class _Attempt:
+    # Set when a failed phase of the current attempt was not a cluster outage
+    failed_other_than_outage: ClassVar[bool] = False
+
+
+def _phase_failed_on_cluster_outage(error: Optional[BaseException]) -> bool:
+    # A failure the test caused by cutting connectivity is not an outage
+    return not ProxyHelper.connectivity_disabled and RdsTestUtility.is_cluster_outage(
+        error, RdsTestUtility.failover_requested)
+
+
+def _rerun_after_cluster_outage(error: Optional[BaseException]) -> bool:
+    # Rerun only when every failed phase of the attempt was an outage
+    return not _Attempt.failed_other_than_outage and _phase_failed_on_cluster_outage(error)
+
+
+def _set_timeout_timer(item):
+    timeout_settings = pytest_timeout.get_env_settings(item.config)
+    timeout_marker = item.get_closest_marker("timeout")
+    if timeout_marker is not None:
+        if timeout_marker.args:
+            timeout = timeout_marker.args[0]
+        else:
+            timeout = timeout_marker.kwargs.get("timeout", timeout_settings.timeout)
+        if len(timeout_marker.args) > 1:
+            method = timeout_marker.args[1]
+        else:
+            method = timeout_marker.kwargs.get("method", timeout_settings.method)
+        timeout_settings = timeout_settings._replace(
+            timeout=timeout,
+            method=method,
+            func_only=timeout_marker.kwargs.get("func_only", timeout_settings.func_only))
+    # pytest-timeout sets a function-only timer itself at the call. No timeout, or 0, means none.
+    if timeout_settings.func_only or not timeout_settings.timeout:
+        return
+    item.config.hook.pytest_timeout_set_timer(item=item, settings=timeout_settings)
+
+
+# trylast makes this the inner wrapper, so the attempt's failures are recorded before
+# pytest-rerunfailures evaluates the rerun condition in its own wrapper
+@pytest.hookimpl(wrapper=True, trylast=True)
+def pytest_runtest_makereport(item, call):
+    report = yield
+    if report.failed:
+        if not _phase_failed_on_cluster_outage(call.excinfo.value if call.excinfo is not None else None):
+            _Attempt.failed_other_than_outage = True
+        if report.when in ("setup", "call"):
+            _attach_recent_rds_events(item, report)
+    return report
+
+
+def _attach_recent_rds_events(item, report):
+    # Shows whether RDS restarted or failed over an instance around a failure
+    try:
+        info = TestEnvironment.get_current().get_info()
+        if info.get_request().get_database_engine_deployment() not in _CLUSTER_DEPLOYMENTS:
+            return
+        # pytest-timeout stops the test's timer only after this hook, and a lookup that ran past it
+        # would end the whole session instead of reporting this failure
+        item.config.hook.pytest_timeout_cancel_timer(item=item)
+        call_config = Config(
+            connect_timeout=RDS_EVENTS_CALL_TIMEOUT_SEC, read_timeout=RDS_EVENTS_CALL_TIMEOUT_SEC,
+            retries={"total_max_attempts": 1})
+        rds_utility = RdsTestUtility(info.get_region(), info.get_rds_endpoint(), call_config)
+        instance_ids = [instance.get_instance_id() for instance in TestEnvironment.get_current().get_instances()]
+        events = rds_utility.get_recent_events(
+            info.get_db_name(), instance_ids, RDS_EVENTS_LOOKBACK_SEC, RDS_EVENTS_BUDGET_SEC)
+        lines = [f"{event.get('Date')} {event.get('SourceIdentifier')}: {event.get('Message')}" for event in events]
+    except Exception as e:
+        logger.warning(f"Could not read RDS events: {e}")
+        return
+
+    for line in lines:
+        logger.warning(f"RDS event {line}")
+    if lines:
+        text = "\n".join(lines)
+        report.sections.append(("RDS events", text))
+        # pytest-html leaves sections out of rerun reports, but keeps extras
+        report.extras = [*getattr(report, "extras", []), html_extras.text(text, name="RDS events")]
 
 
 def pytest_sessionstart(session):
