@@ -66,23 +66,29 @@ WRITER_CHANGED_PROBE_POLL_INTERVAL_SEC: float = 2.0
 # cluster endpoint's DNS and for the other instances. Every wait shares one
 # deadline, so a cluster that stops answering for minutes fails one test
 # instead of running past pytest's 600 s ``--timeout``, which ends the
-# whole session. 420 s leaves 180 s of that limit for the test itself; a
-# normal failover takes 20 to 35 s.
+# whole session. This bounds one call to about 420 s (one connect attempt
+# can run past it); the setup hook's waits are separate. A normal failover
+# takes 20 to 35 s.
 FAILOVER_DEADLINE_SEC: float = 420
 # How long one failover request gets to produce a new writer before the
 # helper checks whether the initial writer is still the writer.
 WRITER_CHANGE_TIMEOUT_SEC: float = 180
-# Aurora can leave or put the initial writer back in the writer role. The
-# helper then requests the failover again, at most this many times and only
-# while this much of the deadline is left.
+# Aurora can keep the initial writer as the writer, or make it the writer
+# again. The helper then requests the failover again, at most this many times
+# and only while this much of the deadline is left.
 FAILOVER_MAX_REISSUES: int = 2
 FAILOVER_REISSUE_MIN_REMAINING_SEC: float = 120
 # After the failover the initial writer restarts and answers as a reader.
-# If it keeps answering as the writer for this long without a break, Aurora
-# left or put it back in the writer role. Before a normal restart it answers
-# as the writer for well under a minute.
+# If it keeps answering as the writer for this long without a break, it is
+# still, or again, the writer. Before a normal restart it answers as the
+# writer for well under a minute.
 INITIAL_WRITER_REVERT_WINDOW_SEC: float = 60
 INITIAL_WRITER_POLL_INTERVAL_SEC: float = 1
+# Upper bounds of ``RdsTestUtility`` waits when no deadline is passed in:
+# for the cluster to reach a status, and for each instance to accept a
+# connection.
+CLUSTER_STATUS_TIMEOUT_SEC: float = 600
+INSTANCE_UP_TIMEOUT_SEC: float = 300
 
 # ───── Long-running failover-during-transaction test ───────────────────
 # ``test_writer_fail_within_transaction_start_transaction`` exercises a

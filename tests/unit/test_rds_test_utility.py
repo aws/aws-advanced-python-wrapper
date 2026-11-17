@@ -24,18 +24,22 @@ from tests.integration.container.utils.database_engine import DatabaseEngine
 from tests.integration.container.utils.database_engine_deployment import \
     DatabaseEngineDeployment
 from tests.integration.container.utils.test_timings import (
-    FAILOVER_DEADLINE_SEC, FAILOVER_MAX_REISSUES)
+    FAILOVER_DEADLINE_SEC, FAILOVER_MAX_REISSUES,
+    INITIAL_WRITER_POLL_INTERVAL_SEC, INITIAL_WRITER_REVERT_WINDOW_SEC,
+    WRITER_CHANGE_TIMEOUT_SEC)
+
+_START_SEC = 1000.0
 
 
 @pytest.fixture
 def clock(mocker):
-    now = [1000.0]
+    now = [_START_SEC]
 
     def _sleep(seconds):
         now[0] += seconds
 
     mocker.patch.object(rds_test_utility, "sleep", side_effect=_sleep)
-    mocker.patch.object(rds_test_utility.timeit, "default_timer", side_effect=lambda: now[0])
+    mocker.patch.object(rds_test_utility, "timeit").default_timer.side_effect = lambda: now[0]
     return now
 
 
@@ -45,12 +49,13 @@ def utility(mocker, clock):
     env = mocker.patch.object(rds_test_utility, "TestEnvironment").get_current.return_value
     env.get_deployment.return_value = DatabaseEngineDeployment.AURORA
     env.get_engine.return_value = DatabaseEngine.PG
-    mocker.patch.object(rds_test_utility.socket, "gethostbyname", side_effect=["10.0.0.1", "10.0.0.2"])
+    mocker.patch.object(rds_test_utility, "socket").gethostbyname.side_effect = ["10.0.0.1", "10.0.0.2"]
 
     target = rds_test_utility.RdsTestUtility("us-east-2")
     mocker.patch.object(target, "writer_changed", return_value=True)
     mocker.patch.object(target, "make_sure_instances_up")
     mocker.patch.object(target, "failover_cluster")
+    mocker.patch.object(target, "wait_until_cluster_has_desired_status")
     mocker.patch.object(target, "_open_connection")
     mocker.patch.object(target, "query_host_role")
     return target, env
@@ -69,7 +74,7 @@ def test_failover_waits_until_initial_writer_accepts_connections(utility, mocker
     target._open_connection.assert_called_with(env.get_database_info.return_value.get_instance.return_value)
 
 
-def test_failover_is_reissued_when_initial_writer_stays_writer(utility):
+def test_failover_initial_writer_stays_writer_reissued(utility):
     target, _ = utility
     target.query_host_role.side_effect = lambda conn, engine: (
         HostRole.WRITER if target.failover_cluster.call_count == 1 else HostRole.READER)
@@ -77,7 +82,7 @@ def test_failover_is_reissued_when_initial_writer_stays_writer(utility):
     target.failover_cluster_and_wait_until_writer_changed("instance-1", "cluster")
 
     assert target.failover_cluster.call_count == 2
-    target.failover_cluster.assert_called_with("cluster", None, FAILOVER_DEADLINE_SEC - 60)
+    target.failover_cluster.assert_called_with("cluster", None, FAILOVER_DEADLINE_SEC - INITIAL_WRITER_REVERT_WINDOW_SEC)
 
 
 def test_initial_writer_kept_writer_role_skips_non_aurora(utility, clock):
@@ -109,10 +114,10 @@ def test_failover_waits_through_writer_phase_after_long_restart(utility, mocker)
     assert target.failover_cluster.call_count == 1
 
 
-def test_failover_continues_at_deadline_when_initial_writer_never_answers(utility, clock, mocker):
+def test_failover_initial_writer_unreachable_returns_at_deadline(utility, clock, mocker):
     target, _ = utility
 
-    def _slow_new_writer(initial_writer_id, cluster_id, timeout):
+    def _slow_new_writer(initial_writer_id, cluster_id, timeout_sec):
         clock[0] += 200
         return True
 
@@ -122,15 +127,15 @@ def test_failover_continues_at_deadline_when_initial_writer_never_answers(utilit
     target.failover_cluster_and_wait_until_writer_changed("instance-1", "cluster")
 
     target.failover_cluster.assert_called_once_with("cluster", None, FAILOVER_DEADLINE_SEC)
-    target.make_sure_instances_up.assert_called_once_with(mocker.ANY, 1000.0 + FAILOVER_DEADLINE_SEC)
-    assert clock[0] - 1000.0 <= FAILOVER_DEADLINE_SEC
+    target.make_sure_instances_up.assert_called_once_with(mocker.ANY, _START_SEC + FAILOVER_DEADLINE_SEC)
+    assert clock[0] - _START_SEC <= FAILOVER_DEADLINE_SEC
 
 
-def test_failover_fails_at_deadline_when_no_new_writer_appears(utility, clock):
+def test_failover_no_new_writer_fails_at_deadline(utility, clock):
     target, _ = utility
 
-    def _no_new_writer(initial_writer_id, cluster_id, timeout):
-        clock[0] += timeout
+    def _no_new_writer(initial_writer_id, cluster_id, timeout_sec):
+        clock[0] += timeout_sec
         return False
 
     target.writer_changed.side_effect = _no_new_writer
@@ -140,15 +145,15 @@ def test_failover_fails_at_deadline_when_no_new_writer_appears(utility, clock):
         target.failover_cluster_and_wait_until_writer_changed("instance-1", "cluster")
 
     assert target.failover_cluster.call_count == 1
-    assert clock[0] - 1000.0 <= FAILOVER_DEADLINE_SEC
+    assert clock[0] - _START_SEC <= FAILOVER_DEADLINE_SEC
 
 
-def test_failover_is_reissued_when_writer_does_not_change(utility, clock):
+def test_failover_writer_unchanged_reissued(utility, clock):
     target, _ = utility
 
-    def _new_writer_after_reissue(initial_writer_id, cluster_id, timeout):
+    def _new_writer_after_reissue(initial_writer_id, cluster_id, timeout_sec):
         if target.failover_cluster.call_count == 1:
-            clock[0] += timeout
+            clock[0] += timeout_sec
             return False
         return True
 
@@ -161,10 +166,10 @@ def test_failover_is_reissued_when_writer_does_not_change(utility, clock):
     assert target.failover_cluster.call_count == 2
 
 
-def test_failover_is_not_reissued_near_deadline(utility, clock):
+def test_failover_near_deadline_not_reissued(utility, clock):
     target, _ = utility
 
-    def _slow_new_writer(initial_writer_id, cluster_id, timeout):
+    def _slow_new_writer(initial_writer_id, cluster_id, timeout_sec):
         clock[0] += 300
         return True
 
@@ -187,7 +192,7 @@ def test_make_sure_instances_up_tries_once_after_deadline(utility, clock):
     assert target._open_connection.call_count == 1
 
 
-def test_failover_is_reissued_at_most_max_reissues_times(utility):
+def test_failover_reissues_at_most_max_times(utility):
     target, _ = utility
     target.query_host_role.return_value = HostRole.WRITER
 
@@ -197,12 +202,12 @@ def test_failover_is_reissued_at_most_max_reissues_times(utility):
     assert target.failover_cluster.call_count == 1 + FAILOVER_MAX_REISSUES
 
 
-def test_failover_is_not_reissued_when_initial_writer_answers_as_reader(utility, clock):
+def test_failover_initial_writer_reader_not_reissued(utility, clock):
     target, _ = utility
 
-    def _new_writer_after_lag(initial_writer_id, cluster_id, timeout):
+    def _new_writer_after_lag(initial_writer_id, cluster_id, timeout_sec):
         if target.writer_changed.call_count == 1:
-            clock[0] += timeout
+            clock[0] += timeout_sec
             return False
         return True
 
@@ -227,9 +232,9 @@ def test_failover_writer_window_resets_after_restart(utility, mocker):
 def test_failover_needs_writer_window_to_reissue(utility, clock):
     target, _ = utility
 
-    def _new_writer_after_lag(initial_writer_id, cluster_id, timeout):
+    def _new_writer_after_lag(initial_writer_id, cluster_id, timeout_sec):
         if target.writer_changed.call_count == 1:
-            clock[0] += timeout
+            clock[0] += timeout_sec
             return False
         return True
 
@@ -241,12 +246,14 @@ def test_failover_needs_writer_window_to_reissue(utility, clock):
     assert target.failover_cluster.call_count == 1
 
 
-def test_failover_waits_for_new_writer_while_initial_writer_is_down(utility, clock):
+def test_failover_initial_writer_down_waits_for_new_writer(utility, clock):
     target, _ = utility
+    checked_at = []
 
-    def _new_writer_after_lag(initial_writer_id, cluster_id, timeout):
+    def _new_writer_after_lag(initial_writer_id, cluster_id, timeout_sec):
+        checked_at.append(clock[0])
         if target.writer_changed.call_count == 1:
-            clock[0] += timeout
+            clock[0] += timeout_sec
             return False
         return True
 
@@ -255,17 +262,17 @@ def test_failover_waits_for_new_writer_while_initial_writer_is_down(utility, clo
 
     target.failover_cluster_and_wait_until_writer_changed("instance-1", "cluster")
 
-    assert target.writer_changed.call_count == 2
     assert target.failover_cluster.call_count == 1
+    assert checked_at[1] - checked_at[0] < WRITER_CHANGE_TIMEOUT_SEC + INITIAL_WRITER_POLL_INTERVAL_SEC
 
 
-def test_failover_is_reissued_off_aurora_when_writer_does_not_change(utility, clock):
+def test_failover_off_aurora_writer_unchanged_reissued(utility, clock):
     target, env = utility
     env.get_deployment.return_value = DatabaseEngineDeployment.RDS_MULTI_AZ_CLUSTER
 
-    def _new_writer_after_reissue(initial_writer_id, cluster_id, timeout):
+    def _new_writer_after_reissue(initial_writer_id, cluster_id, timeout_sec):
         if target.writer_changed.call_count == 1:
-            clock[0] += timeout
+            clock[0] += timeout_sec
             return False
         return True
 
@@ -279,7 +286,6 @@ def test_failover_is_reissued_off_aurora_when_writer_does_not_change(utility, cl
 
 def test_failover_cluster_passes_timeout_to_status_wait(utility, mocker):
     target, _ = utility
-    mocker.patch.object(target, "wait_until_cluster_has_desired_status")
     target._client.failover_db_cluster.return_value = {"DBCluster": {}, "ResponseMetadata": {"HTTPStatusCode": 200}}
 
     rds_test_utility.RdsTestUtility.failover_cluster(target, "cluster", None, 100)
@@ -299,6 +305,48 @@ def test_wait_until_cluster_has_desired_status_stops_at_timeout(utility, clock, 
     mocker.patch.object(target, "get_db_cluster", return_value={"Status": "failing-over"})
 
     with pytest.raises(TimeoutError):
-        target.wait_until_cluster_has_desired_status("cluster", "available", 100)
+        rds_test_utility.RdsTestUtility.wait_until_cluster_has_desired_status(target, "cluster", "available", 100)
 
-    assert clock[0] - 1000.0 <= 110
+    assert clock[0] - _START_SEC <= 110
+
+
+def test_failover_late_first_request_not_reissued(utility, clock):
+    target, _ = utility
+
+    def _new_writer_after_lag(initial_writer_id, cluster_id, timeout_sec):
+        if target.writer_changed.call_count == 1:
+            clock[0] += timeout_sec
+            return False
+        return True
+
+    target.writer_changed.side_effect = _new_writer_after_lag
+    target.query_host_role.side_effect = lambda conn, engine: (
+        HostRole.READER if target.wait_until_cluster_has_desired_status.called else HostRole.WRITER)
+
+    target.failover_cluster_and_wait_until_writer_changed("instance-1", "cluster")
+
+    assert target.failover_cluster.call_count == 1
+
+
+def test_failover_initial_writer_restart_rechecks_new_writer(utility, clock, mocker):
+    target, _ = utility
+
+    def _new_writer_after_lag(initial_writer_id, cluster_id, timeout_sec):
+        if target.writer_changed.call_count == 1:
+            clock[0] += timeout_sec
+            return False
+        return True
+
+    def _writer_then_restarting(instance_info):
+        if target._open_connection.call_count == 1:
+            return mocker.MagicMock()
+        raise ConnectionRefusedError("restarting")
+
+    target.writer_changed.side_effect = _new_writer_after_lag
+    target._open_connection.side_effect = _writer_then_restarting
+    target.query_host_role.return_value = HostRole.WRITER
+
+    target.failover_cluster_and_wait_until_writer_changed("instance-1", "cluster")
+
+    assert target.writer_changed.call_count == 2
+    assert target.failover_cluster.call_count == 1

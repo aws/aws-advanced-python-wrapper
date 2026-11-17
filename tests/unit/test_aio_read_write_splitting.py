@@ -130,7 +130,7 @@ def test_set_read_only_true_switches_to_reader():
     asyncio.run(_body())
 
 
-def test_set_read_only_true_reaches_reader_after_service_replaces_provider():
+def test_set_read_only_true_uses_service_host_list_provider():
     # The factory's provider was built from the guessed dialect and knows only
     # the seed host; the plugin service replaces it once the dialect is
     # confirmed. The plugin must refresh through the service's provider.

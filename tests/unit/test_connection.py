@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import gc
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Set
 from unittest.mock import MagicMock, patch
 
 import psycopg
@@ -28,14 +28,19 @@ if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
-from aws_advanced_python_wrapper.errors import FailoverSuccessError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                FailoverSuccessError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
+from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.plugin import Plugin
 from aws_advanced_python_wrapper.plugin_service import (
-    PluginServiceImpl, PluginServiceManagerContainer)
+    PluginManager, PluginServiceImpl, PluginServiceManagerContainer)
 from aws_advanced_python_wrapper.sqlalchemy_driver_dialect import \
     SqlAlchemyDriverDialect
 from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.telemetry.null_telemetry import \
+    NullTelemetryFactory
 from aws_advanced_python_wrapper.wrapper import (AwsWrapperConnection,
                                                  AwsWrapperCursor)
 
@@ -154,52 +159,77 @@ def test_cursor_getattr_delegates_driver_attrs_including_underscore():
         _ = fresh._target_cursor
 
 
-def _cursor_stubs(current_connection, driver_dialect):
+class _ReleaseInPipelinePlugin(Plugin):
+    def __init__(self, release: Callable[[], None]):
+        self._release = release
+
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return {DbApiMethod.ALL.method_name}
+
+    def execute(self, target: type, method_name: str, execute_func: Callable, *args: Any, **kwargs: Any) -> Any:
+        # Free the old connection after PluginManager.execute's pre-check, as a garbage
+        # collection during the call can, then let the call reach the driver.
+        self._release()
+        gc.collect()
+        return execute_func()
+
+
+def _cursor_through_plugin_manager(driver_dialect, connection, driver_cursor, release):
+    container = PluginServiceManagerContainer()
     plugin_service = MagicMock()
     plugin_service.driver_dialect = driver_dialect
-    plugin_service.current_connection = current_connection
-    plugin_manager = MagicMock()
-    # Calls func directly, skipping PluginManager.execute's pre-check, so the test reaches the driver close.
-    plugin_manager.execute.side_effect = lambda target, method, func, *args, **kwargs: func()
-    return plugin_service, plugin_manager
-
-
-def _cursor_after_driver_connection_is_replaced():
-    # mysql-connector's cursor holds only a weak proxy to its connection. Failover
-    # replaces the current connection, so the wrapper cursor is all that is left.
-    driver_conn = MySQLConnection()
-    plugin_service, plugin_manager = _cursor_stubs(driver_conn, MySQLDriverDialect(Properties()))
-    cursor = AwsWrapperCursor(MagicMock(), plugin_service, plugin_manager, MySQLCursor(driver_conn))
-    del driver_conn
+    plugin_service.is_network_bound_method.return_value = False
+    plugin_service.current_connection = connection
+    container.plugin_service = plugin_service
+    plugin_manager = PluginManager(container, Properties({"plugins": ""}), NullTelemetryFactory())
+    plugin_manager._plugins = [_ReleaseInPipelinePlugin(release), *plugin_manager._plugins]
+    cursor = AwsWrapperCursor(MagicMock(), plugin_service, plugin_manager, driver_cursor)
+    # Failover replaces the current connection.
     plugin_service.current_connection = MySQLConnection()
-    gc.collect()
     return cursor
 
 
-def test_cursor_close_after_driver_connection_is_replaced():
-    cursor = _cursor_after_driver_connection_is_replaced()
+def _cursor_on_replaced_mysql_connection():
+    # mysql-connector's cursor holds only a weak proxy to its connection, so after
+    # failover only `held` and the wrapper cursor can keep the old connection alive.
+    held = [MySQLConnection()]
+    cursor = _cursor_through_plugin_manager(
+        MySQLDriverDialect(Properties()), held[0], MySQLCursor(held[0]), held.clear)
+    return cursor, held
+
+
+def test_cursor_close_after_failover():
+    cursor, _ = _cursor_on_replaced_mysql_connection()
 
     cursor.close()
 
 
-def test_cursor_with_block_keeps_its_error_after_driver_connection_is_replaced():
-    cursor = _cursor_after_driver_connection_is_replaced()
+def test_cursor_with_block_keeps_failover_error():
+    cursor, _ = _cursor_on_replaced_mysql_connection()
 
     with pytest.raises(FailoverSuccessError):
         with cursor:
             raise FailoverSuccessError("failover succeeded")
 
 
-def test_pooled_cursor_close_after_driver_connection_is_invalidated():
+def test_cursor_execute_after_failover_raises_wrapper_error():
+    cursor, held = _cursor_on_replaced_mysql_connection()
+    held.clear()
+    gc.collect()
+
+    with pytest.raises(AwsWrapperError):
+        cursor.execute("SELECT 1")
+
+
+def test_pooled_cursor_close_after_invalidate():
     # A pooled connection is SQLAlchemy's proxy, which drops its driver connection
     # when invalidated; the driver cursor was made on that driver connection.
     pool = QueuePool(MySQLConnection, pool_size=1, max_overflow=0)
     pooled_conn = pool.connect()
     driver_dialect = SqlAlchemyDriverDialect(MagicMock(spec=DriverDialect), Properties())
-    plugin_service, plugin_manager = _cursor_stubs(pooled_conn, driver_dialect)
-    cursor = AwsWrapperCursor(MagicMock(), plugin_service, plugin_manager, MySQLCursor(pooled_conn.driver_connection))
-    pooled_conn.invalidate()
-    gc.collect()
+    cursor = _cursor_through_plugin_manager(
+        driver_dialect, pooled_conn, MySQLCursor(pooled_conn.driver_connection), pooled_conn.invalidate)
 
     try:
         cursor.close()
