@@ -235,7 +235,7 @@ def test_writer_failover_rejects_stale_reader_labeled_as_writer():
     asyncio.run(_body())
 
 
-def test_writer_failover_converges_through_service_provider_after_dialect_upgrade():
+def test_writer_failover_uses_service_host_list_provider():
     # The wrapper hands the factory the provider built from the guessed
     # dialect (a static one for an instance endpoint), and the plugin service
     # replaces it once the dialect is confirmed. Writer failover must refresh
@@ -256,7 +256,7 @@ def test_writer_failover_converges_through_service_provider_after_dialect_upgrad
     aurora.force_refresh = AsyncMock(return_value=(
         HostInfo(host=w.host, port=5432, role=HostRole.READER),
         HostInfo(host=r.host, port=5432, role=HostRole.WRITER)))
-    svc.host_list_provider = aurora  # what the service holds after confirmation
+    svc.host_list_provider = aurora
 
     async def _body() -> None:
         deadline = asyncio.get_running_loop().time() + 2.0
@@ -750,8 +750,8 @@ def test_reader_failover_falls_back_to_original_writer_in_reader_or_writer_mode(
 
 def test_reader_failover_leaves_unreachable_reader_candidates_available():
     """A reader candidate that fails to open is only dropped from the pass;
-    only the failed current host is marked UNAVAILABLE (sync
-    failover_v2:295-296)."""
+    only the failed current host is marked UNAVAILABLE, as in sync
+    FailoverV2Plugin._failover_reader."""
     w = HostInfo(host="w1", port=5432, role=HostRole.WRITER)
     r1 = HostInfo(host="r1", port=5432, role=HostRole.READER)
     r2 = HostInfo(host="r2", port=5432, role=HostRole.READER)
@@ -780,6 +780,27 @@ def test_reader_failover_leaves_unreachable_reader_candidates_available():
     assert attempts == ["r2", "w1"]
     assert r1.get_availability() == HostAvailability.UNAVAILABLE
     assert r2.get_availability() == HostAvailability.AVAILABLE
+
+
+def test_reader_failover_leaves_unreachable_original_writer_available():
+    """An original writer that fails to open is not marked UNAVAILABLE either,
+    as in sync FailoverV2Plugin._failover_reader: it may be restarting as a reader."""
+    w = HostInfo(host="w1", port=5432, role=HostRole.WRITER)
+    r1 = HostInfo(host="r1", port=5432, role=HostRole.READER)
+    plugin, svc, _hlp, driver_dialect = _build_plugin(
+        mode="reader-or-writer", topology=(w, r1), timeout_sec=0.5)
+    svc._all_hosts = (w, r1)
+    svc._current_host_info = r1
+
+    async def _open(target, _driver_dialect):
+        raise OSError(f"{target.host} unreachable")
+
+    plugin._open_connection = _open  # type: ignore[method-assign]
+
+    with pytest.raises(FailoverFailedError):
+        asyncio.run(plugin._do_failover(driver_dialect=driver_dialect))
+
+    assert w.get_availability() == HostAvailability.AVAILABLE
 
 
 def test_failover_falls_back_to_initial_host_when_topology_empty():

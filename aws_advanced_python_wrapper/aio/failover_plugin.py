@@ -614,8 +614,6 @@ class AsyncFailoverPlugin(AsyncPlugin):
                 new_conn = await self._within_deadline(
                     self._open_connection(original_writer, driver_dialect), deadline)
             except Exception as e:  # noqa: BLE001
-                self._plugin_service.set_availability(
-                    original_writer, HostAvailability.UNAVAILABLE)
                 last_error = e
             else:
                 role = await self._probe_role(new_conn)
