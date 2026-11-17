@@ -60,6 +60,30 @@ CUSTOM_ENDPOINT_INFO_REFRESH_RATE_MS: int = 2_000
 WRITER_CHANGED_PROBE_CONNECT_TIMEOUT_SEC: int = 5
 WRITER_CHANGED_PROBE_POLL_INTERVAL_SEC: float = 2.0
 
+# ───── Failover helper deadline ────────────────────────────────────────
+# ``RdsTestUtility.failover_cluster_and_wait_until_writer_changed`` waits
+# for a new writer, for the initial writer to restart as a reader, for the
+# cluster endpoint's DNS and for the other instances. Every wait shares one
+# deadline, so a cluster that stops answering for minutes fails one test
+# instead of running past pytest's 600 s ``--timeout``, which ends the
+# whole session. 420 s leaves 180 s of that limit for the test itself; a
+# normal failover takes 20 to 35 s.
+FAILOVER_DEADLINE_SEC: float = 420
+# How long one failover request gets to produce a new writer before the
+# helper checks whether the initial writer is still the writer.
+WRITER_CHANGE_TIMEOUT_SEC: float = 180
+# Aurora can leave or put the initial writer back in the writer role. The
+# helper then requests the failover again, at most this many times and only
+# while this much of the deadline is left.
+FAILOVER_MAX_REISSUES: int = 2
+FAILOVER_REISSUE_MIN_REMAINING_SEC: float = 120
+# After the failover the initial writer restarts and answers as a reader.
+# If it keeps answering as the writer for this long without a break, Aurora
+# left or put it back in the writer role. Before a normal restart it answers
+# as the writer for well under a minute.
+INITIAL_WRITER_REVERT_WINDOW_SEC: float = 60
+INITIAL_WRITER_POLL_INTERVAL_SEC: float = 1
+
 # ───── Long-running failover-during-transaction test ───────────────────
 # ``test_writer_fail_within_transaction_start_transaction`` exercises a
 # rare-but-realistic pathology: a writer instance failing mid-transaction

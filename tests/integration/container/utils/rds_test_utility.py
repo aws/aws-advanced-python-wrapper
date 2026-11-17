@@ -40,6 +40,9 @@ from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from tests.integration.container.utils.test_timings import (
+    FAILOVER_DEADLINE_SEC, FAILOVER_MAX_REISSUES,
+    FAILOVER_REISSUE_MIN_REMAINING_SEC, INITIAL_WRITER_POLL_INTERVAL_SEC,
+    INITIAL_WRITER_REVERT_WINDOW_SEC, WRITER_CHANGE_TIMEOUT_SEC,
     WRITER_CHANGED_PROBE_CONNECT_TIMEOUT_SEC,
     WRITER_CHANGED_PROBE_POLL_INTERVAL_SEC)
 from .database_engine import DatabaseEngine
@@ -135,13 +138,13 @@ class RdsTestUtility:
         raise InterruptedError(Messages.get_formatted(
             "RdsTestUtility.InstanceDescriptionTimeout", instance_id, desired_status, wait_time_mins))
 
-    def wait_until_cluster_has_desired_status(self, cluster_id: str, desired_status: str) -> None:
-        stop_time = datetime.now() + timedelta(minutes=10)
+    def wait_until_cluster_has_desired_status(self, cluster_id: str, desired_status: str, timeout_sec: float = 600) -> None:
+        stop_time = datetime.now() + timedelta(seconds=timeout_sec)
         cluster_info = self.get_db_cluster(cluster_id)
         status = cluster_info.get("Status")
         while status != desired_status:
             if datetime.now() > stop_time:
-                raise TimeoutError(f"Cluster {cluster_id} did not reach status '{desired_status}' within 10 minutes.")
+                raise TimeoutError(f"Cluster {cluster_id} did not reach status '{desired_status}' within {timeout_sec:.0f} s.")
             sleep(10)
             cluster_info = self.get_db_cluster(cluster_id)
             status = cluster_info.get("Status")
@@ -163,6 +166,7 @@ class RdsTestUtility:
             raise Exception(Messages.get_formatted("RdsTestUtility.FailoverToTargetNotSupported", target_id, deployment))
 
         start = perf_counter_ns()
+        deadline = timeit.default_timer() + FAILOVER_DEADLINE_SEC
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_db_name()
 
@@ -173,32 +177,50 @@ class RdsTestUtility:
         cluster_endpoint = database_info.get_cluster_endpoint()
         initial_cluster_address = socket.gethostbyname(cluster_endpoint)
 
-        self.failover_cluster(cluster_id, target_id)
-        remaining_attempts = 5
-        while not (self.writer_changed(initial_writer_id, cluster_id, 300) and self._wait_until_initial_writer_is_reader(initial_writer_id)):
-            # if writer is not changed, or Aurora put the initial writer back, try triggering failover again
-            remaining_attempts -= 1
-            if remaining_attempts == 0:
+        self.failover_cluster(cluster_id, target_id, deadline - timeit.default_timer())
+        remaining_reissues = FAILOVER_MAX_REISSUES
+        while True:
+            remaining_sec = deadline - timeit.default_timer()
+            if remaining_sec <= 0:
+                pytest.fail(f"Failover from {initial_writer_id} did not finish within {FAILOVER_DEADLINE_SEC} s")
+
+            if self.writer_changed(initial_writer_id, cluster_id, min(WRITER_CHANGE_TIMEOUT_SEC, remaining_sec)):
+                if not self._initial_writer_kept_writer_role(initial_writer_id, deadline):
+                    break
+            elif DatabaseEngineDeployment.AURORA == deployment:
+                # No new writer yet. If the initial writer doesn't answer, or stops answering as the writer,
+                # a second failover would not help, and on two instances it hands the writer role back.
+                if self._query_instance_role(initial_writer_id) != HostRole.WRITER:
+                    continue
+                if not self._initial_writer_kept_writer_role(initial_writer_id, deadline):
+                    continue
+
+            # The failover did not take, or Aurora put the initial writer back: request it again
+            if remaining_reissues == 0 or deadline - timeit.default_timer() < FAILOVER_REISSUE_MIN_REMAINING_SEC:
                 raise Exception(Messages.get("RdsTestUtility.FailoverRequestNotSuccessful"))
-            self.failover_cluster(cluster_id, target_id)
+            remaining_reissues -= 1
+            self.failover_cluster(cluster_id, target_id, deadline - timeit.default_timer())
 
         # Failover has finished, wait for DNS to be updated so cluster endpoint resolves to the new writer instance.
         cluster_address = socket.gethostbyname(cluster_endpoint)
-        start_time = timeit.default_timer()
-        while cluster_address == initial_cluster_address and (timeit.default_timer() - start_time) < 300:  # 5 min
+        while cluster_address == initial_cluster_address and timeit.default_timer() < deadline:
             sleep(1)
             cluster_address = socket.gethostbyname(cluster_endpoint)
 
         # wait until all instances except initial writer instance to be available
         instances = [x.get_instance_id() for x in TestEnvironment.get_current().get_instances() if x.get_instance_id() != initial_writer_id]
-        self.make_sure_instances_up(instances)
+        self.make_sure_instances_up(instances, deadline)
         self.logger.debug("Testing.FinishedFailover", initial_writer_id, str((perf_counter_ns() - start) / 1_000_000))
 
-    def failover_cluster(self, cluster_id: Optional[str] = None, target_id: Optional[str] = None) -> None:
+    def failover_cluster(
+            self,
+            cluster_id: Optional[str] = None,
+            target_id: Optional[str] = None,
+            timeout_sec: float = 600) -> None:
         if cluster_id is None:
             cluster_id = TestEnvironment.get_current().get_info().get_db_name()
 
-        self.wait_until_cluster_has_desired_status(cluster_id, "available")
+        self.wait_until_cluster_has_desired_status(cluster_id, "available", timeout_sec)
 
         remaining_attempts = 10
         while remaining_attempts > 0:
@@ -218,7 +240,7 @@ class RdsTestUtility:
 
         raise Exception(Messages.get_formatted("RdsTestUtility.FailoverClusterFailed", cluster_id))
 
-    def writer_changed(self, initial_writer_id: str, cluster_id: str, timeout: int) -> bool:
+    def writer_changed(self, initial_writer_id: str, cluster_id: str, timeout: float) -> bool:
         """Detect whether Aurora has promoted a new writer instance.
 
         For Aurora deployments, queries the data-plane SQL catalog through the
@@ -284,7 +306,7 @@ class RdsTestUtility:
             sleep(WRITER_CHANGED_PROBE_POLL_INTERVAL_SEC)
         return False
 
-    def _writer_changed_via_rds_api(self, initial_writer_id: str, cluster_id: str, timeout: int) -> bool:
+    def _writer_changed_via_rds_api(self, initial_writer_id: str, cluster_id: str, timeout: float) -> bool:
         wait_until = timeit.default_timer() + timeout
 
         current_writer_id = self.get_cluster_writer_instance_id(cluster_id)
@@ -293,44 +315,58 @@ class RdsTestUtility:
             current_writer_id = self.get_cluster_writer_instance_id(cluster_id)
         return initial_writer_id != current_writer_id
 
-    def _wait_until_initial_writer_is_reader(self, initial_writer_id: str) -> bool:
-        """Wait until the initial writer has restarted and answers as a reader.
+    def _initial_writer_kept_writer_role(self, initial_writer_id: str, deadline: float) -> bool:
+        """Tell whether Aurora left or put the initial writer in the writer role after the failover.
 
-        Returns False if it still answers as the writer a minute after its first
-        writer reading: Aurora can put the original instance back in the writer role.
-        Returns True at once off Aurora; fails the test after 300 s.
+        Polls the initial writer until it answers as a reader, or keeps answering as the writer
+        for ``INITIAL_WRITER_REVERT_WINDOW_SEC`` without a break.
+
+        :param initial_writer_id: the instance that was the writer before the failover.
+        :param deadline: the ``timeit.default_timer()`` value at which to stop waiting.
+        :return: True if it kept answering as the writer for the whole window.
+            False if it answered as a reader, or off Aurora.
+            False at the deadline too, with a warning, so that the test's own assertions decide.
+        """
+        if DatabaseEngineDeployment.AURORA != TestEnvironment.get_current().get_deployment():
+            return False
+
+        first_writer_reading: Optional[float] = None
+        while timeit.default_timer() < deadline:
+            role = self._query_instance_role(initial_writer_id)
+            if role == HostRole.READER:
+                return False
+            if role is None:
+                # It restarts: a writer reading after the restart starts a new window
+                first_writer_reading = None
+            elif role == HostRole.WRITER:
+                now = timeit.default_timer()
+                if first_writer_reading is None:
+                    first_writer_reading = now
+                elif now - first_writer_reading >= INITIAL_WRITER_REVERT_WINDOW_SEC:
+                    self.logger.debug(f"Initial writer {initial_writer_id} is still the writer")
+                    return True
+            sleep(INITIAL_WRITER_POLL_INTERVAL_SEC)
+
+        self.logger.warning(f"Initial writer {initial_writer_id} did not answer as a reader before the failover deadline")
+        return False
+
+    def _query_instance_role(self, instance_id: str) -> Optional[HostRole]:
+        """Connect to one instance and ask for its role.
+
+        :param instance_id: the instance to ask.
+        :return: its role, or None if it can't be reached, for example while it restarts.
         """
         env = TestEnvironment.get_current()
-        if DatabaseEngineDeployment.AURORA != env.get_deployment():
-            return True
-
-        engine = env.get_engine()
-        instance_info = env.get_database_info().get_instance(initial_writer_id)
-        first_writer_reading: Optional[float] = None
-        start_time = timeit.default_timer()
-        while (timeit.default_timer() - start_time) < 300:  # 5 min
+        instance_info = env.get_database_info().get_instance(instance_id)
+        try:
+            conn = self._open_connection(instance_info)
             try:
-                conn = self._open_connection(instance_info)
-                try:
-                    role = self.query_host_role(conn, engine)
-                finally:
-                    conn.close()
-            except Exception:
-                # The initial writer restarts as a reader after the failover; keep polling.
-                sleep(1)
-                continue
-
-            if role == HostRole.READER:
-                return True
-            now = timeit.default_timer()
-            if first_writer_reading is None:
-                first_writer_reading = now
-            elif now - first_writer_reading >= 60:  # 1 min
-                self.logger.debug(f"Initial writer {initial_writer_id} is still the writer")
-                return False
-            sleep(1)
-
-        pytest.fail(f"Initial writer {initial_writer_id} did not answer as a reader in 300 s")
+                return self.query_host_role(conn, env.get_engine())
+            finally:
+                conn.close()
+        except Exception as e:
+            self.logger.debug(f"Instance {instance_id} did not answer: {e}")
+            return None
 
     def assert_first_query_throws(
             self,
@@ -577,21 +613,32 @@ class RdsTestUtility:
         else:
             raise UnsupportedOperationError(database_engine.value)
 
-    def make_sure_instances_up(self, instances: List[str]) -> None:
+    def make_sure_instances_up(self, instances: List[str], deadline: Optional[float] = None) -> None:
+        """Wait until each instance accepts a connection, for up to 5 minutes each.
+
+        :param instances: the ids of the instances to check.
+        :param deadline: a ``timeit.default_timer()`` value that ends every wait sooner.
+            Each instance still gets one attempt after it.
+        """
         database_info: TestDatabaseInfo = TestEnvironment.get_current().get_database_info()
         for i in instances:
             instance_info: TestInstanceInfo = database_info.get_instance(i)
             success: bool = False
-            start_time = timeit.default_timer()
-            while (timeit.default_timer() - start_time) < 300:  # 5 min
+            stop_time = timeit.default_timer() + 300  # 5 min
+            if deadline is not None:
+                stop_time = min(stop_time, deadline)
+            # Try each instance at least once, even when the deadline has already passed
+            while True:
                 try:
                     conn = self._open_connection(instance_info)
                     conn.close()
                     success = True
                     break
                 except Exception:
+                    if timeit.default_timer() >= stop_time:
+                        break
                     sleep(1)
-            assert success
+            assert success, f"Instance {i} did not accept a connection"
 
     @staticmethod
     def create_user(conn, username, password):
