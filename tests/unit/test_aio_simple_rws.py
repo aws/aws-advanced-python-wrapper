@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, Optional
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
@@ -213,43 +213,67 @@ def test_set_read_only_false_switches_to_write_endpoint():
 # ---- Role-verification retry ----------------------------------------------
 
 
-def test_verify_retries_then_falls_back_when_role_mismatches_and_current_usable():
-    """If get_host_role never matches, _verify_role exhausts retries and
-    _switch_to raises -- but set_read_only(True) then FALLS BACK to the
-    still-usable current connection (sync parity
-    read_write_splitting_plugin.py:209-221) rather than propagating. A
-    misconfigured read endpoint that resolves to a writer must not break
-    set_read_only(True) (test_incorrect_reader_endpoint)."""
+def test_verify_retries_when_role_mismatches():
     async def _body() -> None:
-        # Asked for a reader, but every probe says WRITER -> exhaust retries.
-        svc, dd = _build_plugin_service(role_returns=HostRole.WRITER)
-        # The budget has to outlast one slow attempt by a wide margin: the
-        # retry loop checks a wall-clock deadline, and at a 30ms budget a
-        # scheduling hiccup under the full suite left a single attempt and
-        # failed the await_count assertions below.
-        props = _base_props(
-            **{
-                WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS.name: "250",
-                WrapperProperties.SRW_CONNECT_RETRY_INTERVAL_MS.name: "5",
-            }
-        )
+        svc, dd = _build_plugin_service()
+        first_writer_conn = MagicMock(name="first-writer-conn")
+        second_writer_conn = MagicMock(name="second-writer-conn")
+        reader_conn = MagicMock(name="reader-conn")
+        svc.connect = AsyncMock(
+            side_effect=[first_writer_conn, second_writer_conn, reader_conn])
+        svc.get_host_role = AsyncMock(
+            side_effect=[HostRole.WRITER, HostRole.WRITER, HostRole.READER])
+        # A budget the three attempts can't use up, so the role sequence alone
+        # sets the attempt count.
+        props = _base_props(**{
+            WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS.name: "10000",
+        })
         plugin = AsyncSimpleReadWriteSplittingPlugin(svc, props)
 
         async def _noop() -> None:
             return None
 
-        # Must NOT raise -- the current connection is usable, so we fall back.
         await plugin.execute(
             MagicMock(),
             DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
-            _noop, True,  # request reader
+            _noop, True,
         )
-        # Multiple connect attempts made before giving up.
-        assert svc.connect.await_count >= 2
-        # Each wrong-role connection was aborted.
-        assert dd.abort_connection.await_count >= 2
-        # Stayed on the current connection -- no swap.
-        svc.set_current_connection.assert_not_called()
+
+        assert svc.connect.await_count == 3
+        assert dd.abort_connection.await_args_list == [
+            call(first_writer_conn), call(second_writer_conn)]
+        svc.set_current_connection.assert_awaited_once_with(
+            reader_conn,
+            HostInfo(host="reader.example.com", port=5432, role=HostRole.READER))
+
+    asyncio.run(_body())
+
+
+def test_reader_switch_failure_falls_back_when_current_connection_usable():
+    async def _body() -> None:
+        svc, dd = _build_plugin_service(role_returns=HostRole.WRITER)
+        writer_conn = MagicMock(name="writer-conn")
+        svc.connect = AsyncMock(return_value=writer_conn)
+        # A retry interval longer than the whole budget leaves exactly one
+        # attempt, however long that attempt takes.
+        props = _base_props(**{
+            WrapperProperties.SRW_CONNECT_RETRY_TIMEOUT_MS.name: "1",
+            WrapperProperties.SRW_CONNECT_RETRY_INTERVAL_MS.name: "50",
+        })
+        plugin = AsyncSimpleReadWriteSplittingPlugin(svc, props)
+
+        async def _noop() -> None:
+            return None
+
+        await plugin.execute(
+            MagicMock(),
+            DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
+            _noop, True,
+        )
+
+        assert svc.connect.await_count == 1
+        dd.abort_connection.assert_awaited_once_with(writer_conn)
+        svc.set_current_connection.assert_not_awaited()
 
     asyncio.run(_body())
 
