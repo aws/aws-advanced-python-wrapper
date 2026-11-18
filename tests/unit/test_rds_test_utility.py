@@ -20,6 +20,7 @@ import socket
 import psycopg
 import psycopg.errors
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError
 from mysql.connector.errors import \
     ConnectionTimeoutError as MySQLConnectionTimeoutError
 from mysql.connector.errors import InterfaceError, OperationalError
@@ -35,9 +36,17 @@ from tests.integration.container.utils.database_engine_deployment import \
 from tests.integration.container.utils.test_timings import (
     FAILOVER_DEADLINE_SEC, FAILOVER_MAX_REISSUES,
     INITIAL_WRITER_POLL_INTERVAL_SEC, INITIAL_WRITER_REVERT_WINDOW_SEC,
+    INSTANCE_STATUS_POLL_INTERVAL_SEC, INSTANCE_UP_TIMEOUT_SEC,
     WRITER_CHANGE_TIMEOUT_SEC)
 
 _START_SEC = 1000.0
+
+
+def _described_instances(instance_2_status):
+    return {"DBInstances": [
+        {"DBInstanceIdentifier": "instance-1", "DBInstanceStatus": "available"},
+        {"DBInstanceIdentifier": "instance-2", "DBInstanceStatus": instance_2_status},
+    ]}
 
 
 @pytest.fixture
@@ -61,6 +70,7 @@ def utility(mocker, clock):
     mocker.patch.object(rds_test_utility, "socket").gethostbyname.side_effect = ["10.0.0.1", "10.0.0.2"]
 
     target = rds_test_utility.RdsTestUtility("us-east-2")
+    target._client.describe_db_instances.return_value = _described_instances("available")
     mocker.patch.object(target, "writer_changed", return_value=True)
     mocker.patch.object(target, "make_sure_instances_up")
     mocker.patch.object(target, "failover_cluster")
@@ -409,6 +419,19 @@ _PG_CONNECT_TIMEOUT = "connection timeout expired"
     pytest.param(
         pytest.fail.Exception("Instance instance-2 did not accept a connection: OperationalError: timeout"),
         True, True, id="instance_down"),
+    pytest.param(
+        pytest.fail.Exception("Instances did not become available: instance-2 is 'rebooting'"),
+        True, True, id="instance_not_available"),
+    pytest.param(
+        pytest.fail.Exception("Instances not in cluster 'cluster': instance-3"),
+        False, False, id="instance_not_in_cluster"),
+    pytest.param(
+        pytest.fail.Exception(
+            "The test setup step timed out while waiting for the test custom endpoint to become available: 'ep'."),
+        False, False, id="custom_endpoint_not_available"),
+    pytest.param(
+        pytest.fail.Exception("Could not read the RDS status of the instances: EndpointConnectionError: timeout"),
+        False, False, id="instance_status_unreadable"),
     pytest.param(None, False, False, id="no_error"),
     pytest.param(MySQLConnectionTimeoutError(_MYSQL_CONNECT_TIMEOUT), True, False, id="connect_timeout_after_failover"),
     pytest.param(
@@ -526,3 +549,141 @@ def test_make_sure_instances_up_after_one_refusal(utility, mocker):
     rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2"])
 
     assert target._open_connection.call_count == 2
+
+
+def test_make_sure_instances_up_waits_until_available(utility, clock):
+    target, env = utility
+    env.get_cluster_name.return_value = "cluster"
+    target._client.describe_db_instances.side_effect = [
+        _described_instances("rebooting"), _described_instances("available")]
+
+    rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-1", "instance-2"])
+
+    target._client.describe_db_instances.assert_called_with(Filters=[{"Name": "db-cluster-id", "Values": ["cluster"]}])
+    assert target._client.describe_db_instances.call_count == 2
+    assert clock[0] == _START_SEC + INSTANCE_STATUS_POLL_INTERVAL_SEC
+    assert target._open_connection.call_count == 2
+
+
+def test_make_sure_instances_up_not_available_fails_at_timeout(utility, clock):
+    target, _ = utility
+    target._client.describe_db_instances.return_value = _described_instances("rebooting")
+
+    with pytest.raises(pytest.fail.Exception, match="instance-2 is 'rebooting'") as excinfo:
+        rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-1", "instance-2"])
+
+    assert clock[0] == _START_SEC + INSTANCE_UP_TIMEOUT_SEC
+    target._open_connection.assert_not_called()
+    assert rds_test_utility.RdsTestUtility.is_cluster_outage(excinfo.value, after_failover=True) is True
+
+
+def test_make_sure_instances_up_later_deadline_fails_at_timeout(utility, clock):
+    target, _ = utility
+    target._client.describe_db_instances.return_value = _described_instances("modifying")
+
+    with pytest.raises(pytest.fail.Exception, match="instance-2 is 'modifying'"):
+        rds_test_utility.RdsTestUtility.make_sure_instances_up(
+            target, ["instance-2"], clock[0] + INSTANCE_UP_TIMEOUT_SEC + 100)
+
+    assert clock[0] == _START_SEC + INSTANCE_UP_TIMEOUT_SEC
+
+
+def test_make_sure_instances_up_status_and_connect_share_timeout(utility, clock):
+    target, _ = utility
+    target._client.describe_db_instances.side_effect = lambda **kwargs: _described_instances(
+        "rebooting" if clock[0] < _START_SEC + 100 else "available")
+    target._open_connection.side_effect = ConnectionRefusedError("starting up")
+
+    with pytest.raises(pytest.fail.Exception, match="instance-2 did not accept a connection"):
+        rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2"])
+
+    assert clock[0] == _START_SEC + INSTANCE_UP_TIMEOUT_SEC
+
+
+def test_make_sure_instances_up_ignores_other_instances(utility):
+    target, _ = utility
+    target._client.describe_db_instances.return_value = _described_instances("rebooting")
+
+    rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-1"])
+
+    assert target._client.describe_db_instances.call_count == 1
+    assert target._open_connection.call_count == 1
+
+
+def test_make_sure_instances_up_checks_status_once_after_deadline(utility, clock):
+    target, _ = utility
+    target._client.describe_db_instances.return_value = _described_instances("rebooting")
+
+    with pytest.raises(pytest.fail.Exception, match="instance-2 is 'rebooting'"):
+        rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2"], clock[0] - 1)
+
+    assert target._client.describe_db_instances.call_count == 1
+
+
+def test_make_sure_instances_up_missing_instance_fails_at_once(utility, clock):
+    target, _ = utility
+
+    with pytest.raises(pytest.fail.Exception, match="not in cluster .*: instance-3$") as excinfo:
+        rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-3"])
+
+    assert clock[0] == _START_SEC
+    target._open_connection.assert_not_called()
+    assert rds_test_utility.RdsTestUtility.is_cluster_outage(excinfo.value, after_failover=True) is False
+
+
+def test_make_sure_instances_up_missing_and_not_available_fails_at_once(utility, clock):
+    target, _ = utility
+    target._client.describe_db_instances.return_value = _described_instances("rebooting")
+
+    with pytest.raises(pytest.fail.Exception, match="not in cluster .*: instance-3$") as excinfo:
+        rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2", "instance-3"])
+
+    assert clock[0] == _START_SEC
+    assert rds_test_utility.RdsTestUtility.is_cluster_outage(excinfo.value, after_failover=True) is False
+
+
+def test_make_sure_instances_up_status_read_fails_at_deadline(utility, clock):
+    target, _ = utility
+    target._client.describe_db_instances.side_effect = EndpointConnectionError(
+        endpoint_url="https://rds.us-east-2.amazonaws.com")
+
+    with pytest.raises(pytest.fail.Exception, match="Could not read the RDS status") as excinfo:
+        rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2"], clock[0] + 10)
+
+    assert clock[0] == _START_SEC + 10
+    target._open_connection.assert_not_called()
+    assert rds_test_utility.RdsTestUtility.is_cluster_outage(excinfo.value, after_failover=True) is False
+
+
+def test_make_sure_instances_up_last_read_not_available_reruns(utility, clock):
+    target, _ = utility
+    target._client.describe_db_instances.side_effect = [
+        EndpointConnectionError(endpoint_url="https://rds.us-east-2.amazonaws.com")] + [
+        _described_instances("rebooting")] * 10
+
+    with pytest.raises(pytest.fail.Exception, match="did not become available") as excinfo:
+        rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2"], clock[0] + 10)
+
+    assert rds_test_utility.RdsTestUtility.is_cluster_outage(excinfo.value, after_failover=True) is True
+
+
+def test_make_sure_instances_up_last_read_failed_not_rerun(utility, clock):
+    target, _ = utility
+    target._client.describe_db_instances.side_effect = [_described_instances("rebooting")] * 5 + [
+        EndpointConnectionError(endpoint_url="https://rds.us-east-2.amazonaws.com")] * 5
+
+    with pytest.raises(pytest.fail.Exception, match="Could not read the RDS status") as excinfo:
+        rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2"], clock[0] + 10)
+
+    assert rds_test_utility.RdsTestUtility.is_cluster_outage(excinfo.value, after_failover=True) is False
+
+
+def test_make_sure_instances_up_retries_status_after_api_error(utility):
+    target, _ = utility
+    throttled = ClientError({"Error": {"Code": "Throttling", "Message": "Rate exceeded"}}, "DescribeDBInstances")
+    target._client.describe_db_instances.side_effect = [throttled, _described_instances("available")]
+
+    rds_test_utility.RdsTestUtility.make_sure_instances_up(target, ["instance-2"])
+
+    assert target._client.describe_db_instances.call_count == 2
+    assert target._open_connection.call_count == 1

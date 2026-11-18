@@ -66,9 +66,9 @@ WRITER_CHANGED_PROBE_POLL_INTERVAL_SEC: float = 2.0
 # cluster endpoint's DNS and for the other instances. Every wait shares one
 # deadline, so a cluster that stops answering for minutes fails one test
 # instead of running past pytest's 600 s ``--timeout``, which ends the
-# whole session. This bounds one call to about 420 s (one connect attempt
-# can run past it); the setup hook's waits are separate. A normal failover
-# takes 20 to 35 s.
+# whole session. This bounds one call to about 420 s (one RDS status read,
+# and one connect attempt for each instance, can run past it); the setup
+# hook's waits are separate. A normal failover takes 20 to 35 s.
 FAILOVER_DEADLINE_SEC: float = 420
 # How long one failover request gets to produce a new writer before the
 # helper checks whether the initial writer is still the writer.
@@ -84,11 +84,15 @@ FAILOVER_REISSUE_MIN_REMAINING_SEC: float = 120
 # writer for well under a minute.
 INITIAL_WRITER_REVERT_WINDOW_SEC: float = 60
 INITIAL_WRITER_POLL_INTERVAL_SEC: float = 1
-# Upper bounds of ``RdsTestUtility`` waits when no deadline is passed in:
-# for the cluster to reach a status, and for each instance to accept a
-# connection.
+# How long ``RdsTestUtility`` waits for the cluster to reach a status when
+# no timeout is passed in.
 CLUSTER_STATUS_TIMEOUT_SEC: float = 600
+# How long ``make_sure_instances_up`` waits in all for the instances to
+# reach the RDS status ``available`` and then accept a connection. An
+# earlier deadline from the caller shortens it.
 INSTANCE_UP_TIMEOUT_SEC: float = 300
+# How often ``make_sure_instances_up`` reads the instances' RDS status.
+INSTANCE_STATUS_POLL_INTERVAL_SEC: float = 2
 
 # ───── RDS events on a failed test ────────────────────────────────────
 # When a test fails on an Aurora or Multi-AZ DB cluster, the conftest logs

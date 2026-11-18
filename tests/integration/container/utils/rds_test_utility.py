@@ -50,8 +50,9 @@ from aws_advanced_python_wrapper.utils.messages import Messages
 from tests.integration.container.utils.test_timings import (
     CLUSTER_STATUS_TIMEOUT_SEC, FAILOVER_DEADLINE_SEC, FAILOVER_MAX_REISSUES,
     FAILOVER_REISSUE_MIN_REMAINING_SEC, INITIAL_WRITER_POLL_INTERVAL_SEC,
-    INITIAL_WRITER_REVERT_WINDOW_SEC, INSTANCE_UP_TIMEOUT_SEC,
-    WRITER_CHANGE_TIMEOUT_SEC, WRITER_CHANGED_PROBE_CONNECT_TIMEOUT_SEC,
+    INITIAL_WRITER_REVERT_WINDOW_SEC, INSTANCE_STATUS_POLL_INTERVAL_SEC,
+    INSTANCE_UP_TIMEOUT_SEC, WRITER_CHANGE_TIMEOUT_SEC,
+    WRITER_CHANGED_PROBE_CONNECT_TIMEOUT_SEC,
     WRITER_CHANGED_PROBE_POLL_INTERVAL_SEC)
 from .database_engine import DatabaseEngine
 from .database_engine_deployment import DatabaseEngineDeployment
@@ -60,11 +61,13 @@ from .test_driver import TestDriver
 from .test_environment import TestEnvironment
 from .test_instance_info import TestInstanceInfo
 
-# Aurora or the network stopped accepting connections: the failover helper ran out of time, or a
-# connect timed out. The conftest reruns a test that fails this way once.
+# An instance, the cluster or the network is down: the failover helper ran out of time, an instance did
+# not reach the RDS status available or accept a connection, or a connect timed out. The conftest
+# reruns a test that fails this way once.
 _HELPER_OUTAGE_PATTERNS = (
     re.compile(r"did not finish within"),
     re.compile(r"did not accept a connection"),
+    re.compile(r"did not become available"),
 )
 _CONNECT_TIMEOUT_PATTERNS = (
     re.compile(r"Can't connect to MySQL server.*timed out"),
@@ -209,9 +212,11 @@ class RdsTestUtility:
         :param error: the exception the test failed with, or None.
         :param after_failover: whether the test requested a failover before it failed. A connect
             timeout is then not an outage, because the wrapper may have connected to the old writer.
-        :return: True if the exception itself is the failover helper running out of time or, before
-            any failover, a connect that timed out, and every exception it was raised from or while
-            handling is part of a connect timeout.
+        :return: True if both of these hold. First, the exception itself is one of the helper's
+            outage failures (the failover did not finish in time, or an instance did not reach the
+            RDS status available or accept a connection) or, before any failover, a connect that
+            timed out. Second, every exception it was raised from or while handling is part of a
+            connect timeout.
         """
         if error is None:
             return False
@@ -718,19 +723,24 @@ class RdsTestUtility:
             raise UnsupportedOperationError(database_engine.value)
 
     def make_sure_instances_up(self, instances: List[str], deadline: Optional[float] = None) -> None:
-        """Wait until each instance accepts a connection, for up to ``INSTANCE_UP_TIMEOUT_SEC`` each.
+        """Wait until the instances have the RDS status ``available``, then until each accepts a connection.
+
+        All the waits together last up to ``INSTANCE_UP_TIMEOUT_SEC``, or until ``deadline`` if that is
+        sooner. The status is read at least once and, if every instance is available, each one gets at
+        least one connection attempt, even after that time.
 
         :param instances: the ids of the instances to check.
-        :param deadline: a ``timeit.default_timer()`` value that ends every wait sooner.
-            Each instance still gets one attempt after it.
+        :param deadline: a ``timeit.default_timer()`` value that ends the waits sooner.
         """
+        stop_time = timeit.default_timer() + INSTANCE_UP_TIMEOUT_SEC
+        if deadline is not None:
+            stop_time = min(stop_time, deadline)
+        self._wait_until_instances_available(instances, stop_time)
+
         database_info: TestDatabaseInfo = TestEnvironment.get_current().get_database_info()
         for i in instances:
             instance_info: TestInstanceInfo = database_info.get_instance(i)
             last_error: Optional[Exception] = None
-            stop_time = timeit.default_timer() + INSTANCE_UP_TIMEOUT_SEC
-            if deadline is not None:
-                stop_time = min(stop_time, deadline)
             # Try each instance at least once, even when the deadline has already passed
             while True:
                 try:
@@ -746,6 +756,38 @@ class RdsTestUtility:
             if last_error is not None:
                 # The conftest reruns a test that fails with this message once
                 pytest.fail(f"Instance {i} did not accept a connection: {type(last_error).__name__}: {last_error}")
+
+    def _wait_until_instances_available(self, instance_ids: List[str], stop_time: float) -> None:
+        cluster_id = TestEnvironment.get_current().get_cluster_name()
+        filters = [{"Name": "db-cluster-id", "Values": [cluster_id]}]
+        last_detail = ""
+        # Read the status at least once, even when the deadline has already passed
+        while True:
+            try:
+                response = self._client.describe_db_instances(Filters=filters)
+            except Exception as e:
+                detail = f"{type(e).__name__}: {e}"
+                # Not a cluster outage, so the conftest doesn't rerun a test that fails with this message
+                failure = f"Could not read the RDS status of the instances: {detail}"
+            else:
+                statuses = {
+                    instance["DBInstanceIdentifier"]: instance["DBInstanceStatus"] for instance in response["DBInstances"]}
+                missing = [instance_id for instance_id in instance_ids if instance_id not in statuses]
+                if missing:
+                    # RDS lists an instance from its creation until its deletion, so waiting doesn't help
+                    pytest.fail(f"Instances not in cluster '{cluster_id}': {', '.join(missing)}")
+                not_available = [instance_id for instance_id in instance_ids if statuses[instance_id] != "available"]
+                if not not_available:
+                    return
+                detail = ", ".join(f"{instance_id} is '{statuses[instance_id]}'" for instance_id in not_available)
+                # The conftest reruns a test that fails with this message once
+                failure = f"Instances did not become available: {detail}"
+            if detail != last_detail:
+                self.logger.debug(f"Waiting for the RDS status available: {detail}")
+                last_detail = detail
+            if timeit.default_timer() >= stop_time:
+                pytest.fail(failure)
+            sleep(INSTANCE_STATUS_POLL_INTERVAL_SEC)
 
     @staticmethod
     def create_user(conn, username, password):
