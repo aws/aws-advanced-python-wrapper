@@ -89,7 +89,7 @@ def test_reference_payload_carries_expected_key_id(vec):
 
 
 @pytest.mark.parametrize("vec", VECTORS, ids=_IDS)
-def test_our_encrypt_output_passes_the_db_trigger_hmac(vec):
+def test_encrypt_output_passes_trigger_hmac(vec):
     """Check our output the way the DB-side trigger does: the HMAC over
     everything after the 32-byte tag, computed with the stored HMAC key, must
     match the tag. The trigger would reject any write that fails this.
@@ -115,12 +115,13 @@ def test_vectors_use_distinct_fixed_ivs():
     assert len(set(ivs)) == len(ivs)
 
 
-def test_committed_vectors_match_the_reference_encoder():
+def test_committed_vectors_match_reference_encoder():
     """The JSON file is exactly what the reference encoder produces, so the
     vectors can be regenerated and reviewed from source."""
     spec = importlib.util.spec_from_file_location("generate_conformance_vectors",
                                                   _RESOURCES / "generate_conformance_vectors.py")
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     generator = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(generator)
     assert _VECTORS_PATH.read_text(encoding="utf-8") == generator.render()

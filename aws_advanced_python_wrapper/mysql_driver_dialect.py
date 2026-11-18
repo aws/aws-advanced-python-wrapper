@@ -14,13 +14,18 @@
 
 from __future__ import annotations
 
+import re
 import socket
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, FrozenSet, Mapping,
+                    Optional, Sequence, Set, Tuple)
 
 if TYPE_CHECKING:
-    from aws_advanced_python_wrapper.hostinfo import HostInfo
-    from aws_advanced_python_wrapper.pep249 import Connection
+    from re import Pattern
 
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
+    from aws_advanced_python_wrapper.pep249 import Connection, Cursor
+
+from contextlib import closing
 from inspect import signature
 
 from aws_advanced_python_wrapper.driver_dialect import DriverDialect
@@ -36,10 +41,12 @@ CMYSQL_ENABLED = False
 
 from mysql.connector import MySQLConnection  # noqa: E402
 from mysql.connector.cursor import MySQLCursor  # noqa: E402
+from mysql.connector.cursor import MySQLCursorPrepared  # noqa: E402
 
 try:
     from mysql.connector import CMySQLConnection  # noqa: E402
     from mysql.connector.cursor_cext import CMySQLCursor  # noqa: E402
+    from mysql.connector.cursor_cext import CMySQLCursorPrepared  # noqa: E402
 
     CMYSQL_ENABLED = True
 
@@ -56,6 +63,42 @@ class MySQLDriverDialect(DriverDialect):
     IS_CLOSED_TIMEOUT_SEC = 3
 
     _executor_name: ClassVar[str] = "MySQLDriverDialectExecutor"
+
+    # equals_operator keeps the base's "=": MySQL has no user-defined operators.
+    # fold_identifier keeps the base's names as written.
+    engine_name: ClassVar[str] = "mysql"
+    analyzed_statements: ClassVar[FrozenSet[str]] = frozenset({"SELECT", "WITH", "INSERT", "REPLACE", "UPDATE", "DELETE", "VALUES"})
+    sqlglot_dialect: ClassVar[str] = "mysql"
+    qualified_insert_columns: ClassVar[bool] = True
+    upsert_values_function: ClassVar[bool] = True
+    identifier_quote: ClassVar[str] = "`"
+    # The structural parser reads "UPDATE LOW_PRIORITY users" as a table named LOW_PRIORITY aliased users. All are
+    # reserved words except QUICK, which can only follow DELETE.
+    statement_modifiers: ClassVar[Mapping[str, FrozenSet[str]]] = {
+        "INSERT": frozenset({"LOW_PRIORITY", "HIGH_PRIORITY", "DELAYED", "IGNORE"}),
+        "REPLACE": frozenset({"LOW_PRIORITY", "DELAYED"}),
+        "UPDATE": frozenset({"LOW_PRIORITY", "IGNORE"}),
+        "DELETE": frozenset({"LOW_PRIORITY", "QUICK", "IGNORE"}),
+    }
+    charset_introducers: ClassVar[FrozenSet[str]] = frozenset({
+        "armscii8", "ascii", "big5", "binary", "cp1250", "cp1251", "cp1256", "cp1257", "cp850", "cp852", "cp866",
+        "cp932", "dec8", "eucjpms", "euckr", "gb18030", "gb2312", "gbk", "geostd8", "greek", "hebrew", "hp8",
+        "keybcs2", "koi8r", "koi8u", "latin1", "latin2", "latin5", "latin7", "macce", "macroman", "sjis", "swe7",
+        "tis620", "ucs2", "ujis", "utf16", "utf16le", "utf32", "utf8", "utf8mb3", "utf8mb4",
+    })
+    sql_token_pattern: ClassVar[Optional[Pattern[str]]] = re.compile(r"""
+          (?P<line_comment>(?:\#|--(?=\s|\Z))[^\n]*)
+        | (?P<block_comment>/\*.*?(?P<block_comment_end>\*/|\Z))
+        | (?P<string>'(?:[^'\\]|\\.|'')*(?P<string_end>'?))
+        | (?P<dqstring>"(?:[^"\\]|\\.|"")*(?P<dqstring_end>"?))
+        | (?P<ident>`(?:[^`]|``)*(?P<ident_end>`?))
+        | (?P<word>[^\W\d][\w$]*)
+        | (?P<number>\d[\w.]*)
+        | (?P<semicolon>;)
+        | (?P<space>\s+)
+        | (?P<other>[^\w\s'"`;/\-\#]+|.)
+    """, re.VERBOSE | re.DOTALL)
+    executable_comments: ClassVar[bool] = True
 
     _dialect_code: str = DriverDialectCodes.MYSQL_CONNECTOR_PYTHON
     _network_bound_methods: Set[str] = {
@@ -223,6 +266,80 @@ class MySQLDriverDialect(DriverDialect):
                 return None
 
         return None
+
+    @staticmethod
+    def binds_parameters(params: Any) -> bool:
+        # Connector/Python substitutes only for a non-empty dict, list or tuple.
+        return bool(params) and isinstance(params, (dict, list, tuple))
+
+    @staticmethod
+    def metadata_key(name: str) -> str:
+        # Column names are case-insensitive in MySQL, and table names are too unless lower_case_table_names=0 on a
+        # case-sensitive file system, where two tables differing only in case would share encryption metadata. This
+        # agrees with the uncached lookup under the default (case-insensitive) collations; metadata tables created with
+        # a _bin or _cs collation would compare case-sensitively there.
+        return name.lower()
+
+    def upsert_clause(
+            self, conflict_columns: Sequence[str], update_columns: Sequence[str], extra_assignments: Sequence[str] = ()) -> str:
+        # VALUES(col) rather than a row alias, which needs MySQL 8.0.19+.
+        assignments = ", ".join([f"{c} = VALUES({c})" for c in update_columns] + list(extra_assignments))
+        return f"ON DUPLICATE KEY UPDATE {assignments}"
+
+    def insert_returning_id(self, conn: Connection, sql: str, params: Sequence[Any]) -> int:
+        """
+        Runs an ``INSERT`` and returns the generated ``id``.
+        The cursor call runs through :meth:`execute`, so the ``socket_timeout`` of this dialect's properties applies,
+        and a timeout raises ``QueryTimeoutError``.
+
+        :param conn: the connection to run the statement on.
+        :param sql: the ``INSERT`` statement.
+        :param params: the statement's parameters.
+        :return: the generated ``id``.
+        """
+        with closing(conn.cursor()) as cursor:
+            self.execute(DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(sql, params), sql, conn=conn)
+            return int(cursor.lastrowid)  # type: ignore[attr-defined]
+
+    def analyzable_sql(self, sql: Any, cursor: Cursor) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Returns the text the encryption plugin analyzes for ``sql``, and the codec of the connection's client encoding
+        when ``sql`` is ``bytes``.
+        ``bytes`` SQL is analyzed as text when every byte is ASCII, the connection's character set reads each ASCII
+        byte as itself, and the text encodes back to the same bytes.
+        A character set Python has no codec for raises ``LookupError``.
+
+        :param sql: the SQL the application passed to the cursor.
+        :param cursor: the driver cursor the SQL runs on.
+        :return: the text to analyze, or None when the SQL runs unanalyzed, and the codec ``bytes`` SQL was decoded
+            with, or None.
+        """
+        if not isinstance(sql, bytes):
+            return super().analyzable_sql(sql, cursor)
+        conn = self.get_connection_from_obj(cursor)
+        # Not conn.charset: utf8mb4 is no Python codec.
+        codec = None if conn is None else conn.python_charset
+        text = self._decode_sql(sql, codec)
+        # mysql-connector keeps reporting the character set it negotiated (python_charset) when SQL changes the
+        # session's, and every client character set MySQL accepts, except swe7, reads ASCII bytes as ASCII, so only
+        # all-ASCII bytes SQL is analyzed. swe7 has no Python codec, so a connection reporting it raises above; a
+        # session switched to swe7 in SQL is a documented limit.
+        if not sql.isascii():
+            return None, codec
+        return text, codec
+
+    def binary_placeholder_prefix(self, cursor: Cursor) -> Optional[str]:
+        """
+        Returns ``_binary``, which makes MySQL read a payload sent as text as binary data rather than as characters
+        (Warning 1300).
+        A prepared cursor sends a ``bytes`` value as binary data, so it needs no prefix.
+
+        :param cursor: the driver cursor the statement runs on.
+        :return: ``"_binary "``, or None on a prepared cursor.
+        """
+        if isinstance(cursor, MySQLCursorPrepared) or (CMYSQL_ENABLED and isinstance(cursor, CMySQLCursorPrepared)):
+            return None
+        return "_binary "
 
     def transfer_session_state(self, from_conn: Connection, to_conn: Connection):
         if MySQLDriverDialect._is_mysql_connection(from_conn) and MySQLDriverDialect._is_mysql_connection(to_conn):

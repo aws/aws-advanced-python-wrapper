@@ -17,9 +17,15 @@ from types import MappingProxyType
 
 import pytest
 
-from aws_advanced_python_wrapper.encryption.sql_dialect import MYSQL, PG
+from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.encryption.sql_tokenizer import (
-    ColumnRef, ParamStyle, normalized_ordinal, tokenize)
+    ColumnRef, ParamStyle, _lex, normalized_ordinal, tokenize)
+from aws_advanced_python_wrapper.errors import EncryptionPluginError
+from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
+
+PG = PgDriverDialect
+MYSQL = MySQLDriverDialect
 
 POS, NAMED, NONE = ParamStyle.POSITIONAL, ParamStyle.NAMED, ParamStyle.NONE
 
@@ -65,10 +71,11 @@ class TestPsycopgPlaceholders:
         assert keys(t) == ["v", "v", "id"]
         assert [p.ordinal for p in t.placeholders] == [0, 1, 2]
 
-    def test_double_percent_is_a_percent_sign(self):
+    def test_double_percent_is_percent_sign(self):
         t = tokenize("SELECT 7 %% 2, a FROM t WHERE b LIKE 'x%%' AND c = %s", PG, POS)
         assert keys(t) == [0]
-        assert "7 % 2" in t.normalized and "'x%'" in t.normalized
+        assert "7 % 2" in t.normalized
+        assert "'x%'" in t.normalized
 
     def test_placeholders_inside_literals_and_comments_are_still_bound(self):
         # psycopg does not skip quotes or comments, so neither may we: the
@@ -89,11 +96,11 @@ class TestPsycopgPlaceholders:
         t = tokenize("SELECT /*" + " /*" * depth + " */" * (depth + 1) + " %s", PG, POS)
         assert hidden(t) == [False]
 
-    def test_dollar_number_is_not_a_dollar_quote(self):
+    def test_dollar_number_is_not_dollar_quote(self):
         t = tokenize("SELECT $1, %s", PG, POS)
         assert hidden(t) == [False]
 
-    def test_identifier_with_dollar_is_not_a_dollar_quote(self):
+    def test_identifier_with_dollar_is_not_dollar_quote(self):
         t = tokenize("SELECT a$b$, %s", PG, POS)
         assert hidden(t) == [False]
 
@@ -123,20 +130,21 @@ class TestPsycopgPlaceholders:
         ("SELECT '4111-1111-1111-1111 %d'", POS),
         ("VALUES (%s, %(4111-1111)s)", NAMED),
     ])
-    def test_driver_error_never_quotes_the_sql(self, sql, style):
+    def test_driver_error_never_quotes_sql(self, sql, style):
         error = tokenize(sql, PG, style).driver_error
-        assert error is not None and "4111" not in error
+        assert error is not None
+        assert "4111" not in error
 
     def test_percent_before_newline_is_left_alone(self):
         # psycopg's pattern does not match a newline after %.
         assert tokenize("SELECT 1 %\n2", PG, POS).driver_error is None
 
     @pytest.mark.parametrize("style", [POS, NAMED])
-    def test_mixed_styles_are_a_driver_error(self, style):
+    def test_mixed_styles_are_driver_error(self, style):
         assert tokenize("VALUES (%s, %(a)s)", PG, style).driver_error is not None
 
     @pytest.mark.parametrize("sql, style", [("VALUES (%s)", NAMED), ("VALUES (%(a)s)", POS)])
-    def test_style_mismatch_is_a_driver_error(self, sql, style):
+    def test_style_mismatch_is_driver_error(self, sql, style):
         assert tokenize(sql, PG, style).driver_error is not None
 
     def test_no_params_means_no_placeholders(self):
@@ -155,7 +163,7 @@ class TestMySqlPlaceholders:
     def test_positional(self):
         assert keys(tokenize("INSERT INTO t (a, b) VALUES (%s, %s)", MYSQL, POS)) == [0, 1]
 
-    def test_double_percent_is_not_an_escape(self):
+    def test_double_percent_is_not_escape(self):
         # Connector/Python replaces every "%s" substring, including in "%%s".
         t = tokenize("SELECT 5 %% 2, %%s", MYSQL, POS)
         assert keys(t) == [0]
@@ -166,18 +174,19 @@ class TestMySqlPlaceholders:
         assert keys(t) == [0]
         assert t.driver_error is None
 
-    def test_named_only_with_a_dict(self):
+    def test_named_only_with_dict(self):
         assert keys(tokenize("VALUES (%(a)s, %s)", MYSQL, NAMED)) == ["a"]
         assert keys(tokenize("VALUES (%(a)s, %s)", MYSQL, POS)) == [0]
 
-    def test_named_percent_conversion_is_a_percent_sign(self):
+    def test_named_percent_conversion_is_percent_sign(self):
         t = tokenize("SELECT %(a)s, 5 %(x)% 2", MYSQL, NAMED)
         assert keys(t) == ["a"]
         assert "5 % 2" in t.normalized
 
-    def test_named_other_conversion_is_a_driver_error(self):
+    def test_named_other_conversion_is_driver_error(self):
         error = tokenize("SELECT '%(123-45-6789)d'", MYSQL, NAMED).driver_error
-        assert error is not None and "123-45" not in error
+        assert error is not None
+        assert "123-45" not in error
 
     def test_no_params_means_no_placeholders(self):
         assert tokenize("SELECT %s", MYSQL, NONE).placeholders == ()
@@ -191,7 +200,7 @@ class TestMySqlPlaceholders:
         t = tokenize("SELECT 'a\\'b', \"c\\\"d\", %s", MYSQL, POS)
         assert hidden(t) == [False]
 
-    def test_double_dash_needs_whitespace_to_start_a_comment(self):
+    def test_double_dash_comment_needs_whitespace(self):
         t = tokenize("SELECT 1--%s", MYSQL, POS)
         assert hidden(t) == [False]
         assert hidden(tokenize("SELECT 1-- %s", MYSQL, POS)) == [True]
@@ -210,7 +219,7 @@ class TestMySqlPlaceholders:
     def test_executable_comments(self, sql, executable):
         assert tokenize(sql, MYSQL, NONE).executable_comment is executable
 
-    def test_executable_comment_is_only_a_mysql_notion(self):
+    def test_executable_comment_only_on_mysql(self):
         assert not tokenize("SELECT /*! 1 */", PG, NONE).executable_comment
 
     def test_executable_comment_keywords(self):
@@ -229,7 +238,7 @@ class TestMySqlPlaceholders:
         if introducers[0]:
             assert "_binary" not in t.normalized.lower()
 
-    def test_introducer_inside_a_comment_is_ignored(self):
+    def test_introducer_inside_comment_is_ignored(self):
         t = tokenize("VALUES (-- _binary\n%s)", MYSQL, POS)
         assert [p.introducer for p in t.placeholders] == [None]
         assert "_binary" in t.normalized
@@ -258,6 +267,17 @@ class TestLexing:
     def test_type_error_for_non_str(self):
         with pytest.raises(TypeError):
             tokenize(b"SELECT 1", PG, NONE)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("dialect, sql, names", [
+        (PG, 'UPDATE "My""T" SET a = %s -- t2', [("UPDATE", False), ("SET", False), ("a", False), ('My"T', True)]),
+        (MYSQL, "UPDATE t /*!50000 JOIN Users USING (id) */ SET a = 'b c' WHERE `x``y` = %s",
+         [("UPDATE", False), ("t", False), ("SET", False), ("a", False), ("WHERE", False), ("JOIN", False),
+          ("Users", False), ("USING", False), ("id", False), ("x`y", True)]),
+        (PG, "SELECT a FROM t WHERE b = %s AND a = %s",
+         [("SELECT", False), ("a", False), ("FROM", False), ("t", False), ("WHERE", False), ("b", False), ("AND", False)]),
+    ], ids=["pg-quoted", "mysql-executable-comment", "no-duplicates"])
+    def test_names_hold_words_and_quoted_identifiers(self, dialect, sql, names):
+        assert list(tokenize(sql, dialect, POS).names) == names
 
 
 class TestNormalized:
@@ -302,7 +322,7 @@ class TestNormalized:
 
 
 class TestAnnotations:
-    def test_annotation_before_a_placeholder(self):
+    def test_annotation_before_placeholder(self):
         t = tokenize("INSERT INTO t (a, b) VALUES (%s, /*@encrypt:users.ssn*/ %s)", PG, POS)
         assert [p.annotation for p in t.placeholders] == [None, ColumnRef("ssn", "users")]
         assert t.stray_annotations == ()
@@ -326,7 +346,7 @@ class TestAnnotations:
         t = tokenize(f"VALUES (/*@encrypt:{ref}*/ %s)", PG, POS)
         assert t.placeholders[0].annotation == expected
 
-    def test_doubled_quote_in_a_quoted_part(self):
+    def test_doubled_quote_in_quoted_part(self):
         t = tokenize('VALUES (/*@encrypt:"a""b".ssn*/ %s)', PG, POS)
         assert t.placeholders[0].annotation == ColumnRef("ssn", 'a"b')
 
@@ -340,35 +360,36 @@ class TestAnnotations:
 
     @pytest.mark.parametrize("sql", [
         "VALUES (%s /*@encrypt:users.ssn*/)",        # after, not before
-        "VALUES (/*@encrypt:users.ssn*/ 'x', %s)",   # not followed by a placeholder
+        # Not followed by a placeholder.
+        "VALUES (/*@encrypt:users.ssn*/ 'x', %s)",
         "VALUES (/*@encrypt:users.*/ %s)",           # no column
         "VALUES (/*@encrypt:users ssn*/ %s)",
-        "VALUES (/*@encrypt:users.ssn*/ '%s')",      # a literal, not a placeholder, follows
+        # A literal, not a placeholder, follows.
+        "VALUES (/*@encrypt:users.ssn*/ '%s')",
     ])
     def test_stray_annotations(self, sql):
         t = tokenize(sql, PG, POS)
         assert all(p.annotation is None for p in t.placeholders)
         assert len(t.stray_annotations) == 1
 
-    def test_annotation_before_a_hidden_placeholder_is_stray(self):
+    def test_annotation_before_hidden_placeholder_is_stray(self):
         # psycopg reads %("x")s as one placeholder that starts outside a
         # quoted identifier and ends inside it.
         t = tokenize('VALUES (/*@encrypt:t.a*/ %("x")s)', PG, NAMED)
         assert hidden(t) == [True]
-        assert t.placeholders[0].annotation is None and len(t.stray_annotations) == 1
+        assert t.placeholders[0].annotation is None
+        assert len(t.stray_annotations) == 1
 
-    def test_space_after_comment_opener_is_not_an_annotation(self):
+    def test_space_after_comment_opener_is_not_annotation(self):
         t = tokenize("VALUES (/* @encrypt:users.ssn*/ %s)", PG, POS)
         assert t.placeholders[0].annotation is None
         assert t.stray_annotations == ()
 
-    def test_annotation_inside_a_literal_is_text(self):
+    def test_annotation_inside_literal_is_text(self):
         t = tokenize("VALUES ('/*@encrypt:users.ssn*/', %s)", PG, POS)
         assert t.placeholders[0].annotation is None
 
 
-# ---- the drivers themselves as the oracle ----
-#
 # These call the drivers' own placeholder scanning, so a driver upgrade that
 # changes what it binds fails here rather than silently shifting which value
 # the plugin encrypts.
@@ -413,3 +434,16 @@ def test_matches_mysql_connector_named(sql):
     expected = [m.group("mapping_key").decode() for m in cursor.RE_PY_MAPPING_PARAM.finditer(sql.encode())
                 if m.group("conversion_type") == b"s"]
     assert keys(tokenize(sql, MYSQL, NAMED)) == expected
+
+
+class _NoMatchDialect(DriverDialect):
+    sql_token_pattern = re.compile(r"x")
+
+
+def test_lex_pattern_without_match_raises():
+    with pytest.raises(EncryptionPluginError, match="matched no token"):
+        _lex("y", _NoMatchDialect)
+
+
+def test_annotation_with_rejected_part_is_stray():
+    assert tokenize("SELECT /*@encrypt:-c*/ %s", PG, POS).stray_annotations == ("/*@encrypt:-c*/",)

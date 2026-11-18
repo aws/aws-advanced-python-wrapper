@@ -39,27 +39,28 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
-from typing import (TYPE_CHECKING, Any, Callable, Dict, Iterator, List,
-                    Optional, Sequence, Set, Tuple)
+from typing import (TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Iterator,
+                    List, Optional, Sequence, Set, Tuple, Type)
+
+from aws_advanced_python_wrapper.errors import EncryptionPluginError
+from aws_advanced_python_wrapper.utils.messages import Messages
 
 try:
     import sqlglot
     from sqlglot import exp
-except ModuleNotFoundError as e:  # pragma: no cover - exercised by the import-guard test
+except ModuleNotFoundError as e:
     # Only a missing package gets the install hint; a broken install raises
     # its own error.
     if (e.name or "").partition(".")[0] != "sqlglot":
         raise
-    raise ImportError(
-        "The KMS encryption plugin needs the 'sqlglot' package. "
-        "Install it with: pip install 'aws-advanced-python-wrapper[encryption]'") from e
+    raise ImportError(Messages.get("SqlAnalyzer.SqlglotMissing")) from e
 
 from aws_advanced_python_wrapper.encryption.sql_tokenizer import (
     ColumnRef, ParamStyle, Placeholder, TokenizedSql, normalized_ordinal,
     tokenize)
 
 if TYPE_CHECKING:
-    from aws_advanced_python_wrapper.encryption.sql_dialect import SqlDialect
+    from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 
 
 class StatementKind(Enum):
@@ -160,7 +161,8 @@ class StatementAnalysis:
     writes: bool
     placeholders: Tuple[Placeholder, ...]
     #: Every table the string names, without duplicates and excluding CTE
-    #: names (outer queries first, not in text order).
+    #: names (outer queries first, not in text order). When the string can't
+    #: be read (see :attr:`gap`), also every other name that could be a table.
     tables: Tuple[TableRef, ...] = ()
     #: The tables it writes.
     written_tables: Tuple[TableRef, ...] = ()
@@ -196,6 +198,9 @@ class StatementAnalysis:
     stray_annotations: Tuple[str, ...] = ()
     #: Diagnostic detail for :attr:`gap`, safe to log: it never quotes the SQL.
     detail: Optional[str] = field(default=None, compare=False)
+    #: The names the string gives its CTEs, in the form names are compared in
+    #: (see :meth:`DriverDialect.metadata_key`).
+    cte_names: FrozenSet[str] = frozenset()
 
     @property
     def complete(self) -> bool:
@@ -218,7 +223,7 @@ CACHEABLE_SQL_LENGTH = 4096
 CACHEABLE_PERCENT_SIGNS = 64
 
 
-def analyze(sql: str, dialect: SqlDialect, params: Any = None) -> StatementAnalysis:
+def analyze(sql: str, dialect: Type[DriverDialect], params: Any = None) -> StatementAnalysis:
     """Analyze ``sql`` as the driver for ``dialect`` runs it with ``params``
     (the second argument of ``execute``; for ``executemany``, one of its
     parameter sets). Only the kind of ``params`` matters (none, a sequence, a
@@ -246,7 +251,7 @@ class _Uncacheable(Exception):
 
 
 @lru_cache(maxsize=1024)
-def _cached_analysis(sql: str, dialect: SqlDialect, style: ParamStyle) -> StatementAnalysis:
+def _cached_analysis(sql: str, dialect: Type[DriverDialect], style: ParamStyle) -> StatementAnalysis:
     result = _analysis(sql, dialect, style)
     if result.detail == RecursionError.__name__:
         # Depends on how deep the calling thread's stack already is; another
@@ -255,14 +260,6 @@ def _cached_analysis(sql: str, dialect: SqlDialect, style: ParamStyle) -> Statem
     return result
 
 
-# Leading words of the statements handed to the parser. Anything else is
-# reported without parsing it: sqlglot falls back to an opaque "command" for
-# what it doesn't support, and logs it.
-_PARSED = {
-    "postgresql": frozenset({"SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE", "COPY", "VALUES", "PREPARE"}),
-    "mysql": frozenset({"SELECT", "WITH", "INSERT", "REPLACE", "UPDATE", "DELETE", "VALUES"}),
-}
-_SQLGLOT_DIALECT = {"postgresql": "postgres", "mysql": "mysql"}
 _WRITE_LEADING = frozenset({"INSERT", "UPDATE", "REPLACE", "MERGE", "UPSERT", "LOAD", "EXECUTE"})
 _WRITE_WORDS = frozenset({"INSERT", "UPDATE", "REPLACE", "MERGE", "UPSERT"})
 _KINDS = {"SELECT": StatementKind.SELECT, "WITH": StatementKind.SELECT, "VALUES": StatementKind.SELECT,
@@ -321,7 +318,7 @@ _QUIET = _QuietWhileAnalyzing()
 logging.getLogger("sqlglot").addFilter(_QUIET)
 
 
-def _analysis(sql: str, dialect: SqlDialect, style: ParamStyle) -> StatementAnalysis:
+def _analysis(sql: str, dialect: Type[DriverDialect], style: ParamStyle) -> StatementAnalysis:
     tokens = tokenize(sql, dialect, style)
     annotations = tuple(ParameterUse(p, p.annotation) for p in tokens.placeholders if p.annotation is not None)
 
@@ -340,16 +337,17 @@ def _analysis(sql: str, dialect: SqlDialect, style: ParamStyle) -> StatementAnal
     elif tokens.executable_comment:
         early = AnalysisGap.EXECUTABLE_COMMENT
     if early is not None:
-        # The parser reads a hidden placeholder as literal or comment text, so
-        # the tables are still known, and a caller can refuse the statement
+        # The tables are still listed, so a caller can refuse the statement
         # when one of them has encrypted columns.
-        tables = _named_tables(tokens, dialect) if early is AnalysisGap.HIDDEN_PLACEHOLDER else ()
+        tables = _unread_tables(tokens, dialect, annotations) if early is not AnalysisGap.DRIVER_ERROR else ()
         return result(kind=StatementKind.UNKNOWN, writes=_may_write(tokens), gap=early, detail=tokens.driver_error,
                       tables=tables)
 
     if not tokens.leading_words:
         return result(kind=StatementKind.OTHER, writes=False)
-    if any(w not in _PARSED[dialect.name] for w in tokens.leading_words):
+    # sqlglot falls back to an opaque "command" for a statement it doesn't
+    # support, and logs it, so only the dialect's analyzed statements are parsed.
+    if any(w not in dialect.analyzed_statements for w in tokens.leading_words):
         writes = _may_write(tokens)
         kind = _KINDS.get(tokens.leading_words[0], StatementKind.OTHER) if len(tokens.leading_words) == 1 \
             else StatementKind.OTHER
@@ -363,12 +361,14 @@ def _analysis(sql: str, dialect: SqlDialect, style: ParamStyle) -> StatementAnal
     trees, failure = parsed
     if trees is None:
         return result(kind=StatementKind.UNKNOWN, writes=_may_write(tokens), gap=AnalysisGap.UNPARSEABLE,
-                      detail=failure)
+                      detail=failure, tables=_unread_tables(tokens, dialect, annotations))
 
     mismatch = _placeholder_mismatch(trees, tokens)
-    if mismatch is not None or not trees or any(isinstance(t, exp.Command) for t in trees):
+    if (mismatch is not None or not trees or any(isinstance(t, exp.Command) for t in trees)
+            or any(_removes_from_parenthesized_table(t) for t in trees)):
         return result(kind=StatementKind.UNKNOWN, writes=_may_write(tokens),
-                      gap=AnalysisGap.PLACEHOLDER_MISMATCH if mismatch else AnalysisGap.UNPARSEABLE, detail=mismatch)
+                      gap=AnalysisGap.PLACEHOLDER_MISMATCH if mismatch else AnalysisGap.UNPARSEABLE, detail=mismatch,
+                      tables=_unread_tables(tokens, dialect, annotations))
 
     walker = _Walker(dialect, tokens, prepared=tokens.leading_words == ("PREPARE",))
     for tree in trees:
@@ -376,11 +376,12 @@ def _analysis(sql: str, dialect: SqlDialect, style: ParamStyle) -> StatementAnal
     return walker.result(trees, annotations, result)
 
 
-def _parse(text: str, dialect: SqlDialect) -> Tuple[Optional[List[exp.Expression]], Optional[str]]:
+def _parse(text: str, dialect: Type[DriverDialect]) -> Tuple[Optional[List[exp.Expression]], Optional[str]]:
     try:
         with _QUIET.active():
-            parsed = sqlglot.parse(text, read=_SQLGLOT_DIALECT[dialect.name])
-    except Exception as e:  # sqlglot raises ParseError/TokenError, but must never break a statement
+            parsed = sqlglot.parse(text, read=dialect.sqlglot_dialect)
+    except Exception as e:
+        # sqlglot raises ParseError/TokenError, but must never break a statement.
         # sqlglot's tokenizer re-raises a RecursionError as a TokenError.
         cause: Optional[BaseException] = e
         seen: Set[int] = set()
@@ -393,11 +394,12 @@ def _parse(text: str, dialect: SqlDialect) -> Tuple[Optional[List[exp.Expression
     return [t for t in parsed if isinstance(t, exp.Expression)], None
 
 
-def _parse_statement(tokens: TokenizedSql, dialect: SqlDialect) -> Optional[Tuple[Optional[List[exp.Expression]], Optional[str]]]:
+def _parse_statement(tokens: TokenizedSql, dialect: Type[DriverDialect]) -> Optional[Tuple[Optional[List[exp.Expression]], Optional[str]]]:
     """Parses the normalized SQL the way the analysis reads it. A PostgreSQL
-    ``PREPARE name AS`` prefix is left out, and a MySQL INSERT or REPLACE
-    that doesn't parse is tried again without its column qualifiers. ``None``
-    when a PREPARE has no such prefix."""
+    ``PREPARE name AS`` prefix is left out, and an INSERT or REPLACE that
+    doesn't parse is tried again without its column qualifiers when the
+    dialect accepts qualified insert columns. ``None`` when a PREPARE has no
+    such prefix."""
     text = tokens.normalized
     if tokens.leading_words == ("PREPARE",):
         m = _PREPARE.match(text)
@@ -406,14 +408,14 @@ def _parse_statement(tokens: TokenizedSql, dialect: SqlDialect) -> Optional[Tupl
         text = text[m.end():]
 
     trees, failure = _parse(text, dialect)
-    if trees is None and tokens.leading_words in (("INSERT",), ("REPLACE",)) and dialect.name == "mysql":
+    if trees is None and dialect.qualified_insert_columns and tokens.leading_words in (("INSERT",), ("REPLACE",)):
         unqualified = _without_insert_column_qualifiers(text)
         if unqualified is not None:
             trees, failure = _parse(unqualified, dialect)
     return trees, failure
 
 
-def _named_tables(tokens: TokenizedSql, dialect: SqlDialect) -> Tuple[TableRef, ...]:
+def _named_tables(tokens: TokenizedSql, dialect: Type[DriverDialect]) -> Tuple[TableRef, ...]:
     """The tables the statement names, read from the text the analysis
     parses; none when it doesn't parse."""
     parsed = _parse_statement(tokens, dialect)
@@ -424,6 +426,29 @@ def _named_tables(tokens: TokenizedSql, dialect: SqlDialect) -> Tuple[TableRef, 
     for tree in trees:
         walker.collect_tables(tree)
     return walker.tables
+
+
+def _unread_tables(tokens: TokenizedSql, dialect: Type[DriverDialect],
+                   annotations: Tuple[ParameterUse, ...]) -> Tuple[TableRef, ...]:
+    """The tables a statement the analysis can't read may use: those its
+    parse names, every name in its text (see :attr:`TokenizedSql.names`) and
+    the tables its annotations name, one per metadata key."""
+    found: Dict[str, TableRef] = {}
+    for table in _named_tables(tokens, dialect):
+        found.setdefault(dialect.metadata_key(table.name), table)
+    for name, quoted in tokens.names:
+        folded = dialect.fold_identifier(name, quoted=quoted)
+        found.setdefault(dialect.metadata_key(folded), TableRef(folded))
+    for use in annotations:
+        if use.column.table is not None:
+            found.setdefault(dialect.metadata_key(use.column.table), TableRef(use.column.table))
+    return tuple(found.values())
+
+
+def _removes_from_parenthesized_table(tree: exp.Expression) -> bool:
+    # sqlglot reads MySQL's "DELETE u FROM (users u) ..." as a removal from a
+    # subquery, so the alias u is taken for a table of its own.
+    return isinstance(tree, exp.Delete) and isinstance(tree.this, exp.Subquery)
 
 
 def _without_insert_column_qualifiers(text: str) -> Optional[str]:
@@ -437,13 +462,18 @@ def _without_insert_column_qualifiers(text: str) -> Optional[str]:
 def _may_write(tokens: TokenizedSql) -> bool:
     # Keywords only: what a statement that could not be read may be doing.
     words = tokens.keywords
-    for leading in tokens.leading_words:
-        if leading in _WRITE_LEADING or (leading == "COPY" and "FROM" in words):
+    for leading, copies_query in zip(tokens.leading_words, tokens.copy_queries):
+        if leading in _WRITE_LEADING:
             return True
-        if leading in ("WITH", "EXPLAIN", "PREPARE") and words & _WRITE_WORDS:
+        if leading in ("WITH", "EXPLAIN", "PREPARE", "COPY") and words & _WRITE_WORDS:
+            return True
+        if leading == "COPY" and "FROM" in words and not copies_query:
+            # PostgreSQL takes a query only in COPY ( query ) TO, so the FROM
+            # of that query doesn't make it a COPY ... FROM.
             return True
         if leading == "EXPLAIN" and "EXECUTE" in words:
-            return True  # EXPLAIN ANALYZE EXECUTE runs the prepared statement
+            # EXPLAIN ANALYZE EXECUTE runs the prepared statement.
+            return True
     # A MySQL executable comment can turn any statement into a write.
     return tokens.executable_comment and bool(words & (_WRITE_WORDS | _WRITE_LEADING))
 
@@ -454,7 +484,8 @@ def _placeholder_mismatch(trees: List[exp.Expression], tokens: TokenizedSql) -> 
         for node in tree.find_all(exp.Placeholder):
             ordinal = normalized_ordinal(node.name)
             if ordinal is None:
-                continue  # a "?" or ":name" the driver does not bind
+                # A "?" or ":name" the driver does not bind.
+                continue
             if ordinal in seen or ordinal >= len(tokens.placeholders):
                 return "a placeholder appears more than once"
             seen.add(ordinal)
@@ -462,8 +493,6 @@ def _placeholder_mismatch(trees: List[exp.Expression], tokens: TokenizedSql) -> 
         return f"{len(tokens.placeholders) - len(seen)} placeholder(s) missing from the parse"
     return None
 
-
-# ---- the walk ----
 
 def _by_ordinal(use: ParameterUse) -> int:
     return use.ordinal
@@ -521,7 +550,7 @@ _MAX_DEPTH = 8
 class _Walker:
     """Collects what one or more parsed statements write, compare and read."""
 
-    def __init__(self, dialect: SqlDialect, tokens: TokenizedSql, prepared: bool = False):
+    def __init__(self, dialect: Type[DriverDialect], tokens: TokenizedSql, prepared: bool = False):
         self._dialect = dialect
         self._tokens = tokens
         # The body of a PREPARE: its $n parameters are bound later.
@@ -554,8 +583,6 @@ class _Walker:
         self._placeholder_nodes: Dict[int, exp.Expression] = {}
         # Tables each write node (INSERT, UPDATE, MERGE) writes.
         self._written_by: Dict[int, List[TableRef]] = {}
-
-    # ---- entry ----
 
     def statement(self, tree: exp.Expression) -> None:
         self.collect_tables(tree)
@@ -616,9 +643,8 @@ class _Walker:
             annotations=resolved,
             unbound_writes=tuple(self._unbound),
             result_columns=self._result_columns(trees[0]) if len(trees) == 1 and not self._prepared else None,
-            gap=self._gap if self._writes else None)
-
-    # ---- statements ----
+            gap=self._gap if self._writes else None,
+            cte_names=frozenset(self._cte_names))
 
     def _statement_kind(self, tree: exp.Expression) -> StatementKind:
         if isinstance(tree, exp.Copy):
@@ -693,7 +719,8 @@ class _Walker:
         if not isinstance(source, exp.Select) or len(source.expressions) != len(columns):
             return False
         if any(value for key, value in source.args.items() if key not in _PLAIN_SELECT_ARGS):
-            return False  # a join, a filter, a limit, ... (or an arg this code does not know)
+            # A join, a filter, a limit, ... (or an arg this code does not know)
+            return False
         from_ = source.args.get("from_")
         values = from_.this if isinstance(from_, exp.From) else None
         alias = values.args.get("alias") if isinstance(values, exp.Values) else None
@@ -711,16 +738,18 @@ class _Walker:
                 return False
             positions.append((names[self._key(inner.this)], casts))
         if len({position for position, _ in positions}) != len(positions):
-            return False  # one value would fill two columns
-        assert isinstance(values, exp.Values)
+            # One value would fill two columns.
+            return False
+        if not isinstance(values, exp.Values):
+            raise EncryptionPluginError(Messages.get("SqlAnalyzer.InsertSourceNotValues"))
         self._insert_rows(columns, table, values.expressions, positions)
         return True
 
     def _upsert(self, conflict: exp.OnConflict, table: Optional[str], columns: Optional[List[Optional[str]]],
                 source: Optional[exp.Expression]) -> None:
         same_row: _SameRow = {}
-        if self._dialect.name != "mysql":
-            same_row[self._key("excluded")] = None
+        if self._dialect.upsert_row_alias is not None:
+            same_row[self._key(self._dialect.upsert_row_alias)] = None
         row_alias = source.args.get("alias") if isinstance(source, exp.Values) else None
         if isinstance(row_alias, exp.TableAlias):
             renamed: Optional[Dict[str, str]] = None
@@ -797,8 +826,6 @@ class _Walker:
             else:
                 self._unbound.append(ColumnRef(column, name))
 
-    # ---- writes ----
-
     def _assign(self, assignment: exp.Expression, table_of: _TableOf, same_row: Optional[_SameRow] = None) -> None:
         self._assignment_nodes.add(id(assignment))
         if not isinstance(assignment, exp.EQ):
@@ -834,7 +861,8 @@ class _Walker:
             ordinal, casts, _ = param
             self._assignments.append(ParameterUse(self._tokens.placeholders[ordinal], column, outer_casts + casts))
         elif self._prepared and self._server_parameter(value):
-            pass  # bound by a later EXECUTE; the statement's gap says so
+            # Bound by a later EXECUTE; the statement's gap says so.
+            pass
         elif not isinstance(value, exp.Null):
             self._unbound.append(column)
 
@@ -858,7 +886,7 @@ class _Walker:
             renamed = same_row[qualifier_key]
             source = self._key(value.this)
             return (renamed.get(source) if renamed is not None else source) == key
-        if self._dialect.name == "mysql" and isinstance(value, exp.Anonymous) \
+        if self._dialect.upsert_values_function and isinstance(value, exp.Anonymous) \
                 and str(value.this).upper() == "VALUES" and len(value.expressions) == 1:
             inner = value.expressions[0]
             if isinstance(inner, exp.Column) and inner.args.get("table") is None:
@@ -883,8 +911,6 @@ class _Walker:
     def _is_row(node: exp.Expression) -> bool:
         return isinstance(node, exp.Anonymous) and str(node.this).upper() == "ROW"
 
-    # ---- comparisons ----
-
     def _collect_comparisons(self, tree: exp.Expression) -> None:
         for node in tree.walk():
             if id(node) in self._assignment_nodes:
@@ -895,7 +921,8 @@ class _Walker:
             elif isinstance(node, exp.In):
                 for item in node.expressions:
                     self._compare(node, node.this, item)
-                self._compare(node, node.args.get("query"), node.this)  # %s IN (SELECT ssn FROM users)
+                # %s IN (SELECT ssn FROM users)
+                self._compare(node, node.args.get("query"), node.this)
             elif isinstance(node, exp.Between):
                 self._compare(node, node.this, node.args.get("low"))
                 self._compare(node, node.this, node.args.get("high"))
@@ -909,7 +936,8 @@ class _Walker:
         if param is None:
             return
         ordinal, casts, function = param
-        ref = self._column_ref(column, column)  # a sub-select's column is resolved in the sub-select
+        # A sub-select's column is resolved in the sub-select.
+        ref = self._column_ref(column, column)
         if ref is not None:
             safe = isinstance(node, _SAFE_OPERATORS) and not node.args.get("negate") and function != "ALL" and not every
             if safe:
@@ -970,7 +998,8 @@ class _Walker:
                 break
             path.append(id(parent))
             child, parent = parent, parent.parent
-        else:  # reached without a memo hit: the clause the condition is in decides
+        else:
+            # Reached without a memo hit: the clause the condition is in decides.
             query = parent.parent if parent is not None else None
             if (isinstance(parent, exp.Where) and isinstance(query, (exp.Select, exp.Update, exp.Delete))) \
                     or (isinstance(parent, exp.Having) and isinstance(query, exp.Select)):
@@ -1027,12 +1056,14 @@ class _Walker:
         if isinstance(query, exp.Select) and (query.args.get("group") or query.args.get("having") or any(
                 e.find(*_AGGREGATING) for e in (*query.expressions, *(query.args.get("windows") or ()),
                                                 query.args.get("order"), query.args.get("distinct")) if e)):
-            return None  # it may return rows for no input row, such as a count of 0
+            # It may return rows for no input row, such as a count of 0.
+            return None
         while isinstance(parent, (exp.Subquery, exp.Paren, exp.Union, exp.Intersect)) \
                 or (isinstance(parent, (exp.Except, exp.Order, exp.Limit)) and child.arg_key == "this"):
             child, parent = parent, parent.parent
         if parent is None:
-            return []  # a set operation or a parenthesized query that is the statement
+            # A set operation or a parenthesized query that is the statement.
+            return []
         if isinstance(parent, exp.Insert):
             # INSERT ... SELECT: a filter that never holds only inserts fewer rows.
             return [] if child.arg_key == "expression" and parent.parent is None else None
@@ -1107,8 +1138,6 @@ class _Walker:
                 sources.extend(source.args.get("joins") or ())
         return False
 
-    # ---- values ----
-
     @staticmethod
     def _unwrap_casts(value: exp.Expression) -> Tuple[exp.Expression, Tuple[str, ...]]:
         casts: List[str] = []
@@ -1142,8 +1171,6 @@ class _Walker:
                 return ordinal, casts, function
         return None
 
-    # ---- names and scopes ----
-
     def _fold(self, name: Any) -> Optional[str]:
         """The name an identifier resolves to, folded as the engine folds it;
         ``None`` when ``name`` is not an identifier."""
@@ -1166,9 +1193,11 @@ class _Walker:
 
     def _table_ref(self, table: exp.Table) -> Optional[TableRef]:
         if not isinstance(table.this, exp.Identifier):
-            return None  # a function or a subquery
+            # A function or a subquery.
+            return None
         name = self._fold(table.this)
-        assert name is not None
+        if name is None:
+            raise EncryptionPluginError(Messages.get("SqlAnalyzer.UnnamedTable"))
         schema = self._fold(table.args.get("db"))
         if schema is None and self._dialect.metadata_key(name) in self._cte_names:
             return None
@@ -1229,7 +1258,8 @@ class _Walker:
                     add(item)
                 return
             if not isinstance(node, exp.Expression):
-                return  # an absent arg can be None or False
+                # An absent arg can be None or False.
+                return
             if isinstance(node, (exp.From, exp.Join)):
                 add(node.this)
                 return
@@ -1252,7 +1282,8 @@ class _Walker:
                 add(query.args.get("this"))
             add(query.args.get("from_"))
             add(query.args.get("joins"))
-            add(query.args.get("using"))  # a list for DELETE ... USING
+            # A list for DELETE ... USING.
+            add(query.args.get("using"))
             add(query.args.get("tables"))
         self._scopes[id(query)] = sources
         return sources
@@ -1350,8 +1381,6 @@ class _Walker:
                     return ColumnRef(ref.column, only.name)
         return ref
 
-    # ---- results ----
-
     def _result_columns(self, tree: exp.Expression) -> Optional[Tuple[Optional[ColumnRef], ...]]:
         if isinstance(tree, exp.Select):
             items = tree.expressions
@@ -1433,8 +1462,10 @@ class _Walker:
                     for cte in (with_.expressions if with_ is not None else ()):
                         if cte is inside:
                             if recursive:
-                                return None  # PostgreSQL lets a RECURSIVE list read later CTEs
-                            break  # a CTE sees only the CTEs before it
+                                # PostgreSQL lets a RECURSIVE list read later CTEs.
+                                return None
+                            # A CTE sees only the CTEs before it.
+                            break
                         cte_alias = cte.args.get("alias")
                         if isinstance(cte_alias, exp.TableAlias) and self._key(cte_alias.this) == key:
                             return None if cte_alias.args.get("columns") else cte.this

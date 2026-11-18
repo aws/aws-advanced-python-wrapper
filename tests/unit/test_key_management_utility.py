@@ -13,13 +13,21 @@
 #  limitations under the License.
 
 import logging
+import threading
+import time
 from typing import Any, List, Tuple
 from unittest.mock import MagicMock, create_autospec
 
 import boto3
+import psycopg
 import pytest
 from botocore.stub import Stubber
+from mysql.connector import MySQLConnection
+from mysql.connector.pooling import PooledMySQLConnection
 
+from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
+from aws_advanced_python_wrapper.driver_dialect_manager import \
+    DriverDialectManager
 from aws_advanced_python_wrapper.encryption import \
     key_management_utility as kmu_module
 from aws_advanced_python_wrapper.encryption.config import EncryptionConfig
@@ -30,17 +38,22 @@ from aws_advanced_python_wrapper.encryption.key_manager import (
 from aws_advanced_python_wrapper.encryption.metadata_manager import \
     MetadataManager
 from aws_advanced_python_wrapper.encryption.models import (
-    ColumnEncryptionConfig, KeyMetadata, mask_arn)
-from aws_advanced_python_wrapper.encryption.sql_dialect import (MYSQL, PG,
-                                                                SqlDialect,
-                                                                fetch_rows)
-from aws_advanced_python_wrapper.errors import (EncryptionConfigError,
+    ColumnEncryptionConfig, KeyMetadata, KeyOperation, mask_arn)
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                EncryptionConfigError,
                                                 InvalidAlgorithmError,
-                                                KeyManagementError)
+                                                KeyManagementError,
+                                                QueryTimeoutError)
+from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
+from aws_advanced_python_wrapper.pg_driver_dialect import PgDriverDialect
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
+from aws_advanced_python_wrapper.utils.utils import Utils
+from aws_advanced_python_wrapper.wrapper import AwsWrapperConnection
 
 ARN = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
 ALIAS_ARN = "arn:aws:kms:us-east-1:123456789012:alias/python-kms-encryption-1700000000000"
-ROLE_SESSION_ARN = "arn:aws:sts::123456789012:assumed-role/kiro-admin-role/kiro-admin-session"
+ROLE_SESSION_ARN = "arn:aws:sts::123456789012:assumed-role/test-admin-role/test-admin-session"
 
 
 class RecordingConnection:
@@ -81,12 +94,16 @@ def conn():
 
 def config(restricted=False):
     return EncryptionConfig(kms_region="us-east-1",
-                            allowed_master_key_arns=frozenset({ARN}) if restricted else frozenset())
+                            allowed_master_key_arns=frozenset({ARN}) if restricted else frozenset(),
+                            kms_endpoint=None, metadata_schema="encrypt", metadata_cache_enabled=True,
+                            metadata_cache_expiration_sec=3600.0, metadata_cache_refresh_interval_sec=300.0, data_key_cache_enabled=True,
+                            data_key_cache_max_size=1000, data_key_cache_expiration_sec=300.0, key_management_max_retries=3,
+                            key_management_retry_backoff_base_sec=0.1, audit_logging_enabled=False, return_unverified_data=False)
 
 
-def utility(conn, restricted=False, engine="postgresql"):
+def utility(conn, restricted=False, driver=DriverDialectCodes.PSYCOPG):
     kms = MagicMock()
-    u = KeyManagementUtility(conn, kms, config(restricted), engine=engine)
+    u = KeyManagementUtility(conn, kms, config(restricted), props={WrapperProperties.DRIVER_DIALECT.name: driver})
     # Autospec, so a misspelled method fails here as it would in production.
     u._key_manager = create_autospec(KeyManager, instance=True)
     u._key_manager.generate_data_key.return_value = GeneratedDataKey(
@@ -102,7 +119,8 @@ class TestInitialize:
         u, _ = utility(conn)
         assert u.initialize_encryption_for_column("users", "ssn", ARN) == 11
         stored = u._key_manager.store_key_metadata.call_args[0][0]
-        assert stored.master_key_arn == ARN and stored.key_spec == "AES_256"
+        assert stored.master_key_arn == ARN
+        assert stored.key_spec == "AES_256"
         assert stored.key_name.startswith("key-users-ssn-")
         sql, params = conn.executed[-1]
         assert sql.startswith("INSERT INTO encrypt.encryption_metadata")
@@ -110,13 +128,13 @@ class TestInitialize:
                "EXCLUDED.encryption_algorithm, key_id = EXCLUDED.key_id, updated_at = CURRENT_TIMESTAMP" in sql
         assert params == ("users", "ssn", "AES-256-GCM", 11)
 
-    def test_wipes_the_generated_plaintext(self, conn):
+    def test_wipes_generated_plaintext(self, conn):
         u, _ = utility(conn)
         u.initialize_encryption_for_column("users", "ssn", ARN)
         generated = u._key_manager.generate_data_key.return_value
         assert generated.plaintext == bytearray(32)
 
-    def test_wipes_the_plaintext_even_when_storing_fails(self, conn):
+    def test_wipes_plaintext_when_store_fails(self, conn):
         u, _ = utility(conn)
         u._key_manager.store_key_metadata.side_effect = KeyManagementError("x")
         with pytest.raises(KeyManagementError):
@@ -124,14 +142,14 @@ class TestInitialize:
         assert u._key_manager.generate_data_key.return_value.plaintext == bytearray(32)
 
     def test_mysql_upsert_grammar(self, conn):
-        u, _ = utility(conn, engine="mysql")
+        u, _ = utility(conn, driver=DriverDialectCodes.MYSQL_CONNECTOR_PYTHON)
         u.initialize_encryption_for_column("users", "ssn", ARN, "AES-128-GCM")
         sql = conn.executed[-1][0]
         assert "ON DUPLICATE KEY UPDATE encryption_algorithm = VALUES(encryption_algorithm), " \
                "key_id = VALUES(key_id), updated_at = CURRENT_TIMESTAMP" in sql
         u._key_manager.generate_data_key.assert_called_with(ARN, "AES-128-GCM")
 
-    def test_refuses_an_already_encrypted_column(self, conn):
+    def test_already_encrypted_column_raises(self, conn):
         u, _ = utility(conn)
         u._metadata.is_column_encrypted.return_value = True
         with pytest.raises(KeyManagementError, match="already encrypted"):
@@ -162,12 +180,12 @@ class TestRotate:
         u._metadata.column_config.return_value = ColumnEncryptionConfig(
             "users", "ssn", algorithm, 4, km if arn else None)
 
-    def test_rotate_onto_the_current_master_key_needs_the_allow_list(self, conn):
+    def test_rotate_onto_current_master_key_needs_allow_list(self, conn):
         u, _ = utility(conn, restricted=False)
         with pytest.raises(ValueError, match="encryption_allowed_master_key_arns"):
             u.rotate_data_key("users", "ssn")
 
-    def test_rotate_keeping_the_current_master_key(self, conn):
+    def test_rotate_keeps_current_master_key(self, conn):
         u, _ = utility(conn, restricted=True)
         self._current(u, algorithm="AES-128-GCM")
         assert u.rotate_data_key("users", "ssn") == 11
@@ -176,7 +194,7 @@ class TestRotate:
         assert sql.startswith("UPDATE encrypt.encryption_metadata SET key_id = %s")
         assert params == (11, "users", "ssn")
 
-    def test_rotate_onto_a_new_master_key(self, conn):
+    def test_rotate_onto_new_master_key(self, conn):
         u, _ = utility(conn)
         self._current(u)
         other = ARN.replace("1234abcd", "eeeeeeee")
@@ -204,7 +222,7 @@ class TestRotate:
 
 
 class TestRemoveAndQuery:
-    def test_remove_deletes_only_the_metadata_row(self, conn):
+    def test_remove_deletes_only_metadata_row(self, conn):
         u, _ = utility(conn)
         assert u.remove_encryption_for_column("users", "ssn") is True
         assert len(conn.executed) == 1
@@ -250,9 +268,9 @@ class TestMasterKeys:
         pytest.param("AlreadyExistsException", f"An alias with the name {ALIAS_ARN} already exists",
                      id="already-exists"),
     ])
-    def test_alias_failure_warning_masks_the_arns_kms_quotes(self, conn, caplog, code, text):
+    def test_alias_failure_warning_masks_arns(self, conn, caplog, code, text):
         kms = boto3.client("kms", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x")
-        u = KeyManagementUtility(conn, kms, config(), engine="postgresql")
+        u = KeyManagementUtility(conn, kms, config(), props={WrapperProperties.DRIVER_DIALECT.name: DriverDialectCodes.PSYCOPG})
         u._key_manager = create_autospec(KeyManager, instance=True)
         u._key_manager.create_master_key.return_value = ARN
         with Stubber(kms) as stubber, caplog.at_level(logging.WARNING, logger=kmu_module.__name__):
@@ -263,9 +281,11 @@ class TestMasterKeys:
         warnings = [r.getMessage() for r in caplog.records
                     if r.name == kmu_module.__name__ and r.levelno == logging.WARNING]
         assert len(warnings) == 1
-        assert f"({code})" in warnings[0] and mask_arn(ARN) in warnings[0]
+        assert "could not create an alias" in warnings[0]
+        assert f"({code})" in warnings[0]
+        assert mask_arn(ARN) in warnings[0]
         assert "arn:aws:kms:***:***:***" in warnings[0]
-        for identifier in (ARN, ALIAS_ARN, ROLE_SESSION_ARN, "123456789012", "kiro-admin-role", "kiro-admin-session"):
+        for identifier in (ARN, ALIAS_ARN, ROLE_SESSION_ARN, "123456789012", "test-admin-role", "test-admin-session"):
             assert identifier not in warnings[0]
 
     def test_no_alias(self, conn):
@@ -284,37 +304,109 @@ class TestEngineInference:
         with pytest.raises(EncryptionConfigError):
             KeyManagementUtility(conn, MagicMock(), config())
 
-    def test_infers_from_driver_module_and_wrapper_connection(self):
-        pg_conn = type("Connection", (), {"__module__": "psycopg"})()
-        mysql_conn = type("CMySQLConnection", (), {"__module__": "mysql.connector.connection_cext"})()
-        wrapper = type("AwsWrapperConnection", (), {"target_connection": mysql_conn})()
-        assert SqlDialect.for_connection(pg_conn) is PG
-        assert SqlDialect.for_connection(mysql_conn) is MYSQL
-        assert SqlDialect.for_connection(wrapper) is MYSQL
-        assert SqlDialect.for_name("PostgreSQL") is PG
+    def test_infers_dialect_from_connection_and_wrapper(self):
+        pg_conn = MagicMock(spec=psycopg.Connection)
+        mysql_conn = MagicMock(spec=MySQLConnection)
+        wrapper = MagicMock(spec=AwsWrapperConnection)
+        wrapper.target_connection = mysql_conn
+        manager = DriverDialectManager()
+        assert isinstance(manager.get_dialect_for_connection(pg_conn, Properties()), PgDriverDialect)
+        assert isinstance(manager.get_dialect_for_connection(mysql_conn, Properties()), MySQLDriverDialect)
+        assert isinstance(KeyManagementUtility(wrapper, MagicMock(), config())._driver_dialect, MySQLDriverDialect)
+        props = Properties({WrapperProperties.DRIVER_DIALECT.name: DriverDialectCodes.PSYCOPG})
+        assert isinstance(manager.get_dialect_for_connection(None, props), PgDriverDialect)
 
-    def test_from_driver_dialect(self):
-        assert SqlDialect.for_driver_dialect(MagicMock(dialect_code="psycopg")) is PG
-        assert SqlDialect.for_driver_dialect(MagicMock(dialect_code="mysql-connector-python")) is MYSQL
-        with pytest.raises(EncryptionConfigError):
-            SqlDialect.for_driver_dialect(MagicMock(dialect_code="generic"))
+    @pytest.mark.parametrize("code", ["oracle", "pg", "postgres", "mysql-connector"])
+    def test_unknown_dialect_code_raises(self, conn, code):
+        with pytest.raises(AwsWrapperError, match=f"Unknown target driver dialect code: {code}"):
+            KeyManagementUtility(conn, MagicMock(), config(), props={WrapperProperties.DRIVER_DIALECT.name: code})
+
+    def test_driver_not_installed(self, mocker):
+        pg_path = DriverDialectManager.known_dialects_by_code[DriverDialectCodes.PSYCOPG]
+        initialize = Utils.initialize_class
+        mocker.patch.object(Utils, "initialize_class",
+                            side_effect=lambda path, *args: None if path == pg_path else initialize(path, *args))
+        manager = DriverDialectManager()
+        assert isinstance(manager.get_dialect_for_connection(MagicMock(spec=MySQLConnection), Properties()), MySQLDriverDialect)
+        with pytest.raises(AwsWrapperError, match="unable to initialize the target driver dialect"):
+            manager.get_dialect_for_connection(None, Properties({WrapperProperties.DRIVER_DIALECT.name: DriverDialectCodes.PSYCOPG}))
+
+    def test_pooled_mysql_connection_needs_dialect_code(self):
+        pooled = PooledMySQLConnection.__new__(PooledMySQLConnection)
+        # The pool's wrapper forwards unknown attributes to the connection it holds.
+        pooled._cnx = MagicMock(spec=MySQLConnection)
+        with pytest.raises(EncryptionConfigError, match="'PooledMySQLConnection'.*wrapper_driver_dialect"):
+            KeyManagementUtility(pooled, MagicMock(), config())
+        props = {WrapperProperties.DRIVER_DIALECT.name: DriverDialectCodes.MYSQL_CONNECTOR_PYTHON}
+        assert isinstance(KeyManagementUtility(pooled, MagicMock(), config(), props=props)._driver_dialect, MySQLDriverDialect)
 
 
-def test_fetch_rows_lower_cases_keys_and_handles_no_result():
-    conn = RecordingConnection()
-    conn.rows = [("t", "c")]
-    assert fetch_rows(conn, "SELECT") == [{"table_name": "t", "column_name": "c"}]
+TIMEOUT_PROPS = {WrapperProperties.DRIVER_DIALECT.name: DriverDialectCodes.PSYCOPG,
+                 WrapperProperties.SOCKET_TIMEOUT_SEC.name: "0.05"}
 
 
-def test_fetch_rows_accepts_dict_rows():
-    # A connection opened with a dict-like row factory (psycopg dict_row)
-    # returns mappings; their keys are lower-cased like tuple rows' names.
-    conn = RecordingConnection()
-    conn.rows = [{"TABLE_NAME": "t", "column_name": "c"}]  # type: ignore[list-item]
-    assert fetch_rows(conn, "SELECT") == [{"table_name": "t", "column_name": "c"}]
+def test_props_socket_timeout_bounds_statements(mocker):
+    released = threading.Event()
+    pg_conn = MagicMock(spec=psycopg.Connection)
+    pg_conn.cursor.return_value.execute.side_effect = lambda *args: released.wait(timeout=1)
+    # The abort ends the statement that waits, so no worker is left running.
+    abort = mocker.patch.object(PgDriverDialect, "abort_connection", side_effect=lambda c: released.set())
+    u = KeyManagementUtility(pg_conn, MagicMock(), config(), props=TIMEOUT_PROPS)
+    with pytest.raises(KeyManagementError) as error:
+        u.columns_using_key(3)
+    assert isinstance(error.value.__cause__, QueryTimeoutError)
+    abort.assert_called_once_with(pg_conn)
+
+
+def test_props_driver_dialect_code_selects_dialect(conn):
+    u = KeyManagementUtility(conn, MagicMock(), config(),
+                             props={WrapperProperties.DRIVER_DIALECT.name: DriverDialectCodes.MYSQL_CONNECTOR_PYTHON})
+    u.columns_using_key(3)
+    assert conn.executed[0] == ("SELECT table_name, column_name FROM encrypt.encryption_metadata "
+                                "WHERE key_id = %s ORDER BY table_name, column_name", (3,))
+
+
+def test_props_socket_timeout_dropped_for_wrapper_connection(mocker):
+    wrapper = MagicMock(spec=AwsWrapperConnection)
+    wrapper.target_connection = MagicMock(spec=psycopg.Connection)
+    cursor = wrapper.cursor.return_value
+    cursor.execute.side_effect = lambda *args: time.sleep(0.2)
+    cursor.description = [("table_name",), ("column_name",)]
+    cursor.fetchall.return_value = [("users", "ssn")]
+    abort = mocker.spy(PgDriverDialect, "abort_connection")
+    u = KeyManagementUtility(wrapper, MagicMock(), config(), props=TIMEOUT_PROPS)
+    assert u.columns_using_key(3) == ["users.ssn"]
+    assert abort.call_count == 0
+
+
+def test_pg_statements_pin_built_in_equals_operator(conn):
+    u, _ = utility(conn)
+    u.columns_using_key(3)
+    assert "key_id OPERATOR(pg_catalog.=) %s" in conn.executed[0][0]
 
 
 def test_columns_using_key_with_dict_rows(conn):
     conn.rows = [{"table_name": "users", "column_name": "ssn"}]  # type: ignore[list-item]
     u, _ = utility(conn)
     assert u.columns_using_key(3) == ["users.ssn"]
+
+
+def test_create_master_key_without_description_raises(conn):
+    u, _ = utility(conn)
+    with pytest.raises(ValueError):
+        u.create_master_key(None)
+
+
+def test_columns_using_key_statement_failure_raises(conn, mocker):
+    u, _ = utility(conn)
+    mocker.patch.object(PgDriverDialect, "fetch_rows", side_effect=RuntimeError("boom"))
+    with pytest.raises(KeyManagementError) as error:
+        u.columns_using_key(3)
+    assert error.value.operation == KeyOperation.SELECT_COLUMNS_USING_KEY.value
+
+
+def test_is_master_key_valid_delegates_to_key_manager(conn):
+    u, _ = utility(conn)
+    u._key_manager.is_master_key_valid.return_value = True
+    assert u.is_master_key_valid(ARN) is True
+    u._key_manager.is_master_key_valid.assert_called_once_with(ARN)

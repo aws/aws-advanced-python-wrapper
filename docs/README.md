@@ -27,6 +27,7 @@
         - [Reader Selection Strategies](using-the-python-wrapper/ReaderSelectionStrategies.md)
       - [Simple Read Write Splitting Plugin](using-the-python-wrapper/using-plugins/UsingTheSimpleReadWriteSplittingPlugin.md)
       - [Fastest Response Strategy Plugin](using-the-python-wrapper/using-plugins/UsingTheFastestResponseStrategyPlugin.md)
+      - [KMS Encryption Plugin](using-the-python-wrapper/using-plugins/UsingTheKmsEncryptionPlugin.md)
     - [Host Availability Strategy](using-the-python-wrapper/HostAvailabilityStrategy.md)
 - [Development Guide](./development-guide/DevelopmentGuide.md)
   - [Setup](./development-guide/DevelopmentGuide.md#setup)

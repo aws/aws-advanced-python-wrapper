@@ -13,13 +13,16 @@
 #  limitations under the License.
 
 import socket
+import threading
 
 import psycopg
 import pytest
 from mysql.connector import MySQLConnection
+from mysql.connector import cursor as mysql_cursor
 from mysql.connector.cursor import MySQLCursor
 
 from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                QueryTimeoutError,
                                                 UnsupportedOperationError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
@@ -174,3 +177,77 @@ def test_abort_connection_swallows_shutdown_oserror(dialect, mock_conn, mocker):
 def test_abort_connection_rejects_non_mysql_connection(dialect, mock_invalid_conn):
     with pytest.raises(UnsupportedOperationError):
         dialect.abort_connection(mock_invalid_conn)
+
+
+def test_metadata_key_lower_cases(dialect):
+    assert dialect.metadata_key("Users") == "users"
+
+
+def test_fold_identifier_keeps_case(dialect):
+    assert dialect.fold_identifier("Users", quoted=False) == "Users"
+
+
+def test_upsert_clause(dialect):
+    assert dialect.upsert_clause(["id"], ["name"], ["updated_at = NOW()"]) == \
+        "ON DUPLICATE KEY UPDATE name = VALUES(name), updated_at = NOW()"
+
+
+def test_insert_returning_id(dialect, mocker):
+    conn = mocker.MagicMock()
+    cursor = conn.cursor.return_value
+    cursor.lastrowid = 7
+    assert dialect.insert_returning_id(conn, "INSERT INTO t (name) VALUES (%s)", ("a",)) == 7
+    cursor.execute.assert_called_once_with("INSERT INTO t (name) VALUES (%s)", ("a",))
+
+
+def test_analyzable_sql_bytes(dialect, mocker, mock_conn):
+    mock_conn.python_charset = "utf8"
+    cursor = mocker.MagicMock(spec=MySQLCursor)
+    cursor._connection = mock_conn
+    assert dialect.analyzable_sql(b"SELECT 1", cursor) == ("SELECT 1", "utf8")
+    assert dialect.analyzable_sql("SELECT 'é'".encode("utf-8"), cursor) == (None, "utf8")
+    assert dialect.analyzable_sql("SELECT 1", cursor) == ("SELECT 1", None)
+
+
+def test_analyzable_sql_bytes_unknown_charset(dialect, mocker, mock_conn):
+    mock_conn.python_charset = "swe7"
+    cursor = mocker.MagicMock(spec=MySQLCursor)
+    cursor._connection = mock_conn
+    with pytest.raises(LookupError):
+        dialect.analyzable_sql(b"SELECT 1", cursor)
+
+
+def test_analyzable_sql_bytes_without_connection(dialect, mocker):
+    assert dialect.analyzable_sql(b"SELECT 1", mocker.MagicMock()) == (None, None)
+
+
+def test_binary_placeholder_prefix_none_on_prepared_cursors(mocker, dialect):
+    prepared = {"MySQLCursorPrepared", "MySQLCursorPreparedDict", "CMySQLCursorPrepared", "CMySQLCursorPreparedDict"}
+
+    def check(module, prefix):
+        classes = [getattr(module, n) for n in dir(module) if n.startswith(prefix) and isinstance(getattr(module, n), type)]
+        assert len(classes) > 2
+        for cls in classes:
+            expected = None if cls.__name__ in prepared else "_binary "
+            assert dialect.binary_placeholder_prefix(mocker.MagicMock(spec=cls)) == expected
+
+    check(mysql_cursor, "MySQLCursor")
+    check(pytest.importorskip("mysql.connector.cursor_cext"), "CMySQLCursor")
+
+
+def test_insert_returning_id_times_out_with_socket_timeout(mocker):
+    dialect = MySQLDriverDialect(Properties({WrapperProperties.SOCKET_TIMEOUT_SEC.name: "0.05"}))
+    event = threading.Event()
+    # The abort ends the cursor call that waits, so no worker is left running.
+    mocker.patch.object(dialect, "abort_connection", side_effect=lambda conn: event.set())
+    conn = mocker.MagicMock()
+    conn.cursor.return_value.execute.side_effect = lambda *args: event.wait(timeout=1) and None
+    conn.cursor.return_value.lastrowid = 7
+    with pytest.raises(QueryTimeoutError):
+        dialect.insert_returning_id(conn, "INSERT INTO t (name) VALUES (%s)", ("a",))
+
+
+@pytest.mark.parametrize("params, binds", [
+    (None, False), ({}, False), ([], False), ((), False), ({"a": 1}, True), ([1], True)])
+def test_binds_parameters_non_empty_dict_list_or_tuple(params, binds):
+    assert MySQLDriverDialect.binds_parameters(params) is binds

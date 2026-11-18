@@ -25,16 +25,15 @@ from aws_advanced_python_wrapper.encryption.algorithm import \
     EncryptionAlgorithm
 from aws_advanced_python_wrapper.encryption.models import (
     ColumnEncryptionConfig, KeyMetadata)
-from aws_advanced_python_wrapper.encryption.sql_dialect import fetch_rows
 from aws_advanced_python_wrapper.errors import MetadataError
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 
 if TYPE_CHECKING:
+    from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.encryption.config import EncryptionConfig
     from aws_advanced_python_wrapper.encryption.connection_source import \
         ConnectionSource
-    from aws_advanced_python_wrapper.encryption.sql_dialect import SqlDialect
 
 logger = Logger(__name__)
 
@@ -42,7 +41,7 @@ _KS_PREFIX = "ks_"
 
 
 class _Snapshot(NamedTuple):
-    # Keyed by SqlDialect.metadata_key of the names.
+    # Keyed by DriverDialect.metadata_key of the names.
     columns: Mapping[Tuple[str, str], ColumnEncryptionConfig]
     by_table: Mapping[str, Tuple[ColumnEncryptionConfig, ...]]
     loaded_at: float  # time.monotonic()
@@ -62,7 +61,7 @@ class MetadataManager:
     disabled, each lookup queries the database.
 
     Lookups compare names the way the engine does
-    (:meth:`SqlDialect.metadata_key`): exactly on PostgreSQL, where names are
+    (:meth:`DriverDialect.metadata_key`): exactly on PostgreSQL, where names are
     stored as the catalog has them (``users`` for an unquoted ``Users``), and
     case-insensitively on MySQL. That matches what the uncached query's
     ``WHERE`` does, given the default (case-insensitive) MySQL collations.
@@ -78,9 +77,9 @@ class MetadataManager:
 
     SHUTDOWN_TIMEOUT_SEC = 5.0
 
-    def __init__(self, connection_source: ConnectionSource, sql_dialect: SqlDialect, config: EncryptionConfig):
+    def __init__(self, connection_source: ConnectionSource, driver_dialect: DriverDialect, config: EncryptionConfig):
         self._connections = connection_source
-        self._sql = sql_dialect
+        self._driver_dialect = driver_dialect
         self._config = config
         self._snapshot: Optional[_Snapshot] = None
         self._started = False
@@ -95,8 +94,6 @@ class MetadataManager:
         # self, or the manager would never be collected.
         self._thread_holder: List[Optional[Thread]] = [None]
         weakref.finalize(self, MetadataManager._finalize, self._stop, self._thread_holder)
-
-    # ---- lifecycle ----
 
     def start(self) -> None:
         """Load the cache and start the background refresh, as configured.
@@ -152,8 +149,6 @@ class MetadataManager:
         cache. Keyed by ``(table_name, column_name)``."""
         return self._load_all()
 
-    # ---- lookups ----
-
     def is_column_encrypted(self, table_name: Optional[str], column_name: Optional[str]) -> bool:
         if table_name is None or column_name is None:
             return False
@@ -168,10 +163,12 @@ class MetadataManager:
         if table_name is None or column_name is None:
             return None
         snapshot = self._usable_snapshot(table_name, column_name)
+        key = self._driver_dialect.metadata_key
         if snapshot is not None:
-            return snapshot.columns.get((self._sql.metadata_key(table_name), self._sql.metadata_key(column_name)))
+            return snapshot.columns.get((key(table_name), key(column_name)))
+        equals = self._driver_dialect.equals_operator
         rows = self._query(
-            f"{self._joined_sql()} WHERE em.table_name {self._sql.equals} %s AND em.column_name {self._sql.equals} %s",
+            f"{self._joined_sql()} WHERE em.table_name {equals} %s AND em.column_name {equals} %s",
             (table_name, column_name), table_name=table_name, column_name=column_name)
         return self._to_column_config(rows[0]) if rows else None
 
@@ -181,8 +178,8 @@ class MetadataManager:
             return ()
         snapshot = self._usable_snapshot(table_name)
         if snapshot is not None:
-            return snapshot.by_table.get(self._sql.metadata_key(table_name), ())
-        rows = self._query(f"{self._joined_sql()} WHERE em.table_name {self._sql.equals} %s",
+            return snapshot.by_table.get(self._driver_dialect.metadata_key(table_name), ())
+        rows = self._query(f"{self._joined_sql()} WHERE em.table_name {self._driver_dialect.equals_operator} %s",
                            (table_name,), table_name=table_name)
         return tuple(self._to_column_config(row) for row in rows)
 
@@ -194,8 +191,6 @@ class MetadataManager:
     @property
     def is_cache_loaded(self) -> bool:
         return self._snapshot is not None
-
-    # ---- internals ----
 
     def _usable_snapshot(self, table_name: Optional[str] = None,
                          column_name: Optional[str] = None) -> Optional[_Snapshot]:
@@ -220,7 +215,7 @@ class MetadataManager:
         # returned.
         loaded_at = time.monotonic()
         columns = self._load_all(table_name=table_name, column_name=column_name)
-        key = self._sql.metadata_key
+        key = self._driver_dialect.metadata_key
         by_table: Dict[str, List[ColumnEncryptionConfig]] = {}
         for config in columns.values():
             by_table.setdefault(key(config.table_name), []).append(config)
@@ -252,7 +247,7 @@ class MetadataManager:
                column_name: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
             with self._connections.connection() as conn:
-                return fetch_rows(conn, sql, params)
+                return self._driver_dialect.fetch_rows(conn, sql, params)
         except Exception as e:
             raise MetadataError(Messages.get_formatted("MetadataManager.LoadFailed", e),
                                 table_name=table_name, column_name=column_name) from e
@@ -271,7 +266,7 @@ class MetadataManager:
                 f"ks.hmac_key AS {p}hmac_key, ks.key_spec AS {p}key_spec, "
                 f"ks.created_at AS {p}created_at, ks.last_used_at AS {p}last_used_at "
                 f"FROM {schema}.encryption_metadata em "
-                f"LEFT JOIN {schema}.key_storage ks ON em.key_id {self._sql.equals} ks.id")
+                f"LEFT JOIN {schema}.key_storage ks ON em.key_id {self._driver_dialect.equals_operator} ks.id")
 
     @staticmethod
     def _to_column_config(row: Mapping[str, Any]) -> ColumnEncryptionConfig:

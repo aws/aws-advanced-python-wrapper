@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Mapping, Optional, cast
 
 from aws_advanced_python_wrapper.encryption.algorithm import \
@@ -29,6 +30,25 @@ if TYPE_CHECKING:
 
 REDACTED = "[REDACTED]"
 DEFAULT_KEY_SPEC = "AES_256"
+
+
+class KeyOperation(Enum):
+    """The key or metadata operation a ``KeyManagementError`` names."""
+
+    AUTHORIZE_MASTER_KEY = "AUTHORIZE_MASTER_KEY"
+    CREATE_MASTER_KEY = "CREATE_MASTER_KEY"
+    DECRYPT_DATA_KEY = "DECRYPT_DATA_KEY"
+    DELETE_ENCRYPTION_METADATA = "DELETE_ENCRYPTION_METADATA"
+    DESCRIBE_MASTER_KEY = "DESCRIBE_MASTER_KEY"
+    GENERATE_DATA_KEY = "GENERATE_DATA_KEY"
+    GET_KEY_METADATA = "GET_KEY_METADATA"
+    INITIALIZE_COLUMN = "INITIALIZE_COLUMN"
+    ROTATE_DATA_KEY = "ROTATE_DATA_KEY"
+    SELECT_COLUMNS_USING_KEY = "SELECT_COLUMNS_USING_KEY"
+    STORE_ENCRYPTION_METADATA = "STORE_ENCRYPTION_METADATA"
+    STORE_KEY_METADATA = "STORE_KEY_METADATA"
+    UPDATE_ENCRYPTION_METADATA = "UPDATE_ENCRYPTION_METADATA"
+
 
 # An ARN as AWS quotes it in an error message, in any partition. It must name
 # an account, so text that is already masked doesn't match. Punctuation that

@@ -23,6 +23,8 @@ from aws_advanced_python_wrapper.blue_green_plugin import \
     BlueGreenPluginFactory
 from aws_advanced_python_wrapper.custom_endpoint_plugin import \
     CustomEndpointPluginFactory
+from aws_advanced_python_wrapper.encryption.kms_encryption_plugin import \
+    KmsEncryptionPluginFactory
 from aws_advanced_python_wrapper.failover_v2_plugin import \
     FailoverV2PluginFactory
 from aws_advanced_python_wrapper.fastest_response_strategy_plugin import \
@@ -890,7 +892,8 @@ class PluginCallContext:
 
     Each plugin's ``execute`` receives the arguments as they are when its turn comes. A plugin that needs to hand
     different ones to the plugins after it and to the target driver method assigns a new tuple to ``args`` and a new
-    mapping to ``kwargs`` before it calls its ``execute_func``. Changing either object in place is not allowed, and
+    mapping to ``kwargs`` before it calls its ``execute_func``. Before it assigns, a plugin can call :py:meth:`holds` to
+    check that the context holds the argument objects it was handed. Changing either object in place is not allowed, and
     the caller's own objects must never be modified. The target driver method receives exactly what is assigned, even
     when it is empty. A replacement lasts until the plugin that made it returns, so a plugin before it that calls its
     ``execute_func`` again starts from the arguments it saw.
@@ -903,6 +906,17 @@ class PluginCallContext:
     def __init__(self, args: Tuple[Any, ...], kwargs: Mapping[str, Any]):
         self.args = args
         self.kwargs = kwargs
+
+    def holds(self, args: Tuple[Any, ...], kwargs: Mapping[str, Any]) -> bool:
+        """Whether this context holds the argument objects a plugin was handed, so it is that call's context.
+
+        :param args: The positional arguments the plugin's ``execute`` received.
+        :param kwargs: The keyword arguments the plugin's ``execute`` received.
+        :return: True when each positional argument and each keyword value is the context's own object (compared
+            with ``is``).
+        """
+        return (len(self.args) == len(args) and all(a is b for a, b in zip(self.args, args))
+                and self.kwargs.keys() == kwargs.keys() and all(self.kwargs[k] is v for k, v in kwargs.items()))
 
 
 # The methods whose call gets a PluginCallContext. Their target driver functions (in AwsWrapperCursor) take the
@@ -945,7 +959,8 @@ class PluginManager(CanReleaseResources):
         "okta": OktaAuthPluginFactory,
         "initial_connection": AuroraInitialConnectionStrategyPluginFactory,
         "limitless": LimitlessPluginFactory,
-        "bg": BlueGreenPluginFactory
+        "bg": BlueGreenPluginFactory,
+        "kms_encryption": KmsEncryptionPluginFactory
     }
 
     WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
@@ -961,6 +976,7 @@ class PluginManager(CanReleaseResources):
         ReadWriteSplittingPluginFactory: 300,
         SimpleReadWriteSplittingPluginFactory: 310,
         GdbReadWriteSplittingPluginFactory: 320,
+        KmsEncryptionPluginFactory: 390,
         FailoverPluginFactory: 400,
         FailoverV2PluginFactory: 410,
         GdbFailoverPluginFactory: 420,

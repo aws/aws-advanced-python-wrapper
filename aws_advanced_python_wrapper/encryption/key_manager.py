@@ -36,10 +36,9 @@ from aws_advanced_python_wrapper.encryption.algorithm import \
 from aws_advanced_python_wrapper.encryption.buffers import wipe
 from aws_advanced_python_wrapper.encryption.models import (DEFAULT_KEY_SPEC,
                                                            KeyMetadata,
+                                                           KeyOperation,
                                                            mask_arn,
                                                            mask_arns_in_text)
-from aws_advanced_python_wrapper.encryption.sql_dialect import (execute,
-                                                                fetch_rows)
 from aws_advanced_python_wrapper.errors import (InvalidKeyMetadataError,
                                                 KeyManagementError,
                                                 UnauthorizedMasterKeyError)
@@ -50,12 +49,12 @@ from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 if TYPE_CHECKING:
     from boto3 import Session
 
+    from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.encryption.config import EncryptionConfig
     from aws_advanced_python_wrapper.encryption.connection_source import \
         ConnectionSource
     from aws_advanced_python_wrapper.encryption.data_key_cache import \
         DataKeyCache
-    from aws_advanced_python_wrapper.encryption.sql_dialect import SqlDialect
 
 logger = Logger(__name__)
 
@@ -94,8 +93,9 @@ class _NoKmsRequestCredentials(logging.Filter):
 
 
 # A logger's filters don't see its children's records, so each filter goes on
-# the logger that emits the records. They are installed once per process, so a
-# filter that was removed on purpose stays removed.
+# the logger that emits the records. KeyManager.__init__ and create_kms_client
+# install them once per process, so a filter that was removed on purpose stays
+# removed.
 _FILTER_LOCK = threading.Lock()
 _filters_installed = False
 
@@ -132,6 +132,9 @@ class KeyManager:
     on a data-key cache hit. :meth:`create_master_key` and
     :meth:`is_master_key_valid` are not gated: they use no data key. Plaintext
     data keys never reach the database.
+
+    Building a ``KeyManager`` turns on the log filters that
+    :meth:`create_kms_client` describes, whichever KMS client it is given.
     """
 
     HMAC_KEY_LENGTH = 32
@@ -162,15 +165,16 @@ class KeyManager:
     # not idempotent (CreateKey) can be retried without creating a duplicate.
     NOT_PROCESSED_ERROR_CODES = frozenset({"ThrottlingException"})
 
-    def __init__(self, kms_client: Any, connection_source: ConnectionSource, sql_dialect: SqlDialect,
+    def __init__(self, kms_client: Any, connection_source: ConnectionSource, driver_dialect: DriverDialect,
                  config: EncryptionConfig, data_key_cache: DataKeyCache,
                  *, sleep: Callable[[float], None] = time.sleep):
         self._kms = kms_client
         self._connections = connection_source
-        self._sql = sql_dialect
+        self._driver_dialect = driver_dialect
         self._config = config
         self._cache = data_key_cache
         self._sleep = sleep
+        _install_botocore_filters()
 
     @staticmethod
     def create_kms_client(session: Session, config: EncryptionConfig) -> Any:
@@ -199,8 +203,6 @@ class KeyManager:
             return session.client("kms", endpoint_url=config.kms_endpoint, config=client_config)
         return session.client("kms", config=client_config)
 
-    # ---- data keys ----
-
     def decrypt_data_key(self, encrypted_data_key: Optional[str], master_key_arn: Optional[str]) -> bytearray:
         """Return the plaintext of a stored data key, from the cache when
         possible. The caller owns the returned buffer and should wipe it.
@@ -213,7 +215,7 @@ class KeyManager:
         self._authorize(master_key_arn)
         if encrypted_data_key is None or not encrypted_data_key.strip():
             raise InvalidKeyMetadataError(
-                Messages.get("KeyManager.MissingEncryptedDataKey"), operation="DECRYPT_DATA_KEY")
+                Messages.get("KeyManager.MissingEncryptedDataKey"), operation=KeyOperation.DECRYPT_DATA_KEY.value)
 
         cache_key = self.data_key_cache_key(encrypted_data_key)
         cached = self._cache.get(cache_key)
@@ -228,7 +230,7 @@ class KeyManager:
             ciphertext = None
         if not ciphertext:
             raise InvalidKeyMetadataError(
-                Messages.get("KeyManager.MalformedEncryptedDataKey"), operation="DECRYPT_DATA_KEY")
+                Messages.get("KeyManager.MalformedEncryptedDataKey"), operation=KeyOperation.DECRYPT_DATA_KEY.value)
 
         # KeyId is passed as defense in depth: a data key wrapped under a
         # different master key than its row names fails inside KMS too. With
@@ -237,7 +239,7 @@ class KeyManager:
         request: Dict[str, Any] = {"CiphertextBlob": ciphertext}
         if master_key_arn:
             request["KeyId"] = master_key_arn
-        response = self._call_kms("DECRYPT_DATA_KEY", lambda: self._kms.decrypt(**request))
+        response = self._call_kms(KeyOperation.DECRYPT_DATA_KEY, lambda: self._kms.decrypt(**request))
         plaintext = bytearray(response["Plaintext"])
         self._cache.put(cache_key, plaintext)
         return plaintext
@@ -253,7 +255,7 @@ class KeyManager:
         self._authorize(master_key_arn)
         key_spec = EncryptionAlgorithm.data_key_spec(algorithm)
         response = self._call_kms(
-            "GENERATE_DATA_KEY", lambda: self._kms.generate_data_key(KeyId=master_key_arn, KeySpec=key_spec))
+            KeyOperation.GENERATE_DATA_KEY, lambda: self._kms.generate_data_key(KeyId=master_key_arn, KeySpec=key_spec))
         plaintext = bytearray(response["Plaintext"])
         if len(plaintext) != EncryptionAlgorithm.key_length(algorithm):
             # Catch a mis-sized key now, at setup, rather than on the first
@@ -262,7 +264,7 @@ class KeyManager:
             wipe(plaintext)
             raise KeyManagementError(
                 Messages.get_formatted("KeyManager.WrongDataKeyLength", length, key_spec, algorithm),
-                operation="GENERATE_DATA_KEY")
+                operation=KeyOperation.GENERATE_DATA_KEY.value)
         return GeneratedDataKey(
             plaintext=plaintext,
             encrypted_data_key=base64.b64encode(response["CiphertextBlob"]).decode("ascii"),
@@ -276,8 +278,6 @@ class KeyManager:
         digest = hashlib.sha256(encrypted_data_key.encode("utf-8")).digest()
         return cls._CACHE_KEY_PREFIX + base64.b64encode(digest).decode("ascii")
 
-    # ---- master keys ----
-
     def create_master_key(self, description: str, *, policy: Optional[str] = None) -> str:
         """Create a symmetric KMS key and return its ARN. Not gated on the
         allow-list: the new key cannot be listed before it exists.
@@ -289,7 +289,7 @@ class KeyManager:
         request = {"Description": description, "KeyUsage": self.KEY_USAGE, "KeySpec": self.MASTER_KEY_SPEC}
         if policy and policy.strip():
             request["Policy"] = policy
-        response = self._call_kms("CREATE_MASTER_KEY", lambda: self._kms.create_key(**request),
+        response = self._call_kms(KeyOperation.CREATE_MASTER_KEY, lambda: self._kms.create_key(**request),
                                   retryable=self._is_not_processed)
         return response["KeyMetadata"]["Arn"]
 
@@ -301,14 +301,12 @@ class KeyManager:
         """
         try:
             metadata = self._call_kms(
-                "DESCRIBE_MASTER_KEY", lambda: self._kms.describe_key(KeyId=master_key_arn))["KeyMetadata"]
+                KeyOperation.DESCRIBE_MASTER_KEY, lambda: self._kms.describe_key(KeyId=master_key_arn))["KeyMetadata"]
         except KeyManagementError as e:
             logger.warning("KeyManager.MasterKeyValidationFailed", mask_arn(master_key_arn), e)
             return False
         return (bool(metadata.get("Enabled")) and metadata.get("KeyState") == "Enabled"
                 and metadata.get("KeyUsage") == self.KEY_USAGE)
-
-    # ---- key_storage ----
 
     def store_key_metadata(self, key_metadata: KeyMetadata) -> KeyMetadata:
         """Insert a ``key_storage`` row and return it with ``id`` (and a
@@ -319,7 +317,7 @@ class KeyManager:
         """
         if not key_metadata.is_usable:
             raise InvalidKeyMetadataError(
-                Messages.get("KeyManager.RefusingUnusableKeyMetadata"), operation="STORE_KEY_METADATA")
+                Messages.get("KeyManager.RefusingUnusableKeyMetadata"), operation=KeyOperation.STORE_KEY_METADATA.value)
 
         to_store = key_metadata if key_metadata.key_id else replace(key_metadata, key_id=str(uuid.uuid4()))
         sql = (f"INSERT INTO {self._config.metadata_schema}.key_storage "
@@ -331,7 +329,7 @@ class KeyManager:
         failure: Optional[str] = None
         try:
             with self._connections.connection() as conn:
-                new_id = self._sql.insert_returning_id(conn, sql, params)
+                new_id = self._driver_dialect.insert_returning_id(conn, sql, params)
         except Exception as e:
             # The bound HMAC key is a secret, and some driver errors quote the
             # interpolated statement. Keep only the exception type and the
@@ -340,40 +338,39 @@ class KeyManager:
             failure = self._describe_failure(e)
         if failure is not None:
             raise KeyManagementError(
-                Messages.get_formatted("KeyManager.StoreKeyMetadataFailed", failure), operation="STORE_KEY_METADATA")
+                Messages.get_formatted("KeyManager.StoreKeyMetadataFailed", failure),
+                operation=KeyOperation.STORE_KEY_METADATA.value)
         return replace(to_store, id=new_id)
 
     def key_metadata_by_id(self, key_storage_id: int) -> Optional[KeyMetadata]:
         """Read one ``key_storage`` row by its integer ``id``."""
         sql = ("SELECT id, key_id, name, master_key_arn, encrypted_data_key, hmac_key, key_spec, "
-               f"created_at, last_used_at FROM {self._config.metadata_schema}.key_storage WHERE id {self._sql.equals} %s")
+               f"created_at, last_used_at FROM {self._config.metadata_schema}.key_storage WHERE id {self._driver_dialect.equals_operator} %s")
         try:
             with self._connections.connection() as conn:
-                rows = fetch_rows(conn, sql, (key_storage_id,))
+                rows = self._driver_dialect.fetch_rows(conn, sql, (key_storage_id,))
         except Exception as e:
             raise KeyManagementError(
                 Messages.get_formatted("KeyManager.ReadKeyMetadataFailed", e),
-                operation="GET_KEY_METADATA") from e
+                operation=KeyOperation.GET_KEY_METADATA.value) from e
         return KeyMetadata.from_row(rows[0]) if rows else None
 
     def touch_key(self, key_uuid: str) -> None:
         """Stamp ``last_used_at``. Bookkeeping only: failures are logged."""
         sql = (f"UPDATE {self._config.metadata_schema}.key_storage SET last_used_at = CURRENT_TIMESTAMP "
-               f"WHERE key_id {self._sql.equals} %s")
+               f"WHERE key_id {self._driver_dialect.equals_operator} %s")
         try:
             with self._connections.connection() as conn:
-                execute(conn, sql, (key_uuid,))
+                self._driver_dialect.run_statement(conn, sql, (key_uuid,))
         except Exception as e:
             logger.debug("KeyManager.TouchKeyFailed", key_uuid, e)
-
-    # ---- internals ----
 
     def _authorize(self, master_key_arn: Optional[str]) -> None:
         if not self._config.is_master_key_allowed(master_key_arn):
             raise UnauthorizedMasterKeyError(
                 Messages.get_formatted("KeyManager.UnauthorizedMasterKey", mask_arn(master_key_arn),
                                        WrapperProperties.ENCRYPTION_ALLOWED_MASTER_KEY_ARNS.name),
-                operation="AUTHORIZE_MASTER_KEY")
+                operation=KeyOperation.AUTHORIZE_MASTER_KEY.value)
 
     @staticmethod
     def _describe_failure(error: Exception) -> str:
@@ -386,7 +383,7 @@ class KeyManager:
                 details.append(f"{attribute} {value}")
         return ", ".join(details)
 
-    def _call_kms(self, operation: str, call: Callable[[], T],
+    def _call_kms(self, operation: KeyOperation, call: Callable[[], T],
                   retryable: Optional[Callable[[Exception], bool]] = None) -> T:
         """Run a KMS call, retrying throttling and transient failures with
         exponential backoff and jitter. ``retryable`` decides which failures
@@ -402,11 +399,11 @@ class KeyManager:
                 # role session. The error, kept as __cause__, keeps that text.
                 if attempt >= max_retries or not is_retryable(e):
                     raise KeyManagementError(
-                        Messages.get_formatted("KeyManager.KmsCallFailed", operation, attempt + 1,
+                        Messages.get_formatted("KeyManager.KmsCallFailed", operation.value, attempt + 1,
                                                mask_arns_in_text(str(e))),
-                        operation=operation) from e
+                        operation=operation.value) from e
                 delay = self._backoff_sec(attempt)
-                logger.debug("KeyManager.Retrying", operation, attempt + 1, max_retries + 1, delay,
+                logger.debug("KeyManager.Retrying", operation.value, attempt + 1, max_retries + 1, round(delay, 3),
                              mask_arns_in_text(str(e)))
             self._sleep(delay)
             attempt += 1

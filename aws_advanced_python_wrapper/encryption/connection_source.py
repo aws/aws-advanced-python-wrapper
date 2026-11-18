@@ -21,6 +21,8 @@ from threading import local
 from typing import (TYPE_CHECKING, Any, ContextManager, Iterator, Optional,
                     Protocol)
 
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.properties import Properties
 from aws_advanced_python_wrapper.utils.retry_util import RetryUtil
 
@@ -72,8 +74,9 @@ class PluginConnectionSource:
 
         The connection opens at the first lookup inside the scope and closes when
         the outermost scope ends, also when a lookup fails, so a statement uses at
-        most one short-lived connection. A scope that looks nothing up opens
-        nothing.
+        most one short-lived connection. A connection that a timed-out statement
+        still runs on stays open, and that statement's worker frees it when it
+        finishes. A scope that looks nothing up opens nothing.
         """
         depth = getattr(self._scope, "depth", 0)
         self._scope.depth = depth + 1
@@ -85,7 +88,9 @@ class PluginConnectionSource:
             self._scope.depth = depth
             if depth == 0:
                 conn, self._scope.conn = self._scope.conn, None
-                if conn is not None:
+                # A statement that timed out can leave its worker on the connection; closing it then would crash the
+                # process, so the worker frees it when it finishes.
+                if conn is not None and not is_connection_abandoned(conn):
                     RetryUtil.close_connection(self._plugin_service, conn)
 
     @contextmanager
@@ -99,7 +104,10 @@ class PluginConnectionSource:
         try:
             yield conn
         finally:
-            RetryUtil.close_connection(self._plugin_service, conn)
+            # A statement that timed out can leave its worker on the connection; closing it then would crash the
+            # process, so the worker frees it when it finishes.
+            if not is_connection_abandoned(conn):
+                RetryUtil.close_connection(self._plugin_service, conn)
 
     def _open(self) -> Any:
         service = self._plugin_service
