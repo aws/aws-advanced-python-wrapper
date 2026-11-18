@@ -41,6 +41,7 @@ if TYPE_CHECKING:
 
 from aws_advanced_python_wrapper.utils.log import Logger
 from .utils.rds_test_utility import RdsTestUtility
+from .utils.retry_helper import retry_until
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
 from .utils.test_timings import FAILOVER_WITHIN_TRANSACTION_PYTEST_TIMEOUT_SEC
@@ -269,6 +270,8 @@ class TestAuroraFailoverAsync:
                 # than the control-plane ``DescribeDBClusters.IsClusterWriter``,
                 # which can lag by tens of seconds to minutes post-failover.
                 assert await query_host_role_async(conn) == HostRole.WRITER
+                # RDS API lags behind the writer election, so we retry the check.
+                assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
                 next_cluster_writer_id = aurora_utility.get_cluster_writer_instance_id()
                 assert current_connection_id == next_cluster_writer_id
                 assert current_connection_id != initial_writer_id
@@ -318,6 +321,8 @@ class TestAuroraFailoverAsync:
                 # than the control-plane ``DescribeDBClusters.IsClusterWriter``,
                 # which can lag by tens of seconds to minutes post-failover.
                 assert await query_host_role_async(conn) == HostRole.WRITER
+                # RDS API lags behind the writer election, so we retry the check.
+                assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
                 next_cluster_writer_id = aurora_utility.get_cluster_writer_instance_id()
                 assert current_connection_id == next_cluster_writer_id
                 assert current_connection_id != initial_writer_id
@@ -367,6 +372,8 @@ class TestAuroraFailoverAsync:
                 # assert that we are connected to the new writer after failover happens
                 # Data-plane writer check; see earlier sites for rationale.
                 assert await query_host_role_async(conn) == HostRole.WRITER
+                # RDS API lags behind the writer election, so we retry the check.
+                assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
                 next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
 
                 assert current_connection_id == next_cluster_writer_id
@@ -424,6 +431,8 @@ class TestAuroraFailoverAsync:
                 # assert that we are connected to the new writer after failover happens
                 # Data-plane writer check; see earlier sites for rationale.
                 assert await query_host_role_async(conn) == HostRole.WRITER
+                # RDS API lags behind the writer election, so we retry the check.
+                assert retry_until(lambda: aurora_utility.is_db_instance_writer(current_connection_id))
                 next_cluster_writer_id: str = aurora_utility.get_cluster_writer_instance_id()
 
                 assert current_connection_id == next_cluster_writer_id
