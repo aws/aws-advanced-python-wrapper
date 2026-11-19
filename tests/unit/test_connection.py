@@ -19,13 +19,19 @@ from unittest.mock import MagicMock, patch
 
 import psycopg
 import pytest
+from mysql.connector import MySQLConnection
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
+from aws_advanced_python_wrapper.errors import QueryTimeoutError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.plugin_service import (
-    PluginServiceImpl, PluginServiceManagerContainer)
+    PluginManager, PluginServiceImpl, PluginServiceManagerContainer)
+from aws_advanced_python_wrapper.sqlalchemy_driver_dialect import \
+    SqlAlchemyDriverDialect
+from aws_advanced_python_wrapper.utils.properties import Properties
 from aws_advanced_python_wrapper.wrapper import (AwsWrapperConnection,
                                                  AwsWrapperCursor)
 
@@ -218,3 +224,75 @@ def test_connection_prepare_threshold_and_prepared_max_forward():
     wrapper.prepared_max = 100
     assert target.prepare_threshold == 99
     assert target.prepared_max == 100
+
+
+def _mysql_wrapper_with_default_plugin_only(conn, pooled=False):
+    props = Properties({"host": "localhost", "plugins": "", "socket_timeout": "0.1"})
+    container = PluginServiceManagerContainer()
+    driver_dialect = MySQLDriverDialect(props)
+    if pooled:
+        driver_dialect = SqlAlchemyDriverDialect(driver_dialect, props)
+    plugin_service = PluginServiceImpl(container, props, MagicMock(), MagicMock(), driver_dialect)
+    container.plugin_service = plugin_service
+    # With telemetry off, methods no plugin subscribes to skip the plugin pipeline, as in production.
+    telemetry_factory = MagicMock()
+    telemetry_factory.in_use.return_value = False
+    container.plugin_manager = PluginManager(container, props, telemetry_factory)
+    plugin_service._current_connection = conn
+
+    wrapper = object.__new__(AwsWrapperConnection)
+    wrapper._plugin_service = plugin_service
+    wrapper._plugin_manager = container.plugin_manager
+    return wrapper
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+@pytest.mark.parametrize(
+    "close", [AwsWrapperConnection.close, lambda wrapper: wrapper.__exit__(None, None, None)], ids=["close", "exit"])
+def test_close_after_uninterruptible_timeout_defers_driver_close(uninterruptible_call, close, pooled):
+    wrapper = _mysql_wrapper_with_default_plugin_only(uninterruptible_call.connection(pooled), pooled)
+    with pytest.raises(QueryTimeoutError):
+        with wrapper.cursor() as cursor:
+            cursor.execute("SELECT SLEEP(3)")
+
+    close(wrapper)
+
+    assert uninterruptible_call.calls_while_running == []
+    assert uninterruptible_call.close_threads == []
+
+    uninterruptible_call.finish()
+    assert uninterruptible_call.closed.wait(5) is True
+    assert uninterruptible_call.close_threads == [uninterruptible_call.worker_thread]
+
+
+def test_cursor_after_uninterruptible_timeout_raises(uninterruptible_call):
+    wrapper = _mysql_wrapper_with_default_plugin_only(uninterruptible_call.conn)
+    with pytest.raises(QueryTimeoutError):
+        wrapper.cursor().execute("SELECT SLEEP(3)")
+
+    with pytest.raises(QueryTimeoutError):
+        wrapper.cursor().execute("SELECT 1")
+
+    assert uninterruptible_call.calls_while_running == []
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+@pytest.mark.parametrize("name", ["ping", "is_connected"])
+def test_driver_attribute_after_uninterruptible_timeout_raises(uninterruptible_call, name, pooled):
+    wrapper = _mysql_wrapper_with_default_plugin_only(uninterruptible_call.connection(pooled), pooled)
+    with pytest.raises(QueryTimeoutError):
+        wrapper.cursor().execute("SELECT SLEEP(3)")
+
+    with pytest.raises(QueryTimeoutError):
+        getattr(wrapper, name)()
+
+    assert uninterruptible_call.calls_while_running == []
+
+
+def test_close_without_timeout_closes_driver_connection():
+    conn = MagicMock(spec=MySQLConnection)
+    wrapper = _mysql_wrapper_with_default_plugin_only(conn)
+
+    wrapper.close()
+
+    conn.close.assert_called_with()

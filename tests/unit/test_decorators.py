@@ -13,7 +13,7 @@
 #  limitations under the License.
 
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Optional
 from unittest.mock import MagicMock
@@ -33,6 +33,7 @@ class _Conn:
 def _dialect(abort_releases: Optional[threading.Event] = None):
     dialect = MagicMock()
     dialect.is_in_transaction.return_value = False
+    dialect.unwrap_connection.side_effect = lambda c: c
     if abort_releases is not None:
         # abort_connection unblocks the worker (models socket shutdown on PG /
         # mysql-pure, where the recv returns promptly).
@@ -46,10 +47,14 @@ def _dialect(abort_releases: Optional[threading.Event] = None):
 
 def test_mark_and_check_abandoned():
     conn = _Conn()
+    future: Future = Future()
     assert is_connection_abandoned(conn) is False
-    mark_connection_abandoned(conn)
+    mark_connection_abandoned(conn, future)
     assert is_connection_abandoned(conn) is True
     assert is_connection_abandoned(None) is False
+
+    future.set_result(None)
+    assert is_connection_abandoned(conn) is False
 
 
 def test_preserve_transaction_drainable_is_not_abandoned():
@@ -130,4 +135,63 @@ def test_timeout_without_conn_does_not_mark():
             wrapped()
     finally:
         release.set()
+        executor.shutdown(wait=True)
+
+
+def test_timeout_undrainable_closes_connection_when_worker_finishes(uninterruptible_call):
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TestTimeoutExecutor")
+    conn = uninterruptible_call.conn
+
+    wrapped = timeout(executor, 0.1, _dialect(abort_releases=None), conn)(uninterruptible_call.run)
+    try:
+        with pytest.raises(FuturesTimeoutError):
+            wrapped()
+        assert uninterruptible_call.close_threads == []
+
+        uninterruptible_call.finish()
+        assert uninterruptible_call.closed.wait(5) is True
+    finally:
+        uninterruptible_call.finish()
+        executor.shutdown(wait=True)
+
+    assert uninterruptible_call.calls_while_running == []
+    assert uninterruptible_call.close_threads == [uninterruptible_call.worker_thread]
+    assert is_connection_abandoned(conn) is False
+
+
+def test_timeout_drainable_does_not_close_connection(mocker):
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TestTimeoutExecutor")
+    conn = mocker.MagicMock()
+    released = threading.Event()
+
+    wrapped = timeout(executor, 0.1, _dialect(abort_releases=released), conn)(lambda: released.wait(timeout=5))
+    try:
+        with pytest.raises(FuturesTimeoutError):
+            wrapped()
+    finally:
+        released.set()
+        executor.shutdown(wait=True)
+
+    conn.close.assert_not_called()
+    assert is_connection_abandoned(conn) is False
+
+
+def test_preserve_transaction_abandoned_raises_without_running(mocker, uninterruptible_call):
+    executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="TestTimeoutExecutor")
+    conn = uninterruptible_call.conn
+    dialect = _dialect(abort_releases=None)
+    query = mocker.MagicMock()
+
+    try:
+        with pytest.raises(FuturesTimeoutError):
+            timeout(executor, 0.1, dialect, conn)(uninterruptible_call.run)()
+        dialect.is_in_transaction.reset_mock()
+
+        with pytest.raises(FuturesTimeoutError):
+            preserve_transaction_status_with_timeout(executor, 0.1, dialect, conn)(query)(conn)
+
+        query.assert_not_called()
+        dialect.is_in_transaction.assert_not_called()
+    finally:
+        uninterruptible_call.finish()
         executor.shutdown(wait=True)

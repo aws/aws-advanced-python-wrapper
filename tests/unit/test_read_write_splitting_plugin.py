@@ -22,8 +22,8 @@ from aws_advanced_python_wrapper.errors import (AwsWrapperError,
                                                 ReadWriteSplittingError)
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import Error
-from aws_advanced_python_wrapper.read_write_splitting_plugin import \
-    ReadWriteSplittingPlugin
+from aws_advanced_python_wrapper.read_write_splitting_plugin import (
+    AbstractReadWriteSplittingPlugin, ReadWriteSplittingPlugin)
 from aws_advanced_python_wrapper.simple_read_write_splitting_plugin import \
     SimpleReadWriteSplittingPlugin
 from aws_advanced_python_wrapper.sql_alchemy_connection_provider import \
@@ -815,3 +815,14 @@ def test_execute_against_old_connection_omits_statement_text(
 
     assert "secret-literal" not in str(e.value)
     assert "'CMySQLCursor'" in str(e.value)
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+def test_close_connection_abandoned_skips_close(uninterruptible_call, pooled):
+    driver_dialect = uninterruptible_call.driver_dialect(pooled)
+    conn = uninterruptible_call.connection(pooled)
+    uninterruptible_call.time_out_host_role_query(driver_dialect, conn)
+
+    AbstractReadWriteSplittingPlugin.close_connection(conn, driver_dialect)
+
+    assert uninterruptible_call.calls_while_running == []

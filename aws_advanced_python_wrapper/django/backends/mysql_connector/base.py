@@ -21,6 +21,7 @@ from django.utils.functional import cached_property
 from django.utils.regex_helper import _lazy_re_compile
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
+from aws_advanced_python_wrapper.errors import QueryTimeoutError
 
 # This should match the numerical portion of the version numbers (we can treat
 # versions like 5.0.24 and 5.0.24a as the same).
@@ -48,6 +49,14 @@ class DatabaseWrapper(base.DatabaseWrapper):
         else:
             conn.read_only = True
             return conn
+
+    def is_usable(self):
+        # The wrapper raises QueryTimeoutError instead of pinging while a timed-out call
+        # is still running on the connection, so Django should replace the connection.
+        try:
+            return super().is_usable()
+        except QueryTimeoutError:
+            return False
 
     def get_connection_params(self):
         kwargs = super().get_connection_params()

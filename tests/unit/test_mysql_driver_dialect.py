@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 import socket
+import weakref
 
 import psycopg
 import pytest
@@ -75,6 +76,13 @@ def test_is_closed_pings_on_calling_thread(dialect, mock_conn):
     assert seen["tid"] == caller_tid
 
 
+def test_is_closed_abandoned_skips_ping(dialect, uninterruptible_call):
+    uninterruptible_call.time_out_on(dialect)
+
+    assert dialect.is_closed(uninterruptible_call.conn) is True
+    assert uninterruptible_call.calls_while_running == []
+
+
 def test_is_in_transaction(dialect, mock_conn, mock_invalid_conn):
     mock_conn.in_transaction = True
     assert dialect.is_in_transaction(mock_conn)
@@ -128,6 +136,14 @@ def test_get_connection_from_obj(dialect, mocker, mock_conn, mock_invalid_conn):
     assert dialect.get_connection_from_obj(mock_cursor) == mock_conn
 
     assert dialect.get_connection_from_obj(mock_invalid_conn) is None
+
+
+def test_get_connection_from_obj_unwraps_cursor_proxy(dialect, mocker, mock_conn):
+    mock_conn.get_self.return_value = mock_conn
+    mock_cursor = mocker.MagicMock(spec=MySQLCursor)
+    mock_cursor._connection = weakref.proxy(mock_conn)
+
+    assert dialect.get_connection_from_obj(mock_cursor) is mock_conn
 
 
 def test_prepare_connect_info(dialect):

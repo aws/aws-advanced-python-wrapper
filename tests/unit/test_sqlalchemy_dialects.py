@@ -217,6 +217,21 @@ def test_mysql_do_ping_pings_target_connection():
     native.ping.assert_called_once_with(reconnect=False)
 
 
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+def test_mysql_do_ping_abandoned_returns_false_without_ping(uninterruptible_call, pooled):
+    from unittest.mock import MagicMock
+
+    from aws_advanced_python_wrapper.mysql_driver_dialect import \
+        MySQLDriverDialect
+    from aws_advanced_python_wrapper.utils.properties import Properties
+    uninterruptible_call.time_out_on(MySQLDriverDialect(Properties()))
+    wrapper = MagicMock(name="AwsWrapperConnection")
+    wrapper.target_connection = uninterruptible_call.connection(pooled)
+
+    assert AwsWrapperMySQLConnectorDialect().do_ping(wrapper) is False
+    assert uninterruptible_call.calls_while_running == []
+
+
 def test_mysql_do_ping_returns_false_on_dead_connection():
     from unittest.mock import MagicMock
     native = MagicMock(name="native_mysqlconnector")

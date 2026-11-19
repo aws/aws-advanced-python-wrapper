@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Callable, List, Optional
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.utils import LogUtils
@@ -173,6 +175,9 @@ class RetryUtil:
 
     @staticmethod
     def close_connection(plugin_service: PluginService, conn: Connection) -> None:
+        # A timed-out call may still be running on conn; conn is closed when it returns.
+        if is_connection_abandoned(plugin_service.driver_dialect.unwrap_connection(conn)):
+            return
         try:
             plugin_service.driver_dialect.execute(
                 DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close(), conn=conn)

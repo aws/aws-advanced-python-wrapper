@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import socket
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Set
+from weakref import ProxyTypes
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.hostinfo import HostInfo
@@ -27,6 +28,8 @@ from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           PropertiesUtils,
@@ -81,6 +84,14 @@ class MySQLDriverDialect(DriverDialect):
     def _is_cmysql_cursor(obj: object) -> bool:
         return CMYSQL_ENABLED and isinstance(obj, CMySQLCursor)
 
+    @staticmethod
+    def _unproxy(conn: Any) -> Any:
+        # Cursors hold a weakref.proxy of their connection, which can't be hashed
+        # or weakly referenced, so a timed-out cursor call couldn't mark it.
+        if isinstance(conn, ProxyTypes):
+            return conn.get_self()
+        return conn
+
     def is_dialect(self, connect_func: Callable) -> bool:
         if MySQLDriverDialect.TARGET_DRIVER_CODE not in str(signature(connect_func)):
             return MySQLDriverDialect.TARGET_DRIVER_CODE.lower() in (connect_func.__module__ + connect_func.__qualname__).lower()
@@ -88,6 +99,10 @@ class MySQLDriverDialect(DriverDialect):
 
     def is_closed(self, conn: Connection) -> bool:
         if MySQLDriverDialect._is_mysql_connection(conn):
+            # A timed-out call the C extension can't interrupt may still be running on
+            # conn, so don't ping it from this thread; conn is closed when that call returns.
+            if is_connection_abandoned(conn):
+                return True
 
             # is_connected validates the connection using a ping().
             # If there are any unread results from previous executions an error will be thrown.
@@ -209,7 +224,7 @@ class MySQLDriverDialect(DriverDialect):
                     return None
 
                 if MySQLDriverDialect._is_mysql_connection(conn):
-                    return conn
+                    return MySQLDriverDialect._unproxy(conn)
 
             except ReferenceError:
                 return None
@@ -217,7 +232,7 @@ class MySQLDriverDialect(DriverDialect):
         if isinstance(obj, MySQLCursor):
             try:
                 if MySQLDriverDialect._is_mysql_connection(obj._connection):
-                    return obj._connection
+                    return MySQLDriverDialect._unproxy(obj._connection)
             except ReferenceError:
                 return None
 

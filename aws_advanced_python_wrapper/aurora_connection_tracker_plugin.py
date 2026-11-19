@@ -36,6 +36,8 @@ from _weakrefset import WeakSet
 from aws_advanced_python_wrapper.errors import FailoverError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 
@@ -200,7 +202,9 @@ class OpenedConnectionTracker:
     @staticmethod
     def _task(connections_list: list):
         for conn_reference in connections_list:
-            if conn_reference is None:
+            # A timed-out call may still be running on the driver connection (a pool proxy's
+            # driver_connection, as below for invalidate); it is closed when that call returns.
+            if conn_reference is None or is_connection_abandoned(getattr(conn_reference, "driver_connection", conn_reference)):
                 continue
 
             # For pool-proxied connections (e.g. SQLAlchemy's

@@ -91,6 +91,8 @@ from aws_advanced_python_wrapper.simple_read_write_splitting_plugin import \
     SimpleReadWriteSplittingPluginFactory
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsPluginFactory
 from aws_advanced_python_wrapper.utils import services_container
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
@@ -452,7 +454,12 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 self.session_state_service.apply_current_session_state(connection)
                 self.update_in_transaction(False)
 
-                if is_in_transaction and WrapperProperties.ROLLBACK_ON_SWITCH.get_bool(self.props):
+                # A timed-out call may still be running on the old connection; it is
+                # closed when that call returns, so nothing here may touch it.
+                old_connection_abandoned = is_connection_abandoned(self.driver_dialect.unwrap_connection(old_connection))
+
+                if is_in_transaction and WrapperProperties.ROLLBACK_ON_SWITCH.get_bool(self.props) \
+                        and not old_connection_abandoned:
                     try:
                         old_connection.rollback()
                     except Exception:
@@ -462,7 +469,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
                 old_connection_suggested_action = \
                     self._container.plugin_manager.notify_connection_changed({ConnectionEvent.CONNECTION_OBJECT_CHANGED})
 
-                if old_connection_suggested_action != OldConnectionSuggestedAction.PRESERVE and not self.driver_dialect.is_closed(old_connection):
+                if old_connection_suggested_action != OldConnectionSuggestedAction.PRESERVE \
+                        and not old_connection_abandoned and not self.driver_dialect.is_closed(old_connection):
 
                     try:
                         self.session_state_service.apply_pristine_session_state(old_connection)
@@ -827,7 +835,8 @@ class PluginServiceImpl(PluginService, HostListProviderService, CanReleaseResour
 
     def release_resources(self):
         try:
-            if self.current_connection is not None:
+            if self.current_connection is not None \
+                    and not is_connection_abandoned(self.driver_dialect.unwrap_connection(self.current_connection)):
                 self.current_connection.close()
         except Exception:
             # ignore
@@ -1061,6 +1070,13 @@ class PluginManager(CanReleaseResources):
 
         if conn is None and method in [DbApiMethod.CONNECTION_CLOSE, DbApiMethod.CURSOR_CLOSE]:
             return None
+
+        if is_connection_abandoned(conn):
+            # A timed-out call is still running on conn in another thread, and conn is
+            # closed when that call returns, so a close has nothing left to do.
+            if method in [DbApiMethod.CONNECTION_CLOSE, DbApiMethod.CURSOR_CLOSE]:
+                return None
+            raise QueryTimeoutError(Messages.get_formatted("PluginManager.ConnectionAbandoned", method.method_name))
 
         context: TelemetryContext | None
         context = self._telemetry_factory.open_telemetry_context(method.method_name, TelemetryTraceLevel.TOP_LEVEL)

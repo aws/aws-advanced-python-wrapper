@@ -327,3 +327,15 @@ def test_candidate_host_substitute_with_reader_uses_reader_role():
 
     assert result is reader
     assert plugin_service.get_host_info_by_strategy.call_args.args[0] == HostRole.READER
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+def test_close_connection_abandoned_skips_close(uninterruptible_call, pooled):
+    plugin, plugin_service = _plugin(Properties({}))
+    plugin_service.driver_dialect = uninterruptible_call.driver_dialect(pooled)
+    conn = uninterruptible_call.connection(pooled)
+    uninterruptible_call.time_out_host_role_query(plugin_service.driver_dialect, conn)
+
+    plugin._close_connection(conn)
+
+    assert uninterruptible_call.calls_while_running == []

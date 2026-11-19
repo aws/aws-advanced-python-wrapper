@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 from aws_advanced_python_wrapper.aurora_connection_tracker_plugin import (
     AuroraConnectionTrackerPlugin, OpenedConnectionTracker)
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.mysql_driver_dialect import MySQLDriverDialect
 from aws_advanced_python_wrapper.utils.properties import Properties
 from aws_advanced_python_wrapper.utils.rds_url_type import RdsUrlType
 
@@ -315,6 +316,15 @@ def test_task_closes_plain_connections_without_invalidate(mocker):
     OpenedConnectionTracker._task([plain_conn])
 
     plain_conn.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+def test_task_skips_abandoned_connection(uninterruptible_call, pooled):
+    uninterruptible_call.time_out_on(MySQLDriverDialect(Properties()))
+
+    OpenedConnectionTracker._task([uninterruptible_call.connection(pooled)])
+
+    assert uninterruptible_call.calls_while_running == []
 
 
 def test_task_discards_pooled_connection_from_queue_pool(mocker):

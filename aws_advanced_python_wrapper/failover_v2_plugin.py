@@ -32,6 +32,8 @@ from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.stale_dns_plugin import StaleDnsHelper
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.failover_mode import (FailoverMode,
                                                              get_failover_mode)
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -377,7 +379,8 @@ class FailoverV2Plugin(Plugin):
 
     def _invalidate_current_connection(self) -> None:
         conn = self._plugin_service.current_connection
-        if conn is None:
+        # A timed-out call may still be running on conn; conn is closed when it returns.
+        if conn is None or is_connection_abandoned(self._plugin_service.driver_dialect.unwrap_connection(conn)):
             return
 
         if self._is_in_transaction:

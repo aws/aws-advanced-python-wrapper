@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mysql.connector import MySQLConnection
 
 from aws_advanced_python_wrapper.database_dialect import (
     AuroraPgDialect, MultiAzClusterPgDialect, UnknownDatabaseDialect)
@@ -668,3 +669,19 @@ def test_could_not_determine_current_host_raises_resolved_message():
     message = str(exc_info.value)
     assert "The current host could not be determined." in message
     assert "PluginServiceImpl.CouldNotDetermineCurrentHost" not in message
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+def test_set_current_connection_abandoned_old_connection_not_touched(mocker, uninterruptible_call, pooled):
+    driver_dialect = uninterruptible_call.driver_dialect(pooled)
+    plugin_service = PluginServiceImpl(
+        mocker.MagicMock(), Properties({"host": "test.com"}), lambda: None, mocker.MagicMock(), driver_dialect)
+    plugin_service._current_connection = uninterruptible_call.connection(pooled)
+    plugin_service._is_in_transaction = True
+    uninterruptible_call.time_out_on(driver_dialect)
+    new_conn = mocker.MagicMock(spec=MySQLConnection)
+
+    plugin_service.set_current_connection(new_conn, HostInfo("new-host.com"))
+
+    assert plugin_service.current_connection is new_conn
+    assert uninterruptible_call.calls_while_running == []

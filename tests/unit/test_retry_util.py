@@ -17,6 +17,8 @@
 import time
 from unittest.mock import MagicMock
 
+import pytest
+
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.utils.retry_util import RetryUtil
 
@@ -93,3 +95,14 @@ def test_get_allowed_connection_selects_reader_when_available():
     assert result.connection is conn
     assert result.host_info.host == _R1.host
     assert svc.get_host_info_by_strategy.call_args_list[0].args[0] == HostRole.READER
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+def test_close_connection_abandoned_skips_close(uninterruptible_call, pooled):
+    svc, conn = _svc(all_hosts=[_W], conn=uninterruptible_call.connection(pooled))
+    svc.driver_dialect = uninterruptible_call.driver_dialect(pooled)
+    uninterruptible_call.time_out_host_role_query(svc.driver_dialect, conn)
+
+    RetryUtil.close_connection(svc, conn)
+
+    assert uninterruptible_call.calls_while_running == []

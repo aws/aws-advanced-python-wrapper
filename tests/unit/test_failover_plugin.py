@@ -378,6 +378,20 @@ def test_invalidate_current_connection_not_in_transaction(plugin_service_mock, c
     is_in_transaction_mock.assert_called()
 
 
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+def test_invalidate_current_connection_abandoned_skips_rollback_and_close(plugin_service_mock, uninterruptible_call, pooled):
+    driver_dialect = uninterruptible_call.driver_dialect(pooled)
+    uninterruptible_call.time_out_on(driver_dialect)
+    type(plugin_service_mock).is_in_transaction = PropertyMock(return_value=True)
+    type(plugin_service_mock).current_connection = PropertyMock(return_value=uninterruptible_call.connection(pooled))
+    type(plugin_service_mock).driver_dialect = PropertyMock(return_value=driver_dialect)
+    plugin = FailoverPlugin(plugin_service_mock, Properties())
+
+    plugin._invalidate_current_connection()
+
+    assert uninterruptible_call.calls_while_running == []
+
+
 def test_invalidate_current_connection_with_open_connection(plugin_service_mock, conn_mock,
                                                             driver_dialect_mock):
     is_in_transaction_mock = PropertyMock(return_value=False)

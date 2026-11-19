@@ -35,6 +35,8 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.pep249 import Error
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.notifications import (
@@ -362,7 +364,8 @@ class AbstractReadWriteSplittingPlugin(Plugin):
 
     @staticmethod
     def close_connection(conn: Optional[Connection], driver_dialect: DriverDialect):
-        if conn is not None:
+        # A timed-out call may still be running on conn; conn is closed when it returns.
+        if conn is not None and not is_connection_abandoned(driver_dialect.unwrap_connection(conn)):
             try:
                 driver_dialect.execute(DbApiMethod.CONNECTION_CLOSE.method_name, lambda: conn.close())
             except Exception:

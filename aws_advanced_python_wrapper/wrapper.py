@@ -26,10 +26,13 @@ if TYPE_CHECKING:
 
 from aws_advanced_python_wrapper.driver_dialect_manager import \
     DriverDialectManager
-from aws_advanced_python_wrapper.errors import AwsWrapperError
+from aws_advanced_python_wrapper.errors import (AwsWrapperError,
+                                                QueryTimeoutError)
 from aws_advanced_python_wrapper.pep249 import Connection, Cursor, Error
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -101,7 +104,12 @@ class AwsWrapperConnection(Connection, CanReleaseResources):
         # set raises cleanly instead of recursing through this method.
         if name == "_plugin_service" or name.startswith("__"):
             raise AttributeError(name)
-        return getattr(self.target_connection, name)
+        target = self.target_connection
+        # A timed-out call may still be running on the driver connection, and any driver
+        # attribute (ping, is_connected, a property) may call into it from this thread.
+        if is_connection_abandoned(self._plugin_service.driver_dialect.unwrap_connection(target)):
+            raise QueryTimeoutError(Messages.get_formatted("AwsWrapperConnection.ConnectionAbandoned", name))
+        return getattr(target, name)
 
     @property
     def is_closed(self):

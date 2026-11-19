@@ -352,6 +352,21 @@ class TestFailoverV2Plugin:
             close_mock.assert_called()
             assert close_mock.call_count == 2
 
+    @pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+    def test_invalidate_current_connection_abandoned_skips_rollback_and_close(
+            self, failover_v2_plugin, uninterruptible_call, pooled):
+        driver_dialect = uninterruptible_call.driver_dialect(pooled)
+        uninterruptible_call.time_out_on(driver_dialect)
+        failover_v2_plugin._plugin_service.driver_dialect = driver_dialect
+        failover_v2_plugin._plugin_service.current_connection = uninterruptible_call.connection(pooled)
+        failover_v2_plugin._is_in_transaction = True
+
+        failover_v2_plugin._invalidate_current_connection()
+
+        assert uninterruptible_call.calls_while_running == []
+        uninterruptible_call.finish()
+        assert uninterruptible_call.closed.wait(5) is True
+
     def test_pick_new_connection_proceeds_with_failover(self, failover_v2_plugin):
         failover_v2_plugin._is_closed = False
         failover_v2_plugin._closed_explicitly = False

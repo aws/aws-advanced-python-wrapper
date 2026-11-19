@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Optional
 from weakref import WeakSet
 
 if TYPE_CHECKING:
-    from concurrent.futures import Executor
+    from concurrent.futures import Executor, Future
 
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
     from aws_advanced_python_wrapper.pep249 import Connection
@@ -29,21 +29,21 @@ if TYPE_CHECKING:
 
 # Connections whose offloaded operation could not be drained after
 # ``abort_connection`` -- e.g. the mysql C-extension, whose abort_connection is a
-# no-op and cannot interrupt an in-flight query. Closing such a connection while
-# the worker thread is still using it is a cross-thread use-after-free in the
-# driver (libpq / libmysqlclient) that crashes the whole process with SIGSEGV.
-# These connections are marked here so that connection-close paths skip them: the
-# still-running worker holds the last reference, so the connection is finalized
-# safely on the worker's own thread once it finishes. A connection leaked until GC
-# is strictly better than a process crash (close-during-query) or a hang (waiting
-# forever for a worker that cannot be interrupted). The WeakSet self-empties as the
-# abandoned connections are garbage-collected.
+# no-op and cannot interrupt an in-flight query. Using such a connection from
+# another thread while the worker is still inside the driver is a cross-thread
+# use-after-free in the driver (libpq / libmysqlclient) that crashes the whole
+# process. Callers check is_connection_abandoned and leave a marked connection
+# alone; the connection is closed on the worker's own thread once its operation
+# returns, and only then leaves this set. A connection held open until then is
+# strictly better than a process crash or a hang (waiting for a worker that
+# cannot be interrupted). The set holds driver connections; callers holding a
+# pool proxy look up driver_dialect.unwrap_connection(conn).
 _abandoned_connections: WeakSet = WeakSet()
 _abandoned_connections_lock = threading.Lock()
 
 
-def mark_connection_abandoned(conn: Connection) -> None:
-    """Record that ``conn`` has an in-flight worker that could not be interrupted."""
+def mark_connection_abandoned(conn: Connection, future: Future) -> None:
+    """Record that ``future`` still runs on ``conn``, and close ``conn`` once ``future`` finishes."""
     if conn is None:
         return
     try:
@@ -52,7 +52,20 @@ def mark_connection_abandoned(conn: Connection) -> None:
     except TypeError:
         # Not weak-referenceable/hashable; cannot track -- caller falls back to
         # its existing close behavior.
+        return
+    future.add_done_callback(lambda _: _close_abandoned_connection(conn))
+
+
+def _close_abandoned_connection(conn: Connection) -> None:
+    # Runs on the worker's thread right after its operation returns (or on the
+    # marking thread if it already had), so no other thread is using conn. Close
+    # before unmarking, so a caller that sees the mark gone finds conn closed.
+    try:
+        conn.close()
+    except Exception:  # noqa: BLE001 - best-effort close of a connection nobody may use
         pass
+    with _abandoned_connections_lock:
+        _abandoned_connections.discard(conn)
 
 
 def is_connection_abandoned(conn: Optional[Connection]) -> bool:
@@ -74,6 +87,8 @@ def preserve_transaction_status_with_timeout(executor: Executor, timeout_sec, dr
     def preserve_transaction_status_with_timeout_decorator(func):
         @functools.wraps(func)
         def func_wrapper(*args, **kwargs):
+            if is_connection_abandoned(driver_dialect.unwrap_connection(conn)):
+                raise FuturesTimeoutError()
 
             initial_transaction_status: bool = driver_dialect.is_in_transaction(conn)
 
@@ -96,7 +111,7 @@ def preserve_transaction_status_with_timeout(executor: Executor, timeout_sec, dr
                     # Closing this connection now would free it under the running
                     # query and crash the process, so mark it abandoned -- close
                     # paths skip it and the worker frees it when it finishes.
-                    mark_connection_abandoned(conn)
+                    mark_connection_abandoned(driver_dialect.unwrap_connection(conn), future)
                 except Exception:  # noqa: BLE001 - worker raised its own error; it has drained
                     pass
                 raise
@@ -146,7 +161,7 @@ def timeout(executor: Executor, timeout_sec, driver_dialect: Optional[DriverDial
                         # Worker uninterruptible (e.g. mysql C-extension). Closing
                         # conn now would crash the process; mark it abandoned so
                         # close paths skip it and the worker frees it on completion.
-                        mark_connection_abandoned(conn)
+                        mark_connection_abandoned(driver_dialect.unwrap_connection(conn), future)
                     except Exception:  # noqa: BLE001 - worker raised its own error; it has drained
                         pass
                 raise

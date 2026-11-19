@@ -141,3 +141,10 @@ class TestDatabaseWrapper:
 
         database_wrapper.mysql_server_data = {'sql_mode': None}
         assert database_wrapper.sql_mode == set()
+
+    def test_is_usable_abandoned_connection_returns_false(self, database_wrapper):
+        from aws_advanced_python_wrapper.errors import QueryTimeoutError
+        database_wrapper.connection = MagicMock()
+        database_wrapper.connection.ping.side_effect = QueryTimeoutError("abandoned")
+
+        assert database_wrapper.is_usable() is False

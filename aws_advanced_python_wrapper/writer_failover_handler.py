@@ -36,6 +36,8 @@ from aws_advanced_python_wrapper.failover_result import (ReaderFailoverResult,
                                                          WriterFailoverResult)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 
@@ -171,7 +173,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         try:
             while not self._timeout_event.is_set() and (latest_topology is None or len(latest_topology) == 0):
                 try:
-                    if conn is not None:
+                    if conn is not None and not self._is_abandoned(conn):
                         conn.close()
 
                     conn = self._plugin_service.force_connect(initial_writer_host, self._initial_connection_properties)
@@ -197,7 +199,7 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
         finally:
             try:
-                if conn is not None and not success:
+                if conn is not None and not success and not self._is_abandoned(conn):
                     conn.close()
             except Exception:
                 pass
@@ -326,12 +328,16 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
 
         return False
 
+    def _is_abandoned(self, conn: Connection) -> bool:
+        # A timed-out topology query may still be running on conn; conn is closed when it returns.
+        return is_connection_abandoned(self._plugin_service.driver_dialect.unwrap_connection(conn))
+
     def close_reader_connection(self) -> None:
         """
         Close the reader connection if not done so already, and set the relevant fields to None.
         """
         try:
-            if self._current_reader_connection is not None:
+            if self._current_reader_connection is not None and not self._is_abandoned(self._current_reader_connection):
                 self._current_reader_connection.close()
         except Exception:
             pass
@@ -344,7 +350,8 @@ class WriterFailoverHandlerImpl(WriterFailoverHandler):
         """
         Close the reader connection if it's not needed.
         """
-        if self._current_reader_connection is not None and self._current_connection is not self._current_reader_connection:
+        if self._current_reader_connection is not None and self._current_connection is not self._current_reader_connection \
+                and not self._is_abandoned(self._current_reader_connection):
             try:
                 self._current_reader_connection.close()
             except Exception:

@@ -25,7 +25,7 @@ import pytest
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.pep249 import Connection
 
-from aws_advanced_python_wrapper.errors import FailoverError
+from aws_advanced_python_wrapper.errors import FailoverError, QueryTimeoutError
 from aws_advanced_python_wrapper.failover_result import (ReaderFailoverResult,
                                                          WriterFailoverResult)
 from aws_advanced_python_wrapper.host_availability import HostAvailability
@@ -416,3 +416,47 @@ def test_failed_to_connect_task_a_exception_task_b_writer_exception(
                 call(new_writer_host, HostAvailability.UNAVAILABLE)]
 
     plugin_service_mock.set_availability.assert_has_calls(expected, any_order=True)
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+@pytest.mark.parametrize("retries", [False, True], ids=["gives_up", "retries"])
+def test_reconnect_to_writer_abandoned_candidate_not_closed(
+        plugin_service_mock, reader_failover_mock, new_writer_connection_mock, new_writer_host, uninterruptible_call,
+        retries, pooled):
+    driver_dialect = uninterruptible_call.driver_dialect(pooled)
+    candidate = uninterruptible_call.connection(pooled)
+    plugin_service_mock.driver_dialect = driver_dialect
+    plugin_service_mock.is_network_exception.return_value = retries
+    plugin_service_mock.force_connect.side_effect = [candidate, new_writer_connection_mock]
+
+    def get_current_topology(conn, host):
+        if conn is not candidate:
+            return (new_writer_host,)
+        uninterruptible_call.time_out_host_role_query(driver_dialect, conn)
+        raise QueryTimeoutError()
+
+    plugin_service_mock.host_list_provider.get_current_topology.side_effect = get_current_topology
+    target = WriterFailoverHandlerImpl(
+        plugin_service_mock, reader_failover_mock, Properties(), reconnect_writer_interval_sec=0)
+
+    target.reconnect_to_writer(new_writer_host)
+
+    assert uninterruptible_call.calls_while_running == []
+
+
+@pytest.mark.parametrize("pooled", [False, True], ids=["raw", "pooled"])
+@pytest.mark.parametrize(
+    "close", [WriterFailoverHandlerImpl.close_reader_connection, WriterFailoverHandlerImpl.cleanup],
+    ids=["close_reader_connection", "cleanup"])
+def test_abandoned_reader_connection_not_closed(
+        plugin_service_mock, reader_failover_mock, uninterruptible_call, close, pooled):
+    plugin_service_mock.driver_dialect = uninterruptible_call.driver_dialect(pooled)
+    reader_connection = uninterruptible_call.connection(pooled)
+    uninterruptible_call.time_out_host_role_query(plugin_service_mock.driver_dialect, reader_connection)
+    target = WriterFailoverHandlerImpl(plugin_service_mock, reader_failover_mock, Properties())
+    target._current_reader_connection = reader_connection
+    target._current_connection = None
+
+    close(target)
+
+    assert uninterruptible_call.calls_while_running == []

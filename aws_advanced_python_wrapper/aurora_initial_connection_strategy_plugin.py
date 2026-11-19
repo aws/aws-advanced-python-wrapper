@@ -32,6 +32,8 @@ from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.plugin import Plugin, PluginFactory
 from aws_advanced_python_wrapper.utils.accessible_regions import \
     AccessibleRegions
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -504,7 +506,8 @@ class AuroraInitialConnectionStrategyPlugin(Plugin):
         return any(host.role == HostRole.READER for host in self._plugin_service.all_hosts)
 
     def _close_connection(self, connection: Optional[Connection]):
-        if connection is not None:
+        # A timed-out call may still be running on connection; it is closed when that call returns.
+        if connection is not None and not is_connection_abandoned(self._plugin_service.driver_dialect.unwrap_connection(connection)):
             try:
                 connection.close()
             except Exception:

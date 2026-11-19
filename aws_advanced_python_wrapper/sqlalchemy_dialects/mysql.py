@@ -28,6 +28,8 @@ from sqlalchemy.dialects.mysql.mysqlconnector import \
 
 from aws_advanced_python_wrapper.sqlalchemy_dialects._exception_handling import \
     _DriverErrorNormalizeMixin
+from aws_advanced_python_wrapper.utils.decorators import \
+    is_connection_abandoned
 
 
 class AwsWrapperMySQLConnectorDialect(
@@ -129,6 +131,9 @@ class AwsWrapperMySQLConnectorDialect(
         # error means the connection is dead -> return False so SA's pool
         # recycles it. Adopts AWS PR #1245, generalized to our dialect family.
         target = getattr(dbapi_connection, "target_connection", dbapi_connection)
+        # A timed-out call may still be running on target; report it dead instead of pinging it.
+        if is_connection_abandoned(getattr(target, "driver_connection", target)):
+            return False
         try:
             target.ping(reconnect=False)
             return True
