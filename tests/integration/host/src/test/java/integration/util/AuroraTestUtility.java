@@ -520,14 +520,15 @@ public class AuroraTestUtility {
    * Adds the given IP address to the default security group for RDS access.
    *
    * @param ipAddress the IP address to add to the default security group
+   * @return true when this call added the rule
    */
-  public void ec2AuthorizeIP(String ipAddress) {
+  public boolean ec2AuthorizeIP(String ipAddress) {
     if (StringUtils.isNullOrEmpty(ipAddress)) {
-      return;
+      return false;
     }
 
     if (ipExists(ipAddress)) {
-      return;
+      return false;
     }
 
     try {
@@ -543,10 +544,12 @@ public class AuroraTestUtility {
           .build();
       ec2Client.authorizeSecurityGroupIngress(
           (builder) -> builder.groupName(DEFAULT_SECURITY_GROUP).ipPermissions(ipPermission));
+      return true;
     } catch (Ec2Exception exception) {
       if (!DUPLICATE_IP_ERROR_CODE.equalsIgnoreCase(exception.awsErrorDetails().errorCode())) {
         throw exception;
       }
+      return false;
     }
   }
 

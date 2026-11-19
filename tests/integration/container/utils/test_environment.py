@@ -179,7 +179,7 @@ class TestEnvironment:
         return p
 
     def get_proxy_infos(self) -> List[ProxyInfo]:
-        return list(self._proxies.values())  # type: ignore[union-attr]
+        return list(self._proxies.values()) if self._proxies else []
 
     def get_info(self) -> TestEnvironmentInfo:
         return self._info
