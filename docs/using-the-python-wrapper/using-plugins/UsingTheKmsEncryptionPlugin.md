@@ -250,6 +250,7 @@ Two setup failures show only at the first statement (see [Errors](#errors)).
 ## What the plugin encrypts and decrypts
 
 **Writes.** On `execute` and `executemany`, the plugin encrypts each bound parameter that goes into an encrypted column: `INSERT` (multi-row `VALUES` included), `UPDATE`, upserts (`ON CONFLICT`, `ON DUPLICATE KEY UPDATE`), `MERGE` and data-modifying CTEs.
+An upsert that copies the incoming value of the same encrypted column (`SET ssn = EXCLUDED.ssn`, `ssn = VALUES(ssn)`, or the MySQL row alias form `ssn = new.ssn`) stores the encrypted bound value.
 Parameters can be positional (`%s`) or named (`%(name)s`); a repeated `%(name)s` is encrypted once, with the first column's key, and a name also used for a column that isn't encrypted, a comparison with one, or a place with no column (such as `LIMIT`) is refused with `MetadataError`, so give each use its own name.
 The parameter objects you pass are never changed, and `None` stays `NULL`.
 `executemany` reads an iterable once, before the plugin's checks and its setup, so pass a list if you may retry the call.
@@ -554,6 +555,8 @@ Three controls decide how much the encryption protects: which KMS keys the appli
 The first three steps cover them, and the fourth covers what none of them stops.
 
 - **KMS keys.** The plugin takes a column's master key from its `key_storage` row, not from its own settings, so the allow-list and the application's IAM policy keep a changed row from pointing it at another key. List every master key the columns use in `encryption_allowed_master_key_arns`, in the form `key_storage.master_key_arn` holds. The plugin refuses any other key before calling KMS (`UnauthorizedMasterKeyError`), on reads and writes alike, and `encryption_return_unverified_data` doesn't change that. Add a new master key before rotating a column onto it, and keep the old one listed, with `kms:Decrypt` allowed, while values written under it remain. Give the application's credentials only `kms:Decrypt`, on those key ARNs, never `"Resource": "*"`, and use a separate key per environment. Run `KeyManagementUtility`, which also calls `kms:GenerateDataKey`, `kms:CreateKey`, `kms:CreateAlias` and `kms:DescribeKey`, under a separate administrative credential. Don't add a `kms:ViaService` condition to these policies. It matches only requests an AWS service makes on your behalf, and the plugin calls KMS directly, so every `Decrypt` would be denied.
+  Store key ARNs, not alias ARNs, in `key_storage` and in `encryption_allowed_master_key_arns`.
+  Repointing an alias makes every value under the old key unreadable.
 
   ```json
   {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "kms:Decrypt",

@@ -44,6 +44,7 @@ from typing import List
 import boto3
 import pytest
 
+from .utils import kms_encryption_helper
 from .utils.connection_utils import ConnectionUtils
 from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.proxy_helper import ProxyHelper
@@ -98,6 +99,7 @@ def pytest_runtest_setup(item):
         test_name = item.callspec.id
     else:
         TestEnvironment.get_current().set_current_driver(None)
+        test_name = item.name
 
     logger.info("Starting test preparation for: " + test_name)
 
@@ -197,8 +199,15 @@ def pytest_collection_modifyitems(config, items):
     skip_async_files = TestEnvironmentFeatures.SKIP_ASYNC_DRIVER_TESTS in features
     async_file_skip = pytest.mark.skip(
         reason="async test excluded by SKIP_ASYNC_DRIVER_TESTS env feature")
+    kms_only = TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY in features
+    not_kms_skip = pytest.mark.skip(
+        reason="not a kms_encryption test, excluded by RUN_KMS_ENCRYPTION_TESTS_ONLY env feature")
 
     for item in items:
+        if kms_only and "kms_encryption" not in item.fspath.basename:
+            item.add_marker(not_kms_skip)
+            continue
+
         is_async_file = "_async.py" in str(item.fspath)
 
         # (1) Legacy guard: when async drivers are disabled entirely, skip every
@@ -231,6 +240,13 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.skip(
                 reason=f"{kind} driver {driver.value} not applicable to "
                        f"{file_kind} test file"))
+
+
+# CI reports are public and --tb=long prints each frame's arguments, so the values the KMS tests redact() print as ***.
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item, call):
+    report = yield
+    return kms_encryption_helper.redact_report(report)
 
 
 def pytest_sessionstart(session):

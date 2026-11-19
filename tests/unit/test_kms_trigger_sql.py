@@ -42,6 +42,13 @@ def test_trigger_file_rejects_short_value(name: str) -> None:
         [str(EncryptionService.MIN_ENCRYPTED_LENGTH)]
 
 
+def test_mysql_routines_read_no_session_variables() -> None:
+    # A session user variable (@name, also quoted as @'name', @"name" or @`name`, not a system variable's @@name) is one
+    # the writing session could set.
+    sql = re.sub(r"--[^\n]*|/\*.*?\*/", "", _read("trigger_mysql.sql"), flags=re.DOTALL)
+    assert re.findall(r"(?<!@)@(?!@)", sql) == []
+
+
 def test_mysql_file_reads_metadata_from_schema_token() -> None:
     sql = _read("trigger_mysql.sql")
     assert "SCHEMA_NAME.encryption_metadata" in sql

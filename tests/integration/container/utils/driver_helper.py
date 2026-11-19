@@ -47,7 +47,8 @@ class DriverHelper:
             Messages.get_formatted("Testing.FunctionNotImplementedForDriver", "get_connect_func", d.value))
 
     @staticmethod
-    def get_connect_params(host, port, user, password, db, test_driver: Optional[TestDriver] = None) -> Dict[str, Any]:
+    def get_connect_params(host, port, user, password, db, test_driver: Optional[TestDriver] = None,
+                           use_pure: bool = True) -> Dict[str, Any]:
         d: Optional[TestDriver] = test_driver
         if d is None:
             d = TestEnvironment.get_current().get_current_driver()
@@ -59,7 +60,7 @@ class DriverHelper:
             return {"host": host, "port": port, "dbname": db, "user": user, "password": password}
         if d == TestDriver.MYSQL:
             return {
-                "host": host, "port": int(port), "database": db, "user": user, "password": password, "use_pure": True}
+                "host": host, "port": int(port), "database": db, "user": user, "password": password, "use_pure": use_pure}
         if d == TestDriver.PG_ASYNC:
             # psycopg AsyncConnection.connect takes the same kwargs as sync.
             return {"host": host, "port": port, "dbname": db, "user": user, "password": password}
