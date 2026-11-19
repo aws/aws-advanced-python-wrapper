@@ -158,6 +158,42 @@ def test_enabled_failover_converts_network_error_to_failover_success():
     asyncio.run(_body())
 
 
+def test_connection_error_during_cursor_creation_starts_failover():
+    # psycopg's Connection.cursor raises OperationalError('the connection is
+    # closed') on a connection a cut has already broken, and the async dialect
+    # lists cursor creation as network-bound, so failover must subscribe to it
+    # as sync failover does.
+    # Dispatch through the manager: only its chain filter reads the
+    # subscription, so plugin.execute alone passes without it.
+    import psycopg
+
+    from aws_advanced_python_wrapper.aio.driver_dialect.psycopg import \
+        AsyncPsycopgDriverDialect
+    from aws_advanced_python_wrapper.aio.plugin_manager import \
+        AsyncPluginManager
+    from aws_advanced_python_wrapper.database_dialect import AuroraPgDialect
+    from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
+
+    async def _body() -> None:
+        props = Properties({"host": "cluster.example.com", "port": "5432"})
+        svc = AsyncPluginServiceImpl(props, AsyncPsycopgDriverDialect())
+        svc.database_dialect = AuroraPgDialect()
+        plugin = AsyncFailoverPlugin(svc, MagicMock(), props)
+        plugin._do_failover = AsyncMock()  # type: ignore[method-assign]
+        mgr = AsyncPluginManager(plugin_service=svc, props=props, plugins=[plugin])
+        svc.plugin_manager = mgr
+
+        async def _create_cursor() -> None:
+            raise psycopg.OperationalError("the connection is closed")
+
+        with pytest.raises(FailoverSuccessError):
+            await mgr.execute(
+                object(), DbApiMethod.CONNECTION_CURSOR, _create_cursor)
+        plugin._do_failover.assert_awaited_once()
+
+    asyncio.run(_body())
+
+
 def test_enabled_failover_picks_writer_by_default():
     async def _body() -> None:
         plugin, svc, host_list_provider, driver_dialect = _build_plugin()
@@ -197,6 +233,54 @@ def test_writer_failover_rejects_stale_reader_labeled_as_writer():
         svc.set_current_connection.assert_not_called()
 
     asyncio.run(_body())
+
+
+def test_writer_failover_uses_service_host_list_provider():
+    # The wrapper hands the factory the provider built from the guessed
+    # dialect (a static one for an instance endpoint), and the plugin service
+    # replaces it once the dialect is confirmed. Writer failover must refresh
+    # through the service's provider, or it only ever sees the old writer.
+    w = HostInfo(host="writer.example.com", port=5432, role=HostRole.WRITER)
+    r = HostInfo(host="reader.example.com", port=5432, role=HostRole.READER)
+    # The factory's provider knows only the seed host, as a static one does.
+    plugin, svc, _static, driver_dialect = _build_plugin(
+        mode="strict_writer", timeout_sec=2.0, topology=(w,))
+    conns = {w.host: MagicMock(name="conn-old-writer"),
+             r.host: MagicMock(name="conn-new-writer")}
+    svc.force_connect = AsyncMock(side_effect=lambda h, p, skip: conns[h.host])
+    svc.get_host_role = AsyncMock(
+        side_effect=lambda c: HostRole.READER if c is conns[w.host] else HostRole.WRITER)
+    svc.set_current_connection = AsyncMock()
+    driver_dialect.abort_connection = AsyncMock()
+    aurora = MagicMock()
+    aurora.force_refresh = AsyncMock(return_value=(
+        HostInfo(host=w.host, port=5432, role=HostRole.READER),
+        HostInfo(host=r.host, port=5432, role=HostRole.WRITER)))
+    svc.host_list_provider = aurora
+
+    async def _body() -> None:
+        deadline = asyncio.get_running_loop().time() + 2.0
+        await plugin._failover_writer((w, r), driver_dialect, deadline, None)
+
+    asyncio.run(_body())
+    _, bound_host = svc.set_current_connection.call_args.args
+    assert bound_host.host == r.host
+
+
+def test_reader_failover_uses_service_host_list_provider():
+    w = HostInfo(host="writer.example.com", port=5432, role=HostRole.WRITER)
+    r = HostInfo(host="reader.example.com", port=5432, role=HostRole.READER)
+    # The factory's provider knows only the seed host, as a static one does.
+    plugin, svc, _static, driver_dialect = _build_plugin(mode="strict_reader", topology=(w,))
+    aurora = MagicMock()
+    aurora.force_refresh = AsyncMock(return_value=(w, r))
+    svc.host_list_provider = aurora
+    plugin._failover_reader = AsyncMock()  # type: ignore[method-assign]
+
+    asyncio.run(plugin._do_failover(driver_dialect=driver_dialect))
+
+    topology = plugin._failover_reader.call_args.args[0]
+    assert topology == (w, r)
 
 
 def test_enabled_failover_picks_reader_in_strict_reader_mode():
@@ -678,6 +762,61 @@ def test_reader_failover_falls_back_to_original_writer_in_reader_or_writer_mode(
     asyncio.run(plugin._do_failover(driver_dialect=dd))
 
     assert attempts == ["r1", "w1"]
+
+
+def test_reader_failover_leaves_unreachable_reader_candidates_available():
+    """A reader candidate that fails to open is only dropped from the pass;
+    only the failed current host is marked UNAVAILABLE, as in sync
+    FailoverV2Plugin._failover_reader."""
+    w = HostInfo(host="w1", port=5432, role=HostRole.WRITER)
+    r1 = HostInfo(host="r1", port=5432, role=HostRole.READER)
+    r2 = HostInfo(host="r2", port=5432, role=HostRole.READER)
+    plugin, svc, _hlp, driver_dialect = _build_plugin(
+        mode="reader-or-writer", topology=(w, r1, r2))
+    svc._all_hosts = (w, r1, r2)
+    svc._current_host_info = r1
+    # Select like the random selector: only readers marked available.
+    svc.get_host_info_by_strategy = (  # type: ignore[method-assign]
+        lambda role, strategy, hosts=None: next(
+            (h for h in hosts if h.role == role
+             and h.get_availability() == HostAvailability.AVAILABLE), None))
+
+    attempts = []
+
+    async def _open(target, _driver_dialect):
+        attempts.append(target.host)
+        if target.role == HostRole.READER:
+            raise OSError(f"{target.host} unreachable")
+        return MagicMock()
+
+    plugin._open_connection = _open  # type: ignore[method-assign]
+
+    asyncio.run(plugin._do_failover(driver_dialect=driver_dialect))
+
+    assert attempts == ["r2", "w1"]
+    assert r1.get_availability() == HostAvailability.UNAVAILABLE
+    assert r2.get_availability() == HostAvailability.AVAILABLE
+
+
+def test_reader_failover_leaves_unreachable_original_writer_available():
+    """An original writer that fails to open is not marked UNAVAILABLE either,
+    as in sync FailoverV2Plugin._failover_reader: it may be restarting as a reader."""
+    w = HostInfo(host="w1", port=5432, role=HostRole.WRITER)
+    r1 = HostInfo(host="r1", port=5432, role=HostRole.READER)
+    plugin, svc, _hlp, driver_dialect = _build_plugin(
+        mode="reader-or-writer", topology=(w, r1), timeout_sec=0.5)
+    svc._all_hosts = (w, r1)
+    svc._current_host_info = r1
+
+    async def _open(target, _driver_dialect):
+        raise OSError(f"{target.host} unreachable")
+
+    plugin._open_connection = _open  # type: ignore[method-assign]
+
+    with pytest.raises(FailoverFailedError):
+        asyncio.run(plugin._do_failover(driver_dialect=driver_dialect))
+
+    assert w.get_availability() == HostAvailability.AVAILABLE
 
 
 def test_failover_falls_back_to_initial_host_when_topology_empty():

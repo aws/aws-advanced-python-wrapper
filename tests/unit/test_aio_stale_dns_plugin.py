@@ -21,7 +21,8 @@ Covers the six load-bearing branches ported from sync:
 3. Writer-cluster host + reader role -> force-refresh + swap.
 4. Writer-cluster host + writer role + mismatched DNS -> swap.
 5. Writer not in allowed topology -> raises AwsWrapperError.
-6. ``notify_host_list_changed`` with ``CONVERTED_TO_READER`` resets cache.
+6. ``notify_host_list_changed`` with ``CONVERTED_TO_READER`` or ``HOST_DELETED``
+   resets cache.
 """
 
 from __future__ import annotations
@@ -367,6 +368,21 @@ def test_notify_host_list_changed_resets_on_converted_to_reader():
     # Sync keys by host_info.url (host:port/). Match that.
     changes = {
         writer.url: {HostEvent.CONVERTED_TO_READER},
+    }
+    plugin.notify_host_list_changed(changes)
+
+    assert plugin._writer_host_info is None
+    assert plugin._writer_host_address is None
+
+
+def test_notify_host_list_changed_resets_on_host_deleted():
+    plugin, _, _ = _build()
+    writer = _writer_instance()
+    plugin._writer_host_info = writer
+    plugin._writer_host_address = "10.0.0.99"
+
+    changes = {
+        writer.url: {HostEvent.HOST_DELETED},
     }
     plugin.notify_host_list_changed(changes)
 

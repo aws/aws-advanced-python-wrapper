@@ -141,7 +141,7 @@ class StaleDnsHelper:
             return
 
         writer_changes = changes.get(self._writer_host_info.url, None)
-        if writer_changes is not None and HostEvent.CONVERTED_TO_READER in writer_changes:
+        if writer_changes is not None and (HostEvent.CONVERTED_TO_READER in writer_changes or HostEvent.HOST_DELETED in writer_changes):
             logger.debug("StaleDnsHelper.Reset")
             self._writer_host_info = None
             self._writer_host_address = None

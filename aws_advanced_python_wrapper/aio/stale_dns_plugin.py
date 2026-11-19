@@ -242,7 +242,8 @@ class AsyncStaleDnsPlugin(AsyncPlugin):
             or changes.get(key_host_port)
             or changes.get(self._writer_host_info.host))
         if (writer_changes is not None
-                and HostEvent.CONVERTED_TO_READER in writer_changes):
+                and (HostEvent.CONVERTED_TO_READER in writer_changes
+                     or HostEvent.HOST_DELETED in writer_changes)):
             logger.debug("StaleDnsHelper.Reset")
             self._writer_host_info = None
             self._writer_host_address = None

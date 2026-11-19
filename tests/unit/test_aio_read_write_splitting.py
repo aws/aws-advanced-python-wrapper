@@ -130,6 +130,61 @@ def test_set_read_only_true_switches_to_reader():
     asyncio.run(_body())
 
 
+def test_set_read_only_true_uses_service_host_list_provider():
+    # The factory's provider was built from the guessed dialect and knows only
+    # the seed host; the plugin service replaces it once the dialect is
+    # confirmed. The plugin must refresh through the service's provider.
+    async def _body() -> None:
+        writer = HostInfo(host="writer.example", port=5432, role=HostRole.WRITER)
+        reader = HostInfo(host="reader.example", port=5432, role=HostRole.READER)
+        plugin, svc, *_ = _build(topology=(writer,))
+        replacement = MagicMock()
+        replacement.refresh = AsyncMock(return_value=(writer, reader))
+        svc.host_list_provider = replacement
+
+        async def _work() -> None:
+            return None
+
+        await plugin.execute(
+            object(),
+            DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
+            _work,
+            True,
+        )
+        assert svc.current_host_info is not None
+        assert svc.current_host_info.host == "reader.example"
+
+    asyncio.run(_body())
+
+
+def test_set_read_only_false_uses_service_host_list_provider():
+    # After a failover the service's provider names the new writer, while the
+    # factory's provider still names the old one.
+    async def _body() -> None:
+        old_writer = HostInfo(host="writer.example", port=5432, role=HostRole.WRITER)
+        reader = HostInfo(host="reader.example", port=5432, role=HostRole.READER)
+        new_writer = HostInfo(host="new-writer.example", port=5432, role=HostRole.WRITER)
+        plugin, svc, *_ = _build(topology=(old_writer, reader))
+        replacement = MagicMock()
+        replacement.refresh = AsyncMock(return_value=(new_writer, reader))
+        svc.host_list_provider = replacement
+
+        async def _work() -> None:
+            return None
+
+        for read_only in (True, False):
+            await plugin.execute(
+                object(),
+                DbApiMethod.CONNECTION_SET_READ_ONLY.method_name,
+                _work,
+                read_only,
+            )
+        assert svc.current_host_info is not None
+        assert svc.current_host_info.host == "new-writer.example"
+
+    asyncio.run(_body())
+
+
 def test_set_read_only_false_switches_back_to_writer():
     async def _body() -> None:
         plugin, svc, hlp, dd, writer_conn = _build()

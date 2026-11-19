@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -1387,6 +1387,38 @@ def test_replacement_provider_inherits_the_panic_mode_probe():
         assert replacement._probe_host is _probe
 
     asyncio.run(_run())
+
+
+def test_replacement_provider_is_armed_for_panic_mode():
+    """The provider built from the guessed dialect can be a static one, which
+    has no probe to carry across. The replacement must still be armed, and
+    before its first refresh: that refresh builds the topology monitor, which
+    copies the probe when it is constructed."""
+    from aws_advanced_python_wrapper.aio.host_list_provider import (
+        AsyncAuroraHostListProvider, AsyncStaticHostListProvider)
+    from aws_advanced_python_wrapper.database_dialect import AuroraPgDialect
+
+    props = Properties({"host": "h", "port": "5432"})
+    svc = _service_with_manager(AuroraPgDialect(), None, props)
+    svc.host_list_provider = AsyncStaticHostListProvider(props)
+    probe_at_refresh = []
+
+    async def _refresh(_conn):
+        provider = svc.host_list_provider
+        assert isinstance(provider, AsyncAuroraHostListProvider)
+        probe_at_refresh.append(provider._probe_host)
+
+    svc.force_refresh_host_list = AsyncMock(side_effect=_refresh)
+    probe = MagicMock(name="probe")
+
+    async def _run():
+        await svc._update_host_list_provider(MagicMock(name="conn"))
+
+    with patch("aws_advanced_python_wrapper.aio.cluster_topology_monitor.build_probe_host",
+               return_value=probe) as build_probe_host:
+        asyncio.run(_run())
+    build_probe_host.assert_called_once_with(svc, props)
+    assert probe_at_refresh == [probe]
 
 
 def test_is_static_host_list_provider_reflects_provider_type():
