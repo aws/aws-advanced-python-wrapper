@@ -1612,6 +1612,39 @@ def test_tampered_value(mocker, env, lenient):
         _clean(info.value, secret)
 
 
+@pytest.mark.parametrize("lenient", [False, True], ids=["strict", "lenient"])
+@pytest.mark.parametrize("stored_key", ["own", "rotated"])
+def test_unlisted_master_key_read_refused(mocker, env, stored_key, lenient):
+    unlisted = ARN.replace("123456789012", "000000000000")
+    old = replace(KEY_ROW, id=1802201963, key_id="k-old", encrypted_data_key="b2xk", hmac_key=OLD_HMAC,
+                  master_key_arn=unlisted)
+    if stored_key == "own":
+        env.configs = [replace(SSN, key_metadata=replace(KEY_ROW, master_key_arn=unlisted))]
+    mocker.patch.object(km_module, "_install_botocore_filters")
+
+    def real_key_manager(*args: Any) -> KeyManager:
+        # The plugin's own allow-list check, with the earlier key row the lookup finds.
+        manager = KeyManager(*args)
+        mocker.patch.object(manager, "key_metadata_by_id", return_value=old)
+        return manager
+
+    env.keys.side_effect = real_key_manager
+    plugin, _ = make_plugin(mocker, encryption_return_unverified_data=lenient)
+    secret = marker()
+    if stored_key == "own":
+        stored = payload(secret)
+    else:
+        stored = EncryptionService.encrypt(secret, DATA_KEY, OLD_HMAC, key_id=old.id)
+    cur, raw = cursor(plugin)
+    call(cur, "execute", SELECT, (1,))
+    raw.description, raw.rows = [("ssn",)], [(stored,)]
+    # Lenient mode returns unverified values, never a value under a refused master key.
+    with pytest.raises(errors.UnauthorizedMasterKeyError) as info:
+        call(cur, "fetchall")
+    assert env.keys.create_kms_client.return_value.decrypt.call_count == 0
+    _clean(info.value, secret)
+
+
 def test_rotated_key_row_decrypts_and_is_kept(mocker, env):
     old = replace(KEY_ROW, id=1802201963, key_id="k-old", encrypted_data_key="b2xk", hmac_key=OLD_HMAC)
     env.keys.return_value.key_metadata_by_id.return_value = old

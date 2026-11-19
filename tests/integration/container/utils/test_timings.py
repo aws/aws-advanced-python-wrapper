@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""Central spec for the integration-test suite's failover-related timings.
+"""Central spec for the integration-test suite's timings.
 
 These constants are *test-tuning* knobs — they exist to absorb Aurora's
 control-plane lag and DNS-rotation races without flaking. Each one has a
@@ -70,3 +70,44 @@ WRITER_CHANGED_PROBE_POLL_INTERVAL_SEC: float = 2.0
 # with extra topology-refresh polling, so 900 s is a sensible ceiling
 # that catches genuine hangs without hiding real timeouts.
 FAILOVER_WITHIN_TRANSACTION_PYTEST_TIMEOUT_SEC: int = 900
+
+# ───── KMS Encryption Plugin tests ─────────────────────────────────────
+# A plugin connection with ``encryption_metadata_cache_refresh_interval_sec=1``
+# reloads the metadata about once a second; 15 s absorbs a slow refresh
+# thread on a loaded runner, polled every 0.25 s.
+KMS_METADATA_REFRESH_WAIT_SEC: float = 15
+KMS_METADATA_REFRESH_POLL_SEC: float = 0.25
+
+# PostgreSQL's logging collector writes a statement to its file after the
+# statement returns, so a statement-log scan waits for the marker it ran.
+KMS_STATEMENT_LOG_WAIT_SEC: float = 10
+KMS_STATEMENT_LOG_POLL_SEC: float = 0.2
+
+# The ceiling for the threads that share one psycopg connection to finish
+# their statements; a thread still alive after it fails the test.
+KMS_THREAD_JOIN_TIMEOUT_SEC: float = 60
+
+# The plugin guide's bound on one KMS attempt: up to 5 s to connect and
+# 10 s for KMS to answer.
+KMS_ATTEMPT_BOUND_SEC: float = 15
+
+# After a failover the wrapper keeps the old writer marked unavailable for
+# 5 minutes, so read/write splitting can switch to it as a reader only
+# after that; 390 s covers the 300 s and the instance's own return.
+KMS_AURORA_READER_RETURN_SEC: float = 390
+KMS_AURORA_READER_RETURN_POLL_SEC: float = 5
+
+# The ceiling for a reader to show a row the writer has just committed.
+KMS_AURORA_REPLICATION_WAIT_SEC: float = 30
+KMS_AURORA_REPLICATION_POLL_SEC: float = 1
+
+# CloudTrail's event history can lag a KMS call by many minutes; the manual
+# CloudTrail test polls it every minute for up to 25 minutes.
+KMS_CLOUDTRAIL_DELIVERY_SEC: float = 25 * 60
+KMS_CLOUDTRAIL_POLL_SEC: float = 60
+
+# The shortest STS session AssumeRole allows. The manual expiry test waits
+# up to 10 minutes past it for STS to report the session expired.
+KMS_ROLE_SESSION_SEC: int = 900
+KMS_ROLE_SESSION_EXPIRY_WAIT_SEC: float = KMS_ROLE_SESSION_SEC + 600
+KMS_ROLE_SESSION_EXPIRY_POLL_SEC: float = 30
