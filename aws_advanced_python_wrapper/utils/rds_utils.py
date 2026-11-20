@@ -44,6 +44,12 @@ class RdsUtils:
     Instance Endpoint: <instance-name>.<xyz>.<aws-region>.rds.amazonaws.com
     Example: test-postgres-instance-1.123456789012.us-east-2.rds.amazonaws.com
 
+    Cluster Group Writer Endpoint: <cluster-group-id>.rw-<xyz>.db-cluster-group.<aws-region>.rds.amazonaws.com
+    Example: test-postgres-group.rw-c7qgg0siobwq.db-cluster-group.us-east-1.rds.amazonaws.com
+
+    Cluster Group Reader Endpoint: <cluster-group-id>.ro-<xyz>.db-cluster-group.<aws-region>.rds.amazonaws.com
+    Example: test-postgres-group.ro-c7qgg0siobwq.db-cluster-group.us-east-1.rds.amazonaws.com
+
 
     Similar endpoints for China regions have different structure and are presented below.
 
@@ -71,6 +77,10 @@ class RdsUtils:
                              r"(?P<dns>cluster-|cluster-ro-)+" \
                              r"(?P<domain>[a-zA-Z0-9]+\." \
                              r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)$"
+    AURORA_CLUSTER_GROUP_DNS_PATTERN = r"^(?P<instance>.+)\." \
+                                       r"(?P<dns>rw-|ro-)" \
+                                       r"(?P<domain>[a-zA-Z0-9]+\.db-cluster-group\." \
+                                       r"(?P<region>[a-zA-Z0-9\-]+)\.rds\.amazonaws\.com)(?!\.cn)$"
     AURORA_LIMITLESS_CLUSTER_PATTERN = r"^(?P<instance>.+)\." \
                                        r"(?P<dns>shardgrp-)+" \
                                        r"(?P<domain>[a-zA-Z0-9]+\." \
@@ -158,7 +168,8 @@ class RdsUtils:
         if not prepared_host:
             return False
 
-        pattern = self._find(prepared_host, [RdsUtils.AURORA_DNS_PATTERN,
+        pattern = self._find(prepared_host, [RdsUtils.AURORA_CLUSTER_GROUP_DNS_PATTERN,
+                                             RdsUtils.AURORA_DNS_PATTERN,
                                              RdsUtils.AURORA_CHINA_DNS_PATTERN,
                                              RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
                                              RdsUtils.AURORA_GOV_DNS_PATTERN])
@@ -221,6 +232,14 @@ class RdsUtils:
     def is_global_db_writer_cluster_dns(self, host: str) -> bool:
         dns_group = self._get_dns_group(self._get_prepared_host(host))
         return dns_group is not None and dns_group.casefold() == "global-"
+
+    def is_cluster_group_writer_dns(self, host: str) -> bool:
+        dns_group = self._get_dns_group(self._get_prepared_host(host))
+        return dns_group is not None and dns_group.casefold() == "rw-"
+
+    def is_cluster_group_reader_dns(self, host: str) -> bool:
+        dns_group = self._get_dns_group(self._get_prepared_host(host))
+        return dns_group is not None and dns_group.casefold() == "ro-"
 
     def is_limitless_database_shard_group_dns(self, host: str) -> bool:
         dns_group = self._get_dns_group(self._get_prepared_host(host))
@@ -288,6 +307,10 @@ class RdsUtils:
             return RdsUrlType.RDS_READER_CLUSTER
         elif self.is_limitless_database_shard_group_dns(host):
             return RdsUrlType.RDS_AURORA_LIMITLESS_DB_SHARD_GROUP
+        elif self.is_cluster_group_writer_dns(host):
+            return RdsUrlType.RDS_CLUSTER_GROUP_WRITER
+        elif self.is_cluster_group_reader_dns(host):
+            return RdsUrlType.RDS_CLUSTER_GROUP_READER
         elif self.is_rds_custom_cluster_dns(host):
             return RdsUrlType.RDS_CUSTOM_CLUSTER
         elif self.is_rds_proxy_dns(host):
@@ -365,7 +388,8 @@ class RdsUtils:
         if not host:
             return None
 
-        pattern = self._find(host, [RdsUtils.AURORA_DNS_PATTERN,
+        pattern = self._find(host, [RdsUtils.AURORA_CLUSTER_GROUP_DNS_PATTERN,
+                                    RdsUtils.AURORA_DNS_PATTERN,
                                     RdsUtils.AURORA_CHINA_DNS_PATTERN,
                                     RdsUtils.AURORA_OLD_CHINA_DNS_PATTERN,
                                     RdsUtils.AURORA_GOV_DNS_PATTERN])

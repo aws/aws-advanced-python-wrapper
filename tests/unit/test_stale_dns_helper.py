@@ -252,3 +252,15 @@ def test_notify_host_list_changed(plugin_service_mock, writer_instance):
 
     assert target._writer_host_info is None
     assert target._writer_host_address is None
+
+
+def test_notify_host_list_changed__host_deleted(plugin_service_mock, writer_instance):
+    target = StaleDnsHelper(plugin_service_mock)
+    target._writer_host_info = writer_instance
+    target._writer_host_address = "5.5.5.5"
+    changes: Dict[str, Set[HostEvent]] = {writer_instance.url: {HostEvent.HOST_DELETED}}
+
+    target.notify_host_list_changed(changes)
+
+    assert target._writer_host_info is None
+    assert target._writer_host_address is None

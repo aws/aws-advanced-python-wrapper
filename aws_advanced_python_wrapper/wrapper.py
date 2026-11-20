@@ -355,6 +355,8 @@ class AwsWrapperCursor(Cursor):
         self._plugin_service: PluginService = plugin_service
         self._plugin_manager: PluginManager = plugin_manager
         self._target_cursor: Cursor = target_cursor
+        # The driver cursor may hold only a weak reference to its connection (mysql-connector), so keep that connection alive.
+        self._target_connection: Optional[Connection] = plugin_service.driver_dialect.unwrap_connection(plugin_service.current_connection)
 
     # It's not part of PEP249
     @property

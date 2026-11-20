@@ -81,7 +81,7 @@ class AsyncReadWriteSplittingPlugin(
             host_list_provider: AsyncHostListProvider,
             props: Properties) -> None:
         self._plugin_service = plugin_service
-        self._host_list_provider = host_list_provider
+        self._factory_host_list_provider = host_list_provider
         self._props = props
         self._writer_conn: Optional[Any] = None
         self._writer_host_info: Optional[HostInfo] = None
@@ -100,6 +100,15 @@ class AsyncReadWriteSplittingPlugin(
             "rws.switches.to_reader.count")
         self._switch_to_writer_counter = tf.create_counter(
             "rws.switches.to_writer.count")
+
+    @property
+    def _host_list_provider(self) -> AsyncHostListProvider:
+        # The service replaces its provider once the dialect is confirmed
+        # (_update_host_list_provider), so read it at call time. Sync reads
+        # the topology through the plugin service too.
+        # The factory's provider only serves a service that has none.
+        current = self._plugin_service.host_list_provider
+        return current if current is not None else self._factory_host_list_provider
 
     @property
     def subscribed_methods(self) -> Set[str]:

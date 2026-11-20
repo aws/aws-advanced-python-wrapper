@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from .proxy_info import ProxyInfo
@@ -29,6 +29,8 @@ from .test_environment import TestEnvironment
 
 class ProxyHelper:
     logger = Logger(__name__)
+    # Set when a test cuts connectivity, so that a failure it causes is not rerun as a cluster outage
+    connectivity_disabled: ClassVar[bool] = False
 
     @staticmethod
     def disable_all_connectivity():
@@ -43,6 +45,7 @@ class ProxyHelper:
 
     @staticmethod
     def _disable_proxy_connectivity(proxy_info: ProxyInfo):
+        ProxyHelper.connectivity_disabled = True
         APIConsumer.host = proxy_info.control_host
         APIConsumer.port = proxy_info.control_port
 

@@ -798,12 +798,16 @@ class AsyncPluginServiceImpl(AsyncPluginService):
                 type(previous).__name__)
             return
 
-        if previous is not None:
-            # Carry the panic-mode probe across.
+        # Carry the panic-mode probe across, or arm it when the previous
+        # provider has none (a static one, built from the guessed dialect).
+        set_probe = getattr(replacement, "set_probe_host", None)
+        if callable(set_probe):
             probe_host = getattr(previous, "_probe_host", None)
-            set_probe = getattr(replacement, "set_probe_host", None)
-            if probe_host is not None and callable(set_probe):
-                set_probe(probe_host)
+            if probe_host is None:
+                from aws_advanced_python_wrapper.aio.cluster_topology_monitor import \
+                    build_probe_host
+                probe_host = build_probe_host(self, self._props)
+            set_probe(probe_host)
 
         self._host_list_provider = replacement
         logger.debug(
