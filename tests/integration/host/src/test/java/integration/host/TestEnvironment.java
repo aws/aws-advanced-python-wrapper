@@ -1355,6 +1355,14 @@ public class TestEnvironment implements AutoCloseable {
           return;
         }
 
+        // Let an in-flight switchover settle first: the status read below picks the cluster to delete.
+        auroraUtil.waitUntilBlueGreenDeploymentSettled(this.info.getBlueGreenDeploymentId());
+        final BlueGreenDeployment settledDeployment =
+            auroraUtil.getBlueGreenDeployment(this.info.getBlueGreenDeploymentId());
+        if (settledDeployment != null) {
+          blueGreenDeployment = settledDeployment;
+        }
+
         auroraUtil.deleteBlueGreenDeployment(this.info.getBlueGreenDeploymentId(), true);
 
         // Remove extra DB cluster

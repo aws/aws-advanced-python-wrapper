@@ -42,11 +42,14 @@ from aws_advanced_python_wrapper.database_dialect import BlueGreenDialect
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
-from aws_advanced_python_wrapper.utils.properties import Properties
+from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils
+from aws_advanced_python_wrapper.utils.properties import (Properties,
+                                                          WrapperProperties)
 from aws_advanced_python_wrapper.utils.value_container import ValueContainer
 
 # Realistic RDS endpoints so RdsUtils DNS heuristics fire as they would in prod.
 BLUE_WRITER = "bg-blue.cluster-abc123.us-east-2.rds.amazonaws.com"
+BLUE_WRITER_IP = "10.0.1.10"
 BLUE_READER_CLUSTER = "bg-blue.cluster-ro-abc123.us-east-2.rds.amazonaws.com"
 GREEN_WRITER = "bg-green.cluster-abc123.us-east-2.rds.amazonaws.com"
 
@@ -724,6 +727,22 @@ def test_monitor_stop_is_idempotent() -> None:
 
     _run(_body())
     assert monitor.is_running() is False
+
+
+def test_monitor_reconnect_by_ip_sets_iam_host_to_host_name() -> None:
+    svc = _mock_plugin_service()
+    monitor = AsyncBlueGreenStatusMonitor(
+        BlueGreenRole.SOURCE, "bg", HostInfo(BLUE_WRITER, 5432), svc, Properties(), {}, None)
+    monitor._connection_host_info = HostInfo(BLUE_WRITER, 5432)
+    monitor._connected_ip_address = BLUE_WRITER_IP
+    monitor.use_ip_address = True
+
+    _run(monitor._open_connection_task())
+
+    host_info, props = svc.force_connect.call_args.args
+    assert host_info.host == BLUE_WRITER_IP
+    assert WrapperProperties.IAM_HOST.get(props) == BLUE_WRITER
+    assert IamAuthUtils.get_iam_host(props, host_info) == BLUE_WRITER
 
 
 def test_monitor_poll_hands_interim_to_processor(monkeypatch) -> None:
