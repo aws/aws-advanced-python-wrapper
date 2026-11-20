@@ -918,7 +918,11 @@ public class AuroraTestUtility {
     }
     switch (engine) {
       case "aurora-postgresql":
-        return "aurora-postgresql16";
+        if (StringUtils.isNullOrEmpty(engineVersion)) {
+          return "aurora-postgresql16";
+        }
+        // The PostgreSQL families are named after the major version, for example "aurora-postgresql17".
+        return "aurora-postgresql" + engineVersion.split("\\.")[0];
       case "aurora-mysql":
         if (StringUtils.isNullOrEmpty(engineVersion) || engineVersion.contains("8.0")) {
           return "aurora-mysql8.0";
@@ -1204,9 +1208,20 @@ public class AuroraTestUtility {
     return blueGreenId;
   }
 
+  /** Waits until a switchover in flight has settled, so the deployment can be deleted. */
+  public void waitUntilBlueGreenDeploymentSettled(String blueGreenId) {
+    waitUntilBlueGreenDeploymentHasRightState(
+        blueGreenId, "available", "switchover_completed", "switchover_failed", "invalid_configuration");
+  }
+
   public void waitUntilBlueGreenDeploymentHasRightState(String blueGreenId, String... allowedStatuses) {
 
-    String status = getBlueGreenDeployment(blueGreenId).status();
+    BlueGreenDeployment deployment = getBlueGreenDeployment(blueGreenId);
+    if (deployment == null) {
+      LOGGER.finest("BGD " + blueGreenId + " not found.");
+      return;
+    }
+    String status = deployment.status();
     LOGGER.finest("BGD status: " + status + ", waiting for status: " + String.join(", ", allowedStatuses));
     final Set<String> allowedStatusSet = Arrays.stream(allowedStatuses)
         .map(String::toLowerCase)
@@ -1218,7 +1233,12 @@ public class AuroraTestUtility {
       } catch (InterruptedException ex) {
         throw new RuntimeException(ex);
       }
-      String tmpStatus = getBlueGreenDeployment(blueGreenId).status();
+      deployment = getBlueGreenDeployment(blueGreenId);
+      if (deployment == null) {
+        LOGGER.finest("BGD " + blueGreenId + " not found.");
+        return;
+      }
+      String tmpStatus = deployment.status();
       if (!tmpStatus.equalsIgnoreCase(status)) {
         LOGGER.finest("BGD status (waiting): " + tmpStatus);
       }
@@ -1274,7 +1294,7 @@ public class AuroraTestUtility {
       return;
     }
 
-    waitUntilBlueGreenDeploymentHasRightState(blueGreenId, "available", "switchover_completed", "switchover_failed");
+    waitUntilBlueGreenDeploymentSettled(blueGreenId);
 
     DeleteBlueGreenDeploymentResponse response = rdsClient.deleteBlueGreenDeployment(
         DeleteBlueGreenDeploymentRequest.builder()

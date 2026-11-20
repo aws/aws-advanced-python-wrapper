@@ -49,7 +49,8 @@ from aws_advanced_python_wrapper.hostinfo import HostRole
 from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from tests.integration.container.utils.test_timings import (
-    CLUSTER_STATUS_TIMEOUT_SEC, FAILOVER_DEADLINE_SEC, FAILOVER_MAX_REISSUES,
+    BG_API_STATUS_POLL_INTERVAL_SEC, CLUSTER_STATUS_TIMEOUT_SEC,
+    FAILOVER_DEADLINE_SEC, FAILOVER_MAX_REISSUES,
     FAILOVER_REISSUE_MIN_REMAINING_SEC, INITIAL_WRITER_POLL_INTERVAL_SEC,
     INITIAL_WRITER_REVERT_WINDOW_SEC, INSTANCE_STATUS_POLL_INTERVAL_SEC,
     INSTANCE_UP_TIMEOUT_SEC, WRITER_CHANGE_TIMEOUT_SEC,
@@ -837,6 +838,28 @@ class RdsTestUtility:
             return deployments[0]
         except self._client.exceptions.BlueGreenDeploymentNotFoundFault:
             return None
+
+    def wait_until_blue_green_deployment_has_desired_status(
+            self, bg_id: str, timeout_sec: float, *desired_statuses: str) -> Optional[str]:
+        """Wait until the Blue/Green deployment reaches one of the statuses, or the timeout passes.
+
+        :param bg_id: the Blue/Green deployment ID.
+        :param timeout_sec: how long to wait, in seconds.
+        :param desired_statuses: the RDS API statuses to wait for, for example ``SWITCHOVER_COMPLETED``.
+        :return: the last status read, or None when no read found the deployment.
+        """
+        stop_time = timeit.default_timer() + timeout_sec
+        status = None
+        while True:
+            try:
+                deployment = self.get_blue_green_deployment(bg_id)
+                if deployment is not None:
+                    status = deployment.get("Status")
+            except Exception as e:
+                self.logger.debug(f"Blue/Green deployment {bg_id} status read failed: {e}")
+            if status in desired_statuses or timeit.default_timer() > stop_time:
+                return status
+            sleep(BG_API_STATUS_POLL_INTERVAL_SEC)
 
     def switchover_blue_green_deployment(self, bg_id: str):
         try:

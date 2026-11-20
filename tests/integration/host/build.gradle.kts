@@ -544,6 +544,112 @@ tasks.register<Test>("test-bgd-pg-aurora") {
     }
 }
 
+// One environment and one Blue/Green deployment each: a deployment switches over once.
+
+tasks.register<Test>("test-bgd-mysql-aurora-sync") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    environment("FILTER", "test_switchover and not test_switchover_async")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-failover", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-instances-1", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-python-3-10", "true")
+        systemProperty("exclude-python-3-11", "true")
+        systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
+        systemProperty("exclude-traces-telemetry", "true")
+        systemProperty("exclude-metrics-telemetry", "true")
+        systemProperty("exclude-async-drivers", "true")
+        systemProperty("test-bg-only", "true")
+    }
+}
+
+tasks.register<Test>("test-bgd-mysql-aurora-async") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    environment("FILTER", "test_switchover_async")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-pg-driver", "true")
+        systemProperty("exclude-pg-engine", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-failover", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-instances-1", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-python-3-10", "true")
+        systemProperty("exclude-python-3-11", "true")
+        systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
+        systemProperty("exclude-traces-telemetry", "true")
+        systemProperty("exclude-metrics-telemetry", "true")
+        systemProperty("exclude-sync-drivers", "true")
+        systemProperty("test-bg-only", "true")
+    }
+}
+
+tasks.register<Test>("test-bgd-pg-aurora-sync") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    environment("FILTER", "test_switchover and not test_switchover_async")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-failover", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-instances-1", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-python-3-10", "true")
+        systemProperty("exclude-python-3-11", "true")
+        systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
+        systemProperty("exclude-async-drivers", "true")
+        systemProperty("test-bg-only", "true")
+    }
+}
+
+tasks.register<Test>("test-bgd-pg-aurora-async") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    environment("FILTER", "test_switchover_async")
+    doFirst {
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-mysql-driver", "true")
+        systemProperty("exclude-mysql-engine", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-failover", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-instances-1", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-python-3-10", "true")
+        systemProperty("exclude-python-3-11", "true")
+        systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
+        systemProperty("exclude-sync-drivers", "true")
+        systemProperty("test-bg-only", "true")
+    }
+}
+
 // Debug
 
 tasks.register<Test>("debug-all-environments") {

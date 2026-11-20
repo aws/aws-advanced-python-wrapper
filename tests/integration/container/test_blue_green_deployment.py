@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Set, Tuple
 
 import mysql.connector
 import psycopg
@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 
 import math
 import socket
-import sys
 from collections import deque
 from dataclasses import dataclass, field
 from logging import INFO, getLogger
@@ -40,11 +39,13 @@ import pytest
 from tabulate import tabulate  # type: ignore[import-untyped]
 
 from aws_advanced_python_wrapper import AwsWrapperConnection
-from aws_advanced_python_wrapper.blue_green_plugin import (BlueGreenPlugin,
+from aws_advanced_python_wrapper.blue_green_plugin import (BlueGreenPhase,
+                                                           BlueGreenPlugin,
                                                            BlueGreenRole,
                                                            BlueGreenStatus)
 from aws_advanced_python_wrapper.database_dialect import DialectCode
 from aws_advanced_python_wrapper.driver_info import DriverInfo
+from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import (ConcurrentDict,
@@ -53,27 +54,24 @@ from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
-from .utils.blue_green_checks import (BG_CONNECT_TIMEOUT_MS, BG_ID,
-                                      PLUGIN_STATUS_POLL_SEC,
-                                      PROBE_CONNECT_TIMEOUT_SEC,
-                                      ROUTING_PROBE_ATTEMPTS,
-                                      SWITCHOVER_TEST_TIMEOUT_SEC,
-                                      THREAD_JOIN_SEC, PluginStatusObservation,
-                                      ProbeResult, RoutingAttempt,
-                                      connect_suspend_listed, describe_error,
-                                      evaluate_routing,
-                                      evaluate_suspended_call, get_probe_host,
-                                      join_all, listed_substitute,
-                                      record_plugin_phase, settle_switchover,
-                                      summary_lines, wait_for_phase,
+from .utils.blue_green_checks import (PhaseObserver, ProbeResult,
+                                      SwitchoverRequest, settle_switchover,
+                                      suspended_call_failures,
                                       wait_for_switchover)
 from .utils.conditions import enable_on_deployments, enable_on_features
 from .utils.database_engine import DatabaseEngine
 from .utils.database_engine_deployment import DatabaseEngineDeployment
 from .utils.driver_helper import DriverHelper
 from .utils.rds_test_utility import RdsTestUtility
+from .utils.retry_helper import retry_until
 from .utils.test_environment import TestEnvironment
 from .utils.test_environment_features import TestEnvironmentFeatures
+from .utils.test_timings import (BG_PLUGIN_STATUS_POLL_SEC,
+                                 BG_PROBE_CONNECT_ATTEMPTS,
+                                 BG_PROBE_CONNECT_TIMEOUT_SEC,
+                                 BG_PROBE_HOST_ROLE_WAIT_SEC,
+                                 BG_SWITCHOVER_PYTEST_TIMEOUT_SEC,
+                                 BG_THREAD_JOIN_SEC, BG_WAIT_STEP_SEC)
 
 
 @enable_on_deployments([DatabaseEngineDeployment.AURORA, DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE])
@@ -93,6 +91,11 @@ class TestBlueGreenDeployment:
     PG_RDS_BG_STATUS_QUERY = \
         (f"SELECT id, SPLIT_PART(endpoint, '.', 1) as hostId, endpoint, port, role, status, version "
          f"FROM rds_tools.show_topology('aws_advanced_python_wrapper-{DriverInfo.DRIVER_VERSION}')")
+    # The server's own host name or address, which the switchover's renames don't change.
+    MYSQL_SERVER_ID_QUERY = "SELECT @@hostname"
+    PG_SERVER_ID_QUERY = "SELECT pg_catalog.inet_server_addr()"
+    # The connect params set no bg_id, so the plugin keys its status by the default, normalized as the plugin does.
+    PLUGIN_BG_ID = str(WrapperProperties.BG_ID.default_value).strip().lower()
     results: ConcurrentDict[str, BlueGreenResults] = ConcurrentDict()
     unhandled_exceptions: Deque[Exception] = deque()
     mysql_dialect = MySQLDriverDialect(Properties())
@@ -106,11 +109,8 @@ class TestBlueGreenDeployment:
     def rds_utils(self):
         return RdsUtils()
 
-    # Worst case on any tree: setup + 150 s (latest request) + 300 s (API wait from the request) + 5 s (trigger join)
-    # + 2 s (CPU sample) + 20 s (joins), so setup + 477 s. The harness's --timeout=600 stays for every other test.
-    @pytest.mark.timeout(SWITCHOVER_TEST_TIMEOUT_SEC)
+    @pytest.mark.timeout(BG_SWITCHOVER_PYTEST_TIMEOUT_SEC)
     def test_switchover(self, conn_utils, test_utility, rds_utils, test_environment: TestEnvironment, test_driver):
-        test_start_ns = perf_counter_ns()
         self.results.clear()
         self.unhandled_exceptions.clear()
 
@@ -131,6 +131,7 @@ class TestBlueGreenDeployment:
             test_environment, test_utility, rds_utils, info.get_bg_deployment_id())
         topology_instances_str = '\n'.join(topology_instances)
         self.logger.debug(f"topology_instances: \n{topology_instances_str}")
+        green_hosts: List[str] = []
 
         for host in topology_instances:
             host_id = host[0:host.index(".")]
@@ -196,6 +197,8 @@ class TestBlueGreenDeployment:
                 thread_finish_count += 1
 
             if rds_utils.is_green_instance(host):
+                green_hosts.append(host)
+
                 threads.append(Thread(
                     daemon=True,
                     target=self.direct_topology_monitor,
@@ -242,50 +245,67 @@ class TestBlueGreenDeployment:
                     thread_count += 1
                     thread_finish_count += 1
 
-        switchover_requested = Event()
-        switchover_requested_ns = AtomicInt(0)
+        assert len(green_hosts) > 0, "Unable to find a green instance in the Blue/Green topology."
+        green_host = green_hosts[0]
+
+        port = test_instance.get_port()
+        if test_environment.get_deployment() == DatabaseEngineDeployment.AURORA:
+            blue_endpoint = test_environment.get_database_info().get_cluster_endpoint()
+        else:
+            blue_endpoint = test_instance.get_host()
+
+        # conftest released the services container and its lazy re-initialisation isn't locked: build it here,
+        # before the threads' first connects race on it.
+        services_container.get_monitor_service()
+        blue_server_ids = self.get_server_ids(
+            test_driver, conn_utils, [instance.get_host() for instance in test_environment.get_instances()], port,
+            db_name)
+        green_server_ids = self.get_server_ids(test_driver, conn_utils, green_hosts, port, db_name)
+        self.logger.debug(f"Blue servers: {blue_server_ids}, green servers: {green_server_ids}")
+        assert len(blue_server_ids) > 0
+        assert len(green_server_ids) > 0
+        assert blue_server_ids.isdisjoint(green_server_ids)
+        assert "None" not in blue_server_ids | green_server_ids
+        probe_host = self.get_probe_host(test_driver, conn_utils, blue_endpoint, test_instance.get_host(), port, db_name)
+        self.logger.debug(f"Probe host: {probe_host}")
+
+        request = SwitchoverRequest()
         trigger_thread = Thread(
             daemon=True,
+            name="BlueGreenSwitchoverTrigger",
             target=self.bg_switchover_trigger,
-            args=(test_utility, info.get_bg_deployment_id(), start_latch, finish_latch, self.results, stop,
-                  switchover_requested, switchover_requested_ns))
+            args=(test_utility, info.get_bg_deployment_id(), start_latch, finish_latch, self.results, stop, request))
         threads.append(trigger_thread)
         thread_count += 1
         thread_finish_count += 1
 
-        # #1352 probes. Not counted in the latches: each one starts on the plugin phase it needs.
-        port = test_instance.get_port()
-        blue_endpoint = test_environment.get_database_info().get_cluster_endpoint() \
-            if test_environment.get_deployment() == DatabaseEngineDeployment.AURORA else test_instance.get_host()
-        green_endpoint = self.get_green_endpoint(test_environment, test_utility, info.get_bg_deployment_id())
-        writer_host = test_instance.get_host()
-        blue_writer_ip = self.resolve_ip(blue_endpoint)
-        green_writer_ip = "unresolved" if green_endpoint is None else self.resolve_ip(green_endpoint)
-        green_host = next((host for host in topology_instances if rds_utils.is_green_instance(host)), None)
-        observation = PluginStatusObservation()
-        execute_probe = ProbeResult("WrapperBlueSuspendedExecute")
-        connect_probe = ProbeResult("WrapperGreenSuspendedConnect", probe_host=green_host or "")
-        post_probe = ProbeResult("WrapperBlueRouting POST")
-        preparation_probe = ProbeResult("WrapperBlueRouting PREPARATION")
-        probes = [execute_probe, connect_probe, post_probe, preparation_probe]
-        threads.append(Thread(
+        # The observer and the probes don't count down start_latch: each probe starts on the plugin phase it needs.
+        observer = PhaseObserver()
+        execute_probe = ProbeResult()
+        connect_probe = ProbeResult()
+        routing_probe = ProbeResult()
+        execute_thread = Thread(
             daemon=True,
-            target=self.plugin_status_monitor,
-            args=(observation, switchover_requested, stop)))
-        threads.append(Thread(
-            daemon=True,
+            name="BlueGreenExecuteProbe",
             target=self.wrapper_blue_suspended_execute_probe,
-            args=(test_driver, conn_utils, blue_endpoint, writer_host, port, db_name, observation, switchover_requested,
-                  stop, execute_probe)))
-        threads.append(Thread(
+            args=(test_driver, conn_utils, probe_host, port, db_name, observer, stop, finish_latch, execute_probe))
+        connect_thread = Thread(
             daemon=True,
+            name="BlueGreenConnectProbe",
             target=self.wrapper_green_suspended_connect_probe,
-            args=(test_driver, conn_utils, green_host, port, db_name, observation, stop, connect_probe)))
+            args=(test_driver, conn_utils, green_host, port, db_name, observer, stop, finish_latch, connect_probe))
+        routing_thread = Thread(
+            daemon=True,
+            name="BlueGreenRoutingProbe",
+            target=self.wrapper_blue_routing_probe,
+            args=(test_driver, conn_utils, probe_host, port, db_name, observer, stop, finish_latch, routing_probe))
         threads.append(Thread(
             daemon=True,
-            target=self.wrapper_blue_routing_probe,
-            args=(test_driver, conn_utils, blue_endpoint, writer_host, port, db_name, observation, switchover_requested,
-                  stop, preparation_probe, post_probe)))
+            name="BlueGreenPhaseObserver",
+            target=self.plugin_status_monitor,
+            args=(observer, stop, finish_latch)))
+        threads.extend([execute_thread, connect_thread, routing_thread])
+        thread_finish_count += 4
 
         start_latch.set_count(thread_count)
         finish_latch.set_count(thread_finish_count)
@@ -293,99 +313,128 @@ class TestBlueGreenDeployment:
         for result in self.results.values():
             result.start_time_ns.set(start_time_ns)
 
-        # An unfixed wrapper's suspended calls log two debug records per pass of their loop; keep them out of the report.
+        # A suspended call logs at DEBUG on each pass of its wait. One that never returns floods the report until the
+        # harness can't keep up, so the plugin stays at INFO while any test thread is alive.
         plugin_logger = getLogger(BlueGreenPlugin.__module__)
         plugin_log_level = plugin_logger.level
         plugin_logger.setLevel(INFO)
-        switch_interval = sys.getswitchinterval()
-        threads_start_ns = perf_counter_ns()
-        wait_result = "not run"
         try:
-            try:
-                # conftest released the services container and its lazy re-initialisation isn't locked: build it here,
-                # before the monitors' first connects race on it.
-                services_container.get_monitor_service()
-                for thread in threads:
-                    thread.start()
+            threads_start_ns = perf_counter_ns()
+            for thread in threads:
+                thread.start()
 
-                self.logger.debug("All threads started.")
-                wait_result = wait_for_switchover(
-                    probes, observation, switchover_requested, switchover_requested_ns, threads_start_ns,
-                    self.is_switchover_completed_seen)
-                self.logger.debug(f"Done waiting for the switchover: {wait_result}.")
-            finally:
-                settle_switchover(
-                    test_utility, info.get_bg_deployment_id(), trigger_thread, stop, switchover_requested,
-                    switchover_requested_ns)
-                self.logger.debug("Stop set for all threads.")
-
-            alive_count = join_all(threads, THREAD_JOIN_SEC)
-            self.logger.debug(f"Done waiting for threads to stop, {alive_count} still running.")
-
-            writer_ips = f"green writer IP {green_writer_ip}, blue writer IP {blue_writer_ip}"
-            not_sampled = [] if preparation_probe.phase_at_start == "PREPARATION" else [f"{preparation_probe.name}: not sampled"]
-            for line in summary_lines(
-                    test_start_ns, threads_start_ns, switchover_requested_ns.get(), wait_result, observation, probes,
-                    [writer_ips] + not_sampled):
-                print(line)
-
-            for host_id, result in self.results.items():
-                assert result.bg_trigger_time_ns.get() > 0, \
-                    (f"bg_trigger_time for {host_id} was {result.bg_trigger_time_ns.get()}, wait result: {wait_result}, "
-                     f"unhandled exceptions: {', '.join(describe_error(e) for e in self.unhandled_exceptions) or 'none'}")
-
-            self.logger.debug("Test is over.")
-            now_ns = perf_counter_ns()
-            post_first_seen_ns = observation.plugin_phase_first_seen_ns.get("POST")
-            failures = (
-                evaluate_suspended_call("execute", execute_probe, now_ns, post_first_seen_ns)
-                + evaluate_suspended_call("connect", connect_probe, now_ns, post_first_seen_ns)
-                + evaluate_routing(post_probe, "POST", required=True, writer_ips=writer_ips)
-                + evaluate_routing(preparation_probe, "PREPARATION", required=False, writer_ips=writer_ips))
-            # A monitor still appending to its results can make print_metrics raise; it must not hide the verdict.
-            try:
-                self.print_metrics(rds_utils)
-            except Exception as e:
-                print(f"print_metrics failed: {describe_error(e)}")
-            if failures:
-                pytest.fail("\n".join(failures))
-
-            if len(self.unhandled_exceptions) > 0:
-                self.log_unhandled_exceptions()
-                pytest.fail("There were unhandled exceptions.")
-
-            self.assert_test()
-
-            self.logger.debug("Completed")
+            self.logger.debug("All threads started.")
+            wait_result = wait_for_switchover(
+                request, threads_start_ns,
+                [(execute_thread, execute_probe), (connect_thread, connect_probe), (routing_thread, routing_probe)],
+                lambda: observer.is_seen(BlueGreenPhase.COMPLETED) or self.is_switchover_completed_seen())
+            self.logger.debug(f"Done waiting for the switchover: {wait_result}.")
         finally:
-            # Any thread still alive may be an unfixed call spinning (the inherited monitors as well as the probes).
-            # Restoring the interval or the DEBUG level under it floods the output until the harness can't keep up.
-            # A lane runs one test.
-            if not any(probe.is_in_flight() for probe in probes) and not any(thread.is_alive() for thread in threads):
-                sys.setswitchinterval(switch_interval)
+            api_status = settle_switchover(test_utility, info.get_bg_deployment_id(), trigger_thread, stop, request)
+            self.logger.debug("Stop set for all threads.")
+            finish_latch.wait_sec(BG_THREAD_JOIN_SEC)
+            alive_count = sum(1 for thread in threads if thread.is_alive())
+            self.logger.debug(f"Done waiting for threads to stop, {alive_count} still running.")
+            if alive_count == 0:
                 plugin_logger.setLevel(plugin_log_level)
+
+        self.logger.debug(
+            f"Blue/Green deployment status: {api_status}. Plugin phases first seen: {observer.first_seen_ns}. "
+            f"Execute probe: {execute_probe}. Connect probe to {green_host}: {connect_probe}. "
+            f"Routing probe to {probe_host}: {routing_probe}.")
+
+        assert request.error is None, f"The switchover request failed: {request.error}"
+        assert api_status == "SWITCHOVER_COMPLETED", \
+            f"The Blue/Green deployment status was {api_status} when the test stopped waiting: {wait_result}."
+
+        for host_id, result in self.results.items():
+            assert result.bg_trigger_time_ns.get() > 0, \
+                f"bg_trigger_time for {host_id} was {result.bg_trigger_time_ns.get()}"
+
+        self.logger.debug("Test is over.")
+        now_ns = perf_counter_ns()
+        failures: List[str] = []
+        if observer.is_seen(BlueGreenPhase.IN_PROGRESS):
+            failures.extend(suspended_call_failures("execute", execute_probe, now_ns, check_held=True, check_cpu=True))
+            failures.extend(suspended_call_failures("connect", connect_probe, now_ns, check_held=False, check_cpu=True))
+        else:
+            failures.append("The plugin phase IN_PROGRESS was never seen, so the execute and connect probes didn't run.")
+
+        if not observer.is_seen(BlueGreenPhase.POST):
+            failures.append("The plugin phase POST was never seen, so the routing probe didn't run.")
+        elif routing_probe.driver_host is None or routing_probe.server_id is None:
+            failures.append(f"No connection opened in POST to the blue endpoint succeeded ({routing_probe.error}).")
+        elif routing_probe.driver_host.lower() == probe_host.lower():
+            failures.append(f"A connection opened in POST went to the dialled host, not a substitute ({probe_host}).")
+        elif routing_probe.server_id not in green_server_ids:
+            failures.append(f"A connection opened in POST reached a server that isn't green ({routing_probe.server_id}).")
+
+        self.print_metrics(rds_utils)
+        assert not failures, "\n".join(failures)
+
+        if len(self.unhandled_exceptions) > 0:
+            self.log_unhandled_exceptions()
+            pytest.fail("There were unhandled exceptions.")
+
+        self.assert_test()
+
+        self.logger.debug("Completed")
 
     def is_switchover_completed_seen(self) -> bool:
         return any(result.green_status_time.get("SWITCHOVER_COMPLETED", 0) for result in self.results.values())
 
-    def resolve_ip(self, host: str) -> str:
-        try:
-            return socket.gethostbyname(host)
-        except Exception:
-            return "unresolved"
+    def get_server_ids(
+            self, test_driver: TestDriver, conn_utils: ConnectionUtils, hosts: List[str], port: int, db: str) -> Set[str]:
+        server_ids = set()
+        for host in hosts:
+            conn = self.get_direct_connection_with_retry(
+                test_driver, **conn_utils.get_connect_params(host=host, port=port, dbname=db))
+            try:
+                server_ids.add(self.query_server_id(conn))
+            finally:
+                self.close_connection(conn)
+        return server_ids
 
-    def get_green_endpoint(self, test_env: TestEnvironment, test_utility: RdsTestUtility, bg_id: str) -> Optional[str]:
+    def query_server_id(self, conn: Connection) -> str:
+        if TestEnvironment.get_current().get_engine() == DatabaseEngine.MYSQL:
+            query = self.MYSQL_SERVER_ID_QUERY
+        else:
+            query = self.PG_SERVER_ID_QUERY
+        with conn.cursor() as cursor:
+            cursor.execute(query)
+            return str(cursor.fetchall()[0][0])
+
+    def get_driver_host(self, conn: AwsWrapperConnection) -> str:
+        """The host the target driver connected to: the dialled name, or the substitute the plugin chose."""
+        target = conn.target_connection
+        if TestEnvironment.get_current().get_engine() == DatabaseEngine.MYSQL:
+            return str(target.server_host)
+        return str(target.info.host)
+
+    def get_probe_host(
+            self,
+            test_driver: TestDriver,
+            conn_utils: ConnectionUtils,
+            blue_endpoint: str,
+            writer_host: str,
+            port: int,
+            db: str) -> str:
+        """The blue endpoint once the plugin gives it its SOURCE role, else the writer instance.
+
+        The first wrapper connection starts the plugin's status monitors. It connects to the writer instance, as the
+        monitor threads' connections do.
+        """
+        conn = self.get_wrapper_connection_with_retry(
+            test_driver, **self.get_wrapper_connect_params(conn_utils, writer_host, port, db))
         try:
-            bg_deployment = test_utility.get_blue_green_deployment(bg_id)
-            if bg_deployment is None:
-                return None
-            if test_env.get_deployment() == DatabaseEngineDeployment.RDS_MULTI_AZ_INSTANCE:
-                green_instance = test_utility.get_rds_instance_info_by_arn(bg_deployment["Target"])
-                return None if green_instance is None else green_instance["Endpoint"]["Address"]
-            green_cluster = test_utility.get_cluster_by_arn(bg_deployment["Target"])
-            return None if green_cluster is None else green_cluster["Endpoint"]
-        except Exception:
-            return None
+            has_source_role = retry_until(
+                lambda: self.get_plugin_role(blue_endpoint) == BlueGreenRole.SOURCE,
+                BG_PROBE_HOST_ROLE_WAIT_SEC, BG_WAIT_STEP_SEC)
+        finally:
+            self.close_connection(conn)
+        if has_source_role:
+            return blue_endpoint
+        return writer_host
 
     def get_bg_endpoints(
             self,
@@ -738,7 +787,6 @@ class TestBlueGreenDeployment:
         params = conn_utils.get_connect_params(host=host, port=port, dbname=db)
         params = {**params, **self.get_telemetry_params()}
         params[WrapperProperties.CLUSTER_ID.name] = self.TEST_CLUSTER_ID
-        params[WrapperProperties.BG_CONNECT_TIMEOUT_MS.name] = BG_CONNECT_TIMEOUT_MS
         test_env = TestEnvironment.get_current()
         engine = test_env.get_engine()
         db_deployment = test_env.get_deployment()
@@ -921,197 +969,166 @@ class TestBlueGreenDeployment:
             finish_latch.count_down()
             self.logger.debug(f"[WrapperBlueNewConnection @ {host_id}] Thread is completed.")
 
-    # #1352 observer: the first time each plugin phase is published. Sync status storage is process-wide.
-    def plugin_status_monitor(self, observation: PluginStatusObservation, switchover_requested: Event, stop: Event) -> None:
-        while not stop.is_set():
-            try:
-                status = self.read_plugin_status()
-                if status is not None:
-                    record_plugin_phase(observation.plugin_phase_first_seen_ns, observation.phase_events, status)
-                    if not switchover_requested.is_set():
-                        observation.pre_trigger_status = status
-                        observation.status_seen.set()
-            except Exception as e:
-                observation.error = describe_error(e)
-            sleep(PLUGIN_STATUS_POLL_SEC)
+    # Plugin status
+    # Records the first time each phase is published. The sync status storage is process-wide.
+    # Needs a stop signal to terminate
+    def plugin_status_monitor(self, observer: PhaseObserver, stop: Event, finish_latch: CountDownLatch) -> None:
+        try:
+            while not stop.is_set():
+                observer.record(self.read_plugin_status())
+                sleep(BG_PLUGIN_STATUS_POLL_SEC)
+        except Exception as e:
+            self.logger.debug(f"[PluginStatus] Thread unhandled exception: {e}")
+            self.unhandled_exceptions.append(e)
+        finally:
+            finish_latch.count_down()
+            self.logger.debug("[PluginStatus] Thread is completed.")
 
     def read_plugin_status(self) -> Optional[BlueGreenStatus]:
-        return services_container.get_storage_service().get(BlueGreenStatus, BG_ID, register_data_access=False)
+        return services_container.get_storage_service().get(
+            BlueGreenStatus, self.PLUGIN_BG_ID, register_data_access=False)
 
     def read_plugin_phase(self) -> Optional[str]:
-        try:
-            status = self.read_plugin_status()
-        except Exception:
+        status = self.read_plugin_status()
+        if status is None:
             return None
-        return None if status is None else status.phase.name
+        return status.phase.name
 
-    # #1352: an execute that starts in IN_PROGRESS must return once the phase moves on, without a busy loop.
+    def get_plugin_role(self, host: str) -> Optional[BlueGreenRole]:
+        status = self.read_plugin_status()
+        if status is None:
+            return None
+        return status.get_role(HostInfo(host=host))
+
+    # Blue host
+    # Check: an execute started in IN_PROGRESS on a connection opened before it
+    # Expect: the plugin holds the execute until the phase moves on, without a busy loop
+    # Can terminate for itself
     def wrapper_blue_suspended_execute_probe(
             self,
             test_driver: TestDriver,
             conn_utils: ConnectionUtils,
-            blue_endpoint: str,
-            writer_host: str,
+            host: str,
             port: int,
             db: str,
-            observation: PluginStatusObservation,
-            switchover_requested: Event,
+            observer: PhaseObserver,
             stop: Event,
+            finish_latch: CountDownLatch,
             result: ProbeResult) -> None:
         conn = None
         try:
-            result.probe_host = get_probe_host(observation, blue_endpoint, writer_host, switchover_requested, stop)
-            target_driver_connect = DriverHelper.get_connect_func(test_driver)
-            conn = AwsWrapperConnection.connect(
-                target_driver_connect, **self.get_wrapper_connect_params(conn_utils, result.probe_host, port, db))
-            bg_plugin: Optional[BlueGreenPlugin] = conn._unwrap(BlueGreenPlugin)
-            assert bg_plugin is not None, f"Unable to find blue/green plugin in wrapper connection for {result.probe_host}."
-            # cursor() goes through the plugin, so a cursor made inside the window would take the hold.
-            cursor = conn.cursor()
-            if not wait_for_phase(observation, "IN_PROGRESS", stop):
-                return
+            conn = self.get_wrapper_connection_with_retry(
+                test_driver, **self.get_wrapper_connect_params(conn_utils, host, port, db))
+            # cursor() goes through the plugin, so a cursor opened in IN_PROGRESS would be held as well.
+            with conn.cursor() as cursor:
+                if not observer.wait_for(BlueGreenPhase.IN_PROGRESS, stop):
+                    return
 
-            status = self.read_plugin_status()
-            result.phase_at_start = None if status is None else status.phase.name
-            error: Optional[Exception] = None
-            result.begin()
-            try:
-                cursor.execute("SELECT 1")
-            except Exception as e:
-                error = e
-            result.hold_ns = bg_plugin.get_hold_time_ns()
-            result.phase_at_end = self.read_plugin_phase()
-            result.end(error)
-            try:
-                cursor.fetchall()
-            except Exception:
-                pass  # the old blue may drop the connection at POST
+                result.phase_at_start = self.read_plugin_phase()
+                error: Optional[Exception] = None
+                result.begin()
+                try:
+                    cursor.execute("SELECT 1")
+                except Exception as e:
+                    error = e
+                result.end(error, self.read_plugin_phase())
+                if error is None:
+                    cursor.fetchall()
         except Exception as e:
-            result.outcome = result.outcome or describe_error(e)
+            self.logger.debug(f"[WrapperBlueSuspendedExecute @ {host}] Thread exception: {e}")
         finally:
-            result.done = True
             self.close_connection(conn)
+            finish_latch.count_down()
+            self.logger.debug(f"[WrapperBlueSuspendedExecute @ {host}] Thread is completed.")
 
-    # #1352: a connect to a green host that starts in IN_PROGRESS must end once the phase moves on, without a busy loop.
+    # Green host
+    # Check: a new connection opened in IN_PROGRESS
+    # Expect: the plugin holds the connect until the phase moves on, without a busy loop
+    # Can terminate for itself
     def wrapper_green_suspended_connect_probe(
             self,
             test_driver: TestDriver,
             conn_utils: ConnectionUtils,
-            green_host: Optional[str],
+            host: str,
             port: int,
             db: str,
-            observation: PluginStatusObservation,
+            observer: PhaseObserver,
             stop: Event,
+            finish_latch: CountDownLatch,
             result: ProbeResult) -> None:
         conn = None
         try:
-            if green_host is None:
-                result.outcome = "no green instance in the topology"
-                return
-            params = self.get_wrapper_connect_params(conn_utils, green_host, port, db)
-            params[WrapperProperties.CONNECT_TIMEOUT_SEC.name] = PROBE_CONNECT_TIMEOUT_SEC
+            params = self.get_wrapper_connect_params(conn_utils, host, port, db)
+            params[WrapperProperties.CONNECT_TIMEOUT_SEC.name] = BG_PROBE_CONNECT_TIMEOUT_SEC
             target_driver_connect = DriverHelper.get_connect_func(test_driver)
-            if not wait_for_phase(observation, "IN_PROGRESS", stop):
+            if not observer.wait_for(BlueGreenPhase.IN_PROGRESS, stop):
                 return
 
-            status = self.read_plugin_status()
-            result.phase_at_start = None if status is None else status.phase.name
-            result.suspend_listed, result.suspend_detail = connect_suspend_listed(status, green_host)
+            result.phase_at_start = self.read_plugin_phase()
             error: Optional[Exception] = None
             result.begin()
             try:
                 conn = AwsWrapperConnection.connect(target_driver_connect, **params)
             except Exception as e:
                 error = e
-            result.phase_at_end = self.read_plugin_phase()
-            result.end(error)
+            result.end(error, self.read_plugin_phase())
         except Exception as e:
-            result.outcome = result.outcome or describe_error(e)
+            self.logger.debug(f"[WrapperGreenSuspendedConnect @ {host}] Thread exception: {e}")
         finally:
-            result.done = True
             self.close_connection(conn)
+            finish_latch.count_down()
+            self.logger.debug(f"[WrapperGreenSuspendedConnect @ {host}] Thread is completed.")
 
-    # #1352: a new connection to the probe host opened in PREPARATION, then in POST,
-    # must reach the substitute host the plugin's status lists for it.
+    # Blue host
+    # Check: a new connection opened in POST, the host the driver dialled and the server it reaches
+    # Expect: the plugin substitutes a green host, so the connection reaches a green server
+    # Can terminate for itself
     def wrapper_blue_routing_probe(
             self,
             test_driver: TestDriver,
             conn_utils: ConnectionUtils,
-            blue_endpoint: str,
-            writer_host: str,
+            host: str,
             port: int,
             db: str,
-            observation: PluginStatusObservation,
-            switchover_requested: Event,
+            observer: PhaseObserver,
             stop: Event,
-            preparation_result: ProbeResult,
-            post_result: ProbeResult) -> None:
-        try:
-            probe_host = get_probe_host(observation, blue_endpoint, writer_host, switchover_requested, stop)
-            preparation_result.probe_host = probe_host
-            post_result.probe_host = probe_host
-            params = self.get_wrapper_connect_params(conn_utils, probe_host, port, db)
-            params[WrapperProperties.CONNECT_TIMEOUT_SEC.name] = PROBE_CONNECT_TIMEOUT_SEC
-            target_driver_connect = DriverHelper.get_connect_func(test_driver)
-            if wait_for_phase(observation, "PREPARATION", stop):
-                self.run_routing_attempts(target_driver_connect, params, port, "PREPARATION", 1, preparation_result)
-            preparation_result.done = True
-            if wait_for_phase(observation, "POST", stop):
-                self.run_routing_attempts(target_driver_connect, params, port, "POST", ROUTING_PROBE_ATTEMPTS, post_result)
-        except Exception as e:
-            post_result.outcome = post_result.outcome or describe_error(e)
-        finally:
-            preparation_result.done = True
-            post_result.done = True
-
-    def run_routing_attempts(
-            self,
-            target_driver_connect: Any,
-            params: Dict[str, Any],
-            port: int,
-            phase: str,
-            max_attempts: int,
+            finish_latch: CountDownLatch,
             result: ProbeResult) -> None:
-        status = self.read_plugin_status()
-        result.phase_at_start = None if status is None else status.phase.name
-        if result.phase_at_start != phase:
-            return
-
-        result.start_ns = perf_counter_ns()
-        for _ in range(max_attempts):
-            # Re-read before every attempt: late POST drops the substitutes and connects by name.
-            status = self.read_plugin_status()
-            substitute = listed_substitute(status, result.probe_host, port)
-            attempt = RoutingAttempt("none" if status is None else status.phase.name, substitute)
-            result.attempts.append(attempt)
-            if substitute is None:
-                break
-
-            conn = None
-            try:
-                conn = AwsWrapperConnection.connect(target_driver_connect, **params)
-                if listed_substitute(self.read_plugin_status(), result.probe_host, port) != substitute:
-                    attempt.outcome = "status changed during the attempt"
-                else:
-                    attempt.driver_host = self.get_driver_host(conn)
-                    attempt.outcome = "ok"
-            except Exception as e:
-                attempt.outcome = describe_error(e)
-            finally:
-                self.close_connection(conn)
-            if attempt.outcome == "ok":
-                break
-        result.end_ns = perf_counter_ns()
-
-    def get_driver_host(self, conn: AwsWrapperConnection) -> Optional[str]:
-        """The host the driver connected to (never hostaddr)."""
         try:
-            target = conn.target_connection
-            if TestEnvironment.get_current().get_engine() == DatabaseEngine.MYSQL:
-                return str(target.server_host)
-            return str(target.info.host)
-        except Exception:
-            return None
+            params = self.get_wrapper_connect_params(conn_utils, host, port, db)
+            params[WrapperProperties.CONNECT_TIMEOUT_SEC.name] = BG_PROBE_CONNECT_TIMEOUT_SEC
+            target_driver_connect = DriverHelper.get_connect_func(test_driver)
+            if not observer.wait_for(BlueGreenPhase.POST, stop):
+                return
+
+            # The first attempt that connects decides. Retry a connect error only while the plugin is still in POST.
+            for _ in range(BG_PROBE_CONNECT_ATTEMPTS):
+                result.phase_at_start = self.read_plugin_phase()
+                if result.phase_at_start != BlueGreenPhase.POST.name:
+                    return
+
+                conn = None
+                try:
+                    conn = AwsWrapperConnection.connect(target_driver_connect, **params)
+                    result.driver_host = self.get_driver_host(conn)
+                    result.server_id = self.query_server_id(conn)
+                    return
+                except Exception as e:
+                    result.error = e
+                    self.logger.debug(f"[WrapperBlueRouting @ {host}] Connect exception: {e}")
+                finally:
+                    self.close_connection(conn)
+                sleep(BG_WAIT_STEP_SEC)
+        except Exception as e:
+            self.logger.debug(f"[WrapperBlueRouting @ {host}] Thread exception: {e}")
+        finally:
+            finish_latch.count_down()
+            self.logger.debug(f"[WrapperBlueRouting @ {host}] Thread is completed.")
+
+    def is_authentication_failure(self, exception: Exception) -> bool:
+        # MySQL rejects an IAM token with "Access denied", PostgreSQL with "PAM authentication failed".
+        error_message = str(exception).lower()
+        return "access denied" in error_message or "pam authentication failed" in error_message
 
     def is_timeout_exception(self, exception: Exception) -> bool:
         error_message = str(exception).lower()
@@ -1353,12 +1370,11 @@ class TestBlueGreenDeployment:
                     else:
                         self.logger.debug(f"[DirectGreenIamIp{thread_prefix} @ {host_id}] Thread exception: {e}")
                         result_queue.append(TimeHolder(start_ns, perf_counter_ns(), error=str(e)))
-                        # TODO: confirm 'Access Denied' is the error message surfaced in Python.
-                        if notify_on_first_error and "access denied" in str(e).lower():
+                        if notify_on_first_error and self.is_authentication_failure(e):
                             results.green_node_changed_name_time_ns.compare_and_set(0, perf_counter_ns())
                             self.logger.debug(
                                 f"[DirectGreenIamIp{thread_prefix} @ {host_id}] "
-                                f"Encountered first 'Access denied' exception. Exiting thread...")
+                                f"Encountered the first authentication failure. Exiting thread...")
                             return
 
                 self.close_connection(conn)
@@ -1383,8 +1399,7 @@ class TestBlueGreenDeployment:
             finish_latch: CountDownLatch,
             results: Dict[str, BlueGreenResults],
             stop: Event,
-            switchover_requested: Event,
-            switchover_requested_ns: AtomicInt):
+            request: SwitchoverRequest):
         try:
             start_latch.count_down()
 
@@ -1396,13 +1411,17 @@ class TestBlueGreenDeployment:
                 result.threads_sync_time.set(sync_time_ns)
 
             sleep(30)
-            # The main thread sets stop when it gives up waiting for the request; it then waits for the API only if
-            # switchover_requested is set, so the check and the set stay adjacent.
+            # The main thread sets stop when it gives up waiting for the request, and then waits for the RDS API only
+            # if the request is marked, so the check and the mark stay together.
             if stop.is_set():
                 return
-            switchover_requested_ns.set(perf_counter_ns())
-            switchover_requested.set()
-            test_utility.switchover_blue_green_deployment(bg_id)
+            request.requested_ns = perf_counter_ns()
+            request.requested.set()
+            try:
+                test_utility.switchover_blue_green_deployment(bg_id)
+            except Exception as e:
+                request.error = e
+                raise
 
             bg_trigger_time_ns = perf_counter_ns()
             for result in results.values():
@@ -1542,19 +1561,21 @@ class TestBlueGreenDeployment:
         self.logger.debug(f"\n{node}:\n{tabulate(table, headers=headers)}")
 
     def print_duration_times(self, node: str, title: str, times: Deque[TimeHolder], time_zero_ns: int):
+        # A monitor thread that hasn't stopped yet can still append to the deque.
+        samples = list(times)
         table = []
         headers = ["Connect at (ms)", "Connect time/duration (ms)", "Error"]
-        p99_ns = self.get_percentile([time.end_time_ns - time.start_time_ns for time in times], 99.0)
+        p99_ns = self.get_percentile([time.end_time_ns - time.start_time_ns for time in samples], 99.0)
         p99_ms = p99_ns // 1_000_000
         table.append(["p99", p99_ms, ""])
-        first_connect = times[0]
+        first_connect = samples[0]
         table.append([
             (first_connect.start_time_ns - time_zero_ns) // 1_000_000,
             (first_connect.end_time_ns - first_connect.start_time_ns) // 1_000_000,
             self.get_formatted_error(first_connect.error)
         ])
 
-        for time_holder in times:
+        for time_holder in samples:
             duration_ms = (time_holder.end_time_ns - time_holder.start_time_ns) // 1_000_000
             if duration_ms > p99_ms:
                 table.append([
@@ -1563,7 +1584,7 @@ class TestBlueGreenDeployment:
                     self.get_formatted_error(time_holder.error)
                 ])
 
-        last_connect = times[-1]
+        last_connect = samples[-1]
         table.append([
             (last_connect.start_time_ns - time_zero_ns) // 1_000_000,
             (last_connect.end_time_ns - last_connect.start_time_ns) // 1_000_000,
@@ -1611,8 +1632,6 @@ class TestBlueGreenDeployment:
 
         # Assertions
         assert switchover_complete_time_ms != 0, "BG switchover hasn't completed."
-        assert switchover_complete_time_ms >= max_green_node_changed_name_time_ms, \
-            "Green node changed name after SWITCHOVER_COMPLETED."
 
 
 @dataclass
