@@ -18,12 +18,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from aws_advanced_python_wrapper.blue_green_plugin import (
-    BlueGreenPhase, BlueGreenRole, BlueGreenStatus, SubstituteConnectRouting,
-    SuspendUntilCorrespondingHostFoundConnectRouting)
+    BlueGreenPhase, BlueGreenRole, BlueGreenStatus, BlueGreenStatusMonitor,
+    SubstituteConnectRouting, SuspendUntilCorrespondingHostFoundConnectRouting)
+from aws_advanced_python_wrapper.database_dialect import BlueGreenDialect
 from aws_advanced_python_wrapper.federated_plugin import FederatedAuthPlugin
 from aws_advanced_python_wrapper.hostinfo import HostInfo
 from aws_advanced_python_wrapper.okta_plugin import OktaAuthPlugin
 from aws_advanced_python_wrapper.utils.concurrent import ConcurrentDict
+from aws_advanced_python_wrapper.utils.iam_utils import IamAuthUtils
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import (Properties,
                                                           WrapperProperties)
@@ -31,6 +33,7 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 BG_ID = "1"
 PORT = 3306
 BLUE_HOST = "database-1.cluster-c1a2b3c4d5e6.us-east-1.rds.amazonaws.com"
+BLUE_IP = "10.0.1.10"
 GREEN_HOST = "database-1-green-abc123.cluster-c1a2b3c4d5e6.us-east-1.rds.amazonaws.com"
 GREEN_IP = "10.0.1.20"
 
@@ -60,6 +63,23 @@ def test_substitute_connect_routing_to_an_ip_sets_the_iam_host_for_federated_and
 
     rerouted_props = plugin_service.connect.call_args.args[1]
     assert WrapperProperties.IAM_HOST.get(rerouted_props) == GREEN_HOST
+
+
+def test_status_monitor_reconnect_by_ip_sets_iam_host_to_host_name():
+    plugin_service = MagicMock()
+    plugin_service.database_dialect = MagicMock(spec=BlueGreenDialect)
+    monitor = BlueGreenStatusMonitor(
+        BlueGreenRole.SOURCE, BG_ID, HostInfo(BLUE_HOST, PORT), plugin_service, Properties(), {})
+    monitor._connection_host_info = HostInfo(BLUE_HOST, PORT)
+    monitor._connected_ip_address = BLUE_IP
+    monitor.use_ip_address.set()
+
+    monitor._open_connection_task()
+
+    host_info, props = plugin_service.force_connect.call_args.args
+    assert host_info.host == BLUE_IP
+    assert WrapperProperties.IAM_HOST.get(props) == BLUE_HOST
+    assert IamAuthUtils.get_iam_host(props, host_info) == BLUE_HOST
 
 
 def _corresponding_hosts() -> ConcurrentDict[str, Tuple[HostInfo, Optional[HostInfo]]]:
