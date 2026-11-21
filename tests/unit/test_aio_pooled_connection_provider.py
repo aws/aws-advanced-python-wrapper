@@ -549,3 +549,41 @@ def test_release_resources_disposes_all_pools():
         assert provider.num_pools == 0
 
     asyncio.run(inner())
+
+
+def test_evicted_connection_is_closed_instead_of_reused():
+    async def inner():
+        _reset_class_state()
+        provider = AsyncPooledConnectionProvider()
+        host = _make_host_info()
+        props = _make_props()
+        first_raw, second_raw = AsyncMock(), AsyncMock()
+        target = AsyncMock(side_effect=[first_raw, second_raw])
+        driver_dialect = MagicMock()
+        driver_dialect.prepare_connect_info = MagicMock(return_value=props)
+        database_dialect = MagicMock()
+
+        proxy = await provider.connect(target, driver_dialect, database_dialect, host, props)
+        assert provider.evict_connection(proxy)
+        first_raw.close.assert_not_awaited()
+        await proxy.close()
+        first_raw.close.assert_awaited_once()
+
+        replacement = await provider.connect(target, driver_dialect, database_dialect, host, props)
+        assert replacement.driver_connection is second_raw
+        await replacement.close()
+
+    asyncio.run(inner())
+
+
+def test_evict_connection_rejects_connections_it_cannot_evict():
+    async def inner():
+        pool = _AsyncPool(creator=AsyncMock(), max_size=1, max_overflow=0)
+        proxy = _PooledAsyncConnectionProxy(await pool.acquire(), pool)
+        await proxy.close()
+        provider = AsyncPooledConnectionProvider()
+
+        assert not provider.evict_connection(proxy)
+        assert not provider.evict_connection(MagicMock())
+
+    asyncio.run(inner())

@@ -55,6 +55,8 @@ from aws_advanced_python_wrapper.aws_secrets_manager_plugin import \
     AwsSecretsManagerPluginFactory
 from aws_advanced_python_wrapper.connect_time_plugin import \
     ConnectTimePluginFactory
+from aws_advanced_python_wrapper.connection_lifetime_plugin import \
+    ConnectionLifetimePluginFactory
 from aws_advanced_python_wrapper.connection_provider import (
     ConnectionProvider, ConnectionProviderManager)
 from aws_advanced_python_wrapper.database_dialect import (
@@ -884,6 +886,7 @@ class PluginManager(CanReleaseResources):
         "fastest_response_strategy": FastestResponseStrategyPluginFactory,
         "stale_dns": StaleDnsPluginFactory,
         "custom_endpoint": CustomEndpointPluginFactory,
+        "connection_lifetime": ConnectionLifetimePluginFactory,
         "connect_time": ConnectTimePluginFactory,
         "execute_time": ExecuteTimePluginFactory,
         "dev": DeveloperPluginFactory,
@@ -900,6 +903,7 @@ class PluginManager(CanReleaseResources):
     # the highest values. The first plugin of the list will have the lowest weight, and the
     # last one will have the highest weight.
     PLUGIN_FACTORY_WEIGHTS: Dict[Type[PluginFactory], int] = {
+        ConnectionLifetimePluginFactory: 30,
         CustomEndpointPluginFactory: 40,
         AuroraInitialConnectionStrategyPluginFactory: 50,
         AuroraConnectionTrackerPluginFactory: 100,
