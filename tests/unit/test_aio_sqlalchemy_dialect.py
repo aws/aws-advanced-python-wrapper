@@ -338,3 +338,27 @@ def test_async_dialect_type_info_fetch_falls_through_without_wrapper(mocker):
 
     called_arg = fetch_mock.call_args.args[0]
     assert called_arg is native
+
+
+# ---- is_disconnect classification ---------------------------------------
+
+
+def test_async_dialects_classify_the_connection_lifetime_error_family():
+    """Only a successful reconnect leaves the pool slot's wrapper usable.
+
+    The close action and a failed reconnect leave nothing to reuse, and none
+    of the three carry the driver attributes upstream's ``is_disconnect``
+    probes, so they have to be classified before falling through.
+    """
+    from aws_advanced_python_wrapper.errors import (
+        ConnectionLifetimeExpiredError, ConnectionLifetimeFailedError,
+        ConnectionLifetimeSuccessError)
+    from aws_advanced_python_wrapper.sqlalchemy_dialects.mysql_async import \
+        AwsWrapperMySQLAiomysqlAsyncDialect
+
+    for dialect_cls in (AwsWrapperPGPsycopgAsyncDialect,
+                        AwsWrapperMySQLAiomysqlAsyncDialect):
+        d = dialect_cls.__new__(dialect_cls)
+        assert d.is_disconnect(ConnectionLifetimeSuccessError("x"), None, None) is False
+        assert d.is_disconnect(ConnectionLifetimeExpiredError("x"), None, None) is True
+        assert d.is_disconnect(ConnectionLifetimeFailedError("x"), None, None) is True

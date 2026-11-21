@@ -33,6 +33,7 @@ from types import MappingProxyType
 from typing import (TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Dict,
                     Mapping, Optional, Protocol, Tuple)
 
+from aws_advanced_python_wrapper.connection_provider import CanEvictConnection
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import (
     HighestWeightHostSelector, HostSelector, RandomHostSelector,
@@ -227,6 +228,22 @@ class AsyncConnectionProviderManager:
                         hosts, role, strategy, props)
         return self._default_provider.get_host_info_by_strategy(
             hosts, role, strategy, props)
+
+    def evict_connection(self, connection: Any) -> bool:
+        """Evict a connection from the pool of the provider that issued it.
+
+        See :meth:`CanEvictConnection.evict_connection`. Returns True if one
+        of the available providers evicted the connection.
+        """
+        with AsyncConnectionProviderManager._lock:
+            custom = AsyncConnectionProviderManager._conn_provider
+
+        if isinstance(custom, CanEvictConnection) and custom.evict_connection(connection):
+            return True
+
+        return (self._default_provider is not custom
+                and isinstance(self._default_provider, CanEvictConnection)
+                and self._default_provider.evict_connection(connection))
 
     @staticmethod
     def reset_provider() -> None:

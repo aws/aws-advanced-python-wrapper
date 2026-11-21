@@ -88,6 +88,17 @@ class _RecordingProvider(AsyncConnectionProvider):
         self.resources_released = True
 
 
+class _EvictingProvider(_RecordingProvider):
+    def __init__(self, evicts: bool) -> None:
+        super().__init__()
+        self._evicts = evicts
+        self.evicted: list = []
+
+    def evict_connection(self, connection: Any) -> bool:
+        self.evicted.append(connection)
+        return self._evicts
+
+
 def _reader_host(name: str) -> HostInfo:
     """Build a READER host that selectors consider eligible."""
     host = HostInfo(name, role=HostRole.READER)
@@ -214,3 +225,37 @@ def test_manager_release_resources_awaits_async_teardown() -> None:
 def test_manager_release_resources_noop_when_unset() -> None:
     # Should not raise even with no custom provider installed.
     asyncio.run(AsyncConnectionProviderManager.release_resources())
+
+
+def test_manager_evict_connection_without_evicting_provider() -> None:
+    AsyncConnectionProviderManager.set_connection_provider(_RecordingProvider())
+
+    assert not AsyncConnectionProviderManager().evict_connection(object())
+
+
+def test_manager_evict_connection_uses_custom_provider_first() -> None:
+    custom, default = _EvictingProvider(evicts=True), _EvictingProvider(evicts=True)
+    AsyncConnectionProviderManager.set_connection_provider(custom)
+    connection = object()
+
+    assert AsyncConnectionProviderManager(default).evict_connection(connection)
+    assert custom.evicted == [connection]
+    assert default.evicted == []
+
+
+def test_manager_evict_connection_falls_back_to_default_provider() -> None:
+    custom, default = _EvictingProvider(evicts=False), _EvictingProvider(evicts=True)
+    AsyncConnectionProviderManager.set_connection_provider(custom)
+    connection = object()
+
+    assert AsyncConnectionProviderManager(default).evict_connection(connection)
+    assert default.evicted == [connection]
+
+
+def test_manager_evict_connection_asks_a_shared_provider_once() -> None:
+    shared = _EvictingProvider(evicts=False)
+    AsyncConnectionProviderManager.set_connection_provider(shared)
+    connection = object()
+
+    assert not AsyncConnectionProviderManager(shared).evict_connection(connection)
+    assert shared.evicted == [connection]

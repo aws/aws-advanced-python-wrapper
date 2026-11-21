@@ -14,21 +14,24 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Optional, Tuple
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, Optional,
+                    Tuple)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
     from aws_advanced_python_wrapper.hostinfo import HostInfo, HostRole
     from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 
-from sqlalchemy import QueuePool, pool
+from sqlalchemy import PoolProxiedConnection, QueuePool, event, pool
 
-from aws_advanced_python_wrapper.connection_provider import ConnectionProvider
+from aws_advanced_python_wrapper.connection_provider import (
+    CanEvictConnection, ConnectionProvider)
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import (
     HighestWeightHostSelector, HostSelector, RandomHostSelector,
     RoundRobinHostSelector, WeightedRandomHostSelector)
 from aws_advanced_python_wrapper.plugin import CanReleaseResources
+from aws_advanced_python_wrapper.utils.log import Logger
 from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.pool_key import PoolKey
 from aws_advanced_python_wrapper.utils.properties import (Properties,
@@ -38,8 +41,19 @@ from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from aws_advanced_python_wrapper.utils.storage.sliding_expiration_cache import \
     SlidingExpirationCache
 
+logger = Logger(__name__)
 
-class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources):
+_EVICTED = "aws_advanced_python_wrapper.evicted"
+
+
+def _close_evicted_connection(dbapi_connection: Any, connection_record: Any) -> None:
+    # Pool checkin listener: hard invalidation closes the physical connection, and the
+    # pool then holds an empty slot that opens a new connection on its next checkout.
+    if connection_record.info.pop(_EVICTED, False):
+        connection_record.invalidate()
+
+
+class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources, CanEvictConnection):
     """
     This class can be passed to :py:method:`ConnectionProviderManager.connection_provider` to enable internal connection pools
     for each database instance in a cluster. By maintaining internal connection pools,
@@ -178,7 +192,23 @@ class SqlAlchemyPooledConnectionProvider(ConnectionProvider, CanReleaseResources
         return lambda: target_connect_func(**props)
 
     def _create_sql_alchemy_pool(self, **kwargs):
-        return pool.QueuePool(**kwargs)
+        queue_pool = pool.QueuePool(**kwargs)
+        event.listen(queue_pool, "checkin", _close_evicted_connection)
+        return queue_pool
+
+    def evict_connection(self, connection: Any) -> bool:
+        if (not isinstance(connection, PoolProxiedConnection)
+                or connection.is_detached or not connection.is_valid):
+            return False
+
+        # Evict before close(): once the connection is checked in, the proxy no longer
+        # refers to its pool slot. Soft invalidation keeps the connection usable and makes
+        # the pool replace it instead of handing it out again. The flag lets the checkin
+        # listener close it as soon as it is returned.
+        connection.info[_EVICTED] = True
+        connection.invalidate(soft=True)
+        logger.debug("SqlAlchemyPooledConnectionProvider.ConnectionEvicted")
+        return True
 
     def release_resources(self):
         for _, cache_item in SqlAlchemyPooledConnectionProvider._database_pools.items():

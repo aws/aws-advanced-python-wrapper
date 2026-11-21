@@ -231,8 +231,12 @@ class AwsWrapperMySQLAiomysqlAsyncDialect(
         #      return True so SA invalidates and the creator retries.
         # _AsyncDriverErrorNormalizeMixin handles the do_execute path;
         # this handles the cursor-creation path that runs earlier.
-        from aws_advanced_python_wrapper.errors import (FailoverError,
-                                                        FailoverFailedError)
+        from aws_advanced_python_wrapper.errors import (
+            ConnectionLifetimeError, ConnectionLifetimeSuccessError,
+            FailoverError, FailoverFailedError)
+
+        if isinstance(e, ConnectionLifetimeError):
+            return not isinstance(e, ConnectionLifetimeSuccessError)
 
         # Catch the whole FailoverError family -- including
         # TransactionResolutionUnknownError -- before upstream probes
