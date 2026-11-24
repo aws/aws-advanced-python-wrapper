@@ -133,7 +133,8 @@ class LimitlessRouterMonitor:
         self._storage_service = services_container.get_storage_service()
 
         self._properties = copy.deepcopy(props)
-        for property_key in self._properties.keys():
+        # Iterate over a snapshot: the loop adds and removes keys, which a live keys view does not allow.
+        for property_key in list(self._properties.keys()):
             if property_key.startswith(self._MONITORING_PROPERTY_PREFIX):
                 self._properties[property_key[len(self._MONITORING_PROPERTY_PREFIX):]] = self._properties[property_key]
                 self._properties.pop(property_key)
