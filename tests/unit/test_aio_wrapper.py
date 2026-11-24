@@ -29,7 +29,8 @@ database is required. Covers:
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Set
+from typing import (TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable,
+                    List, Set)
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1140,15 +1141,14 @@ def test_tpc_methods_probe_sync_driver_shape():
 
 
 def test_cursor_async_for_iterates_via_plugin_routed_fetchone():
-    # Async-idiomatic port of sync cursor __iter__ (wrapper.py:432-433):
-    # ``async for`` pulls rows through the plugin-routed fetchone() and stops
-    # on None (StopAsyncIteration).
+    # A MagicMock cursor's __aiter__ returns another object. The loop reads the
+    # rows from that object, each through the plugins as Cursor.fetchone.
     log: List[str] = []
     plugin = RecorderPlugin(log)
     raw_conn = _make_mock_async_conn()
     target_cur = _make_mock_async_cursor()
     target_cur.connection = raw_conn
-    target_cur.fetchone = AsyncMock(side_effect=[("r1",), ("r2",), None])
+    target_cur.__aiter__.return_value = [("r1",), ("r2",)]
     raw_conn.cursor = MagicMock(return_value=target_cur)
 
     async def _body() -> List[Any]:
@@ -1160,11 +1160,314 @@ def test_cursor_async_for_iterates_via_plugin_routed_fetchone():
         rows: List[Any] = []
         async for row in wrapper.cursor():
             rows.append(row)
+            # A loop that never ends fails the test instead of hanging it.
+            if len(rows) > 2:
+                break
         return rows
 
     rows = asyncio.run(_body())
     assert rows == [("r1",), ("r2",)]
-    # Three fetchone dispatches (two rows + the terminating None), all routed.
+    # Three fetchone dispatches (two rows + the end), all routed.
+    assert log.count("execute:Cursor.fetchone") == 3
+
+
+class _SelfIteratingCursor:
+    """A driver cursor that is its own async iterator, as psycopg's and
+    aiomysql's are, so a loop and fetchone share one position. It raises an
+    exception in ``rows`` when it reaches it."""
+
+    def __init__(self, rows: List[Any]) -> None:
+        self._rows = rows
+        self._pos = 0
+
+    def _read(self) -> Any:
+        row = self._rows[self._pos]
+        self._pos += 1
+        if isinstance(row, Exception):
+            raise row
+        return row
+
+    async def fetchone(self) -> Any:
+        if self._pos >= len(self._rows):
+            return None
+        return self._read()
+
+    def __aiter__(self) -> _SelfIteratingCursor:
+        return self
+
+    async def __anext__(self) -> Any:
+        if self._pos >= len(self._rows):
+            raise StopAsyncIteration
+        return self._read()
+
+
+class _PagedIteratorCursor:
+    """A driver cursor whose __aiter__ returns a new async generator. The
+    generator reads two rows at a time and yields them from its own buffer.
+    execute, executemany, callproc and nextset each move to the next result in
+    ``results``."""
+
+    def __init__(self, results: List[List[Any]]) -> None:
+        self._results = results
+        self._rows: List[Any] = []
+        self._pos = 0
+
+    def _next_result(self) -> None:
+        self._rows = self._results.pop(0)
+        self._pos = 0
+
+    async def execute(self, query: Any) -> None:
+        self._next_result()
+
+    async def executemany(self, query: Any, seq_of_params: Any) -> None:
+        self._next_result()
+
+    async def callproc(self, procname: str, args: Any) -> None:
+        self._next_result()
+
+    async def nextset(self) -> bool:
+        self._next_result()
+        return True
+
+    async def fetchone(self) -> Any:
+        if self._pos >= len(self._rows):
+            return None
+        row = self._rows[self._pos]
+        self._pos += 1
+        return row
+
+    def __aiter__(self) -> AsyncIterator[Any]:
+        return self._iterate()
+
+    async def _iterate(self) -> AsyncIterator[Any]:
+        while True:
+            page = self._rows[self._pos:self._pos + 2]
+            if not page:
+                return
+            self._pos += len(page)
+            for row in page:
+                yield row
+
+
+class _FetchoneOnlyCursor:
+    """A driver cursor that doesn't support async iteration."""
+
+    def __init__(self, rows: List[Any]) -> None:
+        self._rows = iter(rows)
+
+    async def fetchone(self) -> Any:
+        return next(self._rows, None)
+
+
+class _DriverError(Exception):
+    pass
+
+
+class _FetchoneResultsPlugin(AsyncPlugin):
+    """Records what the next step returns, or raises, for each Cursor.fetchone call."""
+
+    def __init__(self, results: List[Any]) -> None:
+        self.results = results
+
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return {DbApiMethod.CURSOR_FETCHONE.method_name}
+
+    async def execute(
+            self,
+            target: object,
+            method_name: str,
+            execute_func: Callable[..., Awaitable[Any]],
+            *args: Any,
+            **kwargs: Any) -> Any:
+        try:
+            result = await execute_func()
+        except Exception as e:
+            self.results.append(e)
+            raise
+        self.results.append(result)
+        return result
+
+
+class _ForwardFirstCallsPlugin(AsyncPlugin):
+    """Calls the next step for the first ``forwarded`` Cursor.fetchone calls,
+    then returns None without calling it."""
+
+    def __init__(self, forwarded: int) -> None:
+        self._remaining = forwarded
+
+    @property
+    def subscribed_methods(self) -> Set[str]:
+        return {DbApiMethod.CURSOR_FETCHONE.method_name}
+
+    async def execute(
+            self,
+            target: object,
+            method_name: str,
+            execute_func: Callable[..., Awaitable[Any]],
+            *args: Any,
+            **kwargs: Any) -> Any:
+        if self._remaining == 0:
+            return None
+        self._remaining -= 1
+        return await execute_func()
+
+
+async def _connect_over_cursor(target_cur: Any, plugins: List[AsyncPlugin]) -> AsyncAwsWrapperConnection:
+    raw_conn = _make_mock_async_conn()
+    raw_conn.cursor = MagicMock(return_value=target_cur)
+    return await AsyncAwsWrapperConnection.connect(
+        target=_build_mock_psycopg_connect(raw_conn),
+        conninfo="host=h user=u password=p dbname=d port=5432", **_NAMED_DIALECT,
+        plugins=plugins,
+    )
+
+
+def test_cursor_anext_after_last_row_raises_stop_async_iteration():
+    target_cur = _SelfIteratingCursor([None])
+
+    async def _body() -> None:
+        wrapper = await _connect_over_cursor(target_cur, [])
+        cur = wrapper.cursor()
+        assert await anext(cur) is None
+        assert await anext(cur, "end") == "end"
+        with pytest.raises(StopAsyncIteration):
+            await anext(cur)
+        with pytest.raises(StopAsyncIteration):
+            await anext(cur)
+
+    asyncio.run(_body())
+
+
+def test_cursor_async_for_continues_from_fetchone_position():
+    target_cur = _SelfIteratingCursor(["a", None, "c", "d", "e"])
+
+    async def _body() -> List[Any]:
+        wrapper = await _connect_over_cursor(target_cur, [])
+        cur = wrapper.cursor()
+        seen = [await cur.fetchone()]
+        async for row in cur:
+            seen.append(row)
+            if row == "c":
+                break
+        seen.append(await cur.fetchone())
+        seen.extend([row async for row in cur])
+        return seen
+
+    assert asyncio.run(_body()) == ["a", None, "c", "d", "e"]
+
+
+def test_cursor_async_for_plugin_gets_each_row_and_none_at_end():
+    results: List[Any] = []
+    target_cur = _SelfIteratingCursor(["a", None, "c"])
+
+    async def _body() -> List[Any]:
+        wrapper = await _connect_over_cursor(target_cur, [_FetchoneResultsPlugin(results)])
+        return [row async for row in wrapper.cursor()]
+
+    assert asyncio.run(_body()) == ["a", None, "c"]
+    assert results == ["a", None, "c", None]
+
+
+def test_cursor_async_for_ends_when_plugin_skips_next_step():
+    results: List[Any] = []
+    target_cur = _SelfIteratingCursor(["a", None, "c"])
+
+    async def _body() -> List[Any]:
+        wrapper = await _connect_over_cursor(target_cur, [_ForwardFirstCallsPlugin(2), _FetchoneResultsPlugin(results)])
+        return [row async for row in wrapper.cursor()]
+
+    assert asyncio.run(_body()) == ["a", None]
+    assert results == ["a", None]
+
+
+def test_cursor_async_for_driver_error_reaches_caller():
+    rows: List[Any] = []
+    target_cur = _SelfIteratingCursor(["a", None, _DriverError("connection lost")])
+
+    async def _body() -> None:
+        wrapper = await _connect_over_cursor(target_cur, [RecorderPlugin([])])
+        async for row in wrapper.cursor():
+            rows.append(row)
+
+    with pytest.raises(_DriverError):
+        asyncio.run(_body())
+    assert rows == ["a", None]
+
+
+@pytest.mark.parametrize("rows", [["a", None, "c", "d"], [None, "b", "c", "d"]], ids=["none_middle", "none_first"])
+def test_cursor_async_for_over_separate_driver_iterator_yields_none_rows(rows):
+    target_cur = _PagedIteratorCursor([rows])
+
+    async def _body() -> List[Any]:
+        wrapper = await _connect_over_cursor(target_cur, [])
+        cur = wrapper.cursor()
+        await cur.execute("SELECT 1")
+        return [row async for row in cur]
+
+    assert asyncio.run(_body()) == rows
+
+
+@pytest.mark.parametrize("rows", [["a", None, "c", "d"], [None, "b", "c", "d"]], ids=["none_middle", "none_first"])
+def test_cursor_anext_over_separate_driver_iterator_yields_none_rows(rows):
+    target_cur = _PagedIteratorCursor([rows])
+
+    async def _body() -> List[Any]:
+        wrapper = await _connect_over_cursor(target_cur, [])
+        cur = wrapper.cursor()
+        await cur.execute("SELECT 1")
+        read = [await anext(cur) for _ in rows]
+        return read + [await anext(cur, "end")]
+
+    assert asyncio.run(_body()) == rows + ["end"]
+
+
+def test_cursor_async_for_continues_separate_driver_iterator_after_break():
+    target_cur = _PagedIteratorCursor([["a", None, "c", "d"]])
+
+    async def _body() -> List[Any]:
+        wrapper = await _connect_over_cursor(target_cur, [])
+        cur = wrapper.cursor()
+        await cur.execute("SELECT 1")
+        seen: List[Any] = []
+        async for row in cur:
+            seen.append(row)
+            break
+        seen.extend([row async for row in cur])
+        return seen
+
+    assert asyncio.run(_body()) == ["a", None, "c", "d"]
+
+
+@pytest.mark.parametrize("start_next_result", [
+    lambda cur: cur.execute("SELECT 2"),
+    lambda cur: cur.executemany("SELECT 2", []),
+    lambda cur: cur.callproc("proc"),
+    lambda cur: cur.nextset(),
+], ids=["execute", "executemany", "callproc", "nextset"])
+def test_cursor_new_result_starts_new_separate_driver_iterator(start_next_result):
+    target_cur = _PagedIteratorCursor([["a", None, "c"], ["x", "y"]])
+
+    async def _body() -> List[Any]:
+        wrapper = await _connect_over_cursor(target_cur, [])
+        cur = wrapper.cursor()
+        await cur.execute("SELECT 1")
+        first = await anext(cur)
+        await start_next_result(cur)
+        return [first] + [row async for row in cur]
+
+    assert asyncio.run(_body()) == ["a", "x", "y"]
+
+
+def test_cursor_async_for_without_driver_async_iteration_uses_fetchone():
+    log: List[str] = []
+    target_cur = _FetchoneOnlyCursor(["a", "b", None, "d"])
+
+    async def _body() -> List[Any]:
+        wrapper = await _connect_over_cursor(target_cur, [RecorderPlugin(log)])
+        return [row async for row in wrapper.cursor()]
+
+    assert asyncio.run(_body()) == ["a", "b"]
     assert log.count("execute:Cursor.fetchone") == 3
 
 

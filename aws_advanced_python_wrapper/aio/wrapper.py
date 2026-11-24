@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional,
-                    Sequence, Tuple, Type, Union)
+from typing import (TYPE_CHECKING, Any, AsyncIterator, Callable, Dict, List,
+                    Optional, Sequence, Tuple, Type, Union)
 
 from aws_advanced_python_wrapper.aio.plugin_manager import AsyncPluginManager
 from aws_advanced_python_wrapper.aio.plugin_service import \
@@ -94,6 +94,9 @@ class AsyncAwsWrapperCursor:
         self._cursor_args = cursor_args
         self._cursor_kwargs = cursor_kwargs or {}
         self._pending_arraysize: Optional[int] = None
+        # The driver cursor's async iterator over the current result. The methods
+        # that start a new result (execute, executemany, callproc, nextset) clear it.
+        self._target_iterator: Optional[AsyncIterator[Any]] = None
 
     @property
     def connection(self) -> AsyncAwsWrapperConnection:
@@ -175,6 +178,7 @@ class AsyncAwsWrapperCursor:
             params: Any = None,
             **kwargs: Any) -> AsyncAwsWrapperCursor:
         await self._resolve_target_cursor()
+        self._target_iterator = None
 
         async def _call() -> Any:
             if params is None:
@@ -192,6 +196,7 @@ class AsyncAwsWrapperCursor:
             seq_of_params: Sequence[Any],
             **kwargs: Any) -> AsyncAwsWrapperCursor:
         await self._resolve_target_cursor()
+        self._target_iterator = None
 
         async def _call() -> Any:
             return await self._target_cursor.executemany(
@@ -235,20 +240,59 @@ class AsyncAwsWrapperCursor:
         )
 
     def __aiter__(self) -> AsyncAwsWrapperCursor:
-        """Async-idiomatic port of the sync cursor's ``__iter__``
-        (wrapper.py:432-433): supports ``async for row in cursor``.
+        """Support ``async for row in cursor``.
 
-        Deliberate deviation from sync: sync iterates the raw driver cursor
-        directly (bypassing plugins); here each row is fetched via the
-        plugin-routed :meth:`fetchone` so failover/RWS see the fetches.
+        The sync cursor's ``__iter__`` returns the driver's iterator. Here each
+        row goes through the plugins as a ``Cursor.fetchone`` call, the method
+        that failover and read/write splitting subscribe to, so they see every
+        row that a loop reads.
         """
         return self
 
     async def __anext__(self) -> Any:
-        row = await self.fetchone()
-        if row is None:
+        # The rows come from the driver cursor's async iterator. It is made once for
+        # each result, so a loop continues where the last one stopped, and an
+        # iterator that reads rows ahead loses none of them. psycopg 3.3 and later
+        # and aiomysql cursors are their own iterators. A driver cursor without
+        # async iteration gives the rows with fetchone, where None ends them.
+        target = await self._resolve_target_cursor()
+        if self._target_iterator is None:
+            self._target_iterator = self._get_async_iterator(target)
+        rows = self._target_iterator
+        if rows is None:
+            row = await self.fetchone()
+            if row is None:
+                raise StopAsyncIteration
+            return row
+        # A row can itself be None (psycopg's scalar_row on a NULL), so the rows end
+        # only when the driver's __anext__ ends them or a plugin returns None without
+        # reading a row. Plugins such as failover catch Exception, which includes
+        # StopAsyncIteration, so the plugins see the end as None, as from fetchone.
+        read = False
+
+        async def _next_row() -> Any:
+            nonlocal read
+            try:
+                row = await anext(rows)
+            except StopAsyncIteration:
+                return None
+            read = True
+            return row
+
+        row = await self._conn._plugin_manager.execute(
+            self, DbApiMethod.CURSOR_FETCHONE, _next_row,
+        )
+        if row is None and not read:
             raise StopAsyncIteration
         return row
+
+    @staticmethod
+    def _get_async_iterator(cursor: Any) -> Optional[AsyncIterator[Any]]:
+        try:
+            return aiter(cursor)
+        except TypeError:
+            # The driver cursor doesn't support async iteration.
+            return None
 
     async def close(self) -> None:
         if self._target_cursor is None:
@@ -289,6 +333,7 @@ class AsyncAwsWrapperCursor:
         only if the driver made ``callproc`` async.
         """
         await self._resolve_target_cursor()
+        self._target_iterator = None
 
         async def _call() -> Any:
             result = self._target_cursor.callproc(procname, args)
@@ -306,6 +351,7 @@ class AsyncAwsWrapperCursor:
         Probes the target's return value and awaits only if async.
         """
         await self._resolve_target_cursor()
+        self._target_iterator = None
 
         async def _call() -> Any:
             result = self._target_cursor.nextset()
