@@ -279,9 +279,12 @@ drives, and the recipe in §3 it usually leads to.
    notes in §15.
 4. **Which endpoint will the application connect to?**
    - Cluster writer endpoint: the usual choice.
-   - Cluster reader endpoint (`cluster-ro`): `failover_mode` defaults to
-     `reader_or_writer` there; set `strict_reader` if the connection must
-     stay on a reader.
+   - Cluster reader endpoint (`cluster-ro`): in the sync wrapper
+     `failover_mode` defaults to `reader_or_writer` there; set
+     `strict_reader` if the connection must stay on a reader. The async
+     wrapper defaults to `strict_writer` on every endpoint, so async code
+     on `cluster-ro` must set `reader_or_writer` or `strict_reader`
+     explicitly (§9.1).
    - Aurora custom endpoint: add `custom_endpoint` (needs AWS credentials
      with RDS describe access).
    - Instance endpoint.
@@ -560,9 +563,12 @@ The asyncio API, async SQLAlchemy and Aurora Global Database support
 4. **More than one Blue/Green Deployment in one process?** Give each
    deployment its own `bg_id`, and use the same value on every connection
    to one deployment.
-5. **Monitoring connection settings?** Pass a non-zero connect timeout to
-   the status monitor with the `blue-green-monitoring-` prefix (for example
-   `blue-green-monitoring-connect_timeout`).
+5. **Monitoring connection settings?** Leave them unset. The status
+   monitor already uses a 10 s connect timeout and a 10 s socket timeout
+   (§6.11). Do not suggest `blue-green-monitoring-` keys such as
+   `blue-green-monitoring-connect_timeout`: the wrapper does not remove
+   them before the driver call, so they also reach the driver on the
+   application's own connections, which can then fail (§5.17).
 
 → §3 has no Blue/Green recipe. Add `bg` to the plugin list of the
 recipe that matches the database, and use the parameters in §5.17.
@@ -590,6 +596,12 @@ The asyncio API, async SQLAlchemy and Aurora Global Database support
 4. **Which features are needed?** Then state the async differences:
    - `failover` and `failover_v2` load the same async plugin with v2
      behavior.
+   - An unset `failover_mode` is `strict_writer` on every endpoint,
+     including `cluster-ro`. Set `failover_mode="reader_or_writer"` or
+     `"strict_reader"` explicitly on reader connections (§9.1).
+   - Statement errors that do not trigger failover reach the application
+     as the driver's own exception, not wrapped in `AwsWrapperError`
+     (§15.1).
    - `host_monitoring_v2` works with aiomysql as well as psycopg async.
    - `gdb_accessible_regions`, `monitoring_connection_priority`,
      `gdb_monitoring_connection_priority` and `profile_name` are sync only.
@@ -631,6 +643,25 @@ Go through these in order until the cause is clear:
    rejected under `use_pure=True`, and a hang on exit without
    `release_resources()`. See §16.3 for the diagnostic steps and §18 for
    anti-patterns.
+8. **No known cause matches: say it looks like a wrapper bug.** An
+   exception raised from a frame inside `aws_advanced_python_wrapper`
+   that is a plain Python error (`AttributeError`, `TypeError`,
+   `IndexError`, `KeyError` and similar) and matches no row in §16.3 is a
+   defect in the wrapper, not a configuration problem. Open the answer by
+   saying so. Do not lead with configuration changes, do not guess why
+   that line fails, and do not claim it is a known issue. If a setting
+   might keep the application off that code path, mention it only after
+   steps 9 and 10, labelled as an unverified workaround.
+9. **Search the existing issues.** Tell the user to search
+   `https://github.com/aws/aws-advanced-python-wrapper/issues` for the
+   exception message and the file name first, and to add their details
+   to a matching issue if there is one.
+10. **Open an issue if none matches.** List what the report needs
+    (§16.4): wrapper, Python and driver versions, sync or asyncio, the
+    plugins and other connection properties with secrets removed, the
+    endpoint type, the full stack trace, and the `DEBUG` wrapper logs
+    from step 6 with private host and user names removed. Offer to draft
+    the issue text; the user posts it.
 
 ### 2.10 Track J: Quick parameter or plugin lookup
 
@@ -1138,8 +1169,10 @@ Points to state:
 - §5.6 has the database user setup, the required `user`, the host rule
   (`iam_host`), the region rule, the Global Database permission and the
   parameter table.
-- **MySQL with IAM.** Use `use_pure=False`. The pure-Python driver limits
-  passwords to 255 characters, and IAM tokens are longer; the error is
+- **MySQL with IAM.** With sync `mysql-connector-python`, use
+  `use_pure=False`. `use_pure` is a `mysql-connector-python` argument;
+  aiomysql has none, so never pass it there. The pure-Python driver
+  limits passwords to 255 characters, and IAM tokens are longer; the error is
   `int1store requires 0 <= i <= 255` or `struct.error: ubyte format
   requires 0 <= number <= 255`. This goes against the `use_pure=True`
   advice in §3.4: with the C extension, `is_connected` can block
@@ -1599,7 +1632,9 @@ The wrapper picks plugins in this order:
 2. Else, if `plugins` is set, those plugins load. `plugins=""` (an empty
    string) loads only the internal default plugin, so the wrapper acts as
    a thin pass-through to the driver.
-3. Else, the default list for the driver applies:
+3. Else, the default list for the driver applies. `plugins=None` counts
+   as not set, so it also loads the default list; use `plugins=""` for no
+   plugins.
 
 | Driver | Default list when `plugins` is not set |
 |---|---|
@@ -1808,7 +1843,7 @@ writer.
 
 | Name | Default | Description |
 |---|---|---|
-| `failover_mode` | (derived) | `strict_writer`, `strict_reader` or `reader_or_writer`. When unset: `reader_or_writer` for an Aurora reader cluster endpoint (`cluster-ro-`), otherwise `strict_writer`. See the warning below and §9.1. |
+| `failover_mode` | (derived) | `strict_writer`, `strict_reader` or `reader_or_writer`. When unset (sync): `reader_or_writer` for an Aurora reader cluster endpoint (`cluster-ro-`), otherwise `strict_writer`. When unset (async): `strict_writer` on every endpoint. See the warning below and §9.1. |
 | `failover_timeout_sec` | `300` | Maximum time in seconds for the whole failover process. |
 | `failover_reader_host_selector_strategy` | `random` | How to choose a reader during reader failover: `random`, `round_robin`, `weighted_random`, `highest_weight`. `least_connections` works only with an internal connection pool (§7, §14). |
 | `enable_connect_failover` | `False` | If the first connection attempt fails with a network error, run failover to reach another instance. This can connect to a different instance than the connection string names. |
@@ -2568,7 +2603,11 @@ giving a higher weight. Connect to the DB shard group endpoint.
 
 The router monitor connections take driver settings with the
 `limitless-router-monitor-` prefix. The same pass-through warning as
-for `blue-green-monitoring-` (§5.17) applies.
+for `blue-green-monitoring-` (§5.17) applies. The sync and async router
+monitors both strip the prefix from their own copy of the properties, so
+`limitless-router-monitor-connect_timeout` becomes `connect_timeout` on
+the monitor connection only, and the application's connection keeps its
+own settings.
 
 ### 5.20 `fastest_response_strategy`: choose the fastest reader
 
@@ -2899,7 +2938,7 @@ property can be overridden this way, including `user`, `password` and
 
 | Prefix | Used by | Default when unset | Removed before the driver call? |
 |---|---|---|---|
-| `topology-monitoring-` | The cluster topology monitor | `connect_timeout` 5 s and `socket_timeout` 5 s | Yes |
+| `topology-monitoring-` | The cluster topology monitor | Sync: `connect_timeout` 5 s and `socket_timeout` 5 s. Async: not set | Yes |
 | `monitoring-` | `host_monitoring`, `host_monitoring_v2` | `connect_timeout` 10 s for `host_monitoring` and for async EFM; the sync `host_monitoring_v2` does not set one | Yes |
 | `blue-green-monitoring-` | `bg` status monitors | `connect_timeout` 10 s and `socket_timeout` 10 s | No |
 | `frt-` | `fastest_response_strategy` response-time monitors | `connect_timeout` 10 s | No |
@@ -3106,10 +3145,18 @@ assigning `DriverDialectManager.custom_dialect`; use
 | `strict_reader` | Connect only to a reader. If a reader is not available, raise. A single-instance cluster is allowed to use its writer. |
 | `reader_or_writer` | Prefer a reader; use the writer if a reader is not available. |
 
-When `failover_mode` is unset, the mode is `reader_or_writer` if the
-connection was opened through the Aurora reader cluster endpoint
-(`cluster-ro-`), and `strict_writer` for every other endpoint, including
-instance and custom endpoints.
+When `failover_mode` is unset, the default depends on the API:
+
+- Sync (`failover`, `failover_v2`): `reader_or_writer` if the connection
+  was opened through the Aurora reader cluster endpoint (`cluster-ro-`),
+  and `strict_writer` for every other endpoint, including instance and
+  custom endpoints.
+- Async (`aws_advanced_python_wrapper.aio`, including async
+  SQLAlchemy): `strict_writer` on every endpoint, `cluster-ro-`
+  included. An async reader connection fails over to the writer unless
+  it sets `failover_mode="reader_or_writer"` or
+  `failover_mode="strict_reader"` explicitly. Always set it for async
+  reader connections.
 
 **Use underscores. Hyphens silently change the mode.** The code lower-cases
 the value and recognizes exactly `strict_writer` and `strict_reader`. Every
@@ -3256,7 +3303,9 @@ and `host_monitoring` have not been tested with RDS Multi-AZ DB clusters.
   `initial_connection` (in the default list) so that a stale DNS answer
   after failover is replaced with the current writer instance.
 - **Cluster reader endpoint (`cluster-ro-`).** `failover_mode` defaults to
-  `reader_or_writer` (§9.1). `initial_connection` replaces the
+  `reader_or_writer` in the sync wrapper and to `strict_writer` in the
+  async wrapper, so set it explicitly in async code (§9.1).
+  `initial_connection` replaces the
   endpoint with a reader instance chosen by
   `initial_connection_host_selector_strategy`.
 - **Aurora custom endpoint.** Add `custom_endpoint` so that failover and
@@ -3777,9 +3826,11 @@ exception classes and type constructors).
 pairs separated by spaces, or a `postgresql://` / `postgres://` URL. For
 MySQL, use `key=value` pairs (`host=`, `database=`, `user=`, `password=`)
 or keyword arguments. A key given both in the string and as a keyword
-argument takes the keyword value. A string with more than one host is
-rejected with `PropertiesUtils.MultipleHostsNotSupported`: give one
-endpoint, and the wrapper finds the rest of the cluster from topology.
+argument takes the keyword value. A `postgresql://` or `postgres://` URL
+with more than one host is rejected with
+`PropertiesUtils.MultipleHostsNotSupported`. A `key=value` string is not
+checked for several hosts. In either form, give one endpoint, and the
+wrapper finds the rest of the cluster from topology.
 
 **Context managers.** `with AwsWrapperConnection.connect(...) as conn:`
 closes the connection on exit. Cursors are context managers too.
@@ -3803,15 +3854,19 @@ rule: the wrapper routes it through its own cursor, so the plugins see it.
 **Error handling.** Failover errors are in `aws_advanced_python_wrapper.errors`
 and derive from the wrapper's `OperationalError`:
 `FailoverSuccessError`, `FailoverFailedError` and
-`TransactionResolutionUnknownError` (the shared helper is in §3.2). One
-behavior surprises people who move existing code onto the wrapper: when
-`failover` or `failover_v2` is in the chain, every other exception raised
-by a statement reaches the application as `AwsWrapperError`, with the
-original driver exception in `.driver_error` (and in `__cause__`). Code
-that catches a driver class, such as a psycopg unique-violation error,
-stops matching. Without a failover plugin (for example an `iam`-only
-chain), driver errors pass through unchanged. Write handlers that accept
-both forms:
+`TransactionResolutionUnknownError` (the shared helper is in §3.2). They
+are not subclasses of any driver class, so `except
+psycopg.OperationalError` or a mysql-connector-python error clause does
+not catch them; catch them by name, before broader clauses. One
+behavior surprises people who move existing code onto the sync wrapper:
+when `failover`, `failover_v2` or `gdb_failover` is in the chain, every
+other exception raised by a statement reaches the application as
+`AwsWrapperError`, with the original driver exception in `.driver_error`
+(and in `__cause__`). Code that catches a driver class, such as a psycopg
+unique-violation error, stops matching. Without a failover plugin (for
+example an `iam`-only chain), driver errors pass through unchanged. The
+async failover plugins re-raise such errors unchanged. Write handlers
+that accept both forms:
 
 ```python
 from aws_advanced_python_wrapper.errors import (
@@ -3995,14 +4050,15 @@ reader = create_engine(
                             **COMMON))
 ```
 
-On the `cluster-ro` endpoint, `failover_mode` defaults to
-`reader_or_writer`.
+On the `cluster-ro` endpoint, the sync wrapper defaults `failover_mode`
+to `reader_or_writer`.
 Set `failover_mode="strict_reader"` (underscore) only if the reader engine
 must fail with an error rather than fall back to the writer.
 
 **Other SQLAlchemy facts.**
 
-- `pool_pre_ping` is supported in the MySQL dialect as of 3.1.0.
+- `pool_pre_ping` is supported as of 3.1.0 in the PostgreSQL and MySQL
+  dialects, sync and async.
 - Shutdown order: `engine.dispose()` first (it closes SQLAlchemy's pool),
   then `release_resources()` (it stops the wrapper's threads). Neither
   call does the other's work.
@@ -4308,7 +4364,7 @@ as `[Failover]` or `[PluginManager]`, so they are easy to search for.
 | An old cursor raises `[PluginManager] The internal connection has changed since '...' was created.` | The cursor was created before a failover or a `read_only` switch | Create a new cursor after each failover and each switch. |
 | A connection that should stay on the writer (or on readers) lands on the other role after failover; DEBUG shows `FAILOVER_MODE=FailoverMode.READER_OR_WRITER` | `failover_mode` written with hyphens (`strict-writer`), as some doc pages show | Use `strict_writer` or `strict_reader`. (`gdb_failover` modes accept both spellings.) |
 | Failovers start during slow but healthy queries | `socket_timeout` shorter than a legitimate statement. The resulting `QueryTimeoutError` counts as a network error, so `failover_v2` marks the host unavailable and fails over. | Raise `socket_timeout` above the longest expected statement, or remove it and rely on EFM (§17.2). |
-| Application code no longer catches a driver exception (for example a constraint violation) | With `failover` or `failover_v2` loaded, statement errors arrive as `AwsWrapperError` with the driver error in `.driver_error` | Inspect `.driver_error` (§15.1). |
+| Application code no longer catches a driver exception (for example a constraint violation) | With `failover`, `failover_v2` or `gdb_failover` loaded in the sync wrapper, statement errors arrive as `AwsWrapperError` with the driver error in `.driver_error` | Inspect `.driver_error` (§15.1). |
 | SQLAlchemy PostgreSQL: `TypeError: expected Connection or AsyncConnection, got AwsWrapperConnection` | The stock `postgresql+psycopg` dialect with a wrapper connection, usually in a `creator=` engine | Use `postgresql+aws_wrapper_psycopg://`. |
 | SQLAlchemy PostgreSQL on 3.0.0: `create_engine` raises `ModuleNotFoundError` | The 3.0.0 entry point named a module that was not shipped | Upgrade to 3.1.0. |
 | SQLAlchemy URL: the plugin order log shows the default list, not the user's | `plugins=` in the URL; SQLAlchemy keeps that key | Use `wrapper_plugins=`. |
@@ -4335,19 +4391,24 @@ as `[Failover]` or `[PluginManager]`, so they are easy to search for.
 | `[StaleDnsPlugin] A dynamic host list provider is required for the stale DNS plugin ...` | `stale_dns` on a database without cluster topology | Remove `stale_dns`; with a failover plugin it is redundant anyway. |
 | `[LimitlessPlugin] Unsupported dialect '<d>' encountered. ...` | `limitless` on anything other than Aurora PostgreSQL | Remove it, or connect to the Limitless shard group endpoint of an Aurora PostgreSQL Limitless database. |
 | Windows asyncio: `Psycopg cannot use the 'ProactorEventLoop' to run in async mode` | The default Windows event loop | Set `asyncio.WindowsSelectorEventLoopPolicy()` before any async code. |
-| `PropertiesUtils.MultipleHostsNotSupported` | A connection string with several hosts | Give one endpoint. |
+| `PropertiesUtils.MultipleHostsNotSupported` | A `postgresql://` URL with several hosts | Give one endpoint. |
 | Failover never happens on an RDS Proxy endpoint | `failover_v2` and `gdb_failover` turn themselves off for RDS Proxy URLs | Expected. Leave failover plugins out with RDS Proxy; the docs also advise against EFM there. |
 
 ### 16.4 When to open an issue
 
-Point the user at the project when the problem is a reproducible bug that
-§16.3 does not explain, an exception raised from inside the wrapper's own
-code, or a regression after an upgrade.
+Treat the problem as a likely wrapper bug, and tell the user so, when it
+is a reproducible bug that §16.3 does not explain, an exception raised
+from inside the wrapper's own code, or a regression after an upgrade.
+Configuration cannot be expected to fix it. Give the user these steps:
 
-- Bugs and feature requests:
-  `https://github.com/aws/aws-advanced-python-wrapper/issues`. Search the
-  existing issues first.
-- Questions: `https://github.com/aws/aws-advanced-python-wrapper/discussions`.
+1. Search the existing issues at
+   `https://github.com/aws/aws-advanced-python-wrapper/issues` for the
+   exception message and the wrapper file name. If one matches, add the
+   details below to it.
+2. If none matches, open a new issue there with the details below.
+
+Questions that are not bug reports go to
+`https://github.com/aws/aws-advanced-python-wrapper/discussions`.
 
 The bug report template asks for: a description, expected and current
 behavior, the plugins used and other connection properties, reproduction
@@ -4444,6 +4505,7 @@ How does the application send reads?
 ├─ Through SQLAlchemy (sync or async)
 │  └─ Splitting plugins are not supported. Two engines: writer cluster
 │     endpoint and reader (cluster-ro) endpoint, same cluster_id (§15.3).
+│     An async reader engine sets failover_mode explicitly (§9.1).
 ├─ Through Django
 │  └─ Two aliases and a router; read_write_splitting,failover_v2 on both;
 │     "read_only": True on the reader alias (§3.12).
@@ -4503,7 +4565,8 @@ Where do the database credentials come from?
 ├─ A user and password the application already has
 │  └─ Without an auth plugin. Keep the password out of source code.
 ├─ IAM database authentication tokens
-│  └─ iam (MySQL: use_pure=False, with its hang risk; §3.9)
+│  └─ iam (mysql-connector-python: use_pure=False, with its hang risk;
+│     not for aiomysql; §3.9)
 ├─ A secret in AWS Secrets Manager (JSON with user name and password)
 │  └─ aws_secrets_manager (set secrets_manager_region unless the id is
 │     an ARN; §3.10)
@@ -4749,7 +4812,8 @@ connection?
 recognizes only `strict_writer` and `strict_reader`; every other value,
 including the hyphenated form on some doc pages, silently becomes
 `reader_or_writer`. On a `cluster-ro` endpoint, `reader_or_writer` is
-already the default.
+already the default for sync connections. Async connections default to
+`strict_writer` everywhere, so set the mode explicitly there.
 
 ### 19.4 Skip-the-interview example
 
