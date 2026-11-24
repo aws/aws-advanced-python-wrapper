@@ -122,3 +122,52 @@ CLUSTER_OUTAGE_RERUN_DELAY_SEC: float = 60
 # with extra topology-refresh polling, so 900 s is a sensible ceiling
 # that catches genuine hangs without hiding real timeouts.
 FAILOVER_WITHIN_TRANSACTION_PYTEST_TIMEOUT_SEC: int = 900
+
+# ───── Blue/Green switchover tests ─────────────────────────────────────
+# The plugin holds a call it suspends in IN_PROGRESS for at most
+# ``bg_connect_timeout_ms`` (30 s by default) per pass, so a correct call
+# returns within two of those.
+BG_SUSPENDED_CALL_MAX_SEC: float = 60
+# A suspended call waits on the plugin's status in 50 ms steps, which uses
+# far less of its thread's CPU than this.
+BG_SUSPENDED_CALL_MAX_CPU_SEC: float = 1.0
+# The plugin publishes each phase for at least 1.7 s, so the test's status
+# observer sees every phase at this poll rate.
+BG_PLUGIN_STATUS_POLL_SEC: float = 0.02
+# How long a test thread sleeps between two checks of what it waits for.
+BG_WAIT_STEP_SEC: float = 0.5
+# How long the sync test waits for the plugin to give the blue cluster
+# endpoint its SOURCE role before it chooses the probes' host.
+BG_PROBE_HOST_ROLE_WAIT_SEC: float = 20
+# Connect attempts, and the connect timeout of each, for a probe connection.
+# POST lasts 23 to 26 s.
+BG_PROBE_CONNECT_ATTEMPTS: int = 3
+BG_PROBE_CONNECT_TIMEOUT_SEC: int = 10
+# How long the async test waits for its probe to connect. That connection
+# owns the status provider, so the other threads start after it.
+BG_ASYNC_PROBE_CONNECT_WAIT_SEC: float = 30
+# Ends an async probe execute that never returns, past
+# BG_SUSPENDED_CALL_MAX_SEC, so the probe's loop can stop the status provider.
+BG_ASYNC_EXECUTE_TIMEOUT_SEC: float = 75
+# From thread start: the trigger waits for the other threads to be ready,
+# then 30 s, before it requests the switchover.
+BG_SWITCHOVER_REQUEST_WAIT_SEC: float = 150
+# From the request: the plugin published COMPLETED 41 to 45 s after it.
+BG_SWITCHOVER_WAIT_SEC: float = 240
+# From the request: the RDS API reported SWITCHOVER_COMPLETED 68 to 73 s
+# after it.
+BG_API_STATUS_WAIT_SEC: float = 300
+BG_API_STATUS_POLL_INTERVAL_SEC: float = 5
+# How long the main thread waits for the trigger thread after it stopped
+# waiting for the request.
+BG_TRIGGER_JOIN_SEC: float = 5
+# One deadline for every test thread to stop.
+BG_THREAD_JOIN_SEC: float = 20
+# The switchover tests' marker overrides the harness's 600 s ``--timeout``.
+# pytest-timeout's thread method counts the setup hook as well. Worst case:
+# setup + 30 s (async probe connect; the sync role wait is 20 s) + 150 s
+# (latest request) + 300 s (RDS API wait from the request) + 20 s (thread
+# stop) = setup + 500 s, so a run fits when setup takes under 400 s. Setup
+# takes about a minute on a healthy cluster; its own waits allow up to
+# 1500 s (cluster status 600 s, instances 300 s and 300 s, DNS 300 s).
+BG_SWITCHOVER_PYTEST_TIMEOUT_SEC: int = 900

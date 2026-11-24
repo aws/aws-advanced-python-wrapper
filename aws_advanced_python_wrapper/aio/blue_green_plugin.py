@@ -961,7 +961,7 @@ class AsyncBlueGreenStatusMonitor:
                 ip_host_info = copy(host_info)
                 ip_host_info.host = ip_address
                 props_copy = copy(self._props)
-                WrapperProperties.IAM_HOST.set(props_copy, ip_host_info.host)
+                WrapperProperties.IAM_HOST.set(props_copy, host_info.host)
 
                 logger.debug("BlueGreenStatusMonitor.OpeningConnectionWithIp", self._bg_role, ip_host_info.host)
                 self._connection = await self._plugin_service.force_connect(ip_host_info, props_copy)

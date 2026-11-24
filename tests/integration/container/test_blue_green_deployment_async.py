@@ -35,7 +35,7 @@ Translation notes vs the sync file:
 - ``conn.close()`` → ``await conn.close()``.
 - ``is_closed`` for psycopg AsyncConnection uses the sync ``.closed``
   property; for aiomysql uses ``not .open``. See ``_is_conn_closed_async``.
-- ``conn._unwrap(BlueGreenPlugin)`` → ``_unwrap_plugin_async(conn, BlueGreenPlugin)``
+- ``conn._unwrap(BlueGreenPlugin)`` → ``_unwrap_plugin_async(conn, AsyncBlueGreenPlugin)``
   (searches ``conn._plugin_manager._plugins`` directly because
   ``AsyncAwsWrapperConnection`` does not expose ``_unwrap``).
 - ``DriverHelper.get_connect_func`` returns the async connect callable for
@@ -43,8 +43,8 @@ Translation notes vs the sync file:
 - boto3 RDS Blue/Green switchover/wait calls stay synchronous.
 - ``sleep()`` calls inside threads remain synchronous (OS threads; no event
   loop blocked).
-- Every thread teardown invokes ``cleanup_async()`` on its own loop so
-  wrapper background tasks are released cleanly.
+- The main thread invokes ``cleanup_async()`` once, after the worker threads
+  stop, so no worker releases wrapper services the others still use.
 """
 
 from __future__ import annotations
@@ -54,6 +54,7 @@ import math
 import socket
 from collections import deque
 from dataclasses import dataclass, field
+from logging import INFO, getLogger
 from threading import Event, Thread
 from time import perf_counter_ns, sleep
 from typing import (TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional,
@@ -63,11 +64,17 @@ import psycopg
 import pytest
 from tabulate import tabulate  # type: ignore[import-untyped]
 
-from aws_advanced_python_wrapper.aio.wrapper import AsyncAwsWrapperConnection
-from aws_advanced_python_wrapper.blue_green_plugin import (BlueGreenPlugin,
+from aws_advanced_python_wrapper.aio.blue_green_plugin import \
+    AsyncBlueGreenPlugin
+from aws_advanced_python_wrapper.aio.blue_green_plugin import \
+    BlueGreenStatus as AsyncBlueGreenStatus
+from aws_advanced_python_wrapper.aio.wrapper import (AsyncAwsWrapperConnection,
+                                                     AsyncAwsWrapperCursor)
+from aws_advanced_python_wrapper.blue_green_plugin import (BlueGreenPhase,
                                                            BlueGreenRole)
 from aws_advanced_python_wrapper.database_dialect import DialectCode
 from aws_advanced_python_wrapper.driver_info import DriverInfo
+from aws_advanced_python_wrapper.utils import services_container
 from aws_advanced_python_wrapper.utils.atomic import AtomicInt
 from aws_advanced_python_wrapper.utils.concurrent import (ConcurrentDict,
                                                           CountDownLatch)
@@ -76,6 +83,9 @@ from aws_advanced_python_wrapper.utils.properties import WrapperProperties
 from aws_advanced_python_wrapper.utils.rds_utils import RdsUtils
 from tests.integration.container.utils.async_connection_helpers import \
     cleanup_async
+from tests.integration.container.utils.blue_green_checks import (
+    PhaseObserver, ProbeResult, SwitchoverRequest, settle_switchover,
+    suspended_call_failures, wait_for_switchover)
 from tests.integration.container.utils.conditions import (
     enable_on_deployments, enable_on_features)
 from tests.integration.container.utils.database_engine import DatabaseEngine
@@ -86,6 +96,10 @@ from tests.integration.container.utils.rds_test_utility import RdsTestUtility
 from tests.integration.container.utils.test_environment import TestEnvironment
 from tests.integration.container.utils.test_environment_features import \
     TestEnvironmentFeatures
+from tests.integration.container.utils.test_timings import (
+    BG_ASYNC_EXECUTE_TIMEOUT_SEC, BG_ASYNC_PROBE_CONNECT_WAIT_SEC,
+    BG_PLUGIN_STATUS_POLL_SEC, BG_PROBE_CONNECT_ATTEMPTS,
+    BG_SWITCHOVER_PYTEST_TIMEOUT_SEC, BG_THREAD_JOIN_SEC)
 
 if TYPE_CHECKING:
     from tests.integration.container.utils.connection_utils import \
@@ -177,20 +191,14 @@ def _run_worker_with_loop(
     hangs.
 
     This helper encapsulates the correct shape: one loop per thread for
-    the thread's entire lifetime, with ``cleanup_async()`` always invoked
-    on that same loop in ``finally`` so wrapper background tasks are
-    released even if the body raises.
+    the thread's entire lifetime. It does not invoke ``cleanup_async()``:
+    that releases process-wide services, so the main thread invokes it
+    once, after every worker stopped.
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        try:
-            body(loop)
-        finally:
-            try:
-                loop.run_until_complete(cleanup_async())
-            except Exception:
-                pass
+        body(loop)
     finally:
         loop.close()
 
@@ -261,6 +269,7 @@ class TestBlueGreenDeploymentAsync:
     def rds_utils(self):
         return RdsUtils()
 
+    @pytest.mark.timeout(BG_SWITCHOVER_PYTEST_TIMEOUT_SEC)
     def test_switchover_async(
             self, conn_utils: ConnectionUtils, test_utility: RdsTestUtility,
             rds_utils: RdsUtils, test_environment: TestEnvironment,
@@ -295,6 +304,7 @@ class TestBlueGreenDeploymentAsync:
 
             if rds_utils.is_not_green_or_old_instance(host):
                 threads.append(Thread(
+                    daemon=True,
                     target=self.direct_topology_monitor_async,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
                           finish_latch, bg_results)))
@@ -302,6 +312,7 @@ class TestBlueGreenDeploymentAsync:
                 thread_finish_count += 1
 
                 threads.append(Thread(
+                    daemon=True,
                     target=self.direct_blue_connectivity_monitor_async,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
                           finish_latch, bg_results)))
@@ -309,6 +320,7 @@ class TestBlueGreenDeploymentAsync:
                 thread_finish_count += 1
 
                 threads.append(Thread(
+                    daemon=True,
                     target=self.direct_blue_idle_connectivity_monitor_async,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
                           finish_latch, bg_results)))
@@ -316,6 +328,7 @@ class TestBlueGreenDeploymentAsync:
                 thread_finish_count += 1
 
                 threads.append(Thread(
+                    daemon=True,
                     target=self.wrapper_blue_idle_connectivity_monitor_async,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
                           finish_latch, bg_results)))
@@ -323,6 +336,7 @@ class TestBlueGreenDeploymentAsync:
                 thread_finish_count += 1
 
                 threads.append(Thread(
+                    daemon=True,
                     target=self.wrapper_blue_executing_connectivity_monitor_async,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
                           finish_latch, bg_results)))
@@ -330,6 +344,7 @@ class TestBlueGreenDeploymentAsync:
                 thread_finish_count += 1
 
                 threads.append(Thread(
+                    daemon=True,
                     target=self.wrapper_blue_new_connection_monitor_async,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
                           finish_latch, bg_results)))
@@ -337,6 +352,7 @@ class TestBlueGreenDeploymentAsync:
                 thread_finish_count += 1
 
                 threads.append(Thread(
+                    daemon=True,
                     target=self.blue_dns_monitor,
                     args=(host_id, host, start_latch, stop, finish_latch, bg_results)))
                 thread_count += 1
@@ -344,6 +360,7 @@ class TestBlueGreenDeploymentAsync:
 
             if rds_utils.is_green_instance(host):
                 threads.append(Thread(
+                    daemon=True,
                     target=self.direct_topology_monitor_async,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
                           finish_latch, bg_results)))
@@ -351,6 +368,7 @@ class TestBlueGreenDeploymentAsync:
                 thread_finish_count += 1
 
                 threads.append(Thread(
+                    daemon=True,
                     target=self.wrapper_green_connectivity_monitor_async,
                     args=(test_driver, conn_utils, host_id, host, test_instance.get_port(), db_name, start_latch, stop,
                           finish_latch, bg_results)))
@@ -358,6 +376,7 @@ class TestBlueGreenDeploymentAsync:
                 thread_finish_count += 1
 
                 threads.append(Thread(
+                    daemon=True,
                     target=self.green_dns_monitor,
                     args=(host_id, host, start_latch, stop, finish_latch, bg_results)))
                 thread_count += 1
@@ -367,6 +386,7 @@ class TestBlueGreenDeploymentAsync:
                     rds_client = test_utility.get_rds_client()
 
                     threads.append(Thread(
+                        daemon=True,
                         target=self.green_iam_connectivity_monitor_async,
                         args=(test_driver, conn_utils, rds_client, host_id, "BlueHostToken",
                               rds_utils.remove_green_instance_prefix(host), host, test_instance.get_port(),
@@ -376,6 +396,7 @@ class TestBlueGreenDeploymentAsync:
                     thread_finish_count += 1
 
                     threads.append(Thread(
+                        daemon=True,
                         target=self.green_iam_connectivity_monitor_async,
                         args=(test_driver, conn_utils, rds_client, host_id, "GreenHostToken", host, host,
                               test_instance.get_port(), db_name, start_latch, stop, finish_latch,
@@ -384,10 +405,31 @@ class TestBlueGreenDeploymentAsync:
                     thread_count += 1
                     thread_finish_count += 1
 
-        threads.append(Thread(
+        request = SwitchoverRequest()
+        trigger_thread = Thread(
+            daemon=True,
+            name="BlueGreenSwitchoverTrigger",
             target=self.bg_switchover_trigger,
-            args=(test_utility, info.get_bg_deployment_id(), start_latch, finish_latch, self.results)))
+            args=(test_utility, info.get_bg_deployment_id(), start_latch, finish_latch, self.results, stop, request))
+        threads.append(trigger_thread)
         thread_count += 1
+        thread_finish_count += 1
+
+        # Each AsyncAwsWrapperConnection keeps its own Blue/Green status store, so only the connection that owns the
+        # status provider sees the phases: the probe connects before the other threads start and is also the observer.
+        if test_environment.get_deployment() == DatabaseEngineDeployment.AURORA:
+            blue_endpoint = test_environment.get_database_info().get_cluster_endpoint()
+        else:
+            blue_endpoint = test_instance.get_host()
+        observer = PhaseObserver()
+        execute_probe = ProbeResult()
+        probe_connected = Event()
+        probe_thread = Thread(
+            daemon=True,
+            name="BlueGreenAsyncExecuteProbe",
+            target=self.wrapper_blue_suspended_execute_probe_async,
+            args=(test_driver, conn_utils, blue_endpoint, test_instance.get_port(), db_name, observer, stop,
+                  finish_latch, probe_connected, execute_probe))
         thread_finish_count += 1
 
         start_latch.set_count(thread_count)
@@ -396,40 +438,81 @@ class TestBlueGreenDeploymentAsync:
         for result in self.results.values():
             result.start_time_ns.set(start_time_ns)
 
-        for thread in threads:
-            thread.start()
+        # A suspended call logs at DEBUG on each pass of its wait. One that never returns floods the report until the
+        # harness can't keep up, so the plugin stays at INFO while any test thread is alive.
+        plugin_logger = getLogger(AsyncBlueGreenPlugin.__module__)
+        plugin_log_level = plugin_logger.level
+        plugin_logger.setLevel(INFO)
+        # conftest released the services container and its lazy re-initialisation isn't locked: build it here,
+        # before the threads' first connects race on it.
+        services_container.get_monitor_service()
+        probe_thread.start()
+        if not probe_connected.wait(BG_ASYNC_PROBE_CONNECT_WAIT_SEC):
+            stop.set()
+            pytest.fail(
+                f"The async execute probe didn't connect to {blue_endpoint} within "
+                f"{BG_ASYNC_PROBE_CONNECT_WAIT_SEC:.0f} s.")
 
-        self.logger.debug("All threads started.")
+        try:
+            threads_start_ns = perf_counter_ns()
+            for thread in threads:
+                thread.start()
 
-        finish_latch.wait_sec(6 * 60)
-        self.logger.debug("All threads completed.")
+            self.logger.debug("All threads started.")
+            wait_result = wait_for_switchover(
+                request, threads_start_ns, [(probe_thread, execute_probe)],
+                lambda: observer.is_seen(BlueGreenPhase.COMPLETED) or self.is_switchover_completed_seen())
+            self.logger.debug(f"Done waiting for the switchover: {wait_result}.")
+        finally:
+            api_status = settle_switchover(test_utility, info.get_bg_deployment_id(), trigger_thread, stop, request)
+            self.logger.debug("Stop set for all threads.")
+            finish_latch.wait_sec(BG_THREAD_JOIN_SEC)
+            threads.append(probe_thread)
+            alive_count = sum(1 for thread in threads if thread.is_alive())
+            self.logger.debug(f"Done waiting for threads to stop, {alive_count} still running.")
+            if alive_count == 0:
+                plugin_logger.setLevel(plugin_log_level)
 
-        sleep(12 * 60)
+        try:
+            self.logger.debug(
+                f"Blue/Green deployment status: {api_status}. Plugin phases first seen: {observer.first_seen_ns}. "
+                f"Execute probe on {blue_endpoint}: {execute_probe}.")
 
-        self.logger.debug("Stopping all threads...")
-        stop.set()
+            assert request.error is None, f"The switchover request failed: {request.error}"
+            assert api_status == "SWITCHOVER_COMPLETED", \
+                f"The Blue/Green deployment status was {api_status} when the test stopped waiting: {wait_result}."
 
-        for thread in threads:
-            thread.join(timeout=30)
-            if thread.is_alive():
-                self.logger.debug("Timed out waiting for a thread to stop running...")
+            for host_id, result in self.results.items():
+                assert result.bg_trigger_time_ns.get() > 0, \
+                    f"bg_trigger_time for {host_id} was {result.bg_trigger_time_ns.get()}"
 
-        self.logger.debug("Done waiting for threads to stop.")
+            self.logger.debug("Test is over.")
+            failures: List[str] = []
+            if observer.is_seen(BlueGreenPhase.IN_PROGRESS):
+                failures.extend(suspended_call_failures(
+                    "async execute", execute_probe, perf_counter_ns(), check_held=True, check_cpu=False))
+            else:
+                failures.append("The plugin phase IN_PROGRESS was never seen, so the execute probe didn't run.")
 
-        for host_id, result in self.results.items():
-            assert result.bg_trigger_time_ns.get() > 0, \
-                f"bg_trigger_time for {host_id} was {result.bg_trigger_time_ns.get()}"
+            self.print_metrics(rds_utils)
+            assert not failures, "\n".join(failures)
 
-        self.logger.debug("Test is over.")
-        self.print_metrics(rds_utils)
+            if len(self.unhandled_exceptions) > 0:
+                self.log_unhandled_exceptions()
+                pytest.fail("There were unhandled exceptions.")
 
-        if len(self.unhandled_exceptions) > 0:
-            self.log_unhandled_exceptions()
-            pytest.fail("There were unhandled exceptions.")
+            self.assert_test()
 
-        self.assert_test()
+            self.logger.debug("Completed")
+        finally:
+            # Released once, after the workers stopped: a release in a worker stops the services the others still use.
+            try:
+                asyncio.run(cleanup_async())
+            except Exception as e:
+                self.logger.debug(f"cleanup_async failed: {e}")
 
-        self.logger.debug("Completed")
+    def is_switchover_completed_seen(self) -> bool:
+        return any(result.green_status_time.get("SWITCHOVER_COMPLETED", 0) for result in self.results.values())
 
     def get_bg_endpoints(
             self,
@@ -595,6 +678,11 @@ class TestBlueGreenDeploymentAsync:
 
         return params
 
+    def is_authentication_failure(self, exception: Exception) -> bool:
+        # MySQL rejects an IAM token with "Access denied", PostgreSQL with "PAM authentication failed".
+        error_message = str(exception).lower()
+        return "access denied" in error_message or "pam authentication failed" in error_message
+
     def is_timeout_exception(self, exception: Exception) -> bool:
         error_message = str(exception).lower()
         timeout_keywords = [
@@ -668,11 +756,14 @@ class TestBlueGreenDeploymentAsync:
                     else:
                         results.blue_status_time.compute_if_absent(status, _log_and_return_time)
 
+        # Each poll must read the status table as it is now: without autocommit, MySQL's REPEATABLE READ
+        # repeats the first read's snapshot (the plugin sets autocommit on its status connections for this reason).
+        connect_params = {**conn_utils.get_connect_params(host=host, port=port, dbname=db), "autocommit": True}
+
         def _body(loop: asyncio.AbstractEventLoop) -> None:
             conn: Any = None
             try:
-                conn = loop.run_until_complete(_open_direct_conn_async(
-                    test_driver, conn_utils.get_connect_params(host=host, port=port, dbname=db)))
+                conn = loop.run_until_complete(_open_direct_conn_async(test_driver, connect_params))
                 self.logger.debug(f"[AsyncDirectTopology @ {host_id}] Connection opened.")
                 sleep(1)
 
@@ -684,8 +775,7 @@ class TestBlueGreenDeploymentAsync:
                 while not stop.is_set() and perf_counter_ns() < end_time_ns:
                     if conn is None:
                         try:
-                            conn = loop.run_until_complete(_open_direct_conn_async(
-                                test_driver, conn_utils.get_connect_params(host=host, port=port, dbname=db)))
+                            conn = loop.run_until_complete(_open_direct_conn_async(test_driver, connect_params))
                             self.logger.debug(f"[AsyncDirectTopology @ {host_id}] Connection re-opened.")
                         except Exception:
                             sleep(0.1)
@@ -912,7 +1002,7 @@ class TestBlueGreenDeploymentAsync:
             conn: Optional[AsyncAwsWrapperConnection] = None
             try:
                 conn = loop.run_until_complete(_open())
-                bg_plugin: Optional[BlueGreenPlugin] = _unwrap_plugin_async(conn, BlueGreenPlugin)
+                bg_plugin: Optional[AsyncBlueGreenPlugin] = _unwrap_plugin_async(conn, AsyncBlueGreenPlugin)
                 assert bg_plugin is not None, \
                     f"Unable to find blue/green plugin in wrapper connection for {host}."
                 self.logger.debug(f"[AsyncWrapperBlueExecute @ {host_id}] Connection opened.")
@@ -982,7 +1072,7 @@ class TestBlueGreenDeploymentAsync:
                     try:
                         conn = loop.run_until_complete(_open())
                         end_time_ns = perf_counter_ns()
-                        bg_plugin: Optional[BlueGreenPlugin] = _unwrap_plugin_async(conn, BlueGreenPlugin)
+                        bg_plugin: Optional[AsyncBlueGreenPlugin] = _unwrap_plugin_async(conn, AsyncBlueGreenPlugin)
                         assert bg_plugin is not None, \
                             f"Unable to find blue/green plugin in wrapper connection for {host}."
 
@@ -998,7 +1088,7 @@ class TestBlueGreenDeploymentAsync:
 
                         end_time_ns = perf_counter_ns()
                         if conn is not None:
-                            bg_plugin = _unwrap_plugin_async(conn, BlueGreenPlugin)
+                            bg_plugin = _unwrap_plugin_async(conn, AsyncBlueGreenPlugin)
                             assert bg_plugin is not None, \
                                 f"Unable to find blue/green plugin in wrapper connection for {host}."
                             results.blue_wrapper_connect_times.append(
@@ -1024,6 +1114,82 @@ class TestBlueGreenDeploymentAsync:
         finally:
             finish_latch.count_down()
             self.logger.debug(f"[AsyncWrapperBlueNewConnection @ {host_id}] Thread is completed.")
+
+    # Blue host
+    # Check: an execute started in IN_PROGRESS on the connection that owns the status provider
+    # Expect: the plugin holds the execute until the phase moves on
+    # Needs a stop signal to terminate: the status provider's tasks run on this thread's loop until then
+    def wrapper_blue_suspended_execute_probe_async(
+            self,
+            test_driver: TestDriver,
+            conn_utils: ConnectionUtils,
+            host: str,
+            port: int,
+            db: str,
+            observer: PhaseObserver,
+            stop: Event,
+            finish_latch: CountDownLatch,
+            connected: Event,
+            result: ProbeResult) -> None:
+        connect_params = self.get_wrapper_connect_params(conn_utils, host, port, db)
+
+        def _read_status(bg_plugin: AsyncBlueGreenPlugin) -> Optional[AsyncBlueGreenStatus]:
+            return bg_plugin._plugin_service.get_status(AsyncBlueGreenStatus, bg_plugin._bg_id)
+
+        async def _open_with_retry() -> AsyncAwsWrapperConnection:
+            for _ in range(BG_PROBE_CONNECT_ATTEMPTS - 1):
+                try:
+                    return await _open_wrapper_conn_async(test_driver, connect_params)
+                except Exception as e:
+                    self.logger.debug(f"[AsyncWrapperBlueSuspendedExecute @ {host}] Connect exception: {e}")
+            return await _open_wrapper_conn_async(test_driver, connect_params)
+
+        async def _execute_in_progress(cursor: AsyncAwsWrapperCursor, bg_plugin: AsyncBlueGreenPlugin) -> None:
+            result.phase_at_start = BlueGreenPhase.IN_PROGRESS.name
+            error: Optional[Exception] = None
+            result.begin()
+            try:
+                await asyncio.wait_for(cursor.execute("SELECT 1"), BG_ASYNC_EXECUTE_TIMEOUT_SEC)
+            except Exception as e:
+                error = e
+            result.end(error, observer.record(_read_status(bg_plugin)))
+            # The old blue may drop the connection at POST; the loop must keep running for the status provider.
+            try:
+                await cursor.fetchall()
+            except Exception as e:
+                self.logger.debug(f"[AsyncWrapperBlueSuspendedExecute @ {host}] Fetch exception: {e}")
+
+        async def _main() -> None:
+            conn = await _open_with_retry()
+            bg_plugin: Optional[AsyncBlueGreenPlugin] = _unwrap_plugin_async(conn, AsyncBlueGreenPlugin)
+            try:
+                assert bg_plugin is not None, f"Unable to find blue/green plugin in wrapper connection for {host}."
+                # Entering the cursor creates the driver cursor through the plugin, before IN_PROGRESS.
+                async with conn.cursor() as cursor:
+                    connected.set()
+                    while not stop.is_set():
+                        phase = observer.record(_read_status(bg_plugin))
+                        if phase == BlueGreenPhase.IN_PROGRESS.name and result.start_ns == 0:
+                            await _execute_in_progress(cursor, bg_plugin)
+                        await asyncio.sleep(BG_PLUGIN_STATUS_POLL_SEC)
+            finally:
+                # Stop the status provider's tasks on the loop they run on.
+                if bg_plugin is not None:
+                    provider = AsyncBlueGreenPlugin._status_providers.get(bg_plugin._bg_id)
+                    if provider is not None:
+                        await provider.stop()
+                await _close_conn_async(conn)
+
+        def _body(loop: asyncio.AbstractEventLoop) -> None:
+            loop.run_until_complete(_main())
+
+        try:
+            _run_worker_with_loop(_body)
+        except Exception as e:
+            self.logger.debug(f"[AsyncWrapperBlueSuspendedExecute @ {host}] Thread exception: {e}")
+        finally:
+            finish_latch.count_down()
+            self.logger.debug(f"[AsyncWrapperBlueSuspendedExecute @ {host}] Thread is completed.")
 
     # Blue / Green DNS monitors are purely sync (socket calls); reuse verbatim.
 
@@ -1092,7 +1258,7 @@ class TestBlueGreenDeploymentAsync:
                 conn = loop.run_until_complete(_open())
                 self.logger.debug(f"[AsyncWrapperGreenConnectivity @ {host_id}] Connection opened.")
 
-                bg_plugin: Optional[BlueGreenPlugin] = _unwrap_plugin_async(conn, BlueGreenPlugin)
+                bg_plugin: Optional[AsyncBlueGreenPlugin] = _unwrap_plugin_async(conn, AsyncBlueGreenPlugin)
                 assert bg_plugin is not None, \
                     f"Unable to find blue/green plugin in wrapper connection for {host}."
 
@@ -1240,12 +1406,12 @@ class TestBlueGreenDeploymentAsync:
                                 f"[AsyncDirectGreenIamIp{thread_prefix} @ {host_id}] "
                                 f"Thread exception: {e}")
                             result_queue.append(TimeHolder(start_ns, perf_counter_ns(), error=str(e)))
-                            if notify_on_first_error and "access denied" in str(e).lower():
+                            if notify_on_first_error and self.is_authentication_failure(e):
                                 results.green_node_changed_name_time_ns.compare_and_set(
                                     0, perf_counter_ns())
                                 self.logger.debug(
                                     f"[AsyncDirectGreenIamIp{thread_prefix} @ {host_id}] "
-                                    f"Encountered first 'Access denied' exception. Exiting thread...")
+                                    f"Encountered the first authentication failure. Exiting thread...")
                                 return
 
                     self.close_connection_async(conn, loop)
@@ -1273,7 +1439,9 @@ class TestBlueGreenDeploymentAsync:
             bg_id: str,
             start_latch: CountDownLatch,
             finish_latch: CountDownLatch,
-            results: Any) -> None:
+            results: Any,
+            stop: Event,
+            request: SwitchoverRequest) -> None:
         """Trigger BG switchover using RDS API (synchronous boto3 calls)."""
         try:
             start_latch.count_down()
@@ -1284,7 +1452,17 @@ class TestBlueGreenDeploymentAsync:
                 result.threads_sync_time.set(sync_time_ns)
 
             sleep(30)
-            test_utility.switchover_blue_green_deployment(bg_id)
+            # The main thread sets stop when it gives up waiting for the request, and then waits for the RDS API only
+            # if the request is marked, so the check and the mark stay together.
+            if stop.is_set():
+                return
+            request.requested_ns = perf_counter_ns()
+            request.requested.set()
+            try:
+                test_utility.switchover_blue_green_deployment(bg_id)
+            except Exception as e:
+                request.error = e
+                raise
 
             bg_trigger_time_ns = perf_counter_ns()
             for result in results.values():
@@ -1430,19 +1608,21 @@ class TestBlueGreenDeploymentAsync:
 
     def print_duration_times(
             self, node: str, title: str, times: Deque[TimeHolder], time_zero_ns: int) -> None:
+        # A monitor thread that hasn't stopped yet can still append to the deque.
+        samples = list(times)
         table = []
         headers = ["Connect at (ms)", "Connect time/duration (ms)", "Error"]
-        p99_ns = self.get_percentile([time.end_time_ns - time.start_time_ns for time in times], 99.0)
+        p99_ns = self.get_percentile([time.end_time_ns - time.start_time_ns for time in samples], 99.0)
         p99_ms = p99_ns // 1_000_000
         table.append(["p99", p99_ms, ""])
-        first_connect = times[0]
+        first_connect = samples[0]
         table.append([
             (first_connect.start_time_ns - time_zero_ns) // 1_000_000,
             (first_connect.end_time_ns - first_connect.start_time_ns) // 1_000_000,
             self.get_formatted_error(first_connect.error)
         ])
 
-        for time_holder in times:
+        for time_holder in samples:
             duration_ms = (time_holder.end_time_ns - time_holder.start_time_ns) // 1_000_000
             if duration_ms > p99_ms:
                 table.append([
@@ -1451,7 +1631,7 @@ class TestBlueGreenDeploymentAsync:
                     self.get_formatted_error(time_holder.error)
                 ])
 
-        last_connect = times[-1]
+        last_connect = samples[-1]
         table.append([
             (last_connect.start_time_ns - time_zero_ns) // 1_000_000,
             (last_connect.end_time_ns - last_connect.start_time_ns) // 1_000_000,
@@ -1497,5 +1677,3 @@ class TestBlueGreenDeploymentAsync:
         self.logger.debug(f"switchover_complete_time: {switchover_complete_time_ms} ms")
 
         assert switchover_complete_time_ms != 0, "BG switchover hasn't completed."
-        assert switchover_complete_time_ms >= max_green_node_changed_name_time_ms, \
-            "Green node changed name after SWITCHOVER_COMPLETED."
