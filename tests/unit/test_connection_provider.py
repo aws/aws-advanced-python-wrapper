@@ -181,6 +181,39 @@ def test_release_resources(connection_mock, set_provider_mock):
     set_provider_mock.release_resources.assert_called_once()
 
 
+def test_evict_connection_without_evicting_provider(connection_mock, default_provider_mock):
+    connection_provider_manager = ConnectionProviderManager(default_provider_mock)
+
+    assert not connection_provider_manager.evict_connection(connection_mock)
+
+
+def test_evict_connection_uses_custom_provider_first(connection_mock, set_provider_mock, mocker):
+    default_provider = mocker.MagicMock(spec=SqlAlchemyPooledConnectionProvider)
+    set_provider_mock.evict_connection.return_value = True
+    ConnectionProviderManager.set_connection_provider(set_provider_mock)
+
+    assert ConnectionProviderManager(default_provider).evict_connection(connection_mock)
+    default_provider.evict_connection.assert_not_called()
+
+
+def test_evict_connection_falls_back_to_default_provider(connection_mock, set_provider_mock, mocker):
+    default_provider = mocker.MagicMock(spec=SqlAlchemyPooledConnectionProvider)
+    default_provider.evict_connection.return_value = True
+    set_provider_mock.evict_connection.return_value = False
+    ConnectionProviderManager.set_connection_provider(set_provider_mock)
+
+    assert ConnectionProviderManager(default_provider).evict_connection(connection_mock)
+    set_provider_mock.evict_connection.assert_called_once_with(connection_mock)
+
+
+def test_evict_connection_asks_a_shared_provider_once(connection_mock, set_provider_mock):
+    set_provider_mock.evict_connection.return_value = False
+    ConnectionProviderManager.set_connection_provider(set_provider_mock)
+
+    assert not ConnectionProviderManager(set_provider_mock).evict_connection(connection_mock)
+    set_provider_mock.evict_connection.assert_called_once_with(connection_mock)
+
+
 def test_driver_connection_provider_accepted_strategies_returns_mapping():
     from types import MappingProxyType
 

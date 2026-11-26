@@ -32,6 +32,7 @@ from typing import (TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Dict,
 from aws_advanced_python_wrapper.aio.plugin import AsyncCanReleaseResources
 from aws_advanced_python_wrapper.aio.storage.sliding_expiration_cache_async import \
     AsyncSlidingExpirationCache
+from aws_advanced_python_wrapper.connection_provider import CanEvictConnection
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.host_selector import (
     HighestWeightHostSelector, HostSelector, RandomHostSelector,
@@ -234,7 +235,7 @@ class _PooledAsyncConnectionProxy:
         return getattr(self._raw, name)
 
 
-class AsyncPooledConnectionProvider(AsyncCanReleaseResources):
+class AsyncPooledConnectionProvider(AsyncCanReleaseResources, CanEvictConnection):
     """Async counterpart of :class:`SqlAlchemyPooledConnectionProvider`.
 
     Per-host pooling keyed by ``PoolKey(host.url, extra_key)``. Pools
@@ -368,6 +369,19 @@ class AsyncPooledConnectionProvider(AsyncCanReleaseResources):
 
         raw_conn = await pool.acquire()
         return _PooledAsyncConnectionProxy(raw_conn, pool)
+
+    def evict_connection(self, connection: Any) -> bool:
+        """Close ``connection``'s raw connection on close instead of pooling it.
+
+        Call it before closing the connection: a released proxy has already
+        returned its raw connection to the pool.
+        """
+        if not isinstance(connection, _PooledAsyncConnectionProxy) or connection._released:
+            return False
+
+        connection.invalidate()
+        logger.debug("AsyncPooledConnectionProvider.ConnectionEvicted")
+        return True
 
     def _get_extra_key(self, host_info: HostInfo, props: Properties) -> str:
         if self._pool_mapping is not None:

@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import sqlite3
+
 import psycopg
 import pytest
 
@@ -235,3 +237,73 @@ def test_release_resources(provider, mocker):
     pool1.dispose.assert_called_once()
     pool2.dispose.assert_called_once()
     assert 0 == len(SqlAlchemyPooledConnectionProvider._database_pools)
+
+
+@pytest.fixture
+def sqlite_pool_connect(host_info, mock_dialects):
+    # A real SQLAlchemy QueuePool over sqlite3, so eviction is checked against the pool itself.
+    provider = SqlAlchemyPooledConnectionProvider(pool_configurator=lambda _, __: {"pool_size": 1, "max_overflow": 0})
+    physical_connections: list = []
+
+    def target_connect(**kwargs):
+        physical_connections.append(sqlite3.connect(":memory:"))
+        return physical_connections[-1]
+
+    def connect():
+        driver_dialect, database_dialect = mock_dialects
+        props = Properties({WrapperProperties.USER.name: "user1"})
+        return provider.connect(target_connect, driver_dialect, database_dialect, host_info, props)
+
+    yield provider, connect, physical_connections
+    provider.release_resources()
+
+
+def is_open(physical_connection) -> bool:
+    try:
+        physical_connection.execute("SELECT 1")
+        return True
+    except sqlite3.ProgrammingError:
+        return False
+
+
+def test_closed_connection_is_reused_without_eviction(sqlite_pool_connect):
+    _, connect, physical_connections = sqlite_pool_connect
+
+    connect().close()
+    connect().close()
+
+    assert len(physical_connections) == 1
+
+
+def test_evicted_connection_is_closed_instead_of_reused(sqlite_pool_connect):
+    provider, connect, physical_connections = sqlite_pool_connect
+
+    conn = connect()
+    assert provider.evict_connection(conn)
+    conn.close()
+    assert not is_open(physical_connections[0])
+
+    connect().close()
+    assert len(physical_connections) == 2
+    assert is_open(physical_connections[1])
+
+
+def test_evicted_connection_stays_usable_until_closed(sqlite_pool_connect):
+    provider, connect, physical_connections = sqlite_pool_connect
+
+    conn = connect()
+    assert provider.evict_connection(conn)
+
+    assert conn.cursor().execute("SELECT 1").fetchone() == (1,)
+    conn.close()
+    assert not is_open(physical_connections[0])
+
+
+def test_evict_connection_rejects_connections_it_cannot_evict(sqlite_pool_connect, mock_conn):
+    provider, connect, _ = sqlite_pool_connect
+
+    conn = connect()
+    conn.close()
+
+    assert not provider.evict_connection(conn)
+    assert not provider.evict_connection(mock_conn)

@@ -104,8 +104,12 @@ class AwsWrapperPGPsycopgDialect(_DriverErrorNormalizeMixin, PGDialect_psycopg):
         #     bound to the new writer via plugin_service.current_connection;
         #     SA should reuse it, not invalidate).
         #   - FailoverFailedError → True (no usable connection; invalidate).
-        from aws_advanced_python_wrapper.errors import (FailoverError,
-                                                        FailoverFailedError)
+        from aws_advanced_python_wrapper.errors import (
+            ConnectionLifetimeError, ConnectionLifetimeSuccessError,
+            FailoverError, FailoverFailedError)
+
+        if isinstance(e, ConnectionLifetimeError):
+            return not isinstance(e, ConnectionLifetimeSuccessError)
 
         # Catch the whole FailoverError family -- including
         # TransactionResolutionUnknownError -- before the upstream is_disconnect

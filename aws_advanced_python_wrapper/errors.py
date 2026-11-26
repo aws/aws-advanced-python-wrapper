@@ -67,6 +67,31 @@ class FailoverSuccessError(FailoverError):
     __module__ = "aws_advanced_python_wrapper"
 
 
+class ConnectionLifetimeError(OperationalError):
+    __module__ = "aws_advanced_python_wrapper"
+
+
+class ConnectionLifetimeExpiredError(ConnectionLifetimeError):
+    # connection_lifetime_action=close: the physical connection is gone and
+    # the wrapper connection is permanently unusable.
+    __module__ = "aws_advanced_python_wrapper"
+    sqlstate = "08003"
+
+
+class ConnectionLifetimeSuccessError(ConnectionLifetimeError):
+    # connection_lifetime_action=reconnect succeeded: the wrapper connection
+    # now holds a replacement physical connection and may be retried once the
+    # caller re-creates its cursors.
+    __module__ = "aws_advanced_python_wrapper"
+    sqlstate = "08S02"
+
+
+class ConnectionLifetimeFailedError(ConnectionLifetimeError):
+    # connection_lifetime_action=reconnect failed: no usable connection.
+    __module__ = "aws_advanced_python_wrapper"
+    sqlstate = "08001"
+
+
 class ReadWriteSplittingError(AwsWrapperError, InterfaceError):
     __module__ = "aws_advanced_python_wrapper"
 

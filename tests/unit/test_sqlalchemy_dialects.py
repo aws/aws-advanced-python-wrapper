@@ -74,6 +74,22 @@ def test_is_disconnect_handles_full_failover_error_family(dialect_cls):
     assert d.is_disconnect(FailoverFailedError("x"), None, None) is True
 
 
+@pytest.mark.parametrize(
+    "dialect_cls", [AwsWrapperMySQLConnectorDialect, AwsWrapperPGPsycopgDialect])
+def test_is_disconnect_handles_the_connection_lifetime_error_family(dialect_cls):
+    # Only a successful reconnect leaves the pool slot's wrapper usable; the
+    # close action and a failed reconnect leave nothing to reuse. None of
+    # these carry ``errno``, so they have to be classified before the
+    # upstream probe, same as the FailoverError family above.
+    from aws_advanced_python_wrapper.errors import (
+        ConnectionLifetimeExpiredError, ConnectionLifetimeFailedError,
+        ConnectionLifetimeSuccessError)
+    d = dialect_cls.__new__(dialect_cls)  # avoid full dialect __init__/dbapi
+    assert d.is_disconnect(ConnectionLifetimeSuccessError("x"), None, None) is False
+    assert d.is_disconnect(ConnectionLifetimeExpiredError("x"), None, None) is True
+    assert d.is_disconnect(ConnectionLifetimeFailedError("x"), None, None) is True
+
+
 # Registration uses the SA <dialect>.<driver> convention: the wrapper plugs in
 # as a driver under the stock ``postgresql`` / ``mysql`` dialects, so the URL is
 # ``postgresql+aws_wrapper_psycopg`` / ``mysql+aws_wrapper_mysqlconnector``.

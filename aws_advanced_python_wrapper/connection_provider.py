@@ -15,8 +15,8 @@
 from __future__ import annotations
 
 from types import MappingProxyType
-from typing import (TYPE_CHECKING, Callable, ClassVar, Dict, Mapping, Optional,
-                    Protocol, Tuple)
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, Mapping,
+                    Optional, Protocol, Tuple, runtime_checkable)
 
 if TYPE_CHECKING:
     from aws_advanced_python_wrapper.database_dialect import DatabaseDialect
@@ -93,6 +93,21 @@ class ConnectionProvider(Protocol):
         :param host_info: the host details for the desired connection.
         :param props: the connection properties.
         :return: the established connection resulting from the given connection information.
+        """
+        ...
+
+
+@runtime_checkable
+class CanEvictConnection(Protocol):
+    def evict_connection(self, connection: Any) -> bool:
+        """
+        Keep a connection this provider issued from being handed out again.
+
+        Call it before closing the connection, because closing returns it to the pool.
+        The connection stays usable until the caller closes it. The pool then closes its physical connection instead of keeping it.
+
+        :param connection: a connection returned by this provider's ``connect``.
+        :return: `True` if the connection came from this provider's pool and was evicted, `False` otherwise.
         """
         ...
 
@@ -225,6 +240,23 @@ class ConnectionProviderManager:
                         hosts, role, strategy, props)
 
         return self._default_provider.get_host_info_by_strategy(hosts, role, strategy, props)
+
+    def evict_connection(self, connection: Any) -> bool:
+        """
+        Evict a connection from the pool of the provider that issued it. See :py:method:`CanEvictConnection.evict_connection`.
+
+        :param connection: the connection to evict.
+        :return: `True` if one of the available providers evicted the connection.
+        """
+        with ConnectionProviderManager._lock:
+            custom_provider = ConnectionProviderManager._conn_provider
+
+        if isinstance(custom_provider, CanEvictConnection) and custom_provider.evict_connection(connection):
+            return True
+
+        return (self._default_provider is not custom_provider
+                and isinstance(self._default_provider, CanEvictConnection)
+                and self._default_provider.evict_connection(connection))
 
     @staticmethod
     def reset_provider():

@@ -178,6 +178,14 @@ class _AuroraConnectionTrackerFactory:
         return AsyncAuroraConnectionTrackerPlugin(plugin_service)
 
 
+class _ConnectionLifetimeFactory:
+    def get_instance(
+            self, plugin_service, props, host_list_provider=None):
+        from aws_advanced_python_wrapper.aio.connection_lifetime_plugin import \
+            AsyncConnectionLifetimePlugin
+        return AsyncConnectionLifetimePlugin(plugin_service, props)
+
+
 class _ConnectTimeFactory:
     def get_instance(
             self, plugin_service, props, host_list_provider=None):
@@ -275,6 +283,7 @@ PLUGIN_FACTORIES: Dict[str, AsyncPluginFactory] = {
     "federated_auth": _FederatedAuthFactory(),
     "okta": _OktaAuthFactory(),
     "aurora_connection_tracker": _AuroraConnectionTrackerFactory(),
+    "connection_lifetime": _ConnectionLifetimeFactory(),
     "connect_time": _ConnectTimeFactory(),
     "execute_time": _ExecuteTimeFactory(),
     "dev": _DeveloperFactory(),
@@ -297,6 +306,7 @@ WEIGHT_RELATIVE_TO_PRIOR_PLUGIN = -1
 # (the v1/v2 sync codes collapse onto one async factory, which takes the
 # v1 slot: failover 400, host_monitoring 500).
 PLUGIN_FACTORY_WEIGHTS: Dict[Type[Any], int] = {
+    _ConnectionLifetimeFactory: 30,
     _CustomEndpointFactory: 40,
     _InitialConnectionFactory: 50,
     _AuroraConnectionTrackerFactory: 100,
