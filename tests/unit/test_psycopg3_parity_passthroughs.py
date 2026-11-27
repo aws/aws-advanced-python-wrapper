@@ -295,6 +295,21 @@ def test_async_wrapper_execute_routes_query_to_target_cursor() -> None:
         "SELECT 1", prepare=None, binary=False)
 
 
+def test_cursor_copy_goes_through_plugins() -> None:
+    target = MagicMock()
+    wrapper = _sync_wrapper(target)
+    wrapper._plugin_manager.execute = MagicMock(  # type: ignore[method-assign]
+        side_effect=lambda obj, method, func, *a, **k: func())
+    target_cursor = target.cursor.return_value
+
+    copy = wrapper.cursor().copy("COPY t FROM STDIN", ("p",))
+
+    assert copy is target_cursor.copy.return_value
+    target_cursor.copy.assert_called_once_with("COPY t FROM STDIN", ("p",))
+    method = wrapper._plugin_manager.execute.call_args.args[1]
+    assert method.method_name == "Cursor.copy"
+
+
 def test_sync_wrapper_wait_delegates() -> None:
     target = MagicMock()
     wrapper = _sync_wrapper(target)

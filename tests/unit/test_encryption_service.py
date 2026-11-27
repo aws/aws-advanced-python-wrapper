@@ -20,6 +20,7 @@ from decimal import Decimal
 from enum import Enum
 
 import pytest
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from aws_advanced_python_wrapper.encryption.algorithm import \
     EncryptionAlgorithm
@@ -56,8 +57,6 @@ def dec(payload, dk=DATA_KEY, hk=HMAC_KEY, algorithm=EncryptionAlgorithm.DEFAULT
     return EncryptionService.decrypt(payload, dk, hk, algorithm, target_type=target_type)
 
 
-# ---- payload layout ----
-
 class TestPayloadLayout:
     def test_min_length_is_65(self):
         assert EncryptionService.MIN_ENCRYPTED_LENGTH == 65
@@ -86,8 +85,6 @@ class TestPayloadLayout:
         assert EncryptionService.key_id_from_payload(None) is None
         assert EncryptionService.key_id_from_payload(b"\x00" * 10) is None  # too short
 
-
-# ---- round trips for every supported type ----
 
 class TestRoundTrip:
     @pytest.mark.parametrize("value", [
@@ -131,8 +128,6 @@ class TestRoundTrip:
         assert dec(None) is None
 
 
-# ---- target type coercion ----
-
 class TestTargetType:
     def test_coerce_to_str(self):
         assert dec(enc(123), target_type=str) == "123"
@@ -144,8 +139,6 @@ class TestTargetType:
         assert dec(enc("yes"), target_type=bool) is True
         assert dec(enc("no"), target_type=bool) is False
 
-
-# ---- fail-closed behavior ----
 
 class TestFailClosed:
     def test_too_short_raises_integrity(self):
@@ -160,7 +153,8 @@ class TestFailClosed:
 
     def test_tampered_key_id_fails_hmac(self):
         payload = bytearray(enc("hello"))
-        payload[34] ^= 0xFF  # key id is inside the HMAC-covered region
+        # Key id is inside the HMAC-covered region.
+        payload[34] ^= 0xFF
         with pytest.raises(IntegrityCheckError):
             dec(bytes(payload))
 
@@ -169,7 +163,7 @@ class TestFailClosed:
         struct.pack(">I", 7),                                # tag + key id
         struct.pack(">I", 7) + bytes([TypeMarker.STRING]),   # + marker, no IV
     ])
-    def test_signed_but_too_short_payload_is_an_integrity_error(self, body):
+    def test_signed_short_payload_raises_integrity_error(self, body):
         # Signed with the right HMAC key, so only the length check refuses it;
         # without it the framing would fail with a bare IndexError/ValueError.
         payload = hmac.new(HMAC_KEY, body, hashlib.sha256).digest() + body
@@ -202,15 +196,11 @@ class TestFailClosed:
             EncryptionService.encrypt("x", DATA_KEY, HMAC_KEY, key_id=bad)
 
 
-# ---- key rotation: value carries the id it was written with ----
-
 class TestKeyId:
     def test_payload_carries_write_key_id(self):
         for kid in (0, 1, 7, 2 ** 32 - 1):
             assert EncryptionService.key_id_from_payload(enc("v", key_id=kid)) == kid
 
-
-# ---- randomized IV ----
 
 def test_iv_is_random_per_call():
     a = enc("same-value")
@@ -219,15 +209,11 @@ def test_iv_is_random_per_call():
     assert dec(a) == dec(b) == "same-value"
 
 
-# ---- AES-128 ----
-
 def test_aes_128_round_trip():
     dk16 = bytes(range(16))
     payload = EncryptionService.encrypt("x", dk16, HMAC_KEY, EncryptionAlgorithm.AES_128_GCM, key_id=1)
     assert EncryptionService.decrypt(payload, dk16, HMAC_KEY, EncryptionAlgorithm.AES_128_GCM) == "x"
 
-
-# ---- wipe ----
 
 def test_wipe_zeroes_bytearray():
     buf = bytearray(b"secret-key-material")
@@ -241,8 +227,6 @@ def test_datetime_tz_normalization_matches_millis_contract():
     millis = EncryptionService._to_millis(naive, "TIMESTAMP")
     assert millis == int(datetime(2023, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
 
-
-# ---- marker coverage: generic, time, and reading an externally-written INTEGER ----
 
 class TestMarkerCoverage:
     def test_generic_falls_back_to_str(self):
@@ -287,11 +271,6 @@ class TestAlgorithm:
             EncryptionService.encrypt("x", DATA_KEY, HMAC_KEY, "AES-999-XYZ", key_id=1)
 
 
-# =====================================================================
-# Edge cases, plus tests that pin behavior specific to Python.
-# =====================================================================
-
-
 def _resign(payload: bytes, hmac_key: bytes) -> bytes:
     """Re-sign a payload whose body was edited, so a test can get past the
     integrity check and exercise the decryption path itself."""
@@ -304,19 +283,18 @@ ES_KEYID = 4         # KEY_ID_LENGTH
 MARKER_OFFSET = ES_TAG + ES_KEYID
 
 
-# ---- serialize_value: markers it can/can't write ----
-
 class TestSerializeValue:
     def test_raises_for_unknown_marker(self):
         # 12345 is no marker at all, so any value is refused.
-        with pytest.raises(EncryptionFailedError, match="Unsupported type marker: 12345"):
+        with pytest.raises(EncryptionFailedError, match="Unsupported type marker: '12345'"):
             EncryptionService.serialize_value("x", 12345)
 
-    def test_long_overflow_raises_without_leaking_the_value(self):
+    def test_long_overflow_raises_without_value(self):
         # Every Python int but bool uses the LONG marker, so one outside the
         # signed 64-bit range must be refused. The error must not expose the
         # integer through its message, __cause__, or __context__.
-        too_big = 2 ** 63  # one past the signed 64-bit max
+        # One past the signed 64-bit max.
+        too_big = 2 ** 63
         with pytest.raises(EncryptionFailedError) as ei:
             enc(too_big)
         err = ei.value
@@ -325,7 +303,7 @@ class TestSerializeValue:
         assert err.__cause__ is None
         assert err.__context__ is None
 
-    def test_long_underflow_raises_without_leaking_the_value(self):
+    def test_long_underflow_raises_without_value(self):
         # The lower half of the range check, held to the same no-leak rule as
         # the upper half. (test_long_out_of_range_keeps_its_own_message pins
         # the message.)
@@ -369,39 +347,47 @@ class TestSerializeValue:
         value = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(microseconds=micros)
         assert EncryptionService._to_millis(value, "TIMESTAMP") == expected_millis
 
-    def test_millis_are_exact_far_from_the_epoch(self):
+    def test_millis_exact_far_from_epoch(self):
         value = datetime(9999, 12, 31, 23, 59, 59, 999000, tzinfo=timezone.utc)
         expected = (value - datetime(1970, 1, 1, tzinfo=timezone.utc)) // timedelta(milliseconds=1)
         assert EncryptionService._to_millis(value, "TIMESTAMP") == expected
 
     @pytest.mark.parametrize("value,marker", [
-        (date(2024, 1, 2), TypeMarker.LOCAL_DATE_TIME),   # a date is not a date-time
+        # A date is not a date-time.
+        (date(2024, 1, 2), TypeMarker.LOCAL_DATE_TIME),
         ("not a date", TypeMarker.LOCAL_DATE),
         ("SECRET-123", TypeMarker.LONG),
         ("SECRET-123", TypeMarker.INTEGER),
-        (2 ** 40, TypeMarker.INTEGER),                    # out of the 32-bit range
+        # Out of the 32-bit range.
+        (2 ** 40, TypeMarker.INTEGER),
         ("SECRET-123", TypeMarker.DOUBLE),
         ("SECRET-123", TypeMarker.TIMESTAMP),
         ("SECRET-123", TypeMarker.DATE),
-        (Decimal("NaN"), TypeMarker.LONG),                 # TypeError: a Decimal is not an integer
-        (7, TypeMarker.BYTE_ARRAY),                       # bytes(7) would be 7 zero bytes
+        # TypeError: a Decimal is not an integer.
+        (Decimal("NaN"), TypeMarker.LONG),
+        # bytes(7) would be 7 zero bytes.
+        (7, TypeMarker.BYTE_ARRAY),
         ("false", TypeMarker.BOOLEAN),                    # not truthiness
-        (1e300, TypeMarker.FLOAT),                        # OverflowError: too large for a 32-bit float
-        (time(3, 4, 5), TypeMarker.LOCAL_DATE_TIME),      # a time of day is not a date-time
+        # OverflowError: too large for a 32-bit float.
+        (1e300, TypeMarker.FLOAT),
+        # A time of day is not a date-time.
+        (time(3, 4, 5), TypeMarker.LOCAL_DATE_TIME),
     ])
-    def test_value_that_does_not_fit_an_explicit_marker(self, value, marker):
+    def test_value_not_fitting_explicit_marker_raises(self, value, marker):
         # Mostly reachable only with an explicit marker. The error is a wrapper
         # error, names the marker, and quotes nothing of the value.
         with pytest.raises(EncryptionFailedError) as ei:
             EncryptionService.serialize_value(value, marker)
         err = ei.value
         assert "SECRET" not in str(err)
-        assert err.__cause__ is None and err.__context__ is None
+        assert err.__cause__ is None
+        assert err.__context__ is None
         assert err.data_type == TypeMarker.name_for(marker)
 
     @pytest.mark.parametrize("marker", [TypeMarker.DATE, TypeMarker.TIME, TypeMarker.TIMESTAMP])
     def test_out_of_range_instant_is_refused_naming_its_marker(self, marker):
-        value = datetime(9999, 12, 31, 23, 0, tzinfo=timezone(timedelta(hours=-2)))  # after year 9999 in UTC
+        # After year 9999 in UTC.
+        value = datetime(9999, 12, 31, 23, 0, tzinfo=timezone(timedelta(hours=-2)))
         with pytest.raises(EncryptionFailedError, match="outside the range") as ei:
             EncryptionService.serialize_value(value, marker)
         assert ei.value.data_type == TypeMarker.name_for(marker)
@@ -422,12 +408,12 @@ class TestSerializeValue:
         assert ei.value.data_type == "BOOLEAN"
 
     @pytest.mark.parametrize("value", [1e300, Decimal("1E+30"), 1.5])
-    def test_non_int_as_long_gets_the_generic_message(self, value):
+    def test_non_int_as_long_raises_generic_message(self, value):
         with pytest.raises(EncryptionFailedError, match="Cannot write a value of type") as ei:
             EncryptionService.serialize_value(value, TypeMarker.LONG)
         assert ei.value.data_type == "LONG"
 
-    def test_instant_just_past_the_last_millisecond_is_refused(self):
+    def test_instant_past_last_millisecond_raises(self):
         # The clamp only undoes rounding: the first millisecond after year
         # 9999 in UTC (no sub-millisecond part to round) is still refused.
         value = datetime(9999, 12, 31, 23, 0, tzinfo=timezone(timedelta(hours=-1)))  # 10000-01-01T00:00Z
@@ -458,27 +444,30 @@ class TestSerializeValue:
         # str() of a huge int raises ValueError (the int-digit limit).
         with pytest.raises(EncryptionFailedError) as ei:
             EncryptionService.serialize_value(10 ** 5000, TypeMarker.STRING)
-        assert ei.value.__cause__ is None and ei.value.__context__ is None
+        assert ei.value.__cause__ is None
+        assert ei.value.__context__ is None
 
     @pytest.mark.parametrize("value", [2 ** 63, -(2 ** 63) - 1])
     def test_long_out_of_range_keeps_its_own_message(self, value):
         with pytest.raises(EncryptionFailedError, match="signed 64-bit range"):
             EncryptionService.serialize_value(value)
 
-    def test_datetime_written_as_local_date_keeps_only_the_date(self):
+    def test_datetime_as_local_date_keeps_date(self):
         data = EncryptionService.serialize_value(datetime(2024, 1, 2, 3, 4, 5), TypeMarker.LOCAL_DATE)
         assert data == b"2024-01-02"
         assert EncryptionService.deserialize_value(data, TypeMarker.LOCAL_DATE) == date(2024, 1, 2)
 
     @pytest.mark.parametrize("value", [
-        datetime(1, 1, 1, 0, 30, tzinfo=timezone(timedelta(hours=1))),           # before year 1 in UTC
-        datetime(9999, 12, 31, 23, 0, tzinfo=timezone(timedelta(hours=-2))),     # after year 9999 in UTC
+        # Before year 1 in UTC.
+        datetime(1, 1, 1, 0, 30, tzinfo=timezone(timedelta(hours=1))),
+        # After year 9999 in UTC.
+        datetime(9999, 12, 31, 23, 0, tzinfo=timezone(timedelta(hours=-2))),
     ])
     def test_timestamp_that_could_not_be_read_back_is_refused(self, value):
         with pytest.raises(EncryptionFailedError):
             enc(value)
 
-    def test_timestamp_at_the_edges_of_the_range_round_trips(self):
+    def test_timestamp_range_edges_round_trip(self):
         for value in (datetime(9999, 12, 31, 23, 59, 59, 999000, tzinfo=timezone.utc),
                       datetime(1, 1, 1, tzinfo=timezone.utc)):
             assert dec(enc(value)) == value
@@ -501,7 +490,8 @@ class TestSerializeValue:
 
     def test_str_subclass_reads_back_as_plain_str(self):
         out = dec(enc(Color.RED))
-        assert out == "red" and type(out) is str
+        assert out == "red"
+        assert type(out) is str
 
     @pytest.mark.parametrize("value,marker,expected", [
         (Color.RED, TypeMarker.GENERIC, b"Color.RED"),
@@ -511,15 +501,13 @@ class TestSerializeValue:
     def test_generic_and_non_str_under_string_keep_str_of_value(self, value, marker, expected):
         assert EncryptionService.serialize_value(value, marker) == expected
 
-    def test_object_that_only_claims_to_be_a_str_keeps_str_of_value(self, mocker):
+    def test_fake_str_object_keeps_str_of_value(self, mocker):
         # isinstance() trusts a faked __class__ (proxies, mocks) and picks
         # STRING, but str.__str__ needs a real str, so the check is on type().
         proxy = mocker.MagicMock(spec=str)
         proxy.__str__.return_value = "red"
         assert EncryptionService.serialize_value(proxy) == b"red"
 
-
-# ---- deserialize_value: reading every marker ----
 
 class TestDeserializeExternalMarkers:
     """This wrapper never writes some of these markers or forms, but it must
@@ -609,20 +597,19 @@ class TestDeserializeExternalMarkers:
 
     @pytest.mark.parametrize("marker", [TypeMarker.DATE, TypeMarker.TIME, TypeMarker.TIMESTAMP])
     @pytest.mark.parametrize("millis", [2 ** 63 - 1, -(2 ** 63), 10 ** 15])
-    def test_out_of_range_epoch_millis_is_a_type_conversion_error(self, marker, millis):
+    def test_out_of_range_epoch_millis_raises_type_conversion_error(self, marker, millis):
         # Another writer can store epoch millis no datetime can hold; the
         # resulting OverflowError must surface as the wrapper's error.
         with pytest.raises(TypeConversionError) as ei:
             EncryptionService.deserialize_value(struct.pack(">q", millis), marker)
-        assert ei.value.__cause__ is None and ei.value.__context__ is None
+        assert ei.value.__cause__ is None
+        assert ei.value.__context__ is None
 
     def test_unknown_marker_on_read(self):
         with pytest.raises(EncryptionError) as ei:
             EncryptionService.deserialize_value(b"x", 12345)
-        assert "Unsupported type marker: 12345" in str(ei.value)
+        assert "Unsupported type marker: '12345'" in str(ei.value)
 
-
-# ---- decrypt path: unknown marker inside a (re-signed) payload ----
 
 def test_decrypt_rejects_unknown_marker_in_payload():
     payload = bytearray(enc("123-45-6789"))
@@ -630,10 +617,8 @@ def test_decrypt_rejects_unknown_marker_in_payload():
     resigned = _resign(bytes(payload), HMAC_KEY)
     with pytest.raises(DecryptionError) as ei:
         dec(resigned)
-    assert "Unknown type marker: 77" in str(ei.value)
+    assert "Unknown type marker: '77'" in str(ei.value)
 
-
-# ---- decrypt-path data-key validation (past length check, before GCM) ----
 
 def test_decrypt_rejects_wrong_length_data_key():
     payload = enc("123-45-6789")
@@ -641,15 +626,11 @@ def test_decrypt_rejects_wrong_length_data_key():
         EncryptionService.decrypt(payload, bytes(range(16)), HMAC_KEY)
 
 
-# ---- missing data key / hmac key messages ----
-
 def test_missing_data_key_message():
     with pytest.raises(EncryptionError) as ei:
         EncryptionService.encrypt("x", None, HMAC_KEY, key_id=1)
     assert "got None" in str(ei.value)
 
-
-# ---- target-type coercion edge cases ----
 
 class TestTargetTypeEdges:
     def test_boolean_db_spellings_true(self):
@@ -672,7 +653,7 @@ class TestTargetTypeEdges:
             dec(enc("abc"), target_type=int)
 
     @pytest.mark.parametrize("value", [float("inf"), float("nan"), Decimal("Infinity")])
-    def test_non_finite_to_int_is_a_type_conversion_error(self, value):
+    def test_non_finite_to_int_raises_type_conversion_error(self, value):
         # int() raises OverflowError / ValueError here, outside the PEP 249
         # hierarchy unless it is converted.
         with pytest.raises(TypeConversionError) as ei:
@@ -702,9 +683,7 @@ class TestTargetTypeEdges:
         assert dec(enc(1.5), target_type=int) == 1
 
 
-# ---- key and plaintext buffers ----
-
-def test_encrypt_wipes_the_buffer_aes_gcm_saw_and_copies_no_key(monkeypatch):
+def test_encrypt_wipes_aes_gcm_buffer_without_key_copy(monkeypatch):
     # The keys reach AES-GCM and HMAC as given (no immutable copy of a
     # bytearray key), and the plaintext buffer AES-GCM read is the one wiped.
     from types import SimpleNamespace
@@ -747,16 +726,12 @@ def test_memoryview_keys_are_accepted(dk_type, hk_type):
     assert EncryptionService.decrypt(payload, DATA_KEY, HMAC_KEY) == "v"
 
 
-# ---- immutability: the caller's value is not mutated ----
-
 def test_encrypt_does_not_mutate_caller_bytes():
     value = bytearray(b"123-45-6789")
     snapshot = bytes(value)
     enc(bytes(value))
     assert bytes(value) == snapshot
 
-
-# ---- precision contract ----
 
 class TestPrecision:
     def test_timestamp_marker_keeps_millisecond(self):
@@ -794,10 +769,9 @@ class TestPrecision:
         assert EncryptionService.serialize_value(v) == b"2026-08-11T12:30:45"
 
 
-# ---- no-UTF-8-form string is refused without quoting the plaintext ----
-
 def test_lone_surrogate_string_refused_without_quoting_plaintext():
-    secret = "secret-\ud800-value"  # lone surrogate: no valid UTF-8 form
+    # Lone surrogate: no valid UTF-8 form.
+    secret = "secret-\ud800-value"
     with pytest.raises(EncryptionError) as ei:
         enc(secret)
     # UnicodeEncodeError holds the plaintext in .object. The production code
@@ -808,18 +782,15 @@ def test_lone_surrogate_string_refused_without_quoting_plaintext():
     assert ei.value.__context__ is None
 
 
-# ---- GCM auth independence from HMAC ----
-
 def test_gcm_auth_tag_bound_to_data_key():
     # A payload encrypted+signed under a different data key (same HMAC key) must
     # pass the HMAC check but fail GCM when decrypted with the original data key.
     other_dk = bytes([(b + 7) % 256 for b in DATA_KEY])
     other = EncryptionService.encrypt("v", other_dk, HMAC_KEY, key_id=KEY_ID)
     with pytest.raises(DecryptionError):
-        dec(other)  # HMAC matches (HMAC_KEY), data key wrong for DATA_KEY decrypt
+        # HMAC matches (HMAC_KEY), data key wrong for DATA_KEY decrypt.
+        dec(other)
 
-
-# ---- exception hierarchy: lenient read mode relies on this ----
 
 class TestExceptionHierarchy:
     """The read path's lenient mode (encryption_return_unverified_data) will
@@ -850,7 +821,7 @@ class TestExceptionHierarchy:
         with pytest.raises(IntegrityCheckError):
             dec(bytes(payload))
 
-    def test_wrong_key_is_not_an_integrity_error(self):
+    def test_wrong_key_not_integrity_error(self):
         # ...but it must not swallow a wrong-key failure. That raises
         # DecryptionError, which is not an IntegrityCheckError.
         wrong_dk = bytes([(b + 1) % 256 for b in DATA_KEY])
@@ -862,3 +833,24 @@ class TestExceptionHierarchy:
             pytest.fail("wrong-key failure must not be an IntegrityCheckError")
         except DecryptionError:
             pass
+
+
+def test_serialize_unknown_marker_raises():
+    with pytest.raises(EncryptionFailedError, match="Unsupported type marker: '12345'"):
+        EncryptionService._serialize("x", 12345)
+
+
+def test_encrypt_aesgcm_failure_raises(mocker):
+    failure = ValueError("boom")
+    mocker.patch.object(AESGCM, "encrypt", side_effect=failure)
+    with pytest.raises(EncryptionFailedError, match="Failed to encrypt value: ValueError") as ei:
+        enc("x")
+    assert ei.value.__cause__ is failure
+
+
+def test_serialize_date_as_timestamp_uses_midnight_utc():
+    assert EncryptionService.serialize_value(date(2020, 1, 2), TypeMarker.TIMESTAMP) == struct.pack(">q", 1577923200000)
+
+
+def test_truthy_bool_returns_it():
+    assert EncryptionService._truthy(True) is True

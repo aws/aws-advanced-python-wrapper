@@ -48,6 +48,7 @@ Changing `args` or `kwargs` in place is not allowed, and the caller's own object
 
 `current_call_context` is set whenever a plugin handles one of these two methods through the wrapper.
 A plugin that must change the arguments, rather than one that may, should raise when it finds `None` instead of calling `execute_func` with the arguments unchanged.
+Before it assigns, a plugin can call `context.holds(args, kwargs)`, which returns `True` only when the context holds the argument objects the plugin was handed (each positional argument and each keyword value, compared with `is`), so the plugin never replaces another call's arguments.
 
 A replacement lasts until the plugin that made it returns.
 A plugin before it that calls `execute_func` again starts again from the arguments it saw, so the replacement is made once per run.

@@ -56,6 +56,7 @@ class DbApiMethod(Enum):
     CURSOR_COPY_FROM = (25, "Cursor.copy_from", False)
     CURSOR_COPY_TO = (26, "Cursor.copy_to", False)
     CURSOR_COPY_EXPERT = (27, "Cursor.copy_expert", False)
+    CURSOR_COPY = (40, "Cursor.copy", False)
 
     # Cursor properties and attributes
     CURSOR_CONNECTION = (28, "Cursor.connection", False)
@@ -74,7 +75,7 @@ class DbApiMethod(Enum):
     ACCEPTS_STRATEGY = (39, "accepts_strategy", True)
 
     # Special marker for all methods
-    ALL = (40, "*", False)
+    ALL = (41, "*", False)
 
     def __init__(self, id: int, method_name: str, always_use_pipeline: bool):
         self.id = id

@@ -18,6 +18,8 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
+from aws_advanced_python_wrapper.utils.messages import Messages
+
 
 class TypeMarker:
     """The single byte written ahead of the ciphertext recording how the
@@ -68,7 +70,7 @@ class TypeMarker:
     def from_value(cls, value: int) -> int:
         """Validate a marker byte read from a payload and return it unchanged."""
         if value not in cls._NAMES:
-            raise ValueError(f"Unknown type marker: {value!r}")
+            raise ValueError(Messages.get_formatted("TypeMarker.UnknownMarker", value))
         return value
 
     @classmethod

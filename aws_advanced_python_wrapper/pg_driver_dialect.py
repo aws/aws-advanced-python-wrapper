@@ -14,19 +14,28 @@
 
 from __future__ import annotations
 
+import re
 import socket
-from typing import TYPE_CHECKING, Any, Callable, Set
+import string
+from typing import (TYPE_CHECKING, Any, Callable, ClassVar, FrozenSet, Mapping,
+                    Optional, Sequence, Set, Tuple, cast)
 
 import psycopg
+from psycopg import rows
+from psycopg import sql as psycopg_sql
 
 if TYPE_CHECKING:
-    from aws_advanced_python_wrapper.hostinfo import HostInfo
-    from aws_advanced_python_wrapper.pep249 import Connection
+    from re import Pattern
 
+    from aws_advanced_python_wrapper.hostinfo import HostInfo
+    from aws_advanced_python_wrapper.pep249 import Connection, Cursor
+
+from contextlib import closing
 from inspect import signature
 
-from aws_advanced_python_wrapper.driver_dialect import DriverDialect
 from aws_advanced_python_wrapper.driver_dialect_codes import DriverDialectCodes
+from aws_advanced_python_wrapper.encryption_driver_dialect import \
+    EncryptionDriverDialect
 from aws_advanced_python_wrapper.errors import UnsupportedOperationError
 from aws_advanced_python_wrapper.pep249_methods import DbApiMethod
 from aws_advanced_python_wrapper.utils.log import Logger
@@ -37,13 +46,40 @@ from aws_advanced_python_wrapper.utils.properties import (Properties,
 
 logger = Logger(__name__)
 
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 
-class PgDriverDialect(DriverDialect):
+
+class PgDriverDialect(EncryptionDriverDialect):
     _driver_name: str = "Psycopg"
     TARGET_DRIVER_CODE: str = "psycopg"
 
     # https://www.psycopg.org/psycopg3/docs/api/pq.html#psycopg.pq.TransactionStatus
     PSYCOPG_IDLE_TRANSACTION_STATUS = 0
+
+    # metadata_key keeps the base's exact match: catalog names are case-sensitive, so "Users" and users are two tables.
+    # An unqualified operator resolves through search_path, where a user-defined "=" with a closer type match would
+    # win. Pin the built-in.
+    equals_operator: ClassVar[str] = "OPERATOR(pg_catalog.=)"
+    analyzed_statements: ClassVar[FrozenSet[str]] = frozenset(
+        {"SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE", "COPY", "VALUES", "PREPARE"})
+    sqlglot_dialect: ClassVar[str] = "postgres"
+    upsert_row_alias: ClassVar[Optional[str]] = "excluded"
+    sql_token_pattern: ClassVar[Optional[Pattern[str]]] = re.compile(r"""
+          (?P<line_comment>--[^\n]*)
+        | (?P<block_comment>/\*)
+        | (?P<estring>[Ee]'(?:[^'\\]|\\.|'')*(?P<estring_end>'?))
+        | (?P<string>'(?:[^']|'')*(?P<string_end>'?))
+        | (?P<ident>"(?:[^"]|"")*(?P<ident_end>"?))
+        | (?P<param>\$\d+)
+        | (?P<dollar>\$(?:[^\W\d]\w*)?\$)
+        | (?P<word>[^\W\d][\w$]*)
+        | (?P<number>\d[\w.]*)
+        | (?P<semicolon>;)
+        | (?P<space>\s+)
+        | (?P<other>[^\w\s'"$;/\-]+|.)
+    """, re.VERBOSE | re.DOTALL)
+    nested_block_comments: ClassVar[bool] = True
+    strict_placeholders: ClassVar[bool] = True
 
     _dialect_code: str = DriverDialectCodes.PSYCOPG
     _network_bound_methods: Set[str] = {
@@ -178,6 +214,67 @@ class PgDriverDialect(DriverDialect):
 
         if isinstance(obj, psycopg.Cursor):
             return obj.connection
+
+    @classmethod
+    def fold_identifier(cls, name: str, quoted: bool) -> str:
+        # PostgreSQL folds an unquoted identifier to lower case, ASCII letters only in a multibyte (e.g. UTF-8)
+        # database; a quoted one keeps its case. The result is the name in the system catalog, apart from PostgreSQL's
+        # truncation of names longer than 63 bytes.
+        return name if quoted else name.translate(_ASCII_LOWER)
+
+    def upsert_clause(
+            self, conflict_columns: Sequence[str], update_columns: Sequence[str], extra_assignments: Sequence[str] = ()) -> str:
+        assignments = ", ".join([f"{c} = EXCLUDED.{c}" for c in update_columns] + list(extra_assignments))
+        return f"ON CONFLICT ({', '.join(conflict_columns)}) DO UPDATE SET {assignments}"
+
+    def insert_returning_id(self, conn: Connection, sql: str, params: Sequence[Any]) -> int:
+        """
+        Runs an ``INSERT`` written without ``RETURNING`` and returns the generated ``id``.
+        Each cursor call runs through :meth:`execute`, so the ``socket_timeout`` of this dialect's properties applies, and
+        a timeout raises ``QueryTimeoutError``.
+
+        :param conn: the connection to run the statement on.
+        :param sql: the ``INSERT`` statement.
+        :param params: the statement's parameters.
+        :return: the generated ``id``.
+        """
+        returning_sql = f"{sql} RETURNING id"
+        with closing(conn.cursor()) as cursor:
+            self.execute(
+                DbApiMethod.CURSOR_EXECUTE.method_name, lambda: cursor.execute(returning_sql, params), returning_sql, conn=conn)
+            row = cast("Any", self.execute(DbApiMethod.CURSOR_FETCHONE.method_name, lambda: cursor.fetchone(), conn=conn))
+        # A connection opened with a dict-like row factory returns a mapping.
+        if isinstance(row, Mapping):
+            return int(next(iter(row.values())))
+        return int(row[0])
+
+    def analyzable_sql(self, sql: Any, cursor: Cursor) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Returns the text the encryption plugin analyzes for ``sql``, and the codec of the connection's client encoding
+        when ``sql`` is ``bytes``.
+        A psycopg ``Composable`` is analyzed as text and sent as the object.
+        ``bytes`` SQL is analyzed as text in the connection's client encoding when that encoding reads each ASCII byte
+        as itself and the text encodes back to the same bytes.
+        psycopg raises ``NotSupportedError`` for an encoding Python has no codec for.
+
+        :param sql: the SQL the application passed to the cursor.
+        :param cursor: the driver cursor the SQL runs on.
+        :return: the text to analyze, or None when the SQL runs unanalyzed, and the codec ``bytes`` SQL was decoded
+            with, or None.
+        """
+        if isinstance(sql, psycopg_sql.Composable):
+            return sql.as_string(cast("Any", cursor)), None
+        if isinstance(sql, bytes):
+            conn = self.get_connection_from_obj(cursor)
+            codec = None if conn is None else conn.info.encoding
+            return self._decode_sql(sql, codec), codec
+        return super().analyzable_sql(sql, cursor)
+
+    def unsupported_row_factory(self, cursor: Cursor) -> Optional[Any]:
+        if isinstance(cursor, psycopg.Cursor) and \
+                cursor.row_factory not in (rows.tuple_row, rows.dict_row, rows.namedtuple_row):
+            return cursor.row_factory
+        return None
 
     def prepare_connect_info(self, host_info: HostInfo, original_props: Properties) -> Properties:
         driver_props: Properties = Properties(original_props.copy())

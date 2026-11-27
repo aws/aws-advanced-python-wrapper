@@ -17,7 +17,7 @@ from __future__ import annotations
 import math
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import (TYPE_CHECKING, Any, FrozenSet, Iterable, Optional, Type,
                     TypeVar)
 
@@ -60,19 +60,20 @@ class EncryptionConfig:
     properties. Build it with :meth:`from_props`; the constructor validates."""
 
     kms_region: str
-    allowed_master_key_arns: FrozenSet[str] = field(default_factory=frozenset)
-    kms_endpoint: Optional[str] = None
-    metadata_schema: str = "encrypt"
-    metadata_cache_enabled: bool = True
-    metadata_cache_expiration_sec: float = 3600.0
-    metadata_cache_refresh_interval_sec: float = 300.0
-    data_key_cache_enabled: bool = True
-    data_key_cache_max_size: int = 1000
-    data_key_cache_expiration_sec: float = 300.0
-    key_management_max_retries: int = 3
-    key_management_retry_backoff_base_sec: float = 0.1
-    audit_logging_enabled: bool = False
-    return_unverified_data: bool = False
+    allowed_master_key_arns: FrozenSet[str]
+    kms_endpoint: Optional[str]
+    metadata_schema: str
+    metadata_cache_enabled: bool
+    metadata_cache_expiration_sec: float
+    metadata_cache_refresh_interval_sec: float
+    data_key_cache_enabled: bool
+    data_key_cache_max_size: int
+    data_key_cache_expiration_sec: float
+    key_management_max_retries: int
+    key_management_retry_backoff_base_sec: float
+    audit_logging_enabled: bool
+    return_unverified_data: bool
+    fail_on_unmapped_parameter: bool = True
 
     def __post_init__(self) -> None:
         if not self.kms_region or not self.kms_region.strip():
@@ -132,6 +133,7 @@ class EncryptionConfig:
                 wp.ENCRYPTION_KEY_MANAGEMENT_RETRY_BACKOFF_BASE_SEC, props, float),
             audit_logging_enabled=wp.ENCRYPTION_AUDIT_LOGGING_ENABLED.get_bool(props),
             return_unverified_data=wp.ENCRYPTION_RETURN_UNVERIFIED_DATA.get_bool(props),
+            fail_on_unmapped_parameter=wp.ENCRYPTION_FAIL_ON_UNMAPPED_PARAMETER.get_bool(props),
         )
 
         if require_allowed_master_keys and not config.restricts_master_keys:
@@ -173,6 +175,10 @@ def _finite(value: float) -> bool:
 def _number(prop: WrapperProperty, props: Properties, kind: Type[T]) -> T:
     """Read a numeric property, naming it if the value is not a number.
     Property values are configuration, not secrets, so chaining is fine."""
+    value = props.get(prop.name)
+    # int() drops the fraction, so 1.5 would become 1 without an error.
+    if kind is int and isinstance(value, float) and not value.is_integer():
+        raise EncryptionConfigError(Messages.get_formatted("EncryptionConfig.InvalidValue", prop.name, value))
     try:
         return prop.get_type(props, kind)
     except (TypeError, ValueError) as e:
