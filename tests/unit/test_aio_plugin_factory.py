@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -38,6 +39,7 @@ from aws_advanced_python_wrapper.aio.read_write_splitting_plugin import \
     AsyncReadWriteSplittingPlugin
 from aws_advanced_python_wrapper.errors import AwsWrapperError
 from aws_advanced_python_wrapper.hostinfo import HostInfo
+from aws_advanced_python_wrapper.utils.messages import Messages
 from aws_advanced_python_wrapper.utils.properties import Properties
 
 
@@ -297,6 +299,30 @@ def test_connect_resolves_plugins_from_string_kwarg():
         assert "AsyncDefaultPlugin" in plugin_types
 
     asyncio.run(_body())
+
+
+def test_connect_refuses_kms_encryption_plugin():
+    from aws_advanced_python_wrapper.aio.wrapper import \
+        AsyncAwsWrapperConnection
+
+    connects: List[Dict[str, Any]] = []
+
+    async def _fake_connect(**kwargs):
+        connects.append(kwargs)
+        return MagicMock()
+
+    async def _body() -> None:
+        with pytest.raises(AwsWrapperError) as info:
+            await AsyncAwsWrapperConnection.connect(
+                target=_fake_connect,
+                conninfo="host=h user=u password=p dbname=d port=5432",
+                plugins="kms_encryption",
+            )
+        assert str(info.value) == Messages.get_formatted("PluginManager.InvalidPlugin", "kms_encryption")
+
+    asyncio.run(_body())
+    # Refused before any driver connection is opened.
+    assert connects == []
 
 
 def test_connect_resolves_plugins_from_conninfo_dsn():

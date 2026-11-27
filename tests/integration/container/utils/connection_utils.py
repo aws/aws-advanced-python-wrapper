@@ -14,10 +14,15 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from .database_engine import DatabaseEngine
+from .database_engine_deployment import DatabaseEngineDeployment
 from .driver_helper import DriverHelper
 from .test_environment import TestEnvironment
+
+if TYPE_CHECKING:
+    from .test_driver import TestDriver
 
 
 class ConnectionUtils:
@@ -25,6 +30,15 @@ class ConnectionUtils:
     @property
     def user(self) -> str:
         return TestEnvironment.get_current().get_database_info().get_username()
+
+    @property
+    def admin_user(self) -> str:
+        """The login that can create users and change server settings, with the test password: root on a Docker
+        MySQL server, else the test user (on Aurora, the cluster's admin user)."""
+        env = TestEnvironment.get_current()
+        if env.get_engine() == DatabaseEngine.MYSQL and env.get_deployment() == DatabaseEngineDeployment.DOCKER:
+            return "root"
+        return self.user
 
     @property
     def iam_user(self) -> str:
@@ -60,13 +74,15 @@ class ConnectionUtils:
             port: Optional[int] = None,
             user: Optional[str] = None,
             password: Optional[str] = None,
-            dbname: Optional[str] = None) -> Dict[str, Any]:
+            dbname: Optional[str] = None,
+            test_driver: Optional[TestDriver] = None,
+            use_pure: bool = True) -> Dict[str, Any]:
         host = self.writer_host if host is None else host
         port = self.port if port is None else port
         user = self.user if user is None else user
         password = self.password if password is None else password
         dbname = self.dbname if dbname is None else dbname
-        params = DriverHelper.get_connect_params(host, port, user, password, dbname)
+        params = DriverHelper.get_connect_params(host, port, user, password, dbname, test_driver, use_pure)
         # Aurora's IAM authentication is implemented as a PAM auth provider in
         # PostgreSQL; its default pg_hba.conf contains `hostssl ... pam` and
         # `host ... reject`, so an IAM connection over plaintext is rejected

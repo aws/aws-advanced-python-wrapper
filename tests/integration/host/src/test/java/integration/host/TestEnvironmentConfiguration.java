@@ -20,6 +20,8 @@ import integration.DebugEnv;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 public class TestEnvironmentConfiguration {
@@ -54,6 +56,10 @@ public class TestEnvironmentConfiguration {
       Boolean.parseBoolean(System.getProperty("exclude-secrets-manager", "false"));
   public boolean testAutoscalingOnly =
       Boolean.parseBoolean(System.getProperty("test-autoscaling", "false"));
+  public boolean testKmsEncryptionOnly =
+      Boolean.parseBoolean(System.getProperty("test-kms-encryption", "false"));
+  public boolean excludeKmsLocalstack =
+      Boolean.parseBoolean(System.getProperty("exclude-kms-localstack", "false"));
 
   public boolean excludeInstances1 =
       Boolean.parseBoolean(System.getProperty("exclude-instances-1", "false"));
@@ -112,6 +118,15 @@ public class TestEnvironmentConfiguration {
   public String awsSessionToken = System.getenv("AWS_SESSION_TOKEN");
 
   public String iamUser = System.getenv("IAM_USER");
+
+  public String kmsKeyArn = System.getenv("KMS_KEY_ARN");
+  public String kmsKeyAlias = System.getenv("KMS_KEY_ALIAS");
+  public String kmsRegion = System.getenv("KMS_REGION");
+  public String kmsDecryptOnlyRoleArn = System.getenv("KMS_DECRYPT_ONLY_ROLE_ARN");
+  // Read as the Ruby wrapper reads it.
+  public boolean kmsAllowKeyCreation = Arrays.asList("1", "true", "yes").contains(
+      Objects.toString(System.getenv("KMS_ALLOW_KEY_CREATION"), "").trim().toLowerCase(Locale.ROOT));
+  public boolean kmsManualTests = "1".equals(System.getenv("KMS_MANUAL_TESTS"));
 
   final String numInstancesVar = System.getenv("NUM_INSTANCES");
   final Integer numInstances = numInstancesVar == null ? null : Integer.parseInt(numInstancesVar);

@@ -28,6 +28,9 @@ dependencies {
     testImplementation("software.amazon.awssdk:rds:2.30.10")
     testImplementation("software.amazon.awssdk:ec2:2.30.10")
     testImplementation("software.amazon.awssdk:secretsmanager:2.30.10")
+    testImplementation("software.amazon.awssdk:kms:2.30.10")
+    testImplementation("software.amazon.awssdk:iam:2.30.10")
+    testImplementation("software.amazon.awssdk:sts:2.30.10")
     // Note: all org.testcontainers dependencies should have the same version
     testImplementation("org.testcontainers:testcontainers:2.0.3")
     testImplementation("org.testcontainers:testcontainers-mysql:2.0.3")
@@ -431,6 +434,73 @@ tasks.register<Test>("test-autoscaling") {
         systemProperty("exclude-mysql-driver", "true")
         systemProperty("exclude-mysql-engine", "true")
         systemProperty("exclude-bg", "true")
+    }
+}
+
+tasks.register<Test>("test-kms-encryption-docker") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("test-kms-encryption", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-bg", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-async-drivers", "true")
+        systemProperty("exclude-traces-telemetry", "true")
+        systemProperty("exclude-metrics-telemetry", "true")
+        systemProperty("exclude-python-3-10", "true")
+        systemProperty("exclude-python-3-11", "true")
+        systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-secrets-manager", "true")
+    }
+}
+
+tasks.register<Test>("test-kms-encryption-docker-kms") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("test-kms-encryption", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-bg", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-async-drivers", "true")
+        systemProperty("exclude-traces-telemetry", "true")
+        systemProperty("exclude-metrics-telemetry", "true")
+        systemProperty("exclude-python-3-10", "true")
+        systemProperty("exclude-python-3-11", "true")
+        systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
+        systemProperty("exclude-aurora", "true")
+        systemProperty("exclude-secrets-manager", "true")
+        systemProperty("exclude-kms-localstack", "true")
+    }
+}
+
+tasks.register<Test>("test-kms-encryption-aurora") {
+    group = "verification"
+    filter.includeTestsMatching("integration.host.TestRunner.runTests")
+    doFirst {
+        systemProperty("test-kms-encryption", "true")
+        systemProperty("exclude-multi-az-cluster", "true")
+        systemProperty("exclude-multi-az-instance", "true")
+        systemProperty("exclude-bg", "true")
+        systemProperty("exclude-performance", "true")
+        systemProperty("exclude-async-drivers", "true")
+        systemProperty("exclude-traces-telemetry", "true")
+        systemProperty("exclude-metrics-telemetry", "true")
+        systemProperty("exclude-python-3-10", "true")
+        systemProperty("exclude-python-3-11", "true")
+        systemProperty("exclude-python-3-13", "true")
+        systemProperty("exclude-python-3-14", "true")
+        systemProperty("exclude-docker", "true")
+        systemProperty("exclude-kms-localstack", "true")
+        systemProperty("exclude-instances-1", "true")
+        systemProperty("exclude-instances-3", "true")
+        systemProperty("exclude-instances-5", "true")
     }
 }
 

@@ -32,6 +32,7 @@ import integration.TestTelemetryInfo;
 import integration.host.TestEnvironmentProvider.EnvPreCreateInfo;
 import integration.util.AuroraTestUtility;
 import integration.util.ContainerHelper;
+import integration.util.KmsTestUtility;
 import integration.util.StringUtils;
 import java.io.IOException;
 import java.net.UnknownHostException;
@@ -40,7 +41,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -65,6 +68,7 @@ public class TestEnvironment implements AutoCloseable {
   private static final String TEST_CONTAINER_NAME = "test-container";
   private static final String TELEMETRY_XRAY_CONTAINER_NAME = "xray-daemon";
   private static final String TELEMETRY_OTLP_CONTAINER_NAME = "otlp-daemon";
+  private static final String LOCALSTACK_CONTAINER_NAME = "localstack";
   private static final String PROXIED_DOMAIN_NAME_SUFFIX = ".proxied";
   protected static final int PROXY_CONTROL_PORT = 8474;
   protected static final int PROXY_PORT = 8666;
@@ -73,6 +77,7 @@ public class TestEnvironment implements AutoCloseable {
   private static final boolean USE_OTLP_CONTAINER_FOR_TRACES = true;
 
   private static final AtomicInteger ipAddressUsageRefCount = new AtomicInteger(0);
+  private static volatile boolean ipRuleAddedByThisJvm;
 
   private final TestEnvironmentInfo info =
       new TestEnvironmentInfo(); // only this info is passed to test container
@@ -95,6 +100,7 @@ public class TestEnvironment implements AutoCloseable {
   private ArrayList<ToxiproxyContainer> proxyContainers;
   private GenericContainer<?> telemetryXRayContainer;
   private GenericContainer<?> telemetryOtlpContainer;
+  private GenericContainer<?> localStackContainer;
 
   private String runnerIP;
 
@@ -132,6 +138,15 @@ public class TestEnvironment implements AutoCloseable {
         if (request.getFeatures().contains(TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT)) {
           throw new UnsupportedOperationException(
               TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT.toString());
+        }
+
+        if (request.getFeatures().contains(TestEnvironmentFeatures.KMS_LOCALSTACK)) {
+          env.localStackContainer =
+              new ContainerHelper().createLocalStackContainer(env.network, LOCALSTACK_CONTAINER_NAME);
+          env.localStackContainer.start();
+        } else if (request.getFeatures().contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)) {
+          // The real-key Docker task calls KMS, so the test container needs the AWS credentials.
+          initAwsCredentials(env);
         }
 
         break;
@@ -188,6 +203,17 @@ public class TestEnvironment implements AutoCloseable {
           LOGGER.finest("IP usage count: " + ipAddressUsageRefCount.get());
         }
       }
+    }
+  }
+
+  // Before the runner's IP rule is added, so a refused run leaves nothing behind. A failed create deletes the cluster
+  // that RDS_DB_NAME names, so the harness must never create one under the name of a cluster that exists.
+  private static void refuseExistingCluster(TestEnvironment env) {
+    if (!env.reuseDb
+        && !StringUtils.isNullOrEmpty(env.rdsDbName)
+        && env.auroraUtil.doesClusterExist(env.rdsDbName)) {
+      throw new RuntimeException("Cluster " + env.rdsDbName + " already exists: set REUSE_RDS_DB=true to use it, "
+          + "or set RDS_DB_NAME to a new name.");
     }
   }
 
@@ -255,12 +281,14 @@ public class TestEnvironment implements AutoCloseable {
           break;
         case RDS_MULTI_AZ_CLUSTER:
           initEnv(env);
+          refuseExistingCluster(env);
           authorizeRunnerIpAddress(env);
           createDbCluster(env);
           configureIamAccess(env);
           break;
         case AURORA:
           initEnv(env);
+          refuseExistingCluster(env);
           authorizeRunnerIpAddress(env);
 
           if (!env.reuseDb
@@ -437,7 +465,9 @@ public class TestEnvironment implements AutoCloseable {
                   DATABASE_CONTAINER_NAME_PREFIX + i,
                   env.info.getDatabaseInfo().getDefaultDbName(),
                   env.info.getDatabaseInfo().getUsername(),
-                  env.info.getDatabaseInfo().getPassword()));
+                  env.info.getDatabaseInfo().getPassword(),
+                  env.info.getRequest().getFeatures()
+                      .contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)));
           env.databaseContainers.get(0).start();
 
           env.info
@@ -781,7 +811,7 @@ public class TestEnvironment implements AutoCloseable {
     } catch (UnknownHostException e) {
       throw new RuntimeException(e);
     }
-    env.auroraUtil.ec2AuthorizeIP(env.runnerIP);
+    ipRuleAddedByThisJvm = env.auroraUtil.ec2AuthorizeIP(env.runnerIP);
     LOGGER.finest(String.format("Test runner IP %s authorized. Usage count: %d",
         env.runnerIP, ipAddressUsageRefCount.get()));
   }
@@ -796,10 +826,13 @@ public class TestEnvironment implements AutoCloseable {
         }
       }
 
-      if (!env.reuseDb) {
+      if (!env.reuseDb && ipRuleAddedByThisJvm) {
         env.auroraUtil.ec2DeauthorizesIP(env.runnerIP);
+        ipRuleAddedByThisJvm = false;
         LOGGER.finest(String.format("Test runner IP %s de-authorized. Usage count: %d",
             env.runnerIP, ipAddressUsageRefCount.get()));
+      } else if (!env.reuseDb) {
+        LOGGER.finest("The rule for the runner's IP existed before this run, so it is kept.");
       } else {
         LOGGER.finest("The IP address usage count hit 0, but the REUSE_RDS_DB was set to true, so IP "
                 + "de-authorization was skipped.");
@@ -1069,6 +1102,23 @@ public class TestEnvironment implements AutoCloseable {
           .withEnv("AWS_SESSION_TOKEN", env.awsSessionToken);
     }
 
+    // After the credentials block, so the LocalStack dummy keys win.
+    final Set<TestEnvironmentFeatures> features = env.info.getRequest().getFeatures();
+    if (features.contains(TestEnvironmentFeatures.KMS_LOCALSTACK)) {
+      env.testContainer
+          .withEnv("KMS_ENDPOINT_URL", "http://" + LOCALSTACK_CONTAINER_NAME + ":4566")
+          .withEnv("KMS_REGION", "us-east-1")
+          .withEnv("AWS_ACCESS_KEY_ID", "test")
+          .withEnv("AWS_SECRET_ACCESS_KEY", "test");
+    } else if (features.contains(TestEnvironmentFeatures.RUN_KMS_ENCRYPTION_TESTS_ONLY)) {
+      final KmsTestUtility madeKms = TestEnvironmentProvider.kmsTestUtility;
+      env.testContainer
+          .withEnv("KMS_KEY_ARN", madeKms != null ? madeKms.getKeyArn() : config.kmsKeyArn)
+          .withEnv("KMS_REGION", madeKms != null ? madeKms.getRegion() : config.kmsRegion)
+          .withEnv("KMS_DECRYPT_ONLY_ROLE_ARN", Objects.toString(
+              madeKms != null ? madeKms.getDecryptOnlyRoleArn() : config.kmsDecryptOnlyRoleArn, ""));
+    }
+
     env.testContainer.start();
   }
 
@@ -1279,6 +1329,11 @@ public class TestEnvironment implements AutoCloseable {
       this.testContainer = null;
     }
 
+    if (this.localStackContainer != null) {
+      this.localStackContainer.stop();
+      this.localStackContainer = null;
+    }
+
     if (this.proxyContainers != null) {
       for (ToxiproxyContainer proxyContainer : this.proxyContainers) {
         proxyContainer.stop();
@@ -1478,12 +1533,14 @@ public class TestEnvironment implements AutoCloseable {
                 break;
               case RDS_MULTI_AZ_CLUSTER:
                 initEnv(env);
+                refuseExistingCluster(env);
                 authorizeRunnerIpAddress(env);
                 createDbCluster(env);
                 configureIamAccess(env);
                 break;
               case AURORA:
                 initEnv(env);
+                refuseExistingCluster(env);
                 authorizeRunnerIpAddress(env);
 
                 if (env.info.getRequest().getFeatures().contains(TestEnvironmentFeatures.BLUE_GREEN_DEPLOYMENT)) {
